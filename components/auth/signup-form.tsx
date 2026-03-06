@@ -2,63 +2,76 @@
 
 import Link from "next/link"
 import { FormEvent, useState } from "react"
-import { useRouter } from "next/navigation"
 
+import { signupWithOrganization } from "@/app/auth/signup/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { toast } from "@/components/ui/toast"
-import { createClient } from "@/lib/supabase/client"
 
 export function SignupForm() {
-  const router = useRouter()
   const [email, setEmail] = useState("")
+  const [pharmacyName, setPharmacyName] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setErrorMessage(null)
+    setSuccessMessage(null)
+
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match.")
+      return
+    }
+
     setIsLoading(true)
 
-    const emailRedirectTo =
-      typeof window !== "undefined" ? `${window.location.origin}/auth/login` : undefined
-
-    const supabase = createClient()
-    const { data, error } = await supabase.auth.signUp({
+    const result = await signupWithOrganization({
       email,
+      pharmacyName,
       password,
-      options: {
-        emailRedirectTo,
-      },
     })
 
     setIsLoading(false)
 
-    if (error) {
-      toast.error(error.message)
+    if (!result.success) {
+      setErrorMessage(result.error ?? "Unable to create your account.")
       return
     }
 
-    if (data.session) {
-      toast.success("Account created")
-      router.push("/dashboard")
-      router.refresh()
-      return
-    }
-
-    toast.success("Check your email to confirm your account")
-    router.push("/auth/login")
+    setSuccessMessage("Check your email to confirm your account.")
+    setEmail("")
+    setPharmacyName("")
+    setPassword("")
+    setConfirmPassword("")
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-slate-200 shadow-sm">
       <CardHeader>
-        <CardTitle>Create account</CardTitle>
-        <CardDescription>Set up your organization workspace in PharmaTrace.</CardDescription>
+        <CardTitle className="text-xl text-slate-900">Create account</CardTitle>
+        <CardDescription className="text-slate-600">
+          Set up your pharmacy organization in PharmaTrace.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="pharmacy-name">Pharmacy name</Label>
+            <Input
+              id="pharmacy-name"
+              type="text"
+              placeholder="Acme Compounding Pharmacy"
+              value={pharmacyName}
+              onChange={(event) => setPharmacyName(event.target.value)}
+              required
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="email">Work email</Label>
             <Input
@@ -83,10 +96,34 @@ export function SignupForm() {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              minLength={8}
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              required
+            />
+          </div>
+
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Creating account..." : "Create account"}
           </Button>
         </form>
+
+        {errorMessage ? (
+          <p className="mt-3 text-sm text-destructive" role="alert">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {successMessage ? (
+          <p className="mt-3 text-sm text-primary" role="status">
+            {successMessage}
+          </p>
+        ) : null}
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
           Already have an account?{" "}

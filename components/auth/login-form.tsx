@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { toast } from "@/components/ui/toast"
 import { createClient } from "@/lib/supabase/client"
 
 export function LoginForm() {
@@ -16,10 +15,12 @@ export function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsLoading(true)
+    setErrorMessage(null)
 
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithPassword({
@@ -30,20 +31,21 @@ export function LoginForm() {
     setIsLoading(false)
 
     if (error) {
-      toast.error(error.message)
+      setErrorMessage(error.message)
       return
     }
 
-    toast.success("Welcome back")
     router.push("/dashboard")
     router.refresh()
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <Card className="w-full max-w-md border-slate-200 shadow-sm">
       <CardHeader>
-        <CardTitle>Sign in</CardTitle>
-        <CardDescription>Access your PharmaTrace workspace.</CardDescription>
+        <CardTitle className="text-xl text-slate-900">Sign in</CardTitle>
+        <CardDescription className="text-slate-600">
+          Access your PharmaTrace compliance workspace.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -73,6 +75,12 @@ export function LoginForm() {
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Signing in..." : "Sign in"}
           </Button>
+
+          {errorMessage ? (
+            <p className="text-sm text-destructive" role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
         </form>
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
