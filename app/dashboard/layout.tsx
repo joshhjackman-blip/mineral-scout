@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { AppHeader } from "@/components/layout/header"
 import { AppSidebar } from "@/components/layout/sidebar"
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { createClient } from "@/lib/supabase/server"
 
 export default async function DashboardLayout({
@@ -18,12 +16,9 @@ export default async function DashboardLayout({
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>
-        <AppHeader userEmail={user.email} />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <div className="flex min-h-screen bg-slate-100">
+      <AppSidebar userEmail={user.email} />
+      <main className="flex-1 bg-white p-6 md:p-8">{children}</main>
+    </div>
   )
 }
