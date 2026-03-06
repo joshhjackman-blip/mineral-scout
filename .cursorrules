@@ -1,0 +1,75 @@
+# PharmaTrace — Cursor Project Rules
+
+## What We Are Building
+A B2B SaaS platform for compounding pharmacies with two core modules:
+
+1. **Supplier Intelligence** — research and monitor API (active pharmaceutical ingredient) 
+   suppliers using US customs shipment data, FDA registration records, FDA enforcement 
+   actions (warning letters, recalls, import alerts), and DEA scheduling alerts. 
+   Focus is on peptide APIs (semaglutide, tirzepatide, BPC-157, etc.)
+
+2. **COA Management** — store, track, and manage Certificates of Analysis and supplier 
+   qualification documents, with expiry alerts and full audit trail.
+
+End user: compounding pharmacy compliance officer, purchasing manager, or pharmacist-in-charge.
+
+## Tech Stack
+- Frontend: Next.js 14 (App Router), TypeScript, Tailwind CSS, shadcn/ui
+- Database: Supabase (PostgreSQL)
+- Auth: Supabase Auth (built-in)
+- Backend scripts: Python 3.11+ with supabase-py
+- AI: Anthropic Claude API (claude-sonnet-4-20250514)
+- File storage: Supabase Storage
+- Email: Resend
+- Payments: Stripe (Phase 6 only)
+- Deployment: Vercel (frontend) + Railway (Python scripts)
+
+## Database Schema
+Tables:
+- users (managed by Supabase Auth)
+- organizations (pharmacy accounts)
+- suppliers (FDA-registered API suppliers)
+- shipments (US customs bill of lading records)
+- fda_actions (warning letters, recalls, import alerts)
+- scheduling_alerts (DEA scheduling changes)
+- coa_documents (uploaded COA files with metadata)
+- watchlist (user-saved suppliers)
+
+## Environment Variables
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+ANTHROPIC_API_KEY=
+RESEND_API_KEY=
+STRIPE_SECRET_KEY= (Phase 6)
+STRIPE_WEBHOOK_SECRET= (Phase 6)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY= (Phase 6)
+
+## Coding Conventions
+- TypeScript for all frontend/Next.js code
+- Python type hints throughout backend scripts
+- API endpoints return: { success: bool, data: any, error: string | null }
+- All secrets in environment variables — never hardcoded
+- Keep ingestion scripts idempotent (safe to run twice, no duplicates)
+- Write .env.example listing all required variables
+- Professional pharma aesthetic: white bg, slate sidebar, blue (#2563EB) primary, 
+  red/yellow/green only for risk indicators
+
+## Risk Score Formula (0–100)
+- FDA Warning Letter (active, < 3 years): +35 points
+- FDA Import Alert (active): +30 points
+- FDA Recall (active): +25 points
+- No FDA registration found: +20 points
+- Country risk (China/India tier adjustment): +0 to +15 points
+- No shipments in last 12 months: +10 points
+- Score 0–25: green | 26–50: yellow | 51–75: orange | 76–100: red
+
+## Build Phases
+- Phase 1: Scaffold + auth + database schema + dashboard shell
+- Phase 2: FDA data ingestion Python scripts + Supabase population
+- Phase 3: Supplier search UI + supplier profile pages + risk scoring display
+- Phase 4: COA upload + Claude AI extraction + document management
+- Phase 5: Watchlist + email alerts (Resend)
+- Phase 6: Stripe billing
+
+Always ask before moving to the next phase. If unsure about a regulatory/pharma detail, flag for human review.
