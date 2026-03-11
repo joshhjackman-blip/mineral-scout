@@ -80,6 +80,19 @@ export async function POST(request: Request) {
     )
   }
 
+  const identitiesCount = signupData.user.identities?.length ?? 0
+  const isExistingUserSignupResponse = identitiesCount === 0
+
+  // Supabase can return a sanitized user object for already-registered emails.
+  // In that case we should not create a new organization/member row.
+  if (isExistingUserSignupResponse) {
+    return NextResponse.json({
+      success: true,
+      data: { userId, existingUser: true, organizationId: null },
+      error: null,
+    })
+  }
+
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
@@ -104,16 +117,36 @@ export async function POST(request: Request) {
     )
   }
 
-  const { error: memberError } = await adminClient.from("organization_members").insert({
-    user_id: userId,
-    org_id: orgData.id,
-    role: "owner",
-  })
+  let memberInsertError: { message: string; code?: string } | null = null
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const { error: memberError } = await adminClient.from("organization_members").insert({
+      user_id: userId,
+      org_id: orgData.id,
+      role: "owner",
+    })
 
-  if (memberError) {
+    if (!memberError) {
+      memberInsertError = null
+      break
+    }
+
+    memberInsertError = {
+      message: memberError.message,
+      code: "code" in memberError ? String(memberError.code) : undefined,
+    }
+
+    // Rarely, auth user replication can lag briefly behind signup completion.
+    if (memberInsertError.code === "23503" && attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt))
+      continue
+    }
+    break
+  }
+
+  if (memberInsertError) {
     await adminClient.from("organizations").delete().eq("id", orgData.id)
     return NextResponse.json(
-      { success: false, data: null, error: memberError.message },
+      { success: false, data: null, error: memberInsertError.message },
       { status: 500 }
     )
   }
