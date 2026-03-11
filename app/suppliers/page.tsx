@@ -1,6 +1,7 @@
 import Link from "next/link"
 
 import { SupplierSearchFilters } from "@/components/suppliers/supplier-search-filters"
+import { SuppliersToastListener } from "@/components/suppliers/suppliers-toast-listener"
 import RiskScoreBadge from "@/components/ui/risk-score-badge"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -121,6 +122,7 @@ export default async function SuppliersPage({ searchParams }: SuppliersPageProps
 
   return (
     <div className="space-y-6">
+      <SuppliersToastListener />
       <div className="space-y-1">
         <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
           Supplier Intelligence
