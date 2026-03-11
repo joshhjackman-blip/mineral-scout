@@ -4,6 +4,7 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
 import {
+  BellIcon,
   Building2Icon,
   FileTextIcon,
   LayoutDashboardIcon,
@@ -23,6 +24,7 @@ type AppSidebarProps = {
 const navigationItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon },
   { label: "Suppliers", href: "/suppliers", icon: Building2Icon },
+  { label: "Alerts", href: "/alerts", icon: BellIcon },
   { label: "COA Documents", href: "/coa", icon: FileTextIcon },
   { label: "Watchlist", href: "/watchlist", icon: ListChecksIcon },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
