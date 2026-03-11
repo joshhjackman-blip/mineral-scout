@@ -1,53 +1,53 @@
 "use client"
 
 import Link from "next/link"
-import { FormEvent, useRef, useState } from "react"
+import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
+import { createBrowserClient } from "@supabase/ssr"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { createClient } from "@/lib/supabase/client"
 
-export function LoginForm() {
-  const router = useRouter()
-  const formRef = useRef<HTMLFormElement>(null)
+export default function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+  const router = useRouter()
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  const handleLogin = async () => {
+    setLoading(true)
+    setError("")
+    console.log("Login attempt started")
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      console.log("Login error:", error.message)
+      setError(error.message)
+      setLoading(false)
+    } else {
+      console.log("Login success, redirecting...")
+      setLoading(false)
+      router.push("/dashboard")
+      router.refresh()
+    }
+  }
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    console.log("[LoginForm] submit handler called", { email })
-    setIsLoading(true)
-    setErrorMessage(null)
-
-    try {
-      const supabase = createClient()
-      console.log("[LoginForm] attempting signInWithPassword")
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        console.error("[LoginForm] sign in failed", error)
-        setErrorMessage(error.message)
-        setIsLoading(false)
-        return
-      }
-
-      console.log("[LoginForm] sign in succeeded, redirecting to /dashboard")
-      setIsLoading(false)
-      router.push("/dashboard")
-      router.refresh()
-    } catch (error) {
-      console.error("[LoginForm] unexpected sign in error", error)
-      setErrorMessage("Unable to sign in right now. Please try again.")
-      setIsLoading(false)
-    }
+    console.log("Login submit called")
+    await handleLogin()
   }
 
   return (
@@ -59,7 +59,7 @@ export function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit} ref={formRef}>
+        <form className="space-y-4" onSubmit={onSubmit}>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -83,21 +83,13 @@ export function LoginForm() {
             />
           </div>
 
-          <Button
-            type="button"
-            className="w-full"
-            disabled={isLoading}
-            onClick={() => {
-              console.log("[LoginForm] sign in button clicked")
-              formRef.current?.requestSubmit()
-            }}
-          >
-            {isLoading ? "Signing in..." : "Sign in"}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Signing in..." : "Sign in"}
           </Button>
 
-          {errorMessage ? (
+          {error ? (
             <p className="text-sm text-destructive" role="alert">
-              {errorMessage}
+              {error}
             </p>
           ) : null}
         </form>
