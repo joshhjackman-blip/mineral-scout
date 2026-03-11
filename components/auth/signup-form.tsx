@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { FormEvent, useState } from "react"
 
-import { signupWithOrganization } from "@/app/auth/signup/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -30,11 +29,33 @@ export function SignupForm() {
 
     setIsLoading(true)
 
-    const result = await signupWithOrganization({
-      email,
-      pharmacyName,
-      password,
-    })
+    let result: { success: boolean; error: string | null } = {
+      success: false,
+      error: "Unable to create your account.",
+    }
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          pharmacyName,
+          password,
+        }),
+      })
+      result = (await response.json()) as { success: boolean; error: string | null }
+      if (!response.ok) {
+        result.success = false
+        result.error = result.error ?? "Unable to create your account."
+      }
+    } catch {
+      result = {
+        success: false,
+        error: "Unable to create your account.",
+      }
+    }
 
     setIsLoading(false)
 
