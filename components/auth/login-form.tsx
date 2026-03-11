@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { FormEvent, useState } from "react"
+import { FormEvent, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client"
 
 export function LoginForm() {
   const router = useRouter()
+  const formRef = useRef<HTMLFormElement>(null)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -19,24 +20,34 @@ export function LoginForm() {
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    console.log("[LoginForm] submit handler called", { email })
     setIsLoading(true)
     setErrorMessage(null)
 
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    try {
+      const supabase = createClient()
+      console.log("[LoginForm] attempting signInWithPassword")
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    setIsLoading(false)
+      if (error) {
+        console.error("[LoginForm] sign in failed", error)
+        setErrorMessage(error.message)
+        setIsLoading(false)
+        return
+      }
 
-    if (error) {
-      setErrorMessage(error.message)
-      return
+      console.log("[LoginForm] sign in succeeded, redirecting to /dashboard")
+      setIsLoading(false)
+      router.push("/dashboard")
+      router.refresh()
+    } catch (error) {
+      console.error("[LoginForm] unexpected sign in error", error)
+      setErrorMessage("Unable to sign in right now. Please try again.")
+      setIsLoading(false)
     }
-
-    router.push("/dashboard")
-    router.refresh()
   }
 
   return (
@@ -48,7 +59,7 @@ export function LoginForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit}>
+        <form className="space-y-4" onSubmit={onSubmit} ref={formRef}>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -72,7 +83,15 @@ export function LoginForm() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <Button
+            type="button"
+            className="w-full"
+            disabled={isLoading}
+            onClick={() => {
+              console.log("[LoginForm] sign in button clicked")
+              formRef.current?.requestSubmit()
+            }}
+          >
             {isLoading ? "Signing in..." : "Sign in"}
           </Button>
 

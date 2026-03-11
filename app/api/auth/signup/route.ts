@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const identitiesCount = signupData.user.identities?.length ?? 0
+  const identitiesCount = signupData.user?.identities?.length ?? 0
   const isExistingUserSignupResponse = identitiesCount === 0
 
   // Supabase can return a sanitized user object for already-registered emails.
