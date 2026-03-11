@@ -1,14 +1,9 @@
 "use client"
 
-import Link from "next/link"
-import { FormEvent, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
-
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import Link from "next/link"
 
 export default function LoginForm() {
   const [email, setEmail] = useState("")
@@ -25,82 +20,104 @@ export default function LoginForm() {
   const handleLogin = async () => {
     setLoading(true)
     setError("")
-    console.log("Login attempt started")
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) {
-      console.log("Login error:", error.message)
       setError(error.message)
       setLoading(false)
     } else {
-      console.log("Login success, redirecting...")
-      setLoading(false)
       router.push("/dashboard")
       router.refresh()
     }
   }
 
-  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    console.log("Login submit called")
-    await handleLogin()
-  }
-
   return (
-    <Card className="w-full max-w-md border-slate-200 shadow-sm">
-      <CardHeader>
-        <CardTitle className="text-xl text-slate-900">Sign in</CardTitle>
-        <CardDescription className="text-slate-600">
-          Access your PharmaTrace compliance workspace.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div
+        className="bg-white rounded-xl shadow-sm border border-slate-200 
+                      w-full max-w-md p-8"
+      >
+        {/* Logo */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-slate-900">PharmaTrace</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Supplier intelligence for compounding pharmacies
+          </p>
+        </div>
+
+        {/* Title */}
+        <h2 className="text-lg font-semibold text-slate-800 mb-6">
+          Sign in to your account
+        </h2>
+
+        {/* Error */}
+        {error && (
+          <div
+            className="bg-red-50 border border-red-200 text-red-700 
+                          text-sm rounded-lg px-4 py-3 mb-4"
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Fields */}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Email
+            </label>
+            <input
               type="email"
-              placeholder="you@pharmacy.com"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              required
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="you@pharmacy.com"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 
+                         text-sm text-slate-900 placeholder-slate-400
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 
+                         focus:border-transparent"
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Password
+            </label>
+            <input
               type="password"
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              placeholder="••••••••"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 
+                         text-sm text-slate-900 placeholder-slate-400
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 
+                         focus:border-transparent"
             />
           </div>
+        </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
+        {/* Button */}
+        <button
+          onClick={handleLogin}
+          disabled={loading}
+          className="w-full mt-6 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400
+                     text-white font-medium rounded-lg px-4 py-2.5 text-sm
+                     transition-colors duration-150"
+        >
+          {loading ? "Signing in..." : "Sign in"}
+        </button>
 
-          {error ? (
-            <p className="text-sm text-destructive" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </form>
-
-        <p className="mt-4 text-center text-sm text-muted-foreground">
-          New to PharmaTrace?{" "}
-          <Link href="/auth/signup" className="font-medium text-primary hover:underline">
-            Create an account
+        {/* Footer */}
+        <p className="text-center text-sm text-slate-500 mt-6">
+          Don't have an account?{" "}
+          <Link
+            href="/auth/signup"
+            className="text-blue-600 hover:underline font-medium"
+          >
+            Sign up
           </Link>
         </p>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
