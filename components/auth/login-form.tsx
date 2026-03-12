@@ -20,13 +20,35 @@ export default function LoginForm() {
   const handleLogin = async () => {
     setLoading(true)
     setError("")
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
+    console.log("[Login] Attempt started", { email })
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        console.log("[Login] Error:", error.message)
+        setError(error.message)
+        return
+      }
+
+      if (!data.session) {
+        setError("Login did not return a valid session.")
+        return
+      }
+
+      console.log("[Login] Success, redirecting to dashboard")
       router.push("/dashboard")
       router.refresh()
+
+      // Fallback for environments where app-router navigation can stall.
+      setTimeout(() => {
+        window.location.href = "/dashboard"
+      }, 250)
+    } catch (err) {
+      console.error("[Login] Unexpected error:", err)
+      setError("Unable to sign in right now. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 
