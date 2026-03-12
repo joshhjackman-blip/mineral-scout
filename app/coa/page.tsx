@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useDropzone } from "react-dropzone"
 import { FileUpIcon } from "lucide-react"
+import Link from "next/link"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -342,7 +343,16 @@ export default function CoaDocumentsPage() {
                   tableRows.map((row) => (
                     <tr key={row.id} className="border-t border-[#E5E7EB] align-top">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-[#111111]">{row.file_name}</p>
+                        {row.kind === "document" ? (
+                          <Link
+                            href={`/coa/${row.id}`}
+                            className="font-medium text-[#111111] underline-offset-2 hover:underline"
+                          >
+                            {row.file_name}
+                          </Link>
+                        ) : (
+                          <p className="font-medium text-[#111111]">{row.file_name}</p>
+                        )}
                         {"error" in row && row.error ? (
                           <p className="mt-1 text-xs text-red-600">{row.error}</p>
                         ) : null}
