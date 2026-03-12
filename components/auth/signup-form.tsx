@@ -33,6 +33,7 @@ export function SignupForm() {
       success: false,
       error: "Unable to create your account.",
     }
+    let usedDevFallback = false
     try {
       const response = await fetch("/api/auth/signup", {
         method: "POST",
@@ -57,6 +58,50 @@ export function SignupForm() {
       }
     }
 
+    if (
+      !result.success &&
+      process.env.NODE_ENV === "development" &&
+      (result.error ?? "").toLowerCase().includes("too many signup attempts")
+    ) {
+      try {
+        const devResponse = await fetch("/api/dev/create-test-user", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            pharmacyName,
+            password,
+          }),
+        })
+        const devResult = (await devResponse.json()) as {
+          success: boolean
+          error: string | null
+        }
+        if (devResponse.ok && devResult.success) {
+          usedDevFallback = true
+          result = {
+            success: true,
+            error: null,
+          }
+          setSuccessMessage(
+            "Development fallback created your account. You can sign in now."
+          )
+        } else {
+          result = {
+            success: false,
+            error: devResult.error ?? "Unable to create your account.",
+          }
+        }
+      } catch {
+        result = {
+          success: false,
+          error: "Unable to create your account.",
+        }
+      }
+    }
+
     setIsLoading(false)
 
     if (!result.success) {
@@ -64,7 +109,9 @@ export function SignupForm() {
       return
     }
 
-    setSuccessMessage("Check your email to confirm your account.")
+    if (!usedDevFallback) {
+      setSuccessMessage("Check your email to confirm your account.")
+    }
     setEmail("")
     setPharmacyName("")
     setPassword("")
