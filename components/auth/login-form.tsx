@@ -1,43 +1,27 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
+
+import { loginAction } from "@/app/auth/login/actions"
 
 export default function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
 
   const handleLogin = async () => {
     setLoading(true)
     setError("")
-    console.log("[Login] Attempt started")
+    console.log("[Login] Attempt started (server action)")
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const result = (await response.json()) as {
-        success: boolean
-        error: string | null
-      }
-
-      if (!response.ok || !result.success) {
-        setError(result.error ?? "Invalid login credentials.")
+      const result = await loginAction(email, password)
+      if (result?.error) {
+        setError(result.error)
         return
       }
-
-      router.push("/dashboard")
-      router.refresh()
-      window.location.href = "/dashboard"
     } catch (err) {
       console.error("[Login] Unexpected error", err)
       setError("Unable to sign in right now. Please try again.")
