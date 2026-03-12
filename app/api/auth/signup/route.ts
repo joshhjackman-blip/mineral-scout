@@ -8,6 +8,20 @@ type SignupPayload = {
   pharmacyName?: string
 }
 
+function normalizeSignupError(errorMessage: string): string {
+  const message = errorMessage.toLowerCase()
+
+  if (message.includes("email rate limit exceeded")) {
+    return "Too many signup attempts right now. Please wait a minute and try again."
+  }
+
+  if (message.includes("is invalid")) {
+    return "Please enter a valid email address."
+  }
+
+  return errorMessage
+}
+
 export async function POST(request: Request) {
   let payload: SignupPayload = {}
   try {
@@ -67,7 +81,11 @@ export async function POST(request: Request) {
 
   if (signupError) {
     return NextResponse.json(
-      { success: false, data: null, error: signupError.message },
+      {
+        success: false,
+        data: null,
+        error: normalizeSignupError(signupError.message),
+      },
       { status: 400 }
     )
   }
