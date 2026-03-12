@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createBrowserClient } from "@supabase/ssr"
 import Link from "next/link"
 
 export default function LoginForm() {
@@ -12,40 +11,35 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false)
   const router = useRouter()
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
   const handleLogin = async () => {
     setLoading(true)
     setError("")
-    console.log("[Login] Attempt started", { email })
+    console.log("[Login] Attempt started")
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
 
-      if (error) {
-        console.log("[Login] Error:", error.message)
-        setError(error.message)
+      const result = (await response.json()) as {
+        success: boolean
+        error: string | null
+      }
+
+      if (!response.ok || !result.success) {
+        setError(result.error ?? "Invalid login credentials.")
         return
       }
 
-      if (!data.session) {
-        setError("Login did not return a valid session.")
-        return
-      }
-
-      console.log("[Login] Success, redirecting to dashboard")
       router.push("/dashboard")
       router.refresh()
-
-      // Fallback for environments where app-router navigation can stall.
-      setTimeout(() => {
-        window.location.href = "/dashboard"
-      }, 250)
+      window.location.href = "/dashboard"
     } catch (err) {
-      console.error("[Login] Unexpected error:", err)
+      console.error("[Login] Unexpected error", err)
       setError("Unable to sign in right now. Please try again.")
     } finally {
       setLoading(false)
