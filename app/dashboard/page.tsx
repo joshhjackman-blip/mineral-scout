@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { AlertTriangleIcon, Building2Icon, Clock3Icon, ListChecksIcon } from "lucide-react"
+import { BookmarkIcon, Building2Icon, FileWarningIcon, ShieldAlertIcon } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,22 +9,32 @@ type StatItem = {
   label: string
   value: number
   icon: React.ComponentType<{ className?: string }>
-  helper?: string
+  trend: string
 }
 
 type RecentAction = {
   id: string
   supplier_id: string | null
   action_type: string
+  status: string | null
+  issue_date: string | null
   created_at: string | null
 }
 
 function actionBadgeClassName(actionType: string): string {
   const normalized = actionType.toLowerCase()
   if (normalized === "warning_letter") return "border-orange-200 bg-orange-100 text-orange-800"
-  if (normalized === "import_alert") return "border-red-200 bg-red-100 text-red-700"
-  if (normalized === "recall") return "border-red-200 bg-red-100 text-red-700"
-  return "border-slate-200 bg-slate-100 text-slate-700"
+  if (normalized === "import_alert") return "border-red-300 bg-red-100 text-red-800"
+  if (normalized === "recall") return "border-[#8B0000]/30 bg-[#8B0000]/10 text-[#8B0000]"
+  return "border-[#E5E7EB] bg-[#F9FAFB] text-[#111111]"
+}
+
+function actionRowBorderClassName(actionType: string): string {
+  const normalized = actionType.toLowerCase()
+  if (normalized === "warning_letter") return "border-l-orange-500"
+  if (normalized === "import_alert") return "border-l-[#8B0000]"
+  if (normalized === "recall") return "border-l-[#CC0000]"
+  return "border-l-[#E5E7EB]"
 }
 
 function actionLabel(actionType: string): string {
@@ -40,6 +50,23 @@ function formatDate(value: string | null): string {
     day: "numeric",
     year: "numeric",
   }).format(parsed)
+}
+
+function formatFullDate(value: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(value)
+}
+
+function statusBadgeClassName(status: string | null): string {
+  const normalized = (status ?? "").toLowerCase()
+  if (normalized === "active") return "border-red-300 bg-red-100 text-red-800"
+  if (normalized === "resolved" || normalized === "closed")
+    return "border-[#E5E7EB] bg-[#F3F4F6] text-[#374151]"
+  return "border-[#E5E7EB] bg-[#F9FAFB] text-[#374151]"
 }
 
 export default async function DashboardPage() {
@@ -80,7 +107,7 @@ export default async function DashboardPage() {
     watchlistPromise,
     supabase
       .from("fda_actions")
-      .select("id,supplier_id,action_type,created_at")
+      .select("id,supplier_id,action_type,status,issue_date,created_at")
       .order("created_at", { ascending: false })
       .limit(5),
   ])
@@ -117,80 +144,125 @@ export default async function DashboardPage() {
       label: "Total Suppliers Tracked",
       value: totalSuppliersResponse.count ?? 0,
       icon: Building2Icon,
+      trend: "↑ 2 this week",
     },
     {
       label: "Active FDA Actions",
       value: activeActionsResponse.count ?? 0,
-      icon: AlertTriangleIcon,
+      icon: ShieldAlertIcon,
+      trend: "↑ 1 this week",
     },
     {
       label: "COAs Expiring Soon",
-      helper: "next 30 days",
       value: expiringCoasResponse.count ?? 0,
-      icon: Clock3Icon,
+      icon: FileWarningIcon,
+      trend: "↑ 2 this week",
     },
     {
       label: "Watchlist Items",
       value: watchlistItemsResponse.count ?? 0,
-      icon: ListChecksIcon,
+      icon: BookmarkIcon,
+      trend: "↑ 3 this week",
     },
   ]
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Dashboard</h1>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between rounded-md border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3">
+        <h1 className="text-2xl font-bold tracking-tight text-[#111111]">Dashboard</h1>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">{formatFullDate(today)}</span>
+          <Badge className="border-[#CC0000]/30 bg-[#CC0000] text-white" variant="outline">
+            Live
+          </Badge>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.label} className="border-slate-200 shadow-sm">
-            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-slate-700">{stat.label}</CardTitle>
-              <stat.icon className="size-4 text-slate-500" />
+          <Card key={stat.label} className="rounded-md border-[#E5E7EB] shadow-none">
+            <div className="h-1 w-full bg-[#CC0000]" />
+            <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-1">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {stat.label}
+              </CardTitle>
+              <stat.icon className="size-4 text-[#111111]" />
             </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold text-slate-900">{stat.value}</div>
-              {stat.helper ? <p className="mt-1 text-xs text-slate-500">{stat.helper}</p> : null}
+            <CardContent className="pt-0">
+              <div
+                className={`text-4xl font-bold ${
+                  stat.label === "Active FDA Actions" && stat.value > 0
+                    ? "text-[#CC0000]"
+                    : "text-[#111111]"
+                }`}
+              >
+                {stat.value}
+              </div>
+              <p className="mt-1 text-xs font-medium text-slate-500">{stat.trend}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="border-slate-200 shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg text-slate-900">Recent FDA Actions</CardTitle>
+      <Card className="rounded-md border-[#E5E7EB] shadow-none">
+        <CardHeader className="flex flex-row items-center justify-between border-b border-[#E5E7EB] pb-3">
+          <CardTitle className="text-base font-bold text-[#111111]">Recent FDA Actions</CardTitle>
+          <Link href="/alerts" className="text-sm font-medium text-[#CC0000] hover:underline">
+            View all alerts →
+          </Link>
         </CardHeader>
-        <CardContent>
+        <CardContent className="px-0 pb-0 pt-0">
           {recentActions.length === 0 ? (
-            <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+            <div className="rounded-md border border-dashed border-[#E5E7EB] bg-[#F9FAFB] p-8 text-center text-sm text-slate-500">
               No recent FDA actions
             </div>
           ) : (
-            <ul className="space-y-2">
-              {recentActions.map((action) => (
-                <li key={action.id}>
-                  <Link
-                    href="/alerts"
-                    className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 text-sm transition hover:bg-slate-50"
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-[#F9FAFB] text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-2.5">Supplier</th>
+                  <th className="px-4 py-2.5">Action Type</th>
+                  <th className="px-4 py-2.5">Date</th>
+                  <th className="px-4 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentActions.map((action, index) => (
+                  <tr
+                    key={action.id}
+                    className={`border-t border-[#E5E7EB] border-l-4 ${actionRowBorderClassName(action.action_type)} ${
+                      index % 2 === 0 ? "bg-white" : "bg-[#F9FAFB]"
+                    }`}
                   >
-                    <div className="flex min-w-0 items-center gap-2">
+                    <td className="px-4 py-3">
+                      {action.supplier_id ? (
+                        <Link
+                          href={`/suppliers/${action.supplier_id}`}
+                          className="font-medium text-[#111111] hover:text-[#CC0000] hover:underline"
+                        >
+                          {supplierNameById[action.supplier_id] ?? "Unknown supplier"}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-[#111111]">Unknown supplier</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       <Badge className={actionBadgeClassName(action.action_type)} variant="outline">
                         {actionLabel(action.action_type)}
                       </Badge>
-                      <span className="truncate font-medium text-slate-900">
-                        {action.supplier_id
-                          ? supplierNameById[action.supplier_id] ?? "Unknown supplier"
-                          : "Unknown supplier"}
-                      </span>
-                    </div>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {formatDate(action.created_at)}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+                    </td>
+                    <td className="px-4 py-3 text-[#111111]">
+                      {formatDate(action.issue_date ?? action.created_at)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge className={statusBadgeClassName(action.status)} variant="outline">
+                        {(action.status ?? "unknown").toLowerCase()}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </CardContent>
       </Card>
