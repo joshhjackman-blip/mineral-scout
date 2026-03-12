@@ -8,7 +8,7 @@ type SupplierDetailPageProps = {
 }
 
 export default async function SupplierDetailPage({ params }: SupplierDetailPageProps) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: supplier } = await supabase
     .from("suppliers")
     .select(

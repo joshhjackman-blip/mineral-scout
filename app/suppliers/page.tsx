@@ -59,7 +59,7 @@ function formatLastShipment(lastShipmentDate: string | null): string {
 }
 
 export default async function SuppliersPage({ searchParams }: SuppliersPageProps) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const query = (getSingleValue(searchParams?.q) ?? "").trim().toLowerCase()
   const countryFilter = getSingleValue(searchParams?.country) ?? "all"
   const registeredFilter = getSingleValue(searchParams?.registered) ?? "all"

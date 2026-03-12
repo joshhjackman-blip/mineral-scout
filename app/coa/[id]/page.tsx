@@ -63,7 +63,7 @@ function normalizeSupplierRelation(value: CoaSupplierRelation): { id?: string | 
 }
 
 export default async function CoaDetailPage({ params }: CoaDetailPageProps) {
-  const supabase = createServerSupabaseClient()
+  const supabase = await createServerSupabaseClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

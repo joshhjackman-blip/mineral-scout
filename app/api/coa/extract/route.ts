@@ -218,7 +218,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const serverSupabase = createServerSupabaseClient()
+    const serverSupabase = await createServerSupabaseClient()
     const {
       data: { user },
     } = await serverSupabase.auth.getUser()

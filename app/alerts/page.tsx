@@ -31,7 +31,7 @@ function getSingleValue(value: string | string[] | undefined): string | undefine
 }
 
 export default async function AlertsPage({ searchParams }: AlertsPageProps) {
-  const supabase = createClient()
+  const supabase = await createClient()
   const typeFilter = getSingleValue(searchParams?.type) ?? "all"
   const statusFilter = getSingleValue(searchParams?.status) ?? "all"
   const fromFilter = getSingleValue(searchParams?.from)
