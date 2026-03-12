@@ -3,8 +3,6 @@
 import { useState } from "react"
 import Link from "next/link"
 
-import { loginAction } from "@/app/auth/login/actions"
-
 export default function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -14,14 +12,28 @@ export default function LoginForm() {
   const handleLogin = async () => {
     setLoading(true)
     setError("")
-    console.log("[Login] Attempt started (server action)")
+    console.log("[Login] Attempt started (API route)")
 
     try {
-      const result = await loginAction(email, password)
-      if (result?.error) {
-        setError(result.error)
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const result = (await response.json()) as {
+        success: boolean
+        error: string | null
+      }
+
+      if (!response.ok || !result.success) {
+        setError(result.error ?? "Invalid login credentials.")
         return
       }
+
+      window.location.href = "/dashboard"
     } catch (err) {
       console.error("[Login] Unexpected error", err)
       setError("Unable to sign in right now. Please try again.")
