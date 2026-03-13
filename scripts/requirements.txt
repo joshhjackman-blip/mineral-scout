@@ -2,3 +2,4 @@ supabase
 httpx
 python-dotenv
 rich
+reportlab
