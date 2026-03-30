@@ -19,8 +19,8 @@ const geistMono = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "PharmaTrace",
-  description: "Supplier intelligence and COA management for pharmacies.",
+  title: "Mineral Map",
+  description: "Off-market mineral rights prospecting",
 }
 
 export default function RootLayout({
