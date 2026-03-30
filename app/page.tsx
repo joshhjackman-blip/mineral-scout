@@ -18,12 +18,9 @@ const parseNumber = (value: unknown): number | null => {
 
 const toBool = (value: unknown): boolean => value === true
 
-const normalizeLeaseId = (value: unknown): string => {
-  const raw = String(value ?? '').trim()
-  if (!raw) return ''
-  const digits = raw.replace(/\D/g, '')
-  if (!digits) return raw
-  return String(Number(digits))
+const normalizeLeaseId = (id: string | number | null): string => {
+  if (!id) return ''
+  return String(parseInt(String(id).trim(), 10))
 }
 
 export default function Home() {
