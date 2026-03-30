@@ -168,6 +168,18 @@ def parse_date(value: Any) -> date | None:
     return None
 
 
+def sanitize_json_value(value: Any) -> Any:
+    """Convert non-JSON-safe numeric values (NaN/inf) to None recursively."""
+    if isinstance(value, dict):
+        return {k: sanitize_json_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize_json_value(v) for v in value]
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            return None
+    return value
+
+
 def pick_column(
     headers: list[str],
     explicit_name: str | None,
@@ -311,7 +323,7 @@ def build_row_payload(
         if appraised_value_col
         else None,
         "source_file": source_file,
-        "raw_record": row,
+        "raw_record": sanitize_json_value(row),
     }
 
     missing_required = [
@@ -431,11 +443,20 @@ def run() -> None:
     supabase_key = require_env_or_arg(args.supabase_key, "SUPABASE_SERVICE_ROLE_KEY")
     client = create_client(supabase_url, supabase_key)
 
-    for batch in chunked(rows_to_upsert, args.batch_size):
+    total_batches = max(1, math.ceil(len(rows_to_upsert) / args.batch_size))
+    inserted_so_far = 0
+    for batch_index, batch in enumerate(chunked(rows_to_upsert, args.batch_size), start=1):
         client.table(TABLE_NAME).upsert(
             batch,
             on_conflict="county_lease_id,cad_account_number,tax_year",
         ).execute()
+        inserted_so_far += len(batch)
+        pct = (inserted_so_far / len(rows_to_upsert)) * 100 if rows_to_upsert else 100.0
+        print(
+            f"[{batch_index}/{total_batches}] Upserted {inserted_so_far}/{len(rows_to_upsert)} "
+            f"rows ({pct:.1f}%)",
+            flush=True,
+        )
 
     print(f"Upsert complete. Processed {len(rows_to_upsert)} rows into {TABLE_NAME}.")
 
