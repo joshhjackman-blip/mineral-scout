@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
 import type { OwnerRecord, WellRecord } from './components/Map'
 
-const Map = dynamic(() => import('./components/Map'), { ssr: false })
+const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 const scoreColor = (s: number) => (s >= 8 ? '#7AB835' : s >= 5 ? '#EF9F27' : '#D85A30')
 
@@ -60,7 +60,7 @@ export default function Home() {
       if (!mounted) return
 
       const wellsData = (wellsRows ?? []) as WellRecord[]
-      const wellsByLease = new Map<string, WellRecord[]>()
+      const wellsByLease = new globalThis.Map<string, WellRecord[]>()
       for (const well of wellsData) {
         const leaseId = (well.rrc_lease_id ?? '').toString().trim()
         if (!leaseId) continue
@@ -227,7 +227,7 @@ export default function Home() {
             Loading...
           </div>
         ) : (
-          <Map
+          <MineralMap
             owners={owners}
             wells={wells}
             motivatedOnly={motivatedOnly}
