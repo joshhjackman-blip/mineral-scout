@@ -432,17 +432,23 @@ export default function Home() {
                                 fontSize: 10,
                                 padding: '3px 10px',
                                 borderRadius: 4,
-                                background: 'transparent',
-                                border: '0.5px solid #4A4F5E',
-                                color: '#7A7870',
+                                background: 'rgba(122,184,53,0.16)',
+                                border: '0.5px solid rgba(122,184,53,0.6)',
+                                color: '#7AB835',
                                 cursor: 'pointer',
                                 fontFamily: 'monospace',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 4,
                               }}
-                              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#EF9F27')}
-                              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#4A4F5E')}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = '#A8E063'
+                                e.currentTarget.style.background = 'rgba(122,184,53,0.24)'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = 'rgba(122,184,53,0.6)'
+                                e.currentTarget.style.background = 'rgba(122,184,53,0.16)'
+                              }}
                             >
                               ⟳ Skip trace contact info
                             </button>
