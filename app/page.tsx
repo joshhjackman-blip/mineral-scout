@@ -142,6 +142,7 @@ export default function Home() {
   const [showOwners, setShowOwners] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<string | null>(null)
+  const [navMenuOpen, setNavMenuOpen] = useState(false)
 
   const handleSkipTrace = (ownerName: string) => {
     setSkipTracing(ownerName)
@@ -283,11 +284,96 @@ export default function Home() {
           minHeight: 48,
           borderBottom: '0.5px solid #1E2535',
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
+          gridTemplateColumns: 'auto 1fr 1fr 1fr',
           alignItems: 'center',
           padding: '0 14px',
+          columnGap: 10,
         }}
       >
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setNavMenuOpen((prev) => !prev)}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 6,
+              border: '0.5px solid #2A2F3E',
+              background: '#1E2535',
+              color: '#F5F3EE',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+            aria-label="Open navigation menu"
+          >
+            <span
+              style={{
+                display: 'inline-flex',
+                flexDirection: 'column',
+                gap: 3,
+                width: 12,
+              }}
+            >
+              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+            </span>
+          </button>
+          {navMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 36,
+                left: 0,
+                zIndex: 1200,
+                background: '#1E2535',
+                border: '0.5px solid #2A2F3E',
+                borderRadius: 8,
+                minWidth: 140,
+                overflow: 'hidden',
+                boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+              }}
+            >
+              <button
+                onClick={() => {
+                  window.location.href = '/'
+                }}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#F5F3EE',
+                  fontSize: 12,
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Map
+              </button>
+              <button
+                onClick={() => {
+                  window.location.href = '/crm'
+                }}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#F5F3EE',
+                  fontSize: 12,
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                  borderTop: '0.5px solid #2A2F3E',
+                }}
+              >
+                CRM
+              </button>
+            </div>
+          )}
+        </div>
         <div
           style={{
             color: '#EF9F27',
