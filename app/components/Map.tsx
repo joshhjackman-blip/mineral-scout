@@ -159,7 +159,7 @@ export default function Map({
     if (map.current || !mapContainer.current) return
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: 'mapbox://styles/mapbox/streets-v12',
       center: [-97.45, 29.45],
       zoom: 10
     })
@@ -345,5 +345,5 @@ export default function Map({
     flyToSelectedTract()
   }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells, flyToSelectedTract])
 
-  return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#0D1220' }} />
+  return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#F8F8F8' }} />
 }
