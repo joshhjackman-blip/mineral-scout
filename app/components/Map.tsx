@@ -20,6 +20,11 @@ export type OwnerRecord = {
   latitude: number | null
   longitude: number | null
   well_status: string
+  top_owner?: string
+  owner_count?: number
+  top_owner_state?: string
+  max_propensity_score?: number
+  owners_json?: string
 }
 
 export type WellRecord = {
@@ -184,7 +189,7 @@ export default function Map({
               paint: {
                 'fill-color': [
                   'step',
-                  ['get', 'propensity_score'],
+                  ['get', 'max_propensity_score'],
                   '#1a3a1a',
                   3,
                   '#2d6a2d',
@@ -205,7 +210,7 @@ export default function Map({
                 ],
                 'fill-opacity': [
                   'step',
-                  ['get', 'propensity_score'],
+                  ['get', 'max_propensity_score'],
                   0.15,
                   3,
                   0.25,
@@ -236,7 +241,7 @@ export default function Map({
               paint: {
                 'line-color': [
                   'step',
-                  ['get', 'propensity_score'],
+                  ['get', 'max_propensity_score'],
                   '#2d6a2d',
                   5,
                   '#FFC107',
@@ -245,7 +250,7 @@ export default function Map({
                 ],
                 'line-width': [
                   'step',
-                  ['get', 'propensity_score'],
+                  ['get', 'max_propensity_score'],
                   0.3,
                   6,
                   0.5,
@@ -260,22 +265,32 @@ export default function Map({
           m.on('click', 'parcels-fill', (e) => {
             const props = e.features?.[0]?.properties
             if (props && onOwnerClick) {
+              const maxScore = Number(
+                props.max_propensity_score ?? props.propensity_score ?? 0
+              )
+              const ownerCount = Number(props.owner_count ?? 0)
               onOwnerClick({
                 id: 0,
-                owner_name: String(props.owner_name ?? 'Unknown Owner'),
-                mailing_city: String(props.mailing_city ?? ''),
-                mailing_state: String(props.mailing_state ?? ''),
-                operator_name: String(props.operator_name ?? ''),
-                propensity_score: Number(props.propensity_score ?? 0),
-                motivated: props.motivated === true || props.motivated === 'true',
-                out_of_state:
-                  props.out_of_state === true || props.out_of_state === 'true',
+                owner_name: String(
+                  props.top_owner ?? props.owner_name ?? 'Unknown Owner'
+                ),
+                mailing_city: '',
+                mailing_state: String(props.top_owner_state ?? ''),
+                operator_name: String(props.top_operator ?? props.operator_name ?? ''),
+                propensity_score: maxScore,
+                motivated: ownerCount > 0,
+                out_of_state: false,
                 acreage: null,
                 prod_cumulative_sum_oil: null,
                 rrc_lease_id: null,
                 latitude: null,
                 longitude: null,
                 well_status: String(props.well_status ?? 'UNKNOWN'),
+                top_owner: String(props.top_owner ?? ''),
+                owner_count: ownerCount,
+                top_owner_state: String(props.top_owner_state ?? ''),
+                max_propensity_score: maxScore,
+                owners_json: String(props.owners_json ?? '[]'),
               })
             }
           })

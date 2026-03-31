@@ -25,6 +25,14 @@ const parseNumber = (value: unknown): number | null => {
 
 const toBool = (value: unknown): boolean => value === true
 
+type ParcelSelection = {
+  max_propensity_score: number
+  owner_count: number
+  top_owner: string
+  top_owner_state: string
+  top_operator: string
+}
+
 export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
@@ -34,7 +42,7 @@ export default function Home() {
   const [owners, setOwners] = useState<OwnerRecord[]>([])
   const [wells, setWells] = useState<WellRecord[]>([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<OwnerRecord | null>(null)
+  const [selected, setSelected] = useState<(OwnerRecord & Partial<ParcelSelection>) | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -303,6 +311,11 @@ export default function Home() {
                 <div style={{ fontSize: 13, fontWeight: 500, color: '#F5F3EE', fontFamily: 'monospace' }}>{m.val}</div>
               </div>
             ))}
+          </div>
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1E2535', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Top owner: {selected.top_owner ?? selected.owner_name}</div>
+            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Owners in tract: {selected.owner_count ?? 1}</div>
+            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Location: {selected.top_owner_state ?? selected.mailing_state}</div>
           </div>
           <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
             <button style={{ width: '100%', padding: '9px', borderRadius: 6, background: 'rgba(239,159,39,0.15)', border: '0.5px solid rgba(239,159,39,0.4)', color: '#EF9F27', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
