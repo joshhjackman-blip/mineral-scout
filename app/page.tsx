@@ -58,7 +58,9 @@ const toNumber = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-const parseOwners = (ownersJson: string): TractOwner[] => {
+const parseOwners = (ownersJson: unknown): TractOwner[] => {
+  if (Array.isArray(ownersJson)) return ownersJson as TractOwner[]
+  if (typeof ownersJson !== 'string') return []
   try {
     const parsed = JSON.parse(ownersJson) as unknown
     return Array.isArray(parsed) ? (parsed as TractOwner[]) : []
@@ -67,7 +69,7 @@ const parseOwners = (ownersJson: string): TractOwner[] => {
   }
 }
 
-const buildProductionSeries = (tract: TractRecord | null) => {
+const buildProductionSeries = (tract: Partial<TractRecord> | null) => {
   if (!tract) return []
   const points = [
     { month: 6, oil: toNumber(tract.first_6_month_oil) },
@@ -110,7 +112,7 @@ const estimateLeaseExpiration = (firstDate?: string) => {
 export default function Home() {
   const [owners, setOwners] = useState<OwnerRecord[]>([])
   const [tracts, setTracts] = useState<TractRecord[]>([])
-  const [selectedTract, setSelectedTract] = useState<TractRecord | null>(null)
+  const [selected, setSelected] = useState<Partial<TractRecord> | null>(null)
   const [loading, setLoading] = useState(true)
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
@@ -196,12 +198,12 @@ export default function Home() {
   )
 
   const selectedOwners = useMemo(
-    () => parseOwners(selectedTract?.owners_json ?? ''),
-    [selectedTract]
+    () => parseOwners(selected?.owners_json ?? ''),
+    [selected]
   )
   const productionSeries = useMemo(
-    () => buildProductionSeries(selectedTract),
-    [selectedTract]
+    () => buildProductionSeries(selected),
+    [selected]
   )
   const productionPeak = useMemo(
     () => productionSeries.reduce((max, point) => Math.max(max, point.oil), 0),
@@ -211,36 +213,6 @@ export default function Home() {
     () => getTrend(productionSeries),
     [productionSeries]
   )
-
-  const handleTractClick = (ownerOrTract: OwnerRecord) => {
-    const abstract = String(ownerOrTract.abstract_label ?? '').trim()
-    const survey = String(ownerOrTract.level1_sur ?? '').trim()
-    const existing = tracts.find(
-      (tract) =>
-        tract.abstract_label === abstract &&
-        tract.level1_sur === survey
-    )
-    if (existing) {
-      setSelectedTract(existing)
-      return
-    }
-    setSelectedTract({
-      abstract_label: abstract,
-      level1_sur: survey,
-      owner_count: toNumber(ownerOrTract.owner_count),
-      top_operator: String(ownerOrTract.top_operator ?? 'Unknown'),
-      max_propensity_score: toNumber(ownerOrTract.max_propensity_score),
-      owners_json: String(ownerOrTract.owners_json ?? '[]'),
-      field_name: '',
-      well_status: '',
-      first_date: '',
-      prod_cumulative_sum_oil: 0,
-      first_6_month_oil: 0,
-      first_12_month_oil: 0,
-      first_24_month_oil: 0,
-      first_60_month_oil: 0,
-    })
-  }
 
   return (
     <div
@@ -317,123 +289,10 @@ export default function Home() {
             padding: 14,
           }}
         >
-          {!selectedTract ? (
-            <div>
-              <div style={{ fontSize: 12, color: '#EF9F27', fontWeight: 600, letterSpacing: '0.08em' }}>
-                COUNTY OVERVIEW
-              </div>
-              <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 8, marginBottom: 14 }} />
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {[
-                  { value: '73,589', label: 'Total mineral owners' },
-                  { value: '13,551', label: 'Out of state (18%)' },
-                  { value: '13,152', label: 'Motivated sellers' },
-                  { value: '553', label: 'Survey tracts' },
-                  { value: '4,512', label: 'Active wells' },
-                ].map((card) => (
-                  <div
-                    key={card.label}
-                    style={{
-                      background: '#1E2535',
-                      borderRadius: 8,
-                      border: '0.5px solid #2A2F3E',
-                      padding: '12px 12px',
-                    }}
-                  >
-                    <div style={{ color: '#EF9F27', fontFamily: 'monospace', fontSize: 20, fontWeight: 600 }}>
-                      {card.value}
-                    </div>
-                    <div style={{ color: '#7A7870', fontSize: 11, marginTop: 3 }}>{card.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
-                TOP 10 HOTTEST TRACTS
-              </div>
-              <div
-                style={{
-                  background: '#12192A',
-                  border: '0.5px solid #2A2F3E',
-                  borderRadius: 8,
-                  maxHeight: 340,
-                  overflowY: 'auto',
-                }}
-              >
-                {topTracts.map((tract, index) => (
-                  <div
-                    key={`${tract.abstract_label}-${tract.level1_sur}-${index}`}
-                    onClick={() => setSelectedTract(tract)}
-                    style={{
-                      padding: '10px 12px',
-                      borderBottom: '0.5px solid #1A1F2E',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(event) => {
-                      event.currentTarget.style.background = '#1E2535'
-                    }}
-                    onMouseLeave={(event) => {
-                      event.currentTarget.style.background = 'transparent'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1, marginRight: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F3EE' }}>
-                          {tract.abstract_label}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#7A7870', marginTop: 2 }}>
-                          {tract.level1_sur}
-                        </div>
-                        <div style={{ fontSize: 10, color: '#7A7870', marginTop: 4 }}>
-                          {tract.owner_count} owners · {tract.top_operator}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '0.5px solid rgba(255,255,255,0.1)',
-                          borderRadius: 999,
-                          padding: '2px 8px',
-                          color: scoreBadgeColor(tract.max_propensity_score),
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {tract.max_propensity_score}/10
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
-                COUNTY BREAKDOWN
-              </div>
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12 }}>
-                {[
-                  { label: 'EOG Resources', pct: 68 },
-                  { label: 'Baytex Energy', pct: 21 },
-                  { label: 'Marathon Oil', pct: 7 },
-                  { label: 'Other', pct: 4 },
-                ].map((row) => (
-                  <div key={row.label} style={{ marginBottom: 10 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                      <span style={{ color: '#F5F3EE' }}>{row.label}</span>
-                      <span style={{ color: '#7A7870' }}>{row.pct}%</span>
-                    </div>
-                    <div style={{ height: 7, borderRadius: 4, background: '#1E2535' }}>
-                      <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: '#EF9F27' }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
+          {selected ? (
             <div>
               <button
-                onClick={() => setSelectedTract(null)}
+                onClick={() => setSelected(null)}
                 style={{
                   border: 'none',
                   background: 'none',
@@ -448,20 +307,20 @@ export default function Home() {
               </button>
 
               <div style={{ fontSize: 22, fontFamily: 'monospace', color: '#F5F3EE', fontWeight: 600 }}>
-                TRACT {selectedTract.abstract_label}
+                TRACT {selected.abstract_label}
               </div>
-              <div style={{ color: '#7A7870', marginTop: 4 }}>{selectedTract.level1_sur} Survey</div>
+              <div style={{ color: '#7A7870', marginTop: 4 }}>{selected.level1_sur} Survey</div>
               <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
-                  {selectedTract.max_propensity_score}/10 HOT
+                  {toNumber(selected.max_propensity_score)}/10 HOT
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
-                  {selectedTract.owner_count} owners
+                  {toNumber(selected.owner_count)} owners
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#7A7870', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                  {selectedTract.top_operator}
+                  {selected.top_operator}
                 </span>
               </div>
 
@@ -488,10 +347,10 @@ export default function Home() {
 
               <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12, marginBottom: 14 }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Operator: {selectedTract.top_operator}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Field: {selectedTract.field_name || 'Unknown'}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Well status: {selectedTract.well_status || 'PRODUCING / SHUT IN'}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE' }}>Est. lease expiration: {estimateLeaseExpiration(selectedTract.first_date)}</div>
+                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
+                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Field: {selected.field_name || 'Unknown'}</div>
+                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
+                <div style={{ fontSize: 12, color: '#F5F3EE' }}>Est. lease expiration: {estimateLeaseExpiration(selected.first_date)}</div>
               </div>
 
               <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12, marginBottom: 14 }}>
@@ -615,6 +474,136 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          ) : (
+            <div>
+              <div style={{ fontSize: 12, color: '#EF9F27', fontWeight: 600, letterSpacing: '0.08em' }}>
+                COUNTY OVERVIEW
+              </div>
+              <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 8, marginBottom: 14 }} />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                {[
+                  { value: '73,589', label: 'Total mineral owners' },
+                  { value: '13,551', label: 'Out of state (18%)' },
+                  { value: '13,152', label: 'Motivated sellers' },
+                  { value: '553', label: 'Survey tracts' },
+                  { value: '4,512', label: 'Active wells' },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    style={{
+                      background: '#1E2535',
+                      borderRadius: 8,
+                      border: '0.5px solid #2A2F3E',
+                      padding: '12px 12px',
+                    }}
+                  >
+                    <div style={{ color: '#EF9F27', fontFamily: 'monospace', fontSize: 20, fontWeight: 600 }}>
+                      {card.value}
+                    </div>
+                    <div style={{ color: '#7A7870', fontSize: 11, marginTop: 3 }}>{card.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
+                TOP 10 HOTTEST TRACTS
+              </div>
+              <div
+                style={{
+                  background: '#12192A',
+                  border: '0.5px solid #2A2F3E',
+                  borderRadius: 8,
+                  maxHeight: 340,
+                  overflowY: 'auto',
+                }}
+              >
+                {topTracts.map((tract, index) => (
+                  <div
+                    key={`${tract.abstract_label}-${tract.level1_sur}-${index}`}
+                    onClick={() =>
+                      setSelected({
+                        abstract_label: tract.abstract_label,
+                        level1_sur: tract.level1_sur,
+                        owner_count: tract.owner_count,
+                        top_operator: tract.top_operator,
+                        owners_json: tract.owners_json,
+                        max_propensity_score: tract.max_propensity_score,
+                        field_name: tract.field_name,
+                        well_status: tract.well_status,
+                        first_date: tract.first_date,
+                        prod_cumulative_sum_oil: tract.prod_cumulative_sum_oil,
+                        first_6_month_oil: tract.first_6_month_oil,
+                        first_12_month_oil: tract.first_12_month_oil,
+                        first_24_month_oil: tract.first_24_month_oil,
+                        first_60_month_oil: tract.first_60_month_oil,
+                      })
+                    }
+                    style={{
+                      padding: '10px 12px',
+                      borderBottom: '0.5px solid #1A1F2E',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.background = '#1E2535'
+                    }}
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.background = 'transparent'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, marginRight: 10 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F3EE' }}>
+                          {tract.abstract_label}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#7A7870', marginTop: 2 }}>
+                          {tract.level1_sur}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#7A7870', marginTop: 4 }}>
+                          {tract.owner_count} owners · {tract.top_operator}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '0.5px solid rgba(255,255,255,0.1)',
+                          borderRadius: 999,
+                          padding: '2px 8px',
+                          color: scoreBadgeColor(tract.max_propensity_score),
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {tract.max_propensity_score}/10
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
+                COUNTY BREAKDOWN
+              </div>
+              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12 }}>
+                {[
+                  { label: 'EOG Resources', pct: 68 },
+                  { label: 'Baytex Energy', pct: 21 },
+                  { label: 'Marathon Oil', pct: 7 },
+                  { label: 'Other', pct: 4 },
+                ].map((row) => (
+                  <div key={row.label} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
+                      <span style={{ color: '#F5F3EE' }}>{row.label}</span>
+                      <span style={{ color: '#7A7870' }}>{row.pct}%</span>
+                    </div>
+                    <div style={{ height: 7, borderRadius: 4, background: '#1E2535' }}>
+                      <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: '#EF9F27' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -633,8 +622,8 @@ export default function Home() {
               minScore={minScore}
               showWells={showWells}
               showMotivated={showOwners}
-              onTractClick={handleTractClick}
-              focusedTract={selectedTract}
+              onOwnerClick={(tract) => setSelected(tract as Partial<TractRecord>)}
+              selectedTract={selected ?? null}
             />
           )}
         </div>

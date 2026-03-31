@@ -48,7 +48,7 @@ export default function Map({
   owners,
   wells,
   onOwnerClick,
-  selectedTract,
+  focusedTract,
 }: {
   motivatedOnly: boolean
   outOfStateOnly: boolean
@@ -58,7 +58,7 @@ export default function Map({
   owners: OwnerRecord[]
   wells: WellRecord[]
   onOwnerClick: (owner: OwnerRecord) => void
-  selectedTract?: { abstract_label: string } | null
+  focusedTract?: { abstract_label: string } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -119,13 +119,13 @@ export default function Map({
   }, [wells, showWells])
 
   const flyToSelectedTract = useCallback(() => {
-    if (!map.current || !map.current.isStyleLoaded() || !selectedTract?.abstract_label) return
+    if (!map.current || !map.current.isStyleLoaded() || !focusedTract?.abstract_label) return
     const parcels = map.current.getSource('parcels') as mapboxgl.GeoJSONSource | undefined
     const rawData = (parcels as unknown as { _data?: GeoJSON.FeatureCollection<GeoJSON.Geometry, GeoJSON.GeoJsonProperties> })?._data
     if (!rawData?.features?.length) return
 
     const feature = rawData.features.find(
-      (ft) => String(ft.properties?.ABSTRACT_L ?? '') === selectedTract.abstract_label
+      (ft) => String(ft.properties?.ABSTRACT_L ?? '') === focusedTract.abstract_label
     )
     if (!feature || !feature.geometry) return
 
@@ -142,7 +142,7 @@ export default function Map({
     if (!bbox.isEmpty()) {
       map.current.fitBounds(bbox, { padding: 50, duration: 700 })
     }
-  }, [selectedTract?.abstract_label])
+  }, [focusedTract?.abstract_label])
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return
@@ -294,22 +294,27 @@ export default function Map({
           }
 
           m.on('click', 'parcels-fill', (e) => {
+            console.log('Parcel clicked:', e.features?.[0]?.properties)
             const props = e.features?.[0]?.properties
             if (props && onOwnerClick) {
-              const maxScore = Number(
-                props.max_propensity_score ?? props.propensity_score ?? 0
-              )
-              const ownerCount = Number(props.owner_count ?? 0)
               onOwnerClick({
+                abstract_label: String(props.ABSTRACT_L ?? ''),
+                level1_sur: String(props.LEVEL1_SUR ?? ''),
+                owner_count: Number(props.owner_count ?? 0),
+                top_operator: String(props.top_operator ?? ''),
+                owners_json:
+                  typeof props.owners_json === 'string'
+                    ? props.owners_json
+                    : JSON.stringify(props.owners_json ?? []),
+                max_propensity_score: Number(props.max_propensity_score ?? 0),
+                // keep OwnerRecord shape compatibility
                 id: 0,
-                owner_name: String(
-                  props.top_owner ?? props.owner_name ?? 'Unknown Owner'
-                ),
+                owner_name: String(props.top_owner ?? props.owner_name ?? 'Unknown Owner'),
                 mailing_city: '',
                 mailing_state: String(props.top_owner_state ?? ''),
                 operator_name: String(props.top_operator ?? props.operator_name ?? ''),
-                propensity_score: maxScore,
-                motivated: ownerCount > 0,
+                propensity_score: Number(props.max_propensity_score ?? props.propensity_score ?? 0),
+                motivated: Number(props.owner_count ?? 0) > 0,
                 out_of_state: false,
                 acreage: null,
                 prod_cumulative_sum_oil: null,
@@ -317,17 +322,6 @@ export default function Map({
                 latitude: null,
                 longitude: null,
                 well_status: String(props.well_status ?? 'UNKNOWN'),
-                top_owner: String(props.top_owner ?? ''),
-                owner_count: ownerCount,
-                top_owner_state: String(props.top_owner_state ?? ''),
-                max_propensity_score: maxScore,
-                owners_json:
-                  typeof props.owners_json === 'string'
-                    ? props.owners_json
-                    : JSON.stringify(props.owners_json ?? []),
-                top_operator: String(props.top_operator ?? ''),
-                abstract_label: String(props.ABSTRACT_L ?? ''),
-                level1_sur: String(props.LEVEL1_SUR ?? ''),
               })
             }
           })
