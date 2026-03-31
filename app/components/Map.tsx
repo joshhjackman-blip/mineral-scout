@@ -48,6 +48,7 @@ export default function Map({
   owners,
   wells,
   onOwnerClick,
+  selectedTract,
 }: {
   motivatedOnly: boolean
   outOfStateOnly: boolean
@@ -57,6 +58,7 @@ export default function Map({
   owners: OwnerRecord[]
   wells: WellRecord[]
   onOwnerClick: (owner: OwnerRecord) => void
+  selectedTract?: { abstract_label: string } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -115,6 +117,32 @@ export default function Map({
       wellsSource.setData({ type: 'FeatureCollection', features: [] })
     }
   }, [wells, showWells])
+
+  const flyToSelectedTract = useCallback(() => {
+    if (!map.current || !map.current.isStyleLoaded() || !selectedTract?.abstract_label) return
+    const parcels = map.current.getSource('parcels') as mapboxgl.GeoJSONSource | undefined
+    const rawData = (parcels as unknown as { _data?: GeoJSON.FeatureCollection<GeoJSON.Geometry, GeoJSON.GeoJsonProperties> })?._data
+    if (!rawData?.features?.length) return
+
+    const feature = rawData.features.find(
+      (ft) => String(ft.properties?.ABSTRACT_L ?? '') === selectedTract.abstract_label
+    )
+    if (!feature || !feature.geometry) return
+
+    const bbox = new mapboxgl.LngLatBounds()
+    const pushCoords = (coords: unknown): void => {
+      if (!Array.isArray(coords)) return
+      if (typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+        bbox.extend([coords[0], coords[1]])
+        return
+      }
+      for (const c of coords) pushCoords(c)
+    }
+    pushCoords((feature.geometry as GeoJSON.Geometry).coordinates as unknown)
+    if (!bbox.isEmpty()) {
+      map.current.fitBounds(bbox, { padding: 50, duration: 700 })
+    }
+  }, [selectedTract?.abstract_label])
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return
@@ -326,14 +354,16 @@ export default function Map({
 
       updateOwners()
       updateWells()
+      flyToSelectedTract()
     })
-  }, [onOwnerClick, updateOwners, updateWells])
+  }, [onOwnerClick, updateOwners, updateWells, flyToSelectedTract])
 
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return
     updateOwners()
     updateWells()
-  }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells])
+    flyToSelectedTract()
+  }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells, flyToSelectedTract])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
