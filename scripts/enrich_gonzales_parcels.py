@@ -65,7 +65,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
             .select(
                 "id, owner_name, mailing_city, mailing_state, operator_name, "
                 "propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
-                "county_lease_name, field_name"
+                "county_lease_name, field_name, mailing_zip, mailing_address"
             )
             .eq("motivated", True)
             .order("id", desc=False)
@@ -332,17 +332,33 @@ def main() -> None:
                 except (TypeError, ValueError):
                     ownership_pct = None
 
+                def as_bool(value: Any) -> bool:
+                    if isinstance(value, bool):
+                        return value
+                    if isinstance(value, (int, float)):
+                        return value != 0
+                    if isinstance(value, str):
+                        return value.strip().lower() in {"1", "true", "yes", "y"}
+                    return False
+
                 owners_for_panel.append(
                     {
-                        "owner_name": owner.get("owner_name"),
-                        "propensity_score": to_int(owner.get("propensity_score")),
-                        "mailing_city": owner.get("mailing_city", ""),
-                        "mailing_state": owner.get("mailing_state", ""),
-                        "out_of_state": bool(owner.get("out_of_state", False)),
-                        "motivated": bool(owner.get("motivated", False)),
-                        "operator_name": owner.get("operator_name", ""),
+                        "owner_name": owner.get("owner_name", "") or "",
+                        "propensity_score": to_int(owner.get("propensity_score", 0)),
+                        "mailing_city": owner.get("mailing_city", "") or "",
+                        "mailing_state": owner.get("mailing_state", "") or "",
+                        "mailing_zip": owner.get("mailing_zip", "") or "",
+                        "address_1": owner.get("address_1", "")
+                        or owner.get("address", "")
+                        or owner.get("mailing_address", "")
+                        or "",
+                        "out_of_state": as_bool(owner.get("out_of_state", False)),
+                        "motivated": as_bool(owner.get("motivated", False)),
+                        "operator_name": owner.get("operator_name", "") or "",
                         "acreage": owner.get("acreage", 0),
-                        "ownership_pct": ownership_pct,
+                        "ownership_pct": (
+                            ownership_pct if ownership_pct is not None else owner.get("ownership_pct", 0)
+                        ),
                     }
                 )
 

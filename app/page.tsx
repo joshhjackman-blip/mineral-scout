@@ -88,22 +88,7 @@ const parseOwners = (ownersJson: unknown): TractOwner[] => {
   }
 }
 
-const buildProductionSeries = (tract: Partial<TractRecord> | null) => {
-  if (!tract) return []
-  const points = [
-    { month: 6, oil: toNumber(tract.first_6_month_oil) },
-    { month: 12, oil: toNumber(tract.first_12_month_oil) },
-    { month: 24, oil: toNumber(tract.first_24_month_oil) },
-    { month: 60, oil: toNumber(tract.first_60_month_oil) },
-  ]
-  const cumulative = toNumber(tract.prod_cumulative_sum_oil)
-  if (points.every((point) => point.oil === 0) && cumulative > 0) {
-    points[points.length - 1].oil = cumulative
-  }
-  return points
-}
-
-const getTrend = (series: Array<{ month: number; oil: number }>) => {
+const getTrend = (series: Array<{ month: string; oil: number }>) => {
   if (series.length < 2) return 'stable'
   const recent = series[series.length - 1].oil
   const previous = series[series.length - 2].oil
@@ -220,17 +205,34 @@ export default function Home() {
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
   )
-  const productionSeries = useMemo(
-    () => buildProductionSeries(selected),
-    [selected]
-  )
+  const productionData = useMemo(() => {
+    if (!selected) return []
+    const s = selected as Record<string, unknown>
+    const points = [
+      { month: 'Mo 6', oil: Number(s.first_6_month_oil ?? s.First_6_Month_Oil ?? 0) },
+      { month: 'Mo 12', oil: Number(s.first_12_month_oil ?? s.First_12_Month_Oil ?? 0) },
+      { month: 'Mo 24', oil: Number(s.first_24_month_oil ?? s.First_24_Month_Oil ?? 0) },
+      { month: 'Mo 60', oil: Number(s.first_60_month_oil ?? s.First_60_Month_Oil ?? 0) },
+    ].filter((p) => p.oil > 0)
+    return points
+  }, [selected])
+  useEffect(() => {
+    const selectedRecord = (selected ?? {}) as Record<string, unknown>
+    console.log('Selected tract properties:', Object.keys(selectedRecord))
+    console.log('Production values:', {
+      first_6: selectedRecord.first_6_month_oil,
+      first_12: selectedRecord.first_12_month_oil,
+      first_24: selectedRecord.first_24_month_oil,
+      first_60: selectedRecord.first_60_month_oil,
+    })
+  }, [selected])
   const productionPeak = useMemo(
-    () => productionSeries.reduce((max, point) => Math.max(max, point.oil), 0),
-    [productionSeries]
+    () => productionData.reduce((max, point) => Math.max(max, point.oil), 0),
+    [productionData]
   )
   const productionTrend = useMemo(
-    () => getTrend(productionSeries),
-    [productionSeries]
+    () => getTrend(productionData),
+    [productionData]
   )
 
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
@@ -354,7 +356,7 @@ export default function Home() {
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
                 <div style={{ height: 140 }}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={productionSeries}>
+                    <LineChart data={productionData}>
                       <XAxis dataKey="month" stroke="#7A7870" tick={{ fill: '#7A7870', fontSize: 10 }} />
                       <YAxis stroke="#7A7870" tick={{ fill: '#7A7870', fontSize: 10 }} />
                       <Tooltip
