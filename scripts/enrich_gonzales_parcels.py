@@ -60,6 +60,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     last_id: str | None = None
     server_side_motivated_filter = True
     page_num = 0
+    page_size = PAGE_SIZE
 
     while True:
         # Use keyset pagination to avoid deep OFFSET scan timeouts.
@@ -71,7 +72,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
         )
         if server_side_motivated_filter:
             query = query.eq("motivated", True)
-        query = query.order("id", desc=False).limit(PAGE_SIZE)
+        query = query.order("id", desc=False).limit(page_size)
         if last_id:
             query = query.gt("id", last_id)
         try:
@@ -90,6 +91,16 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
                 last_id = None
                 page_num = 0
                 server_side_motivated_filter = False
+                page_size = PAGE_SIZE
+                continue
+            if "statement timeout" in str(exc).lower():
+                if page_size > 200:
+                    page_size = max(200, page_size // 2)
+                    print(
+                        f"Page query timed out; retrying with smaller page_size={page_size}."
+                    )
+                else:
+                    print("Page query timed out; retrying with current page size.")
                 continue
             raise
 
@@ -108,7 +119,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
             f"Fetched page {page_num}: {len(batch)} motivated owners in page, "
             f"total so far: {len(all_owners)}"
         )
-        if len(page_rows) < PAGE_SIZE:
+        if len(page_rows) < page_size:
             break
 
     print(f"Total motivated owners fetched: {len(all_owners)}")
