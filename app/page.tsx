@@ -88,6 +88,23 @@ const parseOwners = (ownersJson: unknown): TractOwner[] => {
   }
 }
 
+const classifyOwner = (name: string): 'trust' | 'company' | 'individual' => {
+  const n = (name ?? '').toUpperCase()
+  if (
+    n.includes('TRUST') || n.includes('ESTATE') ||
+    n.includes('LIVING') || n.includes('TESTAMENTARY') ||
+    n.includes('IRREVOCABLE') || n.includes('REVOCABLE')
+  ) return 'trust'
+  if (
+    n.includes('LLC') || n.includes('LP') || n.includes('INC') ||
+    n.includes('CORP') || n.includes('LTD') || n.includes('COMPANY') ||
+    n.includes('CO.') || n.includes('PARTNERS') || n.includes('ENERGY') ||
+    n.includes('MINERALS') || n.includes('RESOURCES') || n.includes('ROYALTY') ||
+    n.includes('HOLDINGS') || n.includes('PROPERTIES') || n.includes('VENTURES')
+  ) return 'company'
+  return 'individual'
+}
+
 const getTrend = (series: Array<{ month: string; oil: number }>) => {
   if (series.length < 2) return 'stable'
   const recent = series[series.length - 1].oil
@@ -123,6 +140,7 @@ export default function Home() {
   const [minScore, setMinScore] = useState(0)
   const [showWells, setShowWells] = useState(true)
   const [showOwners, setShowOwners] = useState(true)
+  const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<string | null>(null)
 
   const handleSkipTrace = (ownerName: string) => {
@@ -205,6 +223,12 @@ export default function Home() {
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
   )
+  const filteredOwnersList = useMemo(() => {
+    return selectedOwners.filter((owner) => {
+      if (ownerTypeFilter === 'all') return true
+      return classifyOwner(String(owner.owner_name ?? '')) === ownerTypeFilter
+    })
+  }, [selectedOwners, ownerTypeFilter])
   const productionData = useMemo(() => {
     if (!selected) return []
     const s = selected as Record<string, unknown>
@@ -239,7 +263,6 @@ export default function Home() {
   const surveyName = selected?.level1_sur ?? selected?.LEVEL1_SUR ?? 'Unknown'
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
-  const ownersJson = selected?.owners_json ?? '[]'
   const maxScore = toNumber(selected?.max_propensity_score)
 
   return (
@@ -388,16 +411,26 @@ export default function Home() {
                 </div>
               </div>
 
-              <div style={{ fontSize: 12, color: '#EF9F27', fontWeight: 600, marginBottom: 8 }}>
-                ALL OWNERS IN TRACT ({parseOwners(ownersJson).length})
+              <div style={{ padding: '10px 16px 6px', fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', fontWeight: 600 }}>
+                ALL OWNERS IN TRACT ({ownerCount})
+                {ownerTypeFilter !== 'all' && (
+                  <span style={{ color: '#EF9F27', marginLeft: 6 }}>
+                    · showing {filteredOwnersList.length} {ownerTypeFilter}s
+                  </span>
+                )}
               </div>
               <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, overflow: 'hidden' }}>
-                {selectedOwners.map((owner, index) => {
+                {filteredOwnersList.map((owner, index) => {
                   const score = toNumber(owner.propensity_score)
                   const acreage = toNumber(owner.acreage)
                   const ownershipPct = toNumber(owner.ownership_pct)
                   const hasPhone = Boolean(owner.phone)
                   const hasEmail = Boolean(owner.email)
+                  const ownerType = classifyOwner(String(owner.owner_name ?? ''))
+                  const typeColor = ownerType === 'trust' ? '#7AB835' :
+                    ownerType === 'company' ? '#378ADD' : '#7A7870'
+                  const typeLabel = ownerType === 'trust' ? 'TRUST' :
+                    ownerType === 'company' ? 'CO' : 'IND'
                   return (
                     <div
                       key={`${owner.owner_name}-${index}`}
@@ -413,6 +446,17 @@ export default function Home() {
                         <div style={{ flex: 1, marginRight: 8 }}>
                           <div style={{ fontSize: 12, color: '#F5F3EE', fontWeight: 600 }}>
                             {index + 1}. {owner.owner_name}
+                            <span
+                              style={{
+                                fontSize: 9, padding: '1px 5px', borderRadius: 6,
+                                background: `${typeColor}20`,
+                                color: typeColor,
+                                border: `0.5px solid ${typeColor}40`,
+                                marginLeft: 6,
+                              }}
+                            >
+                              {typeLabel}
+                            </span>
                           </div>
                           <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
                             {owner.address_1 || owner.mailing_address || 'Address unknown'}
@@ -728,6 +772,29 @@ export default function Home() {
             }}
           />
         </button>
+
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
+          <span style={{ fontSize: 11, color: '#7A7870', whiteSpace: 'nowrap' }}>Type:</span>
+          {(['all', 'individual', 'trust', 'company'] as const).map(type => (
+            <button
+              key={type}
+              onClick={() => setOwnerTypeFilter(type)}
+              style={{
+                fontSize: 10,
+                padding: '3px 10px',
+                borderRadius: 10,
+                cursor: 'pointer',
+                fontFamily: 'monospace',
+                whiteSpace: 'nowrap',
+                background: ownerTypeFilter === type ? 'rgba(239,159,39,0.2)' : 'transparent',
+                border: ownerTypeFilter === type ? '0.5px solid rgba(239,159,39,0.6)' : '0.5px solid #2A2F3E',
+                color: ownerTypeFilter === type ? '#EF9F27' : '#7A7870',
+              }}
+            >
+              {type === 'all' ? 'All' : type === 'individual' ? 'People' : type === 'trust' ? 'Trusts' : 'Companies'}
+            </button>
+          ))}
+        </div>
 
         <span>Min score</span>
         <input
