@@ -40,13 +40,18 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
 
+      const ownerAbort = new AbortController()
+      const ownerTimeout = setTimeout(() => ownerAbort.abort(), 10000)
       const { data: ownerRows, error: ownerError } = await supabase
         .from('gonzales_mineral_ownership')
         .select(
           'owner_name, mailing_city, mailing_state, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id'
         )
+        .eq('motivated', true)
         .order('propensity_score', { ascending: false })
         .limit(500)
+        .abortSignal(ownerAbort.signal)
+      clearTimeout(ownerTimeout)
 
       if (ownerError) {
         console.error('Failed to load owners:', ownerError.message)
