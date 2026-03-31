@@ -88,15 +88,15 @@ export default function Home() {
         {/* Header */}
         <div style={{ padding: '16px 16px 12px', borderBottom: '0.5px solid #1E2535' }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#EF9F27', letterSpacing: '0.12em', fontFamily: 'monospace' }}>MINERAL MAP</div>
-          <div style={{ fontSize: 11, color: '#7A7870', marginTop: 3 }}>Gonzales County, TX</div>
+          <div style={{ fontSize: 11, color: '#7A7870', marginTop: 3 }}>Gonzales County, TX · 553 tracts</div>
         </div>
 
         {/* Stats */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, padding: '12px 12px 0' }}>
           {[
-            { val: owners.length.toLocaleString(), lbl: 'owners' },
-            { val: owners.filter((o) => o.out_of_state).length.toLocaleString(), lbl: 'out of state' },
-            { val: owners.filter((o) => o.motivated).length.toLocaleString(), lbl: 'motivated' },
+            { val: '73,589', lbl: 'total owners' },
+            { val: '13,551', lbl: 'out of state' },
+            { val: '13,152', lbl: 'motivated' },
           ].map((s) => (
             <div key={s.lbl} style={{ background: '#1E2535', borderRadius: 6, padding: '8px 6px', textAlign: 'center' }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#EF9F27', fontFamily: 'monospace' }}>{s.val}</div>
