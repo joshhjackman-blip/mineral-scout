@@ -18,14 +18,6 @@ const parseNumber = (value: unknown): number | null => {
 
 const toBool = (value: unknown): boolean => value === true
 
-const normalizeLeaseId = (id: string | number | null): string => {
-  if (!id) return ''
-  return String(parseInt(String(id).trim(), 10))
-}
-
-const scatter = (base: number, range: number) =>
-  base + (Math.random() - 0.5) * range
-
 export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
@@ -44,11 +36,10 @@ export default function Home() {
       setLoading(true)
 
       const { data: ownerRows, error: ownerError } = await supabase
-        .from('gonzales_mineral_ownership')
+        .from('motivated_owners_with_coords')
         .select(
-          'owner_name, mailing_city, mailing_state, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id'
+          'owner_name, mailing_city, mailing_state, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id, latitude, longitude, well_status'
         )
-        .eq('motivated', true)
         .order('propensity_score', { ascending: false })
         .limit(500)
 
@@ -79,47 +70,29 @@ export default function Home() {
       if (!mounted) return
 
       const wellsData = (wellsRows ?? []) as WellRecord[]
-      const wellsByLease = new globalThis.Map<string, WellRecord[]>()
-      for (const well of wellsData) {
-        const leaseId = normalizeLeaseId(well.rrc_lease_id)
-        if (!leaseId) continue
-        const bucket = wellsByLease.get(leaseId) ?? []
-        bucket.push(well)
-        wellsByLease.set(leaseId, bucket)
-      }
-
-      const mergedOwners: OwnerRecord[] = ((ownerRows ?? []) as Record<string, unknown>[])
+      const viewOwners: OwnerRecord[] = ((ownerRows ?? []) as Record<string, unknown>[])
         .map((row, idx) => {
-          const leaseIdRaw = (row.rrc_lease_id as string | null) ?? null
-          const leaseId = normalizeLeaseId(leaseIdRaw)
-          const wellMatch = leaseId ? wellsByLease.get(leaseId)?.[0] : undefined
-          const fallbackLat = scatter(29.45, 0.3)
-          const fallbackLng = scatter(-97.45, 0.4)
           return {
             id: idx + 1,
             owner_name: ((row.owner_name as string | null) ?? 'Unknown Owner').trim(),
             mailing_city: ((row.mailing_city as string | null) ?? 'Unknown').trim(),
             mailing_state: ((row.mailing_state as string | null) ?? 'TX').trim(),
-            operator_name: (
-              (row.operator_name as string | null) ??
-              wellMatch?.operator_name ??
-              'Unknown Operator'
-            ).trim(),
+            operator_name: ((row.operator_name as string | null) ?? 'Unknown Operator').trim(),
             propensity_score: parseNumber(row.propensity_score) ?? 0,
             motivated: toBool(row.motivated),
             out_of_state: toBool(row.out_of_state),
             acreage: parseNumber(row.acreage),
             prod_cumulative_sum_oil: parseNumber(row.prod_cumulative_sum_oil),
-            rrc_lease_id: leaseIdRaw,
-            latitude: parseNumber(wellMatch?.latitude) ?? fallbackLat,
-            longitude: parseNumber(wellMatch?.longitude) ?? fallbackLng,
-            well_status: (wellMatch?.well_status ?? 'UNKNOWN').trim(),
+            rrc_lease_id: ((row.rrc_lease_id as string | null) ?? null),
+            latitude: parseNumber(row.latitude),
+            longitude: parseNumber(row.longitude),
+            well_status: ((row.well_status as string | null) ?? 'UNKNOWN').trim(),
           }
         })
 
       const displayOwners: OwnerRecord[] =
-        mergedOwners.length > 0
-          ? mergedOwners
+        viewOwners.length > 0
+          ? viewOwners
           : ((ownerRows ?? []) as Record<string, unknown>[])
               .slice(0, 50)
               .map((row, idx) => ({
