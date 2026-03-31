@@ -379,8 +379,8 @@ export default function Home() {
     <div
       style={{
         height: '100vh',
-        background: '#0D1220',
-        color: '#F5F3EE',
+        background: '#FFFFFF',
+        color: '#111827',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: 'system-ui, sans-serif',
@@ -389,16 +389,17 @@ export default function Home() {
       {/* Top header */}
       <div
         style={{
-          height: 48,
-          minHeight: 48,
-          borderBottom: '0.5px solid #1E2535',
+          height: 52,
+          background: '#FFFFFF',
+          borderBottom: '1px solid #E5E7EB',
           display: 'flex',
           alignItems: 'center',
-          padding: '0 14px',
-          gap: 12,
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ position: 'relative' }}>
             <button
               onClick={() => setNavMenuOpen((prev) => !prev)}
@@ -406,9 +407,9 @@ export default function Home() {
                 width: 30,
                 height: 30,
                 borderRadius: 6,
-                border: '0.5px solid #2A2F3E',
-                background: '#1E2535',
-                color: '#F5F3EE',
+                border: '1px solid #E5E7EB',
+                background: '#FFFFFF',
+                color: '#111827',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -425,9 +426,9 @@ export default function Home() {
                   width: 12,
                 }}
               >
-                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
-                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
-                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
+                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
+                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
               </span>
             </button>
             {navMenuOpen && (
@@ -437,12 +438,12 @@ export default function Home() {
                   top: 36,
                   left: 0,
                   zIndex: 1200,
-                  background: '#1E2535',
-                  border: '0.5px solid #2A2F3E',
+                  background: '#FFFFFF',
+                  border: '1px solid #E5E7EB',
                   borderRadius: 8,
                   minWidth: 140,
                   overflow: 'hidden',
-                  boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+                  boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 }}
               >
                 <button
@@ -454,7 +455,7 @@ export default function Home() {
                     textAlign: 'left',
                     background: 'transparent',
                     border: 'none',
-                    color: '#F5F3EE',
+                    color: '#111827',
                     fontSize: 12,
                     padding: '10px 12px',
                     cursor: 'pointer',
@@ -471,11 +472,11 @@ export default function Home() {
                     textAlign: 'left',
                     background: 'transparent',
                     border: 'none',
-                    color: '#F5F3EE',
+                    color: '#111827',
                     fontSize: 12,
                     padding: '10px 12px',
                     cursor: 'pointer',
-                    borderTop: '0.5px solid #2A2F3E',
+                    borderTop: '1px solid #E5E7EB',
                   }}
                 >
                   CRM
@@ -485,59 +486,66 @@ export default function Home() {
           </div>
           <div
             style={{
-              color: '#EF9F27',
-              fontFamily: 'monospace',
-              fontSize: 13,
-              letterSpacing: '0.12em',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
+              width: 28,
+              height: 28,
+              background: '#EF9F27',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            MINERAL MAP
+            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>M</span>
           </div>
+          <span
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 16,
+              fontWeight: 700,
+              color: '#111827',
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Mineral Map
+          </span>
         </div>
-        <div style={{ flex: 1, textAlign: 'center', color: '#7A7870', fontSize: 11 }}>
+        <div style={{ fontSize: 13, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
           Gonzales County, TX · 553 tracts
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => {
-              setNavMenuOpen(false)
-              window.location.href = '/'
-            }}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {[
+            { val: '73,589', lbl: 'owners' },
+            { val: '13,551', lbl: 'out of state' },
+            { val: '13,152', lbl: 'motivated' },
+          ].map((s) => (
+            <div
+              key={s.lbl}
+              style={{
+                padding: '4px 12px',
+                background: '#FEF3C7',
+                borderRadius: 20,
+                border: '1px solid #FDE68A',
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E' }}>{s.val}</span>
+              <span style={{ fontSize: 11, color: '#B45309', marginLeft: 4 }}>{s.lbl}</span>
+            </div>
+          ))}
+          <a
+            href="/crm"
             style={{
-              fontSize: 11,
-              padding: '4px 10px',
-              borderRadius: 10,
-              border: '0.5px solid rgba(239,159,39,0.5)',
-              background: 'rgba(239,159,39,0.18)',
+              fontSize: 12,
               color: '#EF9F27',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              whiteSpace: 'nowrap',
+              textDecoration: 'none',
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: '1px solid #EF9F27',
+              fontWeight: 500,
+              fontFamily: 'Inter, sans-serif',
             }}
           >
-            Map
-          </button>
-          <button
-            onClick={() => {
-              setNavMenuOpen(false)
-              window.location.href = '/crm'
-            }}
-            style={{
-              fontSize: 11,
-              padding: '4px 10px',
-              borderRadius: 10,
-              border: '0.5px solid #2A2F3E',
-              background: '#1E2535',
-              color: '#F5F3EE',
-              cursor: 'pointer',
-              fontFamily: 'monospace',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            CRM
-          </button>
+            CRM →
+          </a>
         </div>
       </div>
 
@@ -547,7 +555,8 @@ export default function Home() {
           style={{
             width: 420,
             minWidth: 420,
-            borderRight: '0.5px solid #1E2535',
+            background: '#F8F8F8',
+            borderRight: '1px solid #E5E7EB',
             overflowY: 'auto',
             padding: 14,
           }}
@@ -559,21 +568,22 @@ export default function Home() {
                 style={{
                   border: 'none',
                   background: 'none',
-                  color: '#EF9F27',
+                  color: '#6B7280',
                   fontSize: 12,
                   cursor: 'pointer',
-                  padding: 0,
-                  marginBottom: 12,
+                  padding: '12px 16px',
+                  marginBottom: 4,
+                  fontFamily: 'Inter, sans-serif',
                 }}
               >
-                ← Back to overview
+                ← Back
               </button>
 
-              <div style={{ fontSize: 22, fontFamily: 'monospace', color: '#F5F3EE', fontWeight: 600 }}>
-                TRACT {abstractLabel}
+              <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#111827', fontWeight: 700 }}>
+                {abstractLabel}
               </div>
-              <div style={{ color: '#7A7870', marginTop: 4 }}>{surveyName} Survey</div>
-              <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 10, marginBottom: 10 }} />
+              <div style={{ color: '#6B7280', marginTop: 4 }}>{surveyName} Survey</div>
+              <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
@@ -582,48 +592,48 @@ export default function Home() {
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
                   {ownerCount} owners
                 </span>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#7A7870', border: '0.5px solid rgba(255,255,255,0.12)' }}>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
                   {topOperator}
                 </span>
               </div>
 
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
                 <div style={{ height: 140 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <LineChart data={productionData}>
-                      <XAxis dataKey="month" stroke="#7A7870" tick={{ fill: '#7A7870', fontSize: 10 }} />
-                      <YAxis stroke="#7A7870" tick={{ fill: '#7A7870', fontSize: 10 }} />
+                      <XAxis dataKey="month" stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />
+                      <YAxis stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />
                       <Tooltip
-                        contentStyle={{ background: '#1E2535', border: '0.5px solid #2A2F3E', color: '#F5F3EE' }}
-                        labelStyle={{ color: '#7A7870' }}
+                        contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
+                        labelStyle={{ color: '#6B7280' }}
                       />
                       <Line type="monotone" dataKey="oil" stroke="#EF9F27" strokeWidth={2} dot={{ r: 2 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: '#7A7870' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: '#6B7280' }}>
                   <span>Peak production: {productionPeak.toLocaleString()}</span>
                   <span>Current trend: {productionTrend}</span>
                 </div>
               </div>
 
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Field: {selected.field_name || 'Unknown'}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
-                <div style={{ fontSize: 12, color: '#F5F3EE' }}>Est. lease expiration: {estimateLeaseExpiration(selected.first_date)}</div>
+                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
+                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {selected.field_name || 'Unknown'}</div>
+                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
+                <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estimateLeaseExpiration(selected.first_date)}</div>
               </div>
 
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>COMPARABLE SALES</div>
-                <div style={{ fontSize: 11, color: '#7A7870' }}>
+                <div style={{ fontSize: 11, color: '#6B7280' }}>
                   No comp data available yet — comps unlock after first closed deal
                 </div>
               </div>
 
-              <div style={{ padding: '10px 16px 6px', fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', fontWeight: 600 }}>
+              <div style={{ padding: '10px 16px 6px', fontSize: 9, color: '#6B7280', letterSpacing: '0.08em', fontWeight: 600 }}>
                 ALL OWNERS IN TRACT ({ownerCount})
                 {ownerTypeFilter !== 'all' && (
                   <span style={{ color: '#EF9F27', marginLeft: 6 }}>
@@ -631,7 +641,7 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {filteredOwnersList.map((owner, index) => {
                   const score = toNumber(owner.propensity_score)
                   const acreage = toNumber(owner.acreage)
@@ -640,15 +650,15 @@ export default function Home() {
                   const hasEmail = Boolean(owner.email)
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' :
-                    ownerType === 'company' ? '#378ADD' : '#7A7870'
+                    ownerType === 'company' ? '#378ADD' : '#6B7280'
                   const typeLabel = ownerType === 'trust' ? 'TRUST' :
                     ownerType === 'company' ? 'CO' : 'IND'
                   return (
                     <div
                       key={`${owner.owner_name}-${index}`}
-                      style={{ padding: '10px 12px', borderBottom: '0.5px solid #1A1F2E' }}
+                      style={{ padding: '10px 16px', borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
                       onMouseEnter={(event) => {
-                        event.currentTarget.style.background = '#1E2535'
+                        event.currentTarget.style.background = '#FFFBEB'
                       }}
                       onMouseLeave={(event) => {
                         event.currentTarget.style.background = 'transparent'
@@ -656,7 +666,7 @@ export default function Home() {
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div style={{ flex: 1, marginRight: 8 }}>
-                          <div style={{ fontSize: 12, color: '#F5F3EE', fontWeight: 600 }}>
+                          <div style={{ fontSize: 12, color: '#111827', fontWeight: 600 }}>
                             {index + 1}. {owner.owner_name}
                             <span
                               style={{
@@ -670,13 +680,13 @@ export default function Home() {
                               {typeLabel}
                             </span>
                           </div>
-                          <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
+                          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
                             {owner.address_1 || owner.mailing_address || 'Address unknown'}
                           </div>
-                          <div style={{ fontSize: 10, color: '#7A7870' }}>
+                          <div style={{ fontSize: 10, color: '#6B7280' }}>
                             {owner.mailing_city || 'Unknown city'}, {owner.mailing_state || '--'} {owner.mailing_zip || ''}
                           </div>
-                          <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
+                          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
                             {acreage > 0 ? `${acreage.toFixed(2)} acres` : 'Acreage unknown'} ·{' '}
                             {ownershipPct > 0 ? `${ownershipPct.toFixed(4)}%` : 'Ownership unknown'}
                           </div>
@@ -696,7 +706,7 @@ export default function Home() {
                                 border: '0.5px solid rgba(55,138,221,0.5)',
                                 color: '#378ADD',
                                 cursor: 'pointer',
-                                fontFamily: 'monospace',
+                                fontFamily: 'Inter, sans-serif',
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.borderColor = '#63AEFF'
@@ -724,7 +734,7 @@ export default function Home() {
                                 border: '0.5px solid rgba(122,184,53,0.6)',
                                 color: '#7AB835',
                                 cursor: 'pointer',
-                                fontFamily: 'monospace',
+                                fontFamily: 'Inter, sans-serif',
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 4,
@@ -743,15 +753,15 @@ export default function Home() {
                           ) : (
                             <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
                               {hasPhone && (
-                                <div style={{ fontSize: 10, color: '#F5F3EE', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ color: '#7A7870' }}>📞</span>
+                                <div style={{ fontSize: 10, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ color: '#6B7280' }}>📞</span>
                                   <span>{owner.phone}</span>
                                   <a href={`tel:${owner.phone}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>call</a>
                                 </div>
                               )}
                               {hasEmail && (
-                                <div style={{ fontSize: 10, color: '#F5F3EE', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ color: '#7A7870' }}>✉</span>
+                                <div style={{ fontSize: 10, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ color: '#6B7280' }}>✉</span>
                                   <span>{owner.email}</span>
                                   <a href={`mailto:${owner.email}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>email</a>
                                 </div>
@@ -764,19 +774,19 @@ export default function Home() {
                             style={{
                               fontSize: 10,
                               color: scoreBadgeColor(score),
-                              fontFamily: 'monospace',
+                              fontFamily: 'Inter, sans-serif',
                               fontWeight: 600,
                             }}
                           >
                             {score}/10
                           </span>
                           {owner.out_of_state && (
-                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.3)' }}>
+                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 10, background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 500 }}>
                               OOS
                             </span>
                           )}
                           {owner.motivated && (
-                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.3)' }}>
+                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 10, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA', fontWeight: 500 }}>
                               HOT
                             </span>
                           )}
@@ -788,20 +798,19 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-                <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'monospace' }}>
+                <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
                   Add all to pipeline
                 </button>
-                <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid #2A2F3E', background: 'transparent', color: '#7A7870', cursor: 'pointer', fontFamily: 'monospace' }}>
+                <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
                   Export CSV
                 </button>
               </div>
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: 12, color: '#EF9F27', fontWeight: 600, letterSpacing: '0.08em' }}>
-                COUNTY OVERVIEW
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
+                County Overview
               </div>
-              <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 8, marginBottom: 14 }} />
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {[
@@ -814,28 +823,29 @@ export default function Home() {
                   <div
                     key={card.label}
                     style={{
-                      background: '#1E2535',
+                      background: '#FFFFFF',
                       borderRadius: 8,
-                      border: '0.5px solid #2A2F3E',
-                      padding: '12px 12px',
+                      border: '1px solid #E5E7EB',
+                      padding: '14px 16px',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                     }}
                   >
-                    <div style={{ color: '#EF9F27', fontFamily: 'monospace', fontSize: 20, fontWeight: 600 }}>
+                    <div style={{ color: '#111827', fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700 }}>
                       {card.value}
                     </div>
-                    <div style={{ color: '#7A7870', fontSize: 11, marginTop: 3 }}>{card.label}</div>
+                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Inter, sans-serif' }}>{card.label}</div>
                   </div>
                 ))}
               </div>
 
-              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
                 TOP 10 HOTTEST TRACTS
               </div>
               <div
                 style={{
-                  background: '#12192A',
-                  border: '0.5px solid #2A2F3E',
-                  borderRadius: 8,
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 0,
                   maxHeight: 340,
                   overflowY: 'auto',
                 }}
@@ -862,37 +872,41 @@ export default function Home() {
                       })
                     }
                     style={{
-                      padding: '10px 12px',
-                      borderBottom: '0.5px solid #1A1F2E',
+                      background: '#FFFFFF',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: 8,
+                      padding: '10px 14px',
+                      marginBottom: 6,
                       cursor: 'pointer',
+                      transition: 'border-color 0.15s',
                     }}
                     onMouseEnter={(event) => {
-                      event.currentTarget.style.background = '#1E2535'
+                      event.currentTarget.style.borderColor = '#EF9F27'
                     }}
                     onMouseLeave={(event) => {
-                      event.currentTarget.style.background = 'transparent'
+                      event.currentTarget.style.borderColor = '#E5E7EB'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, marginRight: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#F5F3EE' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
                           {tract.abstract_label}
                         </div>
-                        <div style={{ fontSize: 11, color: '#7A7870', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>
                           {tract.level1_sur}
                         </div>
-                        <div style={{ fontSize: 10, color: '#7A7870', marginTop: 4 }}>
+                        <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4 }}>
                           {tract.owner_count} owners · {tract.top_operator}
                         </div>
                       </div>
                       <div
                         style={{
-                          background: 'rgba(255,255,255,0.05)',
-                          border: '0.5px solid rgba(255,255,255,0.1)',
+                          background: '#F3F4F6',
+                          border: '1px solid #E5E7EB',
                           borderRadius: 999,
                           padding: '2px 8px',
                           color: scoreBadgeColor(tract.max_propensity_score),
-                          fontFamily: 'monospace',
+                          fontFamily: 'Inter, sans-serif',
                           fontSize: 11,
                           fontWeight: 600,
                         }}
@@ -904,10 +918,10 @@ export default function Home() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 18, marginBottom: 8, fontSize: 12, color: '#EF9F27', fontWeight: 600 }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
                 COUNTY BREAKDOWN
               </div>
-              <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, padding: 12 }}>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {[
                   { label: 'EOG Resources', pct: 68 },
                   { label: 'Baytex Energy', pct: 21 },
@@ -916,10 +930,10 @@ export default function Home() {
                 ].map((row) => (
                   <div key={row.label} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                      <span style={{ color: '#F5F3EE' }}>{row.label}</span>
-                      <span style={{ color: '#7A7870' }}>{row.pct}%</span>
+                      <span style={{ color: '#111827' }}>{row.label}</span>
+                      <span style={{ color: '#6B7280' }}>{row.pct}%</span>
                     </div>
-                    <div style={{ height: 7, borderRadius: 4, background: '#1E2535' }}>
+                    <div style={{ height: 7, borderRadius: 4, background: '#F3F4F6' }}>
                       <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: '#EF9F27' }} />
                     </div>
                   </div>
@@ -932,7 +946,7 @@ export default function Home() {
         {/* Map area */}
         <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
           {loading ? (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'monospace' }}>
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Inter, sans-serif' }}>
               Loading...
             </div>
           ) : (
@@ -960,16 +974,18 @@ export default function Home() {
         style={{
           height: 44,
           minHeight: 44,
-          borderTop: '0.5px solid #1E2535',
+          background: '#FFFFFF',
+          borderTop: '1px solid #E5E7EB',
           display: 'flex',
           alignItems: 'center',
-          gap: 14,
-          padding: '0 12px',
-          color: '#F5F3EE',
+          gap: 20,
+          padding: '0 16px',
+          color: '#374151',
           fontSize: 11,
+          boxShadow: '0 -1px 3px rgba(0,0,0,0.04)',
         }}
       >
-        <span>Motivated only</span>
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Motivated only</span>
         <button
           onClick={() => setMotivatedOnly((prev) => !prev)}
           style={{
@@ -977,7 +993,7 @@ export default function Home() {
             height: 18,
             borderRadius: 9,
             border: 'none',
-            background: motivatedOnly ? '#EF9F27' : '#2A2F3E',
+            background: motivatedOnly ? '#EF9F27' : '#D1D5DB',
             position: 'relative',
             cursor: 'pointer',
           }}
@@ -995,7 +1011,7 @@ export default function Home() {
           />
         </button>
 
-        <span>Out of state</span>
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Out of state</span>
         <button
           onClick={() => setOutOfStateOnly((prev) => !prev)}
           style={{
@@ -1003,7 +1019,7 @@ export default function Home() {
             height: 18,
             borderRadius: 9,
             border: 'none',
-            background: outOfStateOnly ? '#EF9F27' : '#2A2F3E',
+            background: outOfStateOnly ? '#EF9F27' : '#D1D5DB',
             position: 'relative',
             cursor: 'pointer',
           }}
@@ -1022,7 +1038,7 @@ export default function Home() {
         </button>
 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
-          <span style={{ fontSize: 11, color: '#7A7870', whiteSpace: 'nowrap' }}>Type:</span>
+          <span style={{ fontSize: 12, color: '#374151', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif' }}>Type:</span>
           {(['all', 'individual', 'trust', 'company'] as const).map(type => (
             <button
               key={type}
@@ -1032,11 +1048,11 @@ export default function Home() {
                 padding: '3px 10px',
                 borderRadius: 10,
                 cursor: 'pointer',
-                fontFamily: 'monospace',
+                fontFamily: 'Inter, sans-serif',
                 whiteSpace: 'nowrap',
                 background: ownerTypeFilter === type ? 'rgba(239,159,39,0.2)' : 'transparent',
-                border: ownerTypeFilter === type ? '0.5px solid rgba(239,159,39,0.6)' : '0.5px solid #2A2F3E',
-                color: ownerTypeFilter === type ? '#EF9F27' : '#7A7870',
+                border: ownerTypeFilter === type ? '1px solid rgba(239,159,39,0.6)' : '1px solid #E5E7EB',
+                color: ownerTypeFilter === type ? '#EF9F27' : '#6B7280',
               }}
             >
               {type === 'all' ? 'All' : type === 'individual' ? 'People' : type === 'trust' ? 'Trusts' : 'Companies'}
@@ -1044,7 +1060,7 @@ export default function Home() {
           ))}
         </div>
 
-        <span>Min score</span>
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Min score</span>
         <input
           type="range"
           min={0}
@@ -1053,17 +1069,17 @@ export default function Home() {
           onChange={(event) => setMinScore(Number(event.target.value))}
           style={{ width: 160, accentColor: '#EF9F27' }}
         />
-        <span style={{ fontFamily: 'monospace', color: '#EF9F27' }}>{minScore}</span>
+        <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
 
-        <span>Layers:</span>
-        <button onClick={() => setShowWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showWells ? '#7AB835' : '#7A7870', cursor: 'pointer' }}>
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
+        <button onClick={() => setShowWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showWells ? '#7AB835' : '#6B7280', cursor: 'pointer' }}>
           ● Wells
         </button>
-        <button onClick={() => setShowOwners((prev) => !prev)} style={{ background: 'none', border: 'none', color: showOwners ? '#EF9F27' : '#7A7870', cursor: 'pointer' }}>
+        <button onClick={() => setShowOwners((prev) => !prev)} style={{ background: 'none', border: 'none', color: showOwners ? '#EF9F27' : '#6B7280', cursor: 'pointer' }}>
           ● Owners
         </button>
 
-        <span style={{ marginLeft: 'auto' }}>Scale:</span>
+        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Scale:</span>
         <div style={{ width: 180, height: 8, borderRadius: 5, overflow: 'hidden', display: 'flex' }}>
           {['#1a3a1a', '#2d6a2d', '#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336', '#B71C1C'].map((color) => (
             <div key={color} style={{ flex: 1, background: color }} />
@@ -1078,13 +1094,13 @@ export default function Home() {
             bottom: 60,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#1E2535',
+            background: '#FFFFFF',
             border: toastType === 'error' ? '0.5px solid #F44336' : '0.5px solid #7AB835',
             color: toastType === 'error' ? '#F44336' : '#7AB835',
             fontSize: 12,
             padding: '10px 20px',
             borderRadius: 8,
-            fontFamily: 'monospace',
+            fontFamily: 'Inter, sans-serif',
             zIndex: 9999,
             boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
           }}
@@ -1107,20 +1123,20 @@ export default function Home() {
         >
           <div
             style={{
-              background: '#1E2535',
-              border: '0.5px solid #2A2F3E',
+              background: '#FFFFFF',
+              border: '0.5px solid #E5E7EB',
               borderRadius: 12,
               padding: 24,
               width: 360,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F3EE', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
               Add owner to pipeline
             </div>
-            <div style={{ fontSize: 12, color: '#7A7870', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 14 }}>
               {pipelineCandidate.owner_name}
             </div>
-            <div style={{ fontSize: 11, color: '#7A7870', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 8 }}>
               Label
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
@@ -1139,15 +1155,15 @@ export default function Home() {
                     border:
                       pipelineTag === option.key
                         ? '0.5px solid rgba(55,138,221,0.8)'
-                        : '0.5px solid #2A2F3E',
+                        : '0.5px solid #E5E7EB',
                     background:
                       pipelineTag === option.key
                         ? 'rgba(55,138,221,0.2)'
                         : 'transparent',
-                    color: pipelineTag === option.key ? '#8CC4FF' : '#7A7870',
+                    color: pipelineTag === option.key ? '#8CC4FF' : '#6B7280',
                     fontSize: 11,
                     cursor: 'pointer',
-                    fontFamily: 'monospace',
+                    fontFamily: 'Inter, sans-serif',
                   }}
                 >
                   {option.label}
@@ -1165,8 +1181,8 @@ export default function Home() {
                   padding: '9px',
                   borderRadius: 6,
                   background: 'transparent',
-                  border: '0.5px solid #2A2F3E',
-                  color: '#7A7870',
+                  border: '0.5px solid #E5E7EB',
+                  color: '#6B7280',
                   fontSize: 12,
                   cursor: pipelineSaving ? 'not-allowed' : 'pointer',
                 }}
@@ -1184,7 +1200,7 @@ export default function Home() {
                   color: '#8CC4FF',
                   fontSize: 12,
                   cursor: pipelineSaving ? 'not-allowed' : 'pointer',
-                  fontFamily: 'monospace',
+                  fontFamily: 'Inter, sans-serif',
                 }}
               >
                 {pipelineSaving ? 'Saving...' : 'Add to pipeline'}
@@ -1208,26 +1224,26 @@ export default function Home() {
         >
           <div
             style={{
-              background: '#1E2535',
-              border: '0.5px solid #2A2F3E',
+              background: '#FFFFFF',
+              border: '0.5px solid #E5E7EB',
               borderRadius: 12,
               padding: '24px',
               width: 320,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#F5F3EE', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', marginBottom: 8 }}>
               Skip trace this owner?
             </div>
-            <div style={{ fontSize: 12, color: '#7A7870', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 6 }}>
               {skipTracing.owner_name}
             </div>
             <div
               style={{
                 fontSize: 11,
-                color: '#7A7870',
+                color: '#6B7280',
                 marginBottom: 20,
                 padding: '10px 12px',
-                background: '#0D1220',
+                background: '#FFFFFF',
                 borderRadius: 6,
                 lineHeight: 1.5,
               }}
@@ -1248,8 +1264,8 @@ export default function Home() {
                   padding: '9px',
                   borderRadius: 6,
                   background: 'transparent',
-                  border: '0.5px solid #2A2F3E',
-                  color: '#7A7870',
+                  border: '0.5px solid #E5E7EB',
+                  color: '#6B7280',
                   fontSize: 12,
                   cursor: 'pointer',
                 }}
@@ -1267,7 +1283,7 @@ export default function Home() {
                   color: '#EF9F27',
                   fontSize: 12,
                   cursor: 'pointer',
-                  fontFamily: 'monospace',
+                  fontFamily: 'Inter, sans-serif',
                 }}
               >
                 Skip trace →

@@ -47,15 +47,15 @@ type ContactLogEntry = {
 }
 
 const TAG_CONFIG = {
-  all: { label: 'All', color: '#7A7870', bg: 'rgba(255,255,255,0.04)' },
-  hot: { label: 'Hot', color: '#F44336', bg: 'rgba(244,67,54,0.15)' },
-  nurture: { label: 'Nurture', color: '#EF9F27', bg: 'rgba(239,159,39,0.12)' },
-  prospect: { label: 'Prospect', color: '#7A7870', bg: 'rgba(255,255,255,0.06)' },
-  not_interested: { label: 'Not interested', color: '#4A4F5E', bg: 'rgba(255,255,255,0.04)' },
-  offer_sent: { label: 'Offer sent', color: '#378ADD', bg: 'rgba(55,138,221,0.15)' },
-  under_contract: { label: 'Under contract', color: '#7AB835', bg: 'rgba(122,184,53,0.15)' },
-  closed: { label: 'Closed', color: '#7AB835', bg: 'rgba(122,184,53,0.2)' },
-  skip_traced: { label: 'Skip traced', color: '#7AB835', bg: 'rgba(122,184,53,0.15)' },
+  all: { label: 'All', color: '#6B7280', bg: 'rgba(255,255,255,0.04)' },
+  hot: { label: 'Hot', color: '#B91C1C', bg: '#FEE2E2' },
+  nurture: { label: 'Nurture', color: '#B45309', bg: '#FEF3C7' },
+  prospect: { label: 'Prospect', color: '#6B7280', bg: '#F3F4F6' },
+  not_interested: { label: 'Not interested', color: '#9CA3AF', bg: '#F9FAFB' },
+  offer_sent: { label: 'Offer sent', color: '#1D4ED8', bg: '#EFF6FF' },
+  under_contract: { label: 'Under contract', color: '#065F46', bg: '#ECFDF5' },
+  closed: { label: 'Closed', color: '#065F46', bg: '#ECFDF5' },
+  skip_traced: { label: 'Skip traced', color: '#065F46', bg: '#ECFDF5' },
 } as const
 
 const TagBadge = ({ tag }: { tag: string | null }) => {
@@ -235,57 +235,60 @@ export default function CrmPage() {
     <div
       style={{
         height: '100vh',
-        background: '#0D1220',
-        color: '#F5F3EE',
+        background: '#F8F8F8',
+        color: '#111827',
         display: 'flex',
         flexDirection: 'column',
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: 'Inter, sans-serif',
       }}
     >
       <div
         style={{
-          height: 48,
-          minHeight: 48,
-          borderBottom: '0.5px solid #1E2535',
+          height: 52,
+          minHeight: 52,
+          background: '#FFFFFF',
+          borderBottom: '1px solid #E5E7EB',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 14px',
+          padding: '0 20px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div
             style={{
-              color: '#EF9F27',
-              fontFamily: 'monospace',
-              fontSize: 13,
-              letterSpacing: '0.12em',
-              fontWeight: 600,
+              color: '#111827',
+              fontFamily: 'Georgia, serif',
+              fontSize: 16,
+              letterSpacing: '-0.01em',
+              fontWeight: 700,
             }}
           >
-            MINERAL MAP
+            Mineral Map
           </div>
           <a
             href="/"
             style={{
-              color: '#7A7870',
-              fontSize: 11,
+              color: '#6B7280',
+              fontSize: 12,
               textDecoration: 'none',
-              border: '0.5px solid #2A2F3E',
+              border: '1px solid #E5E7EB',
               borderRadius: 999,
-              padding: '3px 10px',
+              padding: '4px 12px',
             }}
           >
             ← Map
           </a>
         </div>
-        <div style={{ color: '#F5F3EE', fontSize: 12, fontWeight: 600 }}>CRM & Pipeline</div>
+        <div style={{ color: '#111827', fontSize: 12, fontWeight: 600 }}>CRM & Pipeline</div>
       </div>
 
       <div
         style={{
           padding: 12,
-          borderBottom: '0.5px solid #1E2535',
+          borderBottom: '1px solid #E5E7EB',
+          background: '#FFFFFF',
           display: 'flex',
           gap: 8,
           flexWrap: 'wrap',
@@ -306,10 +309,10 @@ export default function CrmPage() {
               fontSize: 10,
               padding: '4px 10px',
               borderRadius: 10,
-              border: tagFilter === key ? '0.5px solid rgba(239,159,39,0.6)' : '0.5px solid #2A2F3E',
-              background: tagFilter === key ? 'rgba(239,159,39,0.2)' : 'transparent',
-              color: tagFilter === key ? '#EF9F27' : '#7A7870',
-              fontFamily: 'monospace',
+              border: tagFilter === key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
+              background: tagFilter === key ? '#FEF3C7' : '#FFFFFF',
+              color: tagFilter === key ? '#B45309' : '#6B7280',
+              fontFamily: 'Inter, sans-serif',
               cursor: 'pointer',
             }}
           >
@@ -323,10 +326,10 @@ export default function CrmPage() {
           style={{
             marginLeft: 'auto',
             minWidth: 240,
-            background: '#12192A',
-            border: '0.5px solid #2A2F3E',
+            background: '#F9FAFB',
+            border: '1px solid #E5E7EB',
             borderRadius: 8,
-            color: '#F5F3EE',
+            color: '#111827',
             padding: '6px 10px',
             fontSize: 11,
           }}
@@ -338,13 +341,13 @@ export default function CrmPage() {
           style={{
             width: 380,
             minWidth: 380,
-            borderRight: '0.5px solid #1E2535',
+            borderRight: '1px solid #E5E7EB',
             overflowY: 'auto',
             padding: 12,
           }}
         >
           {visibleDeals.length === 0 ? (
-            <div style={{ color: '#7A7870', fontSize: 12, padding: '20px 8px' }}>
+            <div style={{ color: '#6B7280', fontSize: 12, padding: '20px 8px' }}>
               No deals match this filter.
             </div>
           ) : (
@@ -355,24 +358,25 @@ export default function CrmPage() {
                   key={deal.id}
                   onClick={() => handleSelectDeal(deal)}
                   style={{
-                    background: '#1E2535',
+                    background: '#FFFFFF',
                     border: editingDeal?.id === deal.id
-                      ? '0.5px solid rgba(239,159,39,0.55)'
-                      : '0.5px solid #2A2F3E',
+                      ? '1px solid #EF9F27'
+                      : '1px solid #E5E7EB',
                     borderRadius: 8,
                     padding: '12px 14px',
                     marginBottom: 8,
                     cursor: 'pointer',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: '#F5F3EE' }}>{deal.owner_name}</div>
+                    <div style={{ fontSize: 12, fontWeight: 500, color: '#111827' }}>{deal.owner_name}</div>
                     <TagBadge tag={deal.tag} />
                   </div>
-                  <div style={{ fontSize: 10, color: '#7A7870' }}>
+                  <div style={{ fontSize: 10, color: '#6B7280' }}>
                     {deal.tract_abstract ?? '--'} · {deal.operator_name ?? 'Unknown operator'}
                   </div>
-                  <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
+                  <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
                     {deal.mailing_city ?? 'Unknown city'}, {deal.mailing_state ?? '--'}
                     {deal.acreage ? ` · ${deal.acreage} acres` : ''}
                     {deal.monthly_royalty ? ` · $${Number(deal.monthly_royalty).toLocaleString()}/mo` : ''}
@@ -402,9 +406,9 @@ export default function CrmPage() {
                           fontSize: 10,
                           padding: '2px 8px',
                           borderRadius: 10,
-                          background: 'rgba(255,255,255,0.06)',
-                          border: '0.5px solid #2A2F3E',
-                          color: '#7A7870',
+                          background: '#F3F4F6',
+                          border: '1px solid #E5E7EB',
+                          color: '#6B7280',
                         }}
                       >
                         Added {ageDays}d ago
@@ -417,7 +421,7 @@ export default function CrmPage() {
           )}
         </div>
 
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: '#FFFFFF', borderLeft: '1px solid #E5E7EB' }}>
           {!editingDeal ? (
             <div
               style={{
@@ -425,16 +429,16 @@ export default function CrmPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#4A4F5E',
+                color: '#9CA3AF',
                 fontSize: 13,
-                fontFamily: 'monospace',
+                fontFamily: 'Inter, sans-serif',
               }}
             >
               [select a lead from the list to view details]
             </div>
           ) : (
             <div>
-              <div style={{ padding: '20px 24px', borderBottom: '0.5px solid #1E2535' }}>
+              <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
                 <input
                   value={editingDeal.owner_name ?? ''}
                   onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, owner_name: e.target.value } : prev))}
@@ -442,7 +446,7 @@ export default function CrmPage() {
                   style={{
                     fontSize: 20,
                     fontWeight: 500,
-                    color: '#F5F3EE',
+                    color: '#111827',
                     background: 'transparent',
                     border: 'none',
                     outline: 'none',
@@ -461,8 +465,8 @@ export default function CrmPage() {
                         borderRadius: 10,
                         cursor: 'pointer',
                         background: editingDeal.tag === key ? cfg.bg : 'transparent',
-                        border: editingDeal.tag === key ? `0.5px solid ${cfg.color}` : '0.5px solid #2A2F3E',
-                        color: editingDeal.tag === key ? cfg.color : '#4A4F5E',
+                        border: editingDeal.tag === key ? `0.5px solid ${cfg.color}` : '0.5px solid #E5E7EB',
+                        color: editingDeal.tag === key ? cfg.color : '#9CA3AF',
                       }}
                     >
                       {cfg.label}
@@ -471,8 +475,8 @@ export default function CrmPage() {
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '0.5px solid #1E2535' }}>
-                <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 12, fontWeight: 600 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
                   LEAD INFO
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -487,21 +491,21 @@ export default function CrmPage() {
                     { label: 'ACREAGE', field: 'acreage' },
                   ].map(({ label, field }) => (
                     <div key={field}>
-                      <div style={{ fontSize: 9, color: '#7A7870', marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 3 }}>{label}</div>
                       <input
                         value={String(editingDeal[field as keyof Deal] ?? '')}
                         onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
                         onBlur={() => handleSaveDeal()}
                         style={{
                           fontSize: 12,
-                          color: '#F5F3EE',
-                          background: '#1E2535',
-                          border: '0.5px solid #2A2F3E',
-                          borderRadius: 4,
+                          color: '#111827',
+                          background: '#F9FAFB',
+                          border: '1px solid #E5E7EB',
+                          borderRadius: 6,
                           padding: '5px 8px',
                           width: '100%',
                           outline: 'none',
-                          fontFamily: 'system-ui',
+                          fontFamily: 'Inter, sans-serif',
                         }}
                         onFocus={(e) => {
                           e.currentTarget.style.borderColor = '#EF9F27'
@@ -512,12 +516,12 @@ export default function CrmPage() {
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '0.5px solid #1E2535' }}>
-                <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 12, fontWeight: 600 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
                   OFFER
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, color: '#7A7870' }}>$</span>
+                  <span style={{ fontSize: 12, color: '#6B7280' }}>$</span>
                   <input
                     type="number"
                     placeholder="Your offer amount"
@@ -529,10 +533,10 @@ export default function CrmPage() {
                     onBlur={() => handleSaveDeal()}
                     style={{
                       fontSize: 14,
-                      color: '#F5F3EE',
-                      background: '#1E2535',
-                      border: '0.5px solid #2A2F3E',
-                      borderRadius: 4,
+                      color: '#111827',
+                      background: '#F9FAFB',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: 6,
                       padding: '6px 10px',
                       width: 200,
                       outline: 'none',
@@ -540,19 +544,19 @@ export default function CrmPage() {
                   />
                 </div>
                 {editingDeal.monthly_royalty && Number(editingDeal.monthly_royalty) > 0 && (
-                  <div style={{ background: '#0D1220', borderRadius: 6, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 9, color: '#7A7870', marginBottom: 8 }}>COMP ESTIMATE</div>
+                  <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 8 }}>COMP ESTIMATE</div>
                     {[
-                      { label: 'Conservative (3x annual)', mult: 3, color: '#7A7870' },
+                      { label: 'Conservative (3x annual)', mult: 3, color: '#6B7280' },
                       { label: 'Market rate (4x annual)', mult: 4, color: '#EF9F27' },
-                      { label: 'Aggressive (5x annual)', mult: 5, color: '#7A7870' },
+                      { label: 'Aggressive (5x annual)', mult: 5, color: '#6B7280' },
                     ].map((c) => (
                       <div key={c.mult} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                        <span style={{ fontSize: 11, color: '#7A7870' }}>{c.label}</span>
+                        <span style={{ fontSize: 11, color: '#6B7280' }}>{c.label}</span>
                         <span
                           style={{
                             fontSize: 11,
-                            fontFamily: 'monospace',
+                            fontFamily: 'Inter, sans-serif',
                             color: c.color,
                             fontWeight: c.mult === 4 ? 600 : 400,
                           }}
@@ -565,8 +569,8 @@ export default function CrmPage() {
                 )}
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '0.5px solid #1E2535' }}>
-                <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 12, fontWeight: 600 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
                   FOLLOW-UP REMINDER
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -577,10 +581,10 @@ export default function CrmPage() {
                     onBlur={() => handleSaveDeal()}
                     style={{
                       fontSize: 12,
-                      color: '#F5F3EE',
-                      background: '#1E2535',
-                      border: '0.5px solid #2A2F3E',
-                      borderRadius: 4,
+                      color: '#111827',
+                      background: '#F9FAFB',
+                      border: '1px solid #E5E7EB',
+                      borderRadius: 6,
                       padding: '5px 8px',
                       outline: 'none',
                       colorScheme: 'dark',
@@ -596,7 +600,7 @@ export default function CrmPage() {
                           ? 'rgba(244,67,54,0.15)'
                           : 'rgba(239,159,39,0.12)',
                         color: isOverdue(editingDeal.follow_up_date) ? '#F44336' : '#EF9F27',
-                        border: `0.5px solid ${
+                        border: `1px solid ${
                           isOverdue(editingDeal.follow_up_date)
                             ? 'rgba(244,67,54,0.3)'
                             : 'rgba(239,159,39,0.3)'
@@ -631,8 +635,8 @@ export default function CrmPage() {
                         borderRadius: 4,
                         cursor: 'pointer',
                         background: 'transparent',
-                        border: '0.5px solid #2A2F3E',
-                        color: '#7A7870',
+                        border: '1px solid #E5E7EB',
+                        color: '#374151',
                       }}
                     >
                       {q.label}
@@ -641,8 +645,8 @@ export default function CrmPage() {
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '0.5px solid #1E2535' }}>
-                <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 12, fontWeight: 600 }}>
+              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
                   CONTACT LOG
                 </div>
                 <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -655,17 +659,17 @@ export default function CrmPage() {
                         padding: '4px 10px',
                         borderRadius: 4,
                         cursor: 'pointer',
-                        background: 'transparent',
-                        border: '0.5px solid #2A2F3E',
-                        color: '#7A7870',
+                        background: '#FFFFFF',
+                        border: '1px solid #E5E7EB',
+                        color: '#374151',
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.borderColor = '#EF9F27'
                         e.currentTarget.style.color = '#EF9F27'
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#2A2F3E'
-                        e.currentTarget.style.color = '#7A7870'
+                        e.currentTarget.style.borderColor = '#E5E7EB'
+                        e.currentTarget.style.color = '#6B7280'
                       }}
                     >
                       {outcome}
@@ -680,18 +684,18 @@ export default function CrmPage() {
                         display: 'flex',
                         gap: 10,
                         padding: '6px 0',
-                        borderBottom: '0.5px solid #1A1F2E',
+                        borderBottom: '1px solid #F3F4F6',
                         alignItems: 'flex-start',
                       }}
                     >
-                      <div style={{ fontSize: 9, color: '#7A7870', whiteSpace: 'nowrap', marginTop: 1 }}>
+                      <div style={{ fontSize: 9, color: '#6B7280', whiteSpace: 'nowrap', marginTop: 1 }}>
                         {new Date(entry.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
-                      <div style={{ fontSize: 11, color: '#F5F3EE' }}>{entry.method}</div>
+                      <div style={{ fontSize: 11, color: '#111827' }}>{entry.method}</div>
                     </div>
                   ))}
                   {contactLog.length === 0 && (
-                    <div style={{ fontSize: 11, color: '#4A4F5E', fontStyle: 'italic' }}>
+                    <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
                       No contacts logged yet
                     </div>
                   )}
@@ -700,8 +704,8 @@ export default function CrmPage() {
 
               <div style={{ padding: '16px 24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', fontWeight: 600 }}>NOTES</div>
-                  {lastSaved && <div style={{ fontSize: 9, color: '#4A4F5E' }}>Saved {lastSaved}</div>}
+                  <div style={{ fontSize: 9, color: '#6B7280', letterSpacing: '0.08em', fontWeight: 600 }}>NOTES</div>
+                  {lastSaved && <div style={{ fontSize: 9, color: '#9CA3AF' }}>Saved {lastSaved}</div>}
                 </div>
                 <textarea
                   value={editingDeal.notes ?? ''}
@@ -711,15 +715,15 @@ export default function CrmPage() {
                   style={{
                     width: '100%',
                     minHeight: 140,
-                    background: '#1E2535',
-                    border: '0.5px solid #2A2F3E',
+                    background: '#F9FAFB',
+                    border: '1px solid #E5E7EB',
                     borderRadius: 6,
                     padding: '10px 12px',
-                    color: '#F5F3EE',
+                    color: '#111827',
                     fontSize: 12,
                     resize: 'vertical',
                     outline: 'none',
-                    fontFamily: 'system-ui',
+                    fontFamily: 'Inter, sans-serif',
                     lineHeight: 1.5,
                     colorScheme: 'dark',
                   }}

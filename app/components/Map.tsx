@@ -345,5 +345,5 @@ export default function Map({
     flyToSelectedTract()
   }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells, flyToSelectedTract])
 
-  return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+  return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#0D1220' }} />
 }
