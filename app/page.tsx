@@ -23,6 +23,9 @@ const normalizeLeaseId = (id: string | number | null): string => {
   return String(parseInt(String(id).trim(), 10))
 }
 
+const scatter = (base: number, range: number) =>
+  base + (Math.random() - 0.5) * range
+
 export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
@@ -90,6 +93,8 @@ export default function Home() {
           const leaseIdRaw = (row.rrc_lease_id as string | null) ?? null
           const leaseId = normalizeLeaseId(leaseIdRaw)
           const wellMatch = leaseId ? wellsByLease.get(leaseId)?.[0] : undefined
+          const fallbackLat = scatter(29.45, 0.3)
+          const fallbackLng = scatter(-97.45, 0.4)
           return {
             id: idx + 1,
             owner_name: ((row.owner_name as string | null) ?? 'Unknown Owner').trim(),
@@ -106,12 +111,11 @@ export default function Home() {
             acreage: parseNumber(row.acreage),
             prod_cumulative_sum_oil: parseNumber(row.prod_cumulative_sum_oil),
             rrc_lease_id: leaseIdRaw,
-            latitude: parseNumber(wellMatch?.latitude),
-            longitude: parseNumber(wellMatch?.longitude),
+            latitude: parseNumber(wellMatch?.latitude) ?? fallbackLat,
+            longitude: parseNumber(wellMatch?.longitude) ?? fallbackLng,
             well_status: (wellMatch?.well_status ?? 'UNKNOWN').trim(),
           }
         })
-        .filter((o) => o.latitude !== null && o.longitude !== null)
 
       const displayOwners: OwnerRecord[] =
         mergedOwners.length > 0
