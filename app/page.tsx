@@ -12,7 +12,6 @@ import {
 } from 'recharts'
 
 import { supabase } from '@/lib/supabase'
-import type { OwnerRecord } from './components/Map'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -134,7 +133,6 @@ const estimateLeaseExpiration = (firstDate?: string) => {
 }
 
 export default function Home() {
-  const [owners, setOwners] = useState<OwnerRecord[]>([])
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -142,7 +140,6 @@ export default function Home() {
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
   const [showWells, setShowWells] = useState(true)
-  const [showOwners, setShowOwners] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
@@ -263,22 +260,9 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
 
-      const [ownersResp, tractsResp] = await Promise.all([
-        supabase
-          .from('motivated_owners_with_coords')
-          .select('*')
-          .order('propensity_score', { ascending: false })
-          .limit(500),
-        fetch('/gonzales_parcels_enriched.geojson').then((res) => res.json()),
-      ])
+      const tractsResp = await fetch('/gonzales_parcels_enriched.geojson').then((res) => res.json())
 
       if (!mounted) return
-
-      if (ownersResp.error) {
-        console.error('Failed to load owners:', ownersResp.error.message)
-      } else {
-        setOwners((ownersResp.data ?? []) as OwnerRecord[])
-      }
 
       const rows: TractRecord[] = ((tractsResp?.features ?? []) as Array<{ properties?: Record<string, unknown> }>)
         .map((feature) => {
@@ -951,13 +935,8 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
-              owners={owners}
-              wells={[]}
-              motivatedOnly={motivatedOnly}
-              outOfStateOnly={outOfStateOnly}
-              minScore={minScore}
               showWells={showWells}
-              showMotivated={showOwners}
+              wells={[]}
               onOwnerClick={(tract) => setSelected(tract)}
               focusedTract={
                 selected
@@ -1073,10 +1052,7 @@ export default function Home() {
 
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
         <button onClick={() => setShowWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showWells ? '#7AB835' : '#6B7280', cursor: 'pointer' }}>
-          ● Wells
-        </button>
-        <button onClick={() => setShowOwners((prev) => !prev)} style={{ background: 'none', border: 'none', color: showOwners ? '#EF9F27' : '#6B7280', cursor: 'pointer' }}>
-          ● Owners
+          ● Active wells
         </button>
 
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Scale:</span>

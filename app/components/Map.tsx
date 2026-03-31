@@ -40,65 +40,18 @@ export type WellRecord = {
 }
 
 export default function Map({
-  motivatedOnly,
-  outOfStateOnly,
-  minScore,
   showWells,
-  showMotivated,
-  owners,
   wells,
   onOwnerClick,
   focusedTract,
 }: {
-  motivatedOnly: boolean
-  outOfStateOnly: boolean
-  minScore: number
   showWells: boolean
-  showMotivated: boolean
-  owners: OwnerRecord[]
   wells: WellRecord[]
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusedTract?: { abstract_label: string } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-
-  const updateOwners = useCallback(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return
-
-    console.log('Map received owners:', owners?.length, 'first owner:', owners?.[0])
-
-    const filtered = owners.filter((o) => {
-      if (motivatedOnly && !o.motivated) return false
-      if (outOfStateOnly && !o.out_of_state) return false
-      if (!showMotivated && o.motivated) return false
-      if (o.propensity_score < minScore) return false
-      return true
-    })
-
-    const source = map.current.getSource('owners') as mapboxgl.GeoJSONSource | undefined
-    if (source) {
-      const features = filtered.reduce<Array<GeoJSON.Feature<GeoJSON.Point, GeoJSON.GeoJsonProperties>>>((acc, owner) => {
-        if (!Number.isFinite(owner.longitude) || !Number.isFinite(owner.latitude)) {
-          return acc
-        }
-        acc.push({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [owner.longitude as number, owner.latitude as number],
-          },
-          properties: { ...owner, raw: JSON.stringify(owner) },
-        })
-        return acc
-      }, [])
-
-      source.setData({
-        type: 'FeatureCollection',
-        features,
-      })
-    }
-  }, [owners, motivatedOnly, outOfStateOnly, showMotivated, minScore])
 
   const updateWells = useCallback(() => {
     if (!map.current || !map.current.isStyleLoaded()) return
@@ -166,29 +119,6 @@ export default function Map({
 
     map.current.on('load', () => {
       const m = map.current!
-
-      // Owner layer
-      m.addSource('owners', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      })
-      m.addLayer({
-        id: 'owners-layer',
-        type: 'circle',
-        source: 'owners',
-        paint: {
-          'circle-radius': ['interpolate', ['linear'], ['get', 'propensity_score'], 0, 5, 10, 12],
-          'circle-color': ['case',
-            ['>=', ['get', 'propensity_score'], 8], '#EF9F27',
-            ['>=', ['get', 'propensity_score'], 5], '#BA7517',
-            '#4A4F5E'
-          ],
-          'circle-opacity': 0.85,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 0.3
-        }
-      })
 
       // Wells layer
       m.addSource('wells', {
@@ -323,27 +253,16 @@ export default function Map({
           console.error('Failed to load parcels GeoJSON:', err)
         })
 
-      m.on('click', 'owners-layer', (e) => {
-        const props = e.features?.[0]?.properties
-        if (props?.raw) {
-          onOwnerClick(JSON.parse(props.raw as string))
-        }
-      })
-      m.on('mouseenter', 'owners-layer', () => { m.getCanvas().style.cursor = 'pointer' })
-      m.on('mouseleave', 'owners-layer', () => { m.getCanvas().style.cursor = '' })
-
-      updateOwners()
       updateWells()
       flyToSelectedTract()
     })
-  }, [onOwnerClick, updateOwners, updateWells, flyToSelectedTract])
+  }, [onOwnerClick, updateWells, flyToSelectedTract])
 
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return
-    updateOwners()
     updateWells()
     flyToSelectedTract()
-  }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells, flyToSelectedTract])
+  }, [wells, showWells, updateWells, flyToSelectedTract])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#F8F8F8' }} />
 }
