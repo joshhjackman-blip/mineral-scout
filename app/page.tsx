@@ -925,11 +925,6 @@ export default function Home() {
             <MineralMap
               showWells={showWells}
               onOwnerClick={(tract) => setSelected(tract)}
-              focusedTract={
-                selected
-                  ? { abstract_label: selected.abstract_label ?? selected.ABSTRACT_L ?? '' }
-                  : null
-              }
             />
           )}
         </div>
