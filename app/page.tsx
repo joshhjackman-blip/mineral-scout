@@ -118,20 +118,6 @@ const getTrend = (series: Array<{ month: string; oil: number }>) => {
   return 'stable'
 }
 
-const estimateLeaseExpiration = (firstDate?: string) => {
-  if (!firstDate) return 'Unknown'
-  const ym = /^(\d{4})-(\d{2})/.exec(firstDate)
-  if (ym) {
-    const year = Number(ym[1]) + 5
-    const month = Number(ym[2])
-    return `${year}-${String(month).padStart(2, '0')}`
-  }
-  const parsed = new Date(firstDate)
-  if (Number.isNaN(parsed.getTime())) return 'Unknown'
-  parsed.setFullYear(parsed.getFullYear() + 5)
-  return parsed.toISOString().slice(0, 10)
-}
-
 export default function Home() {
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
@@ -358,6 +344,8 @@ export default function Home() {
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
   const maxScore = toNumber(selected?.max_propensity_score)
+  const fieldName = (selected as any)?.field_name ?? 'Unknown'
+  const estExpiration = (selected as any)?.est_lease_expiration ?? 'Unknown'
 
   return (
     <div
@@ -605,9 +593,9 @@ export default function Home() {
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
-                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {selected.field_name || 'Unknown'}</div>
+                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {fieldName}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
-                <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estimateLeaseExpiration(selected.first_date)}</div>
+                <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>

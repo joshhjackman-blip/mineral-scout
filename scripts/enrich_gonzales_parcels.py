@@ -15,6 +15,7 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -57,35 +58,57 @@ def canonical_lease_name(value: Any) -> str:
 def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     all_owners: list[dict[str, Any]] = []
     last_id: str | None = None
+    server_side_motivated_filter = True
+    page_num = 0
 
     while True:
         # Use keyset pagination to avoid deep OFFSET scan timeouts.
-        query = (
-            client.table("gonzales_mineral_ownership")
-            .select(
-                "id, owner_name, mailing_city, mailing_state, mailing_zip, mailing_address, "
-                "operator_name, propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
-                "county_lease_name, field_name, first_6_month_oil, first_12_month_oil, "
-                "first_24_month_oil, first_60_month_oil, prod_cumulative_sum_oil"
-            )
-            .eq("motivated", True)
-            .order("id", desc=False)
-            .limit(PAGE_SIZE)
+        query = client.table("gonzales_mineral_ownership").select(
+            "id, owner_name, mailing_city, mailing_state, mailing_zip, mailing_address, "
+            "operator_name, propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
+            "county_lease_name, field_name, first_date, first_6_month_oil, first_12_month_oil, "
+            "first_24_month_oil, first_60_month_oil, prod_cumulative_sum_oil"
         )
+        if server_side_motivated_filter:
+            query = query.eq("motivated", True)
+        query = query.order("id", desc=False).limit(PAGE_SIZE)
         if last_id:
             query = query.gt("id", last_id)
-        result = query.execute()
-        batch = result.data or []
-        if not batch:
+        try:
+            result = query.execute()
+            page_rows = result.data or []
+        except Exception as exc:
+            if (
+                server_side_motivated_filter
+                and "statement timeout" in str(exc).lower()
+            ):
+                print(
+                    "Server-side motivated filter timed out; "
+                    "falling back to client-side motivated filtering."
+                )
+                all_owners = []
+                last_id = None
+                page_num = 0
+                server_side_motivated_filter = False
+                continue
+            raise
+
+        if not page_rows:
             break
 
+        page_num += 1
+        if server_side_motivated_filter:
+            batch = page_rows
+        else:
+            batch = [row for row in page_rows if bool(row.get("motivated"))]
+
         all_owners.extend(batch)
-        last_id = str(batch[-1]["id"])
+        last_id = str(page_rows[-1]["id"])
         print(
-            f"Fetched page {len(all_owners) // PAGE_SIZE + (1 if len(all_owners) % PAGE_SIZE else 0)}: "
-            f"{len(batch)} owners, total so far: {len(all_owners)}"
+            f"Fetched page {page_num}: {len(batch)} motivated owners in page, "
+            f"total so far: {len(all_owners)}"
         )
-        if len(batch) < PAGE_SIZE:
+        if len(page_rows) < PAGE_SIZE:
             break
 
     print(f"Total motivated owners fetched: {len(all_owners)}")
@@ -313,6 +336,38 @@ def main() -> None:
             parcels_gdf.at[idx, "max_propensity_score"] = to_int(
                 highest.get("propensity_score")
             )
+            # Field name: most common non-null field across owners in tract.
+            field_names = [
+                owner.get("field_name")
+                for owner in owners
+                if (owner.get("field_name") or "")
+            ]
+            top_field = (
+                Counter(str(name).strip() for name in field_names).most_common(1)[0][0]
+                if field_names
+                else "Unknown"
+            )
+            parcels_gdf.at[idx, "field_name"] = top_field
+
+            # First date: earliest lease start date among tract owners.
+            first_dates = [
+                str(owner.get("first_date", ""))[:10]
+                for owner in owners
+                if owner.get("first_date")
+            ]
+            earliest_date = min(first_dates) if first_dates else ""
+            parcels_gdf.at[idx, "first_date"] = earliest_date
+
+            # Estimated lease expiration: assume 3-year primary term.
+            est_expiration = "Unknown"
+            if earliest_date:
+                try:
+                    d = datetime.strptime(earliest_date, "%Y-%m-%d")
+                    exp_year = d.year + 3
+                    est_expiration = f"{d.strftime('%b')} {exp_year}"
+                except Exception:
+                    pass
+            parcels_gdf.at[idx, "est_lease_expiration"] = est_expiration
             parcels_gdf.at[idx, "owner_count"] = len(owners)
             parcels_gdf.at[idx, "top_owner"] = highest.get("owner_name") or ""
             parcels_gdf.at[idx, "top_owner_state"] = (
@@ -411,6 +466,9 @@ def main() -> None:
             )
         else:
             parcels_gdf.at[idx, "max_propensity_score"] = 0
+            parcels_gdf.at[idx, "field_name"] = "Unknown"
+            parcels_gdf.at[idx, "first_date"] = ""
+            parcels_gdf.at[idx, "est_lease_expiration"] = "Unknown"
             parcels_gdf.at[idx, "owner_count"] = 0
             parcels_gdf.at[idx, "top_owner"] = ""
             parcels_gdf.at[idx, "top_owner_state"] = ""
