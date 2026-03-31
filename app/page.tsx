@@ -385,6 +385,46 @@ export default function Home() {
         >
           MINERAL MAP
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button
+            onClick={() => {
+              setNavMenuOpen(false)
+              window.location.href = '/'
+            }}
+            style={{
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 10,
+              border: '0.5px solid rgba(239,159,39,0.5)',
+              background: 'rgba(239,159,39,0.18)',
+              color: '#EF9F27',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Map
+          </button>
+          <button
+            onClick={() => {
+              setNavMenuOpen(false)
+              window.location.href = '/crm'
+            }}
+            style={{
+              fontSize: 11,
+              padding: '4px 10px',
+              borderRadius: 10,
+              border: '0.5px solid #2A2F3E',
+              background: '#1E2535',
+              color: '#F5F3EE',
+              cursor: 'pointer',
+              fontFamily: 'monospace',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            CRM
+          </button>
+        </div>
         <div style={{ textAlign: 'center', color: '#7A7870', fontSize: 11 }}>
           Gonzales County, TX · 553 tracts
         </div>
