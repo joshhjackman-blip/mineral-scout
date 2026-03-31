@@ -168,6 +168,83 @@ export default function Map({
         }
       })
 
+      // Enriched parcels polygon layer
+      fetch('/gonzales_parcels_enriched.geojson')
+        .then((r) => r.json())
+        .then((data) => {
+          if (!m.getSource('parcels')) {
+            m.addSource('parcels', { type: 'geojson', data })
+          }
+
+          if (!m.getLayer('parcels-fill')) {
+            m.addLayer({
+              id: 'parcels-fill',
+              type: 'fill',
+              source: 'parcels',
+              paint: {
+                'fill-color': [
+                  'interpolate',
+                  ['linear'],
+                  ['get', 'propensity_score'],
+                  0,
+                  '#1E2535',
+                  4,
+                  '#BA7517',
+                  7,
+                  '#EF9F27',
+                ],
+                'fill-opacity': 0.6,
+              },
+            })
+          }
+
+          if (!m.getLayer('parcels-outline')) {
+            m.addLayer({
+              id: 'parcels-outline',
+              type: 'line',
+              source: 'parcels',
+              paint: {
+                'line-color': '#EF9F27',
+                'line-width': 0.5,
+                'line-opacity': 0.4,
+              },
+            })
+          }
+
+          m.on('click', 'parcels-fill', (e) => {
+            const props = e.features?.[0]?.properties
+            if (props && onOwnerClick) {
+              onOwnerClick({
+                id: 0,
+                owner_name: String(props.owner_name ?? 'Unknown Owner'),
+                mailing_city: String(props.mailing_city ?? ''),
+                mailing_state: String(props.mailing_state ?? ''),
+                operator_name: String(props.operator_name ?? ''),
+                propensity_score: Number(props.propensity_score ?? 0),
+                motivated: props.motivated === true || props.motivated === 'true',
+                out_of_state:
+                  props.out_of_state === true || props.out_of_state === 'true',
+                acreage: null,
+                prod_cumulative_sum_oil: null,
+                rrc_lease_id: null,
+                latitude: null,
+                longitude: null,
+                well_status: String(props.well_status ?? 'UNKNOWN'),
+              })
+            }
+          })
+
+          m.on('mouseenter', 'parcels-fill', () => {
+            m.getCanvas().style.cursor = 'pointer'
+          })
+          m.on('mouseleave', 'parcels-fill', () => {
+            m.getCanvas().style.cursor = ''
+          })
+        })
+        .catch((err) => {
+          console.error('Failed to load parcels GeoJSON:', err)
+        })
+
       m.on('click', 'owners-layer', (e) => {
         const props = e.features?.[0]?.properties
         if (props?.raw) {
