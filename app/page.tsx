@@ -687,19 +687,21 @@ export default function Home() {
                                 fontSize: 10,
                                 padding: '3px 10px',
                                 borderRadius: 4,
-                                background: 'transparent',
-                                border: '0.5px solid #2A2F3E',
-                                color: '#7A7870',
+                                background: 'rgba(55,138,221,0.14)',
+                                border: '0.5px solid rgba(55,138,221,0.5)',
+                                color: '#378ADD',
                                 cursor: 'pointer',
                                 fontFamily: 'monospace',
                               }}
                               onMouseEnter={(e) => {
-                                e.currentTarget.style.borderColor = '#EF9F27'
-                                e.currentTarget.style.color = '#EF9F27'
+                                e.currentTarget.style.borderColor = '#63AEFF'
+                                e.currentTarget.style.background = 'rgba(55,138,221,0.24)'
+                                e.currentTarget.style.color = '#63AEFF'
                               }}
                               onMouseLeave={(e) => {
-                                e.currentTarget.style.borderColor = '#2A2F3E'
-                                e.currentTarget.style.color = '#7A7870'
+                                e.currentTarget.style.borderColor = 'rgba(55,138,221,0.5)'
+                                e.currentTarget.style.background = 'rgba(55,138,221,0.14)'
+                                e.currentTarget.style.color = '#378ADD'
                               }}
                             >
                               + Add to pipeline
