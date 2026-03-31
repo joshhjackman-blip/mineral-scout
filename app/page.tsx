@@ -69,6 +69,8 @@ type TractRecord = {
   first_60_month_oil?: number
 }
 
+type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
+
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
@@ -143,17 +145,44 @@ export default function Home() {
   const [showOwners, setShowOwners] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
+  const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
+  const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
+  const [pipelineSaving, setPipelineSaving] = useState(false)
   const [pipelineOwners, setPipelineOwners] = useState<Set<string>>(new Set())
   const [toast, setToast] = useState<string | null>(null)
+  const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToastType(type)
+    setToast(message)
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  const getDefaultPipelineTag = (owner: TractOwner): PipelineTag => {
+    const score = toNumber(owner.propensity_score)
+    if (score >= 8) return 'hot'
+    if (score >= 6) return 'nurture'
+    return 'prospect'
+  }
 
   const handleSkipTrace = (owner: TractOwner) => {
     setSkipTracing(owner)
   }
 
-  const handleAddToPipeline = async (owner: TractOwner) => {
+  const handleOpenAddToPipeline = (owner: TractOwner) => {
+    setPipelineCandidate(owner)
+    setPipelineTag(getDefaultPipelineTag(owner))
+  }
+
+  const handleAddToPipelineConfirm = async () => {
+    if (!pipelineCandidate) return
+    setPipelineSaving(true)
+
+    const owner = pipelineCandidate
     const tractAbstract = selected?.ABSTRACT_L ?? selected?.abstract_label ?? ''
     const tractSurvey = selected?.LEVEL1_SUR ?? selected?.level1_sur ?? ''
+
     const { error } = await supabase.from('deals').insert({
       owner_name: owner.owner_name,
       tract_abstract: tractAbstract,
@@ -166,13 +195,13 @@ export default function Home() {
       acreage: owner.acreage ?? null,
       propensity_score: owner.propensity_score ?? 0,
       source: 'map',
-      tag: 'prospect',
+      tag: pipelineTag,
     })
 
     if (error) {
       console.error('Failed to add owner to pipeline:', error.message)
-      setToast(`Failed to add ${owner.owner_name}`)
-      setTimeout(() => setToast(null), 3000)
+      showToast(`Failed to add ${owner.owner_name}: ${error.message}`, 'error')
+      setPipelineSaving(false)
       return
     }
 
@@ -181,8 +210,9 @@ export default function Home() {
       next.add(owner.owner_name)
       return next
     })
-    setToast(`${owner.owner_name} added to pipeline`)
-    setTimeout(() => setToast(null), 3000)
+    setPipelineSaving(false)
+    setPipelineCandidate(null)
+    showToast(`${owner.owner_name} added to pipeline (${pipelineTag.replace('_', ' ')})`)
   }
 
   const handleSkipTraceConfirm = async () => {
@@ -211,8 +241,7 @@ export default function Home() {
 
     if (error) {
       console.error('Failed to save skip trace deal:', error.message)
-      setToast(`Failed to skip trace ${skipTracing.owner_name}`)
-      setTimeout(() => setToast(null), 3000)
+      showToast(`Failed to skip trace ${skipTracing.owner_name}: ${error.message}`, 'error')
       return
     }
 
@@ -222,8 +251,7 @@ export default function Home() {
       return next
     })
     setSkipTracing(null)
-    setToast(`${skipTracing.owner_name} skip traced and added to pipeline`)
-    setTimeout(() => setToast(null), 3000)
+    showToast(`${skipTracing.owner_name} skip traced and added to pipeline`)
     setTimeout(() => {
       window.location.href = '/crm'
     }, 1000)
@@ -681,7 +709,7 @@ export default function Home() {
                             </div>
                           ) : (
                             <button
-                              onClick={() => handleAddToPipeline(owner)}
+                              onClick={() => handleOpenAddToPipeline(owner)}
                               style={{
                                 marginTop: 6,
                                 fontSize: 10,
@@ -1074,8 +1102,8 @@ export default function Home() {
             left: '50%',
             transform: 'translateX(-50%)',
             background: '#1E2535',
-            border: '0.5px solid #7AB835',
-            color: '#7AB835',
+            border: toastType === 'error' ? '0.5px solid #F44336' : '0.5px solid #7AB835',
+            color: toastType === 'error' ? '#F44336' : '#7AB835',
             fontSize: 12,
             padding: '10px 20px',
             borderRadius: 8,
@@ -1084,7 +1112,108 @@ export default function Home() {
             boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
           }}
         >
-          ✓ {toast}
+          {toastType === 'error' ? '✕' : '✓'} {toast}
+        </div>
+      )}
+
+      {pipelineCandidate && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1001,
+          }}
+        >
+          <div
+            style={{
+              background: '#1E2535',
+              border: '0.5px solid #2A2F3E',
+              borderRadius: 12,
+              padding: 24,
+              width: 360,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#F5F3EE', marginBottom: 8 }}>
+              Add owner to pipeline
+            </div>
+            <div style={{ fontSize: 12, color: '#7A7870', marginBottom: 14 }}>
+              {pipelineCandidate.owner_name}
+            </div>
+            <div style={{ fontSize: 11, color: '#7A7870', marginBottom: 8 }}>
+              Select category
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+              {([
+                { key: 'prospect', label: 'Prospect' },
+                { key: 'hot', label: 'Hot' },
+                { key: 'nurture', label: 'Nurture' },
+                { key: 'not_interested', label: 'Not Interested' },
+              ] as Array<{ key: PipelineTag; label: string }>).map((option) => (
+                <button
+                  key={option.key}
+                  onClick={() => setPipelineTag(option.key)}
+                  style={{
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border:
+                      pipelineTag === option.key
+                        ? '0.5px solid rgba(55,138,221,0.8)'
+                        : '0.5px solid #2A2F3E',
+                    background:
+                      pipelineTag === option.key
+                        ? 'rgba(55,138,221,0.2)'
+                        : 'transparent',
+                    color: pipelineTag === option.key ? '#8CC4FF' : '#7A7870',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  if (pipelineSaving) return
+                  setPipelineCandidate(null)
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: 6,
+                  background: 'transparent',
+                  border: '0.5px solid #2A2F3E',
+                  color: '#7A7870',
+                  fontSize: 12,
+                  cursor: pipelineSaving ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddToPipelineConfirm}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: 6,
+                  background: 'rgba(55,138,221,0.2)',
+                  border: '0.5px solid rgba(55,138,221,0.8)',
+                  color: '#8CC4FF',
+                  fontSize: 12,
+                  cursor: pipelineSaving ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {pipelineSaving ? 'Saving...' : 'Add to pipeline'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
