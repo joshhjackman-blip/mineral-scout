@@ -73,6 +73,15 @@ type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
+const COUNTY_STATS = [
+  { val: '73,589', lbl: 'Total mineral owners' },
+  { val: '13,551', lbl: 'Out of state (18%)' },
+  { val: '13,724', lbl: 'Motivated sellers (6+)' },
+  { val: '3,950', lbl: 'Hot leads (8-10)' },
+  { val: '553', lbl: 'Survey tracts' },
+  { val: '4,512', lbl: 'Active wells' },
+]
+
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const parsed = Number(value)
@@ -488,8 +497,8 @@ export default function Home() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {[
             { val: '73,589', lbl: 'owners' },
-            { val: '13,551', lbl: 'out of state' },
-            { val: '13,152', lbl: 'motivated' },
+            { val: '3,950', lbl: 'hot leads' },
+            { val: '13,724', lbl: 'motivated' },
           ].map((s) => (
             <div
               key={s.lbl}
@@ -786,15 +795,9 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {[
-                  { value: '73,589', label: 'Total mineral owners' },
-                  { value: '13,551', label: 'Out of state (18%)' },
-                  { value: '13,152', label: 'Motivated sellers' },
-                  { value: '553', label: 'Survey tracts' },
-                  { value: '4,512', label: 'Active wells' },
-                ].map((card) => (
+                {COUNTY_STATS.map((card) => (
                   <div
-                    key={card.label}
+                    key={card.lbl}
                     style={{
                       background: '#FFFFFF',
                       borderRadius: 8,
@@ -804,9 +807,9 @@ export default function Home() {
                     }}
                   >
                     <div style={{ color: '#111827', fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700 }}>
-                      {card.value}
+                      {card.val}
                     </div>
-                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Inter, sans-serif' }}>{card.label}</div>
+                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Inter, sans-serif' }}>{card.lbl}</div>
                   </div>
                 ))}
               </div>
