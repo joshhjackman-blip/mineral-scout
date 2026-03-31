@@ -117,16 +117,37 @@ export default function Map({
       zoom: 10
     })
 
-    map.current.on('load', () => {
-      const m = map.current!
+    const handleParcelClick = (e: mapboxgl.MapLayerMouseEvent) => {
+      console.log('Parcel clicked:', e.features?.[0]?.properties)
+      const props = e.features?.[0]?.properties
+      if (props && onOwnerClick) {
+        onOwnerClick(props as unknown as Record<string, unknown>)
+      }
+    }
+    const handleParcelEnter = () => {
+      if (map.current) map.current.getCanvas().style.cursor = 'pointer'
+    }
+    const handleParcelLeave = () => {
+      if (map.current) map.current.getCanvas().style.cursor = ''
+    }
 
-      // Wells layer
+    const addLayers = () => {
+      if (!map.current) return
+      const m = map.current
+
+      // Remove existing style-bound layers/sources so re-adding is deterministic.
+      if (m.getLayer('parcels-fill')) m.removeLayer('parcels-fill')
+      if (m.getLayer('parcels-outline')) m.removeLayer('parcels-outline')
+      if (m.getLayer('wells-layer')) m.removeLayer('wells-layer')
+      if (m.getSource('parcels')) m.removeSource('parcels')
+      if (m.getSource('wells')) m.removeSource('wells')
+
       m.addSource('wells', {
         type: 'geojson',
         data: {
           type: 'FeatureCollection',
-          features: []
-        }
+          features: [],
+        },
       })
       m.addLayer({
         id: 'wells-layer',
@@ -141,20 +162,24 @@ export default function Map({
           'circle-opacity': 0.9,
           'circle-stroke-width': 1,
           'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 0.4
-        }
+          'circle-stroke-opacity': 0.4,
+        },
       })
 
-      // Enriched parcels polygon layer
       fetch('/gonzales_parcels_enriched.geojson')
         .then((r) => r.json())
         .then((data) => {
-          if (!m.getSource('parcels')) {
-            m.addSource('parcels', { type: 'geojson', data })
+          if (!map.current) return
+          const mm = map.current
+
+          if (mm.getSource('parcels')) {
+            ;(mm.getSource('parcels') as mapboxgl.GeoJSONSource).setData(data)
+          } else {
+            mm.addSource('parcels', { type: 'geojson', data })
           }
 
-          if (!m.getLayer('parcels-fill')) {
-            m.addLayer({
+          if (!mm.getLayer('parcels-fill')) {
+            mm.addLayer({
               id: 'parcels-fill',
               type: 'fill',
               source: 'parcels',
@@ -205,8 +230,8 @@ export default function Map({
             })
           }
 
-          if (!m.getLayer('parcels-outline')) {
-            m.addLayer({
+          if (!mm.getLayer('parcels-outline')) {
+            mm.addLayer({
               id: 'parcels-outline',
               type: 'line',
               source: 'parcels',
@@ -234,20 +259,12 @@ export default function Map({
             })
           }
 
-          m.on('click', 'parcels-fill', (e) => {
-            console.log('Parcel clicked:', e.features?.[0]?.properties)
-            const props = e.features?.[0]?.properties
-            if (props && onOwnerClick) {
-              onOwnerClick(props as unknown as Record<string, unknown>)
-            }
-          })
-
-          m.on('mouseenter', 'parcels-fill', () => {
-            m.getCanvas().style.cursor = 'pointer'
-          })
-          m.on('mouseleave', 'parcels-fill', () => {
-            m.getCanvas().style.cursor = ''
-          })
+          mm.off('click', 'parcels-fill', handleParcelClick)
+          mm.off('mouseenter', 'parcels-fill', handleParcelEnter)
+          mm.off('mouseleave', 'parcels-fill', handleParcelLeave)
+          mm.on('click', 'parcels-fill', handleParcelClick)
+          mm.on('mouseenter', 'parcels-fill', handleParcelEnter)
+          mm.on('mouseleave', 'parcels-fill', handleParcelLeave)
         })
         .catch((err) => {
           console.error('Failed to load parcels GeoJSON:', err)
@@ -255,7 +272,10 @@ export default function Map({
 
       updateWells()
       flyToSelectedTract()
-    })
+    }
+
+    map.current.on('style.load', addLayers)
+    if (map.current.isStyleLoaded()) addLayers()
   }, [onOwnerClick, updateWells, flyToSelectedTract])
 
   useEffect(() => {
