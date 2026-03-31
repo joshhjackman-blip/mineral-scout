@@ -78,22 +78,24 @@ export default function Map({
 
     const source = map.current.getSource('owners') as mapboxgl.GeoJSONSource | undefined
     if (source) {
+      const features = filtered.reduce<Array<GeoJSON.Feature<GeoJSON.Point, GeoJSON.GeoJsonProperties>>>((acc, owner) => {
+        if (!Number.isFinite(owner.longitude) || !Number.isFinite(owner.latitude)) {
+          return acc
+        }
+        acc.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [owner.longitude as number, owner.latitude as number],
+          },
+          properties: { ...owner, raw: JSON.stringify(owner) },
+        })
+        return acc
+      }, [])
+
       source.setData({
         type: 'FeatureCollection',
-        features: filtered
-          .map((o) => ({
-            type: 'Feature' as const,
-            geometry: {
-              type: 'Point' as const,
-              coordinates: [o.longitude, o.latitude],
-            },
-            properties: { ...o, raw: JSON.stringify(o) },
-          }))
-          .filter(
-            (f) =>
-              Number.isFinite(f.geometry.coordinates[0]) &&
-              Number.isFinite(f.geometry.coordinates[1])
-          ),
+        features,
       })
     }
   }, [owners, motivatedOnly, outOfStateOnly, showMotivated, minScore])
@@ -138,7 +140,16 @@ export default function Map({
       }
       for (const c of coords) pushCoords(c)
     }
-    pushCoords((feature.geometry as GeoJSON.Geometry).coordinates as unknown)
+    const geometry = feature.geometry as GeoJSON.Geometry
+    if ('coordinates' in geometry) {
+      pushCoords(geometry.coordinates as unknown)
+    } else if ('geometries' in geometry) {
+      for (const g of geometry.geometries) {
+        if ('coordinates' in g) {
+          pushCoords(g.coordinates as unknown)
+        }
+      }
+    }
     if (!bbox.isEmpty()) {
       map.current.fitBounds(bbox, { padding: 50, duration: 700 })
     }

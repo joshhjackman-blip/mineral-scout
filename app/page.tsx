@@ -19,6 +19,7 @@ const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 type TractOwner = {
   owner_name: string
   propensity_score: number
+  operator_name?: string
   mailing_city?: string
   mailing_state?: string
   mailing_zip?: string
@@ -141,11 +142,91 @@ export default function Home() {
   const [showWells, setShowWells] = useState(true)
   const [showOwners, setShowOwners] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
-  const [skipTracing, setSkipTracing] = useState<string | null>(null)
+  const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
+  const [pipelineOwners, setPipelineOwners] = useState<Set<string>>(new Set())
+  const [toast, setToast] = useState<string | null>(null)
   const [navMenuOpen, setNavMenuOpen] = useState(false)
 
-  const handleSkipTrace = (ownerName: string) => {
-    setSkipTracing(ownerName)
+  const handleSkipTrace = (owner: TractOwner) => {
+    setSkipTracing(owner)
+  }
+
+  const handleAddToPipeline = async (owner: TractOwner) => {
+    const tractAbstract = selected?.ABSTRACT_L ?? selected?.abstract_label ?? ''
+    const tractSurvey = selected?.LEVEL1_SUR ?? selected?.level1_sur ?? ''
+    const { error } = await supabase.from('deals').insert({
+      owner_name: owner.owner_name,
+      tract_abstract: tractAbstract,
+      tract_survey: tractSurvey,
+      operator_name: owner.operator_name ?? '',
+      mailing_city: owner.mailing_city ?? '',
+      mailing_state: owner.mailing_state ?? '',
+      mailing_zip: owner.mailing_zip ?? '',
+      mailing_address: owner.address_1 ?? owner.mailing_address ?? '',
+      acreage: owner.acreage ?? null,
+      propensity_score: owner.propensity_score ?? 0,
+      source: 'map',
+      tag: 'prospect',
+    })
+
+    if (error) {
+      console.error('Failed to add owner to pipeline:', error.message)
+      setToast(`Failed to add ${owner.owner_name}`)
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+
+    setPipelineOwners((prev) => {
+      const next = new Set(prev)
+      next.add(owner.owner_name)
+      return next
+    })
+    setToast(`${owner.owner_name} added to pipeline`)
+    setTimeout(() => setToast(null), 3000)
+  }
+
+  const handleSkipTraceConfirm = async () => {
+    if (!skipTracing) return
+
+    const tractAbstract = selected?.ABSTRACT_L ?? selected?.abstract_label ?? ''
+    const tractSurvey = selected?.LEVEL1_SUR ?? selected?.level1_sur ?? ''
+
+    const { error } = await supabase
+      .from('deals')
+      .insert({
+        owner_name: skipTracing.owner_name,
+        tract_abstract: tractAbstract,
+        tract_survey: tractSurvey,
+        operator_name: skipTracing.operator_name ?? '',
+        mailing_city: skipTracing.mailing_city ?? '',
+        mailing_state: skipTracing.mailing_state ?? '',
+        mailing_address: skipTracing.address_1 ?? skipTracing.mailing_address ?? '',
+        acreage: skipTracing.acreage ?? null,
+        propensity_score: skipTracing.propensity_score ?? 0,
+        source: 'skip_trace',
+        tag: 'skip_traced',
+        notes: 'Skip trace requested — contact info pending (phone/email placeholder)',
+      })
+      .select()
+
+    if (error) {
+      console.error('Failed to save skip trace deal:', error.message)
+      setToast(`Failed to skip trace ${skipTracing.owner_name}`)
+      setTimeout(() => setToast(null), 3000)
+      return
+    }
+
+    setPipelineOwners((prev) => {
+      const next = new Set(prev)
+      next.add(skipTracing.owner_name)
+      return next
+    })
+    setSkipTracing(null)
+    setToast(`${skipTracing.owner_name} skip traced and added to pipeline`)
+    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => {
+      window.location.href = '/crm'
+    }, 1000)
   }
 
   useEffect(() => {
@@ -594,9 +675,39 @@ export default function Home() {
                             {acreage > 0 ? `${acreage.toFixed(2)} acres` : 'Acreage unknown'} ·{' '}
                             {ownershipPct > 0 ? `${ownershipPct.toFixed(4)}%` : 'Ownership unknown'}
                           </div>
+                          {pipelineOwners.has(owner.owner_name) ? (
+                            <div style={{ fontSize: 10, color: '#7AB835', marginTop: 6 }}>
+                              ✓ In pipeline
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleAddToPipeline(owner)}
+                              style={{
+                                marginTop: 6,
+                                fontSize: 10,
+                                padding: '3px 10px',
+                                borderRadius: 4,
+                                background: 'transparent',
+                                border: '0.5px solid #2A2F3E',
+                                color: '#7A7870',
+                                cursor: 'pointer',
+                                fontFamily: 'monospace',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.borderColor = '#EF9F27'
+                                e.currentTarget.style.color = '#EF9F27'
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.borderColor = '#2A2F3E'
+                                e.currentTarget.style.color = '#7A7870'
+                              }}
+                            >
+                              + Add to pipeline
+                            </button>
+                          )}
                           {!hasPhone && !hasEmail ? (
                             <button
-                              onClick={() => handleSkipTrace(owner.owner_name)}
+                              onClick={() => handleSkipTrace(owner)}
                               style={{
                                 marginTop: 6,
                                 fontSize: 10,
@@ -827,7 +938,11 @@ export default function Home() {
               showWells={showWells}
               showMotivated={showOwners}
               onOwnerClick={(tract) => setSelected(tract)}
-              selectedTract={selected ?? null}
+              focusedTract={
+                selected
+                  ? { abstract_label: selected.abstract_label ?? selected.ABSTRACT_L ?? '' }
+                  : null
+              }
             />
           )}
         </div>
@@ -949,6 +1064,28 @@ export default function Home() {
         </div>
       </div>
 
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 60,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#1E2535',
+            border: '0.5px solid #7AB835',
+            color: '#7AB835',
+            fontSize: 12,
+            padding: '10px 20px',
+            borderRadius: 8,
+            fontFamily: 'monospace',
+            zIndex: 9999,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          }}
+        >
+          ✓ {toast}
+        </div>
+      )}
+
       {skipTracing && (
         <div
           style={{
@@ -974,7 +1111,7 @@ export default function Home() {
               Skip trace this owner?
             </div>
             <div style={{ fontSize: 12, color: '#7A7870', marginBottom: 6 }}>
-              {skipTracing}
+              {skipTracing.owner_name}
             </div>
             <div
               style={{
@@ -1012,10 +1149,7 @@ export default function Home() {
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  console.log('Skip tracing:', skipTracing)
-                  setSkipTracing(null)
-                }}
+                onClick={handleSkipTraceConfirm}
                 style={{
                   flex: 1,
                   padding: '9px',
