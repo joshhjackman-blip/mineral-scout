@@ -158,9 +158,9 @@ export default function Home() {
         {/* Prospect list */}
         <div style={{ flex: 1, overflowY: 'auto', borderTop: '0.5px solid #1E2535' }}>
           <div style={{ padding: '10px 12px 6px', fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', fontWeight: 600 }}>TOP PROSPECTS</div>
-          {topProspects.map((p) => (
+          {topProspects.map((p, index) => (
             <div
-              key={`${p.id}-${p.owner_name}`}
+              key={`${index}-${p.owner_name}`}
               onClick={() => setSelected(p)}
               style={{ padding: '8px 12px', borderBottom: '0.5px solid #1A1F2E', cursor: 'pointer', background: selected?.id === p.id ? '#1E2535' : 'transparent' }}
               onMouseEnter={(e) => { if (selected?.id !== p.id) (e.currentTarget as HTMLDivElement).style.background = '#161B27' }}

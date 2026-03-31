@@ -138,10 +138,10 @@ export default function Map({
         type: 'circle',
         source: 'owners',
         paint: {
-          'circle-radius': ['interpolate', ['linear'], ['get', 'score'], 0, 5, 10, 12],
+          'circle-radius': ['interpolate', ['linear'], ['get', 'propensity_score'], 0, 5, 10, 12],
           'circle-color': ['case',
-            ['>=', ['get', 'score'], 8], '#EF9F27',
-            ['>=', ['get', 'score'], 5], '#BA7517',
+            ['>=', ['get', 'propensity_score'], 8], '#EF9F27',
+            ['>=', ['get', 'propensity_score'], 5], '#BA7517',
             '#4A4F5E'
           ],
           'circle-opacity': 0.85,
