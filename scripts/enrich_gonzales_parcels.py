@@ -15,7 +15,7 @@ import json
 import os
 import re
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -369,16 +369,6 @@ def main() -> None:
             earliest_date = min(first_dates) if first_dates else ""
             parcels_gdf.at[idx, "first_date"] = earliest_date
 
-            # Estimated lease expiration: assume 3-year primary term.
-            est_expiration = "Unknown"
-            if earliest_date:
-                try:
-                    d = datetime.strptime(earliest_date, "%Y-%m-%d")
-                    exp_year = d.year + 3
-                    est_expiration = f"{d.strftime('%b')} {exp_year}"
-                except Exception:
-                    pass
-            parcels_gdf.at[idx, "est_lease_expiration"] = est_expiration
             parcels_gdf.at[idx, "owner_count"] = len(owners)
             parcels_gdf.at[idx, "top_owner"] = highest.get("owner_name") or ""
             parcels_gdf.at[idx, "top_owner_state"] = (
@@ -416,6 +406,47 @@ def main() -> None:
                 if decline_pct > -10
                 else "growing"
             )
+
+            # Lease status logic:
+            # - Active production: HBP (held by production), no fixed expiration.
+            # - No production: estimate from first date + 5-year primary term.
+            has_production = any(
+                (owner.get("prod_cumulative_sum_oil") or 0) > 0
+                for owner in owners
+            )
+            production_trend = str(
+                parcels_gdf.at[idx, "production_trend"] or "unknown"
+            )
+
+            if has_production:
+                if production_trend == "declining":
+                    est_expiration = "HBP - declining"
+                else:
+                    est_expiration = "HBP - active"
+            elif earliest_date:
+                try:
+                    d = datetime.strptime(earliest_date, "%Y-%m-%d")
+                    exp_year = d.year + 5
+                    exp_date = date(exp_year, d.month, 1)
+                    today = date.today()
+                    if exp_date < today:
+                        est_expiration = (
+                            f"Expired {d.strftime('%b %Y')} - open acreage"
+                        )
+                    else:
+                        months_left = (
+                            (exp_date.year - today.year) * 12
+                            + (exp_date.month - today.month)
+                        )
+                        est_expiration = (
+                            f"Exp {exp_date.strftime('%b %Y')} ({months_left}mo)"
+                        )
+                except Exception:
+                    est_expiration = "Unknown"
+            else:
+                est_expiration = "Unknown"
+
+            parcels_gdf.at[idx, "est_lease_expiration"] = est_expiration
             owners_for_panel: list[dict[str, Any]] = []
             for owner in sorted(
                 owners, key=lambda item: to_int(item.get("propensity_score")), reverse=True
