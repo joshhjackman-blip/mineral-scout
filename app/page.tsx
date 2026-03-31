@@ -7,7 +7,14 @@ import type { OwnerRecord, WellRecord } from './components/Map'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
-const scoreColor = (s: number) => (s >= 8 ? '#7AB835' : s >= 5 ? '#EF9F27' : '#D85A30')
+const scoreColor = (s: number) =>
+  s >= 9 ? '#B71C1C' :
+  s >= 8 ? '#F44336' :
+  s >= 7 ? '#FF9800' :
+  s >= 6 ? '#FFC107' :
+  s >= 5 ? '#8BC34A' :
+  s >= 4 ? '#4CAF50' :
+  '#2d6a2d'
 
 const parseNumber = (value: unknown): number | null => {
   if (value === null || value === undefined) return null
@@ -202,6 +209,19 @@ export default function Home() {
               <span style={{ fontSize: 12, color: '#F5F3EE' }}>{l.label}</span>
             </div>
           ))}
+        </div>
+
+        <div style={{ padding: '0 12px 12px' }}>
+          <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 8, fontWeight: 600 }}>PROPENSITY SCALE</div>
+          <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', marginBottom: 4 }}>
+            {['#1a3a1a','#2d6a2d','#4CAF50','#8BC34A','#FFC107','#FF9800','#F44336','#B71C1C'].map((c, i) => (
+              <div key={i} style={{ flex: 1, background: c }} />
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 9, color: '#7A7870' }}>Low</span>
+            <span style={{ fontSize: 9, color: '#7A7870' }}>High</span>
+          </div>
         </div>
 
         {/* Prospect list */}
