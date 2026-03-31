@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -52,6 +52,61 @@ export default function Map({
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
+
+  const updateOwners = useCallback(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return
+
+    console.log('Map received owners:', owners?.length, 'first owner:', owners?.[0])
+
+    const filtered = owners.filter((o) => {
+      if (motivatedOnly && !o.motivated) return false
+      if (outOfStateOnly && !o.out_of_state) return false
+      if (!showMotivated && o.motivated) return false
+      if (o.propensity_score < minScore) return false
+      return true
+    })
+
+    const source = map.current.getSource('owners') as mapboxgl.GeoJSONSource | undefined
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: filtered
+          .map((o) => ({
+            type: 'Feature' as const,
+            geometry: {
+              type: 'Point' as const,
+              coordinates: [o.longitude, o.latitude],
+            },
+            properties: { ...o, raw: JSON.stringify(o) },
+          }))
+          .filter(
+            (f) =>
+              Number.isFinite(f.geometry.coordinates[0]) &&
+              Number.isFinite(f.geometry.coordinates[1])
+          ),
+      })
+    }
+  }, [owners, motivatedOnly, outOfStateOnly, showMotivated, minScore])
+
+  const updateWells = useCallback(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return
+
+    const wellsSource = map.current.getSource('wells') as mapboxgl.GeoJSONSource | undefined
+    if (!wellsSource) return
+
+    if (showWells) {
+      wellsSource.setData({
+        type: 'FeatureCollection',
+        features: wells.map((w) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
+          properties: { ...w, status: w.well_status },
+        })),
+      })
+    } else {
+      wellsSource.setData({ type: 'FeatureCollection', features: [] })
+    }
+  }, [wells, showWells])
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return
@@ -121,50 +176,17 @@ export default function Map({
       })
       m.on('mouseenter', 'owners-layer', () => { m.getCanvas().style.cursor = 'pointer' })
       m.on('mouseleave', 'owners-layer', () => { m.getCanvas().style.cursor = '' })
+
+      updateOwners()
+      updateWells()
     })
-  }, [onOwnerClick])
+  }, [onOwnerClick, updateOwners, updateWells])
 
   useEffect(() => {
-    if (!map.current) return
-    const filtered = owners.filter(o => {
-      if (motivatedOnly && !o.motivated) return false
-      if (outOfStateOnly && !o.out_of_state) return false
-      if (!showMotivated && o.motivated) return false
-      if (o.propensity_score < minScore) return false
-      return true
-    })
-    const source = map.current.getSource('owners') as mapboxgl.GeoJSONSource
-    if (source) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: filtered.map(o => ({
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [Number(o.longitude), Number(o.latitude)],
-          },
-          properties: { ...o, raw: JSON.stringify(o) }
-        })).filter((f) =>
-          Number.isFinite(f.geometry.coordinates[0]) && Number.isFinite(f.geometry.coordinates[1])
-        )
-      })
-    }
-    const wellsSource = map.current.getSource('wells') as mapboxgl.GeoJSONSource
-    if (wellsSource) {
-      if (showWells) {
-        wellsSource.setData({
-          type: 'FeatureCollection',
-          features: wells.map(w => ({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-            properties: { ...w, status: w.well_status }
-          }))
-        })
-      } else {
-        wellsSource.setData({ type: 'FeatureCollection', features: [] })
-      }
-    }
-  }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated])
+    if (!map.current || !map.current.isStyleLoaded()) return
+    updateOwners()
+    updateWells()
+  }, [owners, wells, motivatedOnly, outOfStateOnly, minScore, showWells, showMotivated, updateOwners, updateWells])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
