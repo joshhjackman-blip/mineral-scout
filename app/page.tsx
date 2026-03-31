@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 
 import { supabase } from '@/lib/supabase'
-import type { OwnerRecord, WellRecord } from './components/Map'
+import type { OwnerRecord } from './components/Map'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -15,15 +15,6 @@ const scoreColor = (s: number) =>
   s >= 5 ? '#8BC34A' :
   s >= 4 ? '#4CAF50' :
   '#2d6a2d'
-
-const parseNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-const toBool = (value: unknown): boolean => value === true
 
 type ParcelSelection = {
   max_propensity_score: number
@@ -43,7 +34,6 @@ export default function Home() {
   const [showWells, setShowWells] = useState(true)
   const [showMotivated, setShowMotivated] = useState(true)
   const [owners, setOwners] = useState<OwnerRecord[]>([])
-  const [wells, setWells] = useState<WellRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<(OwnerRecord & Partial<ParcelSelection>) | null>(null)
 
@@ -58,102 +48,22 @@ export default function Home() {
   }, [selected?.owners_json])
 
   useEffect(() => {
-    let mounted = true
-
-    const loadData = async () => {
+    async function loadData() {
       setLoading(true)
-
-      const { data: ownerRows, error: ownerError } = await supabase
+      const { data, error } = await supabase
         .from('motivated_owners_with_coords')
-        .select(
-          'owner_name, mailing_city, mailing_state, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id, latitude, longitude, well_status'
-        )
+        .select('*')
         .order('propensity_score', { ascending: false })
         .limit(500)
-
-      if (ownerError) {
-        console.error('Failed to load owners:', ownerError.message)
+      if (error) {
+        console.error('Failed to load:', error.message)
       } else {
-        console.log('Owners loaded successfully:', ownerRows?.length)
+        console.log('Loaded owners:', data?.length)
+        setOwners((data ?? []) as OwnerRecord[])
       }
-
-      const { data: wellsRows, error: wellsError } = await supabase
-        .from('gonzales_wells')
-        .select('rrc_lease_id, latitude, longitude, well_status, operator_name')
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
-        .limit(5000)
-
-      if (wellsError) {
-        console.error('Failed to load wells:', wellsError.message)
-      }
-
-      console.log('Total owners fetched:', ownerRows?.length)
-      console.log('Total wells fetched:', wellsRows?.length)
-      console.log('Sample owner rrc_lease_id:', ownerRows?.[0]?.rrc_lease_id)
-      console.log('Sample well rrc_lease_id:', wellsRows?.[0]?.rrc_lease_id)
-      console.log('Owner lease type:', typeof ownerRows?.[0]?.rrc_lease_id)
-      console.log('Well lease type:', typeof wellsRows?.[0]?.rrc_lease_id)
-
-      if (!mounted) return
-
-      const wellsData = (wellsRows ?? []) as WellRecord[]
-      const viewOwners: OwnerRecord[] = ((ownerRows ?? []) as Record<string, unknown>[])
-        .map((row, idx) => {
-          return {
-            id: idx + 1,
-            owner_name: ((row.owner_name as string | null) ?? 'Unknown Owner').trim(),
-            mailing_city: ((row.mailing_city as string | null) ?? 'Unknown').trim(),
-            mailing_state: ((row.mailing_state as string | null) ?? 'TX').trim(),
-            operator_name: ((row.operator_name as string | null) ?? 'Unknown Operator').trim(),
-            propensity_score: parseNumber(row.propensity_score) ?? 0,
-            motivated: toBool(row.motivated),
-            out_of_state: toBool(row.out_of_state),
-            acreage: parseNumber(row.acreage),
-            prod_cumulative_sum_oil: parseNumber(row.prod_cumulative_sum_oil),
-            rrc_lease_id: ((row.rrc_lease_id as string | null) ?? null),
-            latitude: parseNumber(row.latitude),
-            longitude: parseNumber(row.longitude),
-            well_status: ((row.well_status as string | null) ?? 'UNKNOWN').trim(),
-          }
-        })
-
-      const displayOwners: OwnerRecord[] =
-        viewOwners.length > 0
-          ? viewOwners
-          : ((ownerRows ?? []) as Record<string, unknown>[])
-              .slice(0, 50)
-              .map((row, idx) => ({
-                id: idx + 1,
-                owner_name: ((row.owner_name as string | null) ?? 'Unknown Owner').trim(),
-                mailing_city: ((row.mailing_city as string | null) ?? 'Unknown').trim(),
-                mailing_state: ((row.mailing_state as string | null) ?? 'TX').trim(),
-                operator_name: ((row.operator_name as string | null) ?? 'Unknown Operator').trim(),
-                propensity_score: parseNumber(row.propensity_score) ?? 0,
-                motivated: toBool(row.motivated),
-                out_of_state: toBool(row.out_of_state),
-                acreage: parseNumber(row.acreage),
-                prod_cumulative_sum_oil: parseNumber(row.prod_cumulative_sum_oil),
-                rrc_lease_id: ((row.rrc_lease_id as string | null) ?? null),
-                latitude: null,
-                longitude: null,
-                well_status: 'UNKNOWN',
-              }))
-
-      setOwners(displayOwners)
-      setWells(wellsData)
-      setSelected((prev) => {
-        if (!prev) return null
-        return displayOwners.find((o) => o.id === prev.id) ?? null
-      })
       setLoading(false)
     }
-
     loadData()
-
-    return () => {
-      mounted = false
-    }
   }, [])
 
   const filtered = useMemo(
@@ -286,7 +196,7 @@ export default function Home() {
         ) : (
           <MineralMap
             owners={owners}
-            wells={wells}
+            wells={[]}
             motivatedOnly={motivatedOnly}
             outOfStateOnly={outOfStateOnly}
             minScore={minScore}
