@@ -56,30 +56,34 @@ def canonical_lease_name(value: Any) -> str:
 
 def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     all_owners: list[dict[str, Any]] = []
-    page = 0
+    last_id: str | None = None
 
     while True:
-        # Pull lightweight core fields first to avoid statement timeouts.
-        result = (
+        # Use keyset pagination to avoid deep OFFSET scan timeouts.
+        query = (
             client.table("gonzales_mineral_ownership")
             .select(
-                "id, owner_name, mailing_city, mailing_state, operator_name, "
-                "propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
-                "county_lease_name, field_name, mailing_zip, mailing_address"
+                "id, owner_name, mailing_city, mailing_state, mailing_zip, mailing_address, "
+                "operator_name, propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
+                "county_lease_name, field_name, first_6_month_oil, first_12_month_oil, "
+                "first_24_month_oil, first_60_month_oil, prod_cumulative_sum_oil"
             )
             .eq("motivated", True)
             .order("id", desc=False)
-            .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
-            .execute()
+            .limit(PAGE_SIZE)
         )
+        if last_id:
+            query = query.gt("id", last_id)
+        result = query.execute()
         batch = result.data or []
         if not batch:
             break
 
         all_owners.extend(batch)
-        page += 1
+        last_id = str(batch[-1]["id"])
         print(
-            f"Fetched page {page}: {len(batch)} owners, total so far: {len(all_owners)}"
+            f"Fetched page {len(all_owners) // PAGE_SIZE + (1 if len(all_owners) % PAGE_SIZE else 0)}: "
+            f"{len(batch)} owners, total so far: {len(all_owners)}"
         )
         if len(batch) < PAGE_SIZE:
             break
@@ -315,6 +319,37 @@ def main() -> None:
                 highest.get("mailing_state") or ""
             )
             parcels_gdf.at[idx, "top_operator"] = top_operator
+
+            # Tract-level production aggregates for charting.
+            oil_6 = [float(owner.get("first_6_month_oil", 0) or 0) for owner in owners]
+            oil_12 = [float(owner.get("first_12_month_oil", 0) or 0) for owner in owners]
+            oil_24 = [float(owner.get("first_24_month_oil", 0) or 0) for owner in owners]
+            oil_60 = [float(owner.get("first_60_month_oil", 0) or 0) for owner in owners]
+            oil_cum = [
+                float(owner.get("prod_cumulative_sum_oil", 0) or 0) for owner in owners
+            ]
+
+            parcels_gdf.at[idx, "first_6_month_oil"] = sum(oil_6)
+            parcels_gdf.at[idx, "first_12_month_oil"] = sum(oil_12)
+            parcels_gdf.at[idx, "first_24_month_oil"] = sum(oil_24)
+            parcels_gdf.at[idx, "first_60_month_oil"] = sum(oil_60)
+            parcels_gdf.at[idx, "prod_cumulative_sum_oil"] = sum(oil_cum)
+
+            avg_early = sum(oil_6) / max(len(oil_6), 1)
+            avg_late = sum(oil_60) / max(len(oil_60), 1)
+            decline_pct = (
+                round((avg_early - avg_late) / max(avg_early, 1) * 100, 1)
+                if avg_early > 0
+                else 0
+            )
+            parcels_gdf.at[idx, "decline_pct"] = decline_pct
+            parcels_gdf.at[idx, "production_trend"] = (
+                "declining"
+                if decline_pct > 30
+                else "stable"
+                if decline_pct > -10
+                else "growing"
+            )
             owners_for_panel: list[dict[str, Any]] = []
             for owner in sorted(
                 owners, key=lambda item: to_int(item.get("propensity_score")), reverse=True
@@ -357,7 +392,9 @@ def main() -> None:
                         "operator_name": owner.get("operator_name", "") or "",
                         "acreage": owner.get("acreage", 0),
                         "ownership_pct": (
-                            ownership_pct if ownership_pct is not None else owner.get("ownership_pct", 0)
+                            ownership_pct
+                            if ownership_pct is not None
+                            else owner.get("ownership_pct", 0)
                         ),
                     }
                 )
@@ -379,6 +416,13 @@ def main() -> None:
             parcels_gdf.at[idx, "top_owner_state"] = ""
             parcels_gdf.at[idx, "top_operator"] = ""
             parcels_gdf.at[idx, "owners_json"] = "[]"
+            parcels_gdf.at[idx, "first_6_month_oil"] = 0
+            parcels_gdf.at[idx, "first_12_month_oil"] = 0
+            parcels_gdf.at[idx, "first_24_month_oil"] = 0
+            parcels_gdf.at[idx, "first_60_month_oil"] = 0
+            parcels_gdf.at[idx, "prod_cumulative_sum_oil"] = 0
+            parcels_gdf.at[idx, "decline_pct"] = 0
+            parcels_gdf.at[idx, "production_trend"] = "stable"
 
     # 5) Save and copy
     OUTPUT_PARCELS.parent.mkdir(parents=True, exist_ok=True)
