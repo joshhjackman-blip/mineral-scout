@@ -51,6 +51,12 @@ export default function Map({
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
+  const onOwnerClickRef = useRef(onOwnerClick)
+  const showWellsRef = useRef(showWells)
+
+  useEffect(() => {
+    onOwnerClickRef.current = onOwnerClick
+  }, [onOwnerClick])
 
   const flyToSelectedTract = useCallback(() => {
     if (!map.current || !map.current.isStyleLoaded() || !focusedTract?.abstract_label) return
@@ -102,8 +108,8 @@ export default function Map({
       console.log('First feature:', e.features?.[0])
       console.log('Properties:', e.features?.[0]?.properties)
       const props = e.features?.[0]?.properties
-      if (props && onOwnerClick) {
-        onOwnerClick(props as unknown as Record<string, unknown>)
+      if (props && onOwnerClickRef.current) {
+        onOwnerClickRef.current(props as unknown as Record<string, unknown>)
       }
     }
     const handleParcelEnter = () => {
@@ -313,7 +319,11 @@ export default function Map({
               }
 
               if (map.current.getLayer('wells-layer')) {
-                map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
+                map.current.setLayoutProperty(
+                  'wells-layer',
+                  'visibility',
+                  showWellsRef.current ? 'visible' : 'none'
+                )
               }
             })
         })
@@ -337,15 +347,20 @@ export default function Map({
       if (!map.current) return
       map.current.off('load', setupLayers)
     }
-  }, [onOwnerClick, flyToSelectedTract, showWells])
+  }, [])
 
   useEffect(() => {
+    showWellsRef.current = showWells
     if (!map.current || !map.current.isStyleLoaded()) return
     if (map.current.getLayer('wells-layer')) {
       map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
     }
+  }, [showWells])
+
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return
     flyToSelectedTract()
-  }, [showWells, flyToSelectedTract])
+  }, [flyToSelectedTract])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#F8F8F8' }} />
 }
