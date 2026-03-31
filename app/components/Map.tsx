@@ -147,8 +147,13 @@ export default function Map({
       if (m.getSource('wells')) m.removeSource('wells')
 
       fetch('/gonzales_parcels_enriched.geojson')
-        .then((r) => r.json())
+        .then((r) => {
+          console.log('GeoJSON fetch status:', r.status, r.ok)
+          return r.json()
+        })
         .then((data) => {
+          console.log('GeoJSON loaded, features:', data.features?.length)
+          console.log('First feature geometry type:', data.features?.[0]?.geometry?.type)
           if (!map.current) return
           const mm = map.current
 
@@ -318,12 +323,19 @@ export default function Map({
       flyToSelectedTract()
     }
 
-    map.current.on('style.load', addLayers)
-    if (map.current.isStyleLoaded()) addLayers()
+    const setupLayers = () => {
+      if (!map.current?.isStyleLoaded()) {
+        map.current?.once('style.load', setupLayers)
+        return
+      }
+      addLayers()
+    }
+
+    map.current.once('load', setupLayers)
 
     return () => {
       if (!map.current) return
-      map.current.off('style.load', addLayers)
+      map.current.off('load', setupLayers)
     }
   }, [onOwnerClick, flyToSelectedTract, showWells])
 
