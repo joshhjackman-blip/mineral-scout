@@ -40,8 +40,6 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
 
-      const ownerAbort = new AbortController()
-      const ownerTimeout = setTimeout(() => ownerAbort.abort(), 10000)
       const { data: ownerRows, error: ownerError } = await supabase
         .from('gonzales_mineral_ownership')
         .select(
@@ -50,11 +48,11 @@ export default function Home() {
         .eq('motivated', true)
         .order('propensity_score', { ascending: false })
         .limit(500)
-        .abortSignal(ownerAbort.signal)
-      clearTimeout(ownerTimeout)
 
       if (ownerError) {
         console.error('Failed to load owners:', ownerError.message)
+      } else {
+        console.log('Owners loaded successfully:', ownerRows?.length)
       }
 
       const { data: wellsRows, error: wellsError } = await supabase
@@ -62,6 +60,7 @@ export default function Home() {
         .select('rrc_lease_id, latitude, longitude, well_status, operator_name')
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
+        .limit(5000)
 
       if (wellsError) {
         console.error('Failed to load wells:', wellsError.message)
