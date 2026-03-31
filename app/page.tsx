@@ -423,46 +423,78 @@ export default function Home() {
                   background: '#FFFFFF',
                   border: '1px solid #E5E7EB',
                   borderRadius: 8,
-                  minWidth: 140,
+                  minWidth: 220,
                   overflow: 'hidden',
                   boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
                 }}
               >
-                <button
-                  onClick={() => {
-                    window.location.href = '/'
-                  }}
+                <a
+                  href="/"
                   style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#111827',
-                    fontSize: 12,
-                    padding: '10px 12px',
-                    cursor: 'pointer',
+                    display: 'block',
+                    padding: '10px 16px',
+                    fontSize: 13,
+                    color: '#374151',
+                    textDecoration: 'none',
+                    fontFamily: 'Inter, sans-serif',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#FEF3C7'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  Map
-                </button>
-                <button
-                  onClick={() => {
-                    window.location.href = '/crm'
-                  }}
+                  ← Map
+                </a>
+                <a
+                  href="/crm"
                   style={{
-                    width: '100%',
-                    textAlign: 'left',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#111827',
-                    fontSize: 12,
-                    padding: '10px 12px',
-                    cursor: 'pointer',
-                    borderTop: '1px solid #E5E7EB',
+                    display: 'block',
+                    padding: '10px 16px',
+                    fontSize: 13,
+                    color: '#374151',
+                    textDecoration: 'none',
+                    fontFamily: 'Inter, sans-serif',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#FEF3C7'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  CRM
-                </button>
+                  CRM & Pipeline
+                </a>
+                <a
+                  href="/methodology"
+                  style={{
+                    display: 'block',
+                    padding: '10px 16px',
+                    fontSize: 13,
+                    color: '#374151',
+                    textDecoration: 'none',
+                    fontFamily: 'Inter, sans-serif',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#FEF3C7'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  📊 Methodology
+                </a>
+                <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
+                <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+                  Gonzales County, TX
+                </div>
+                <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                  553 tracts · 73,589 owners
+                </div>
               </div>
             )}
           </div>
@@ -513,6 +545,20 @@ export default function Home() {
               <span style={{ fontSize: 11, color: '#B45309', marginLeft: 4 }}>{s.lbl}</span>
             </div>
           ))}
+          <a
+            href="/methodology"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Methodology
+          </a>
           <a
             href="/crm"
             style={{

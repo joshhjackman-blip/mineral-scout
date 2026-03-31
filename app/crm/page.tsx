@@ -280,6 +280,20 @@ export default function CrmPage() {
           >
             ← Map
           </a>
+          <a
+            href="/methodology"
+            style={{
+              color: '#6B7280',
+              fontSize: 12,
+              textDecoration: 'none',
+              border: '1px solid #E5E7EB',
+              borderRadius: 999,
+              padding: '4px 12px',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Methodology
+          </a>
         </div>
         <div style={{ color: '#111827', fontSize: 12, fontWeight: 600 }}>CRM & Pipeline</div>
       </div>
