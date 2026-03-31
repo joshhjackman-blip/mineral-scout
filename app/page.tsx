@@ -1144,7 +1144,7 @@ export default function Home() {
               {pipelineCandidate.owner_name}
             </div>
             <div style={{ fontSize: 11, color: '#7A7870', marginBottom: 8 }}>
-              Select category
+              Label
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
               {([
