@@ -936,7 +936,6 @@ export default function Home() {
           ) : (
             <MineralMap
               showWells={showWells}
-              wells={[]}
               onOwnerClick={(tract) => setSelected(tract)}
               focusedTract={
                 selected

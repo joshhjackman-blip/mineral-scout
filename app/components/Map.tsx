@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { supabase } from '@/lib/supabase'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -41,37 +42,15 @@ export type WellRecord = {
 
 export default function Map({
   showWells,
-  wells,
   onOwnerClick,
   focusedTract,
 }: {
   showWells: boolean
-  wells: WellRecord[]
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusedTract?: { abstract_label: string } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
-
-  const updateWells = useCallback(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return
-
-    const wellsSource = map.current.getSource('wells') as mapboxgl.GeoJSONSource | undefined
-    if (!wellsSource) return
-
-    if (showWells) {
-      wellsSource.setData({
-        type: 'FeatureCollection',
-        features: wells.map((w) => ({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [w.lng, w.lat] },
-          properties: { ...w, status: w.well_status },
-        })),
-      })
-    } else {
-      wellsSource.setData({ type: 'FeatureCollection', features: [] })
-    }
-  }, [wells, showWells])
 
   const flyToSelectedTract = useCallback(() => {
     if (!map.current || !map.current.isStyleLoaded() || !focusedTract?.abstract_label) return
@@ -130,6 +109,28 @@ export default function Map({
     const handleParcelLeave = () => {
       if (map.current) map.current.getCanvas().style.cursor = ''
     }
+    const handleWellsClick = (e: mapboxgl.MapLayerMouseEvent) => {
+      const props = e.features?.[0]?.properties as Record<string, unknown> | undefined
+      if (!props || !map.current) return
+      new mapboxgl.Popup({ closeButton: false, offset: 10 })
+        .setLngLat((e.features?.[0]?.geometry as GeoJSON.Point).coordinates as [number, number])
+        .setHTML(`
+          <div style="font-family:Inter,sans-serif;font-size:12px;padding:4px">
+            <div style="font-weight:600;margin-bottom:2px">${String(props.lease ?? 'Well')}</div>
+            <div style="color:#6b7280">${String(props.operator ?? '')}</div>
+            <div style="margin-top:4px;font-size:11px;color:${props.status === 'PRODUCING' ? '#16a34a' : '#dc2626'}">
+              ● ${String(props.status ?? 'Unknown')}
+            </div>
+          </div>
+        `)
+        .addTo(map.current)
+    }
+    const handleWellsEnter = () => {
+      if (map.current) map.current.getCanvas().style.cursor = 'pointer'
+    }
+    const handleWellsLeave = () => {
+      if (map.current) map.current.getCanvas().style.cursor = ''
+    }
 
     const addLayers = () => {
       if (!map.current) return
@@ -141,30 +142,6 @@ export default function Map({
       if (m.getLayer('wells-layer')) m.removeLayer('wells-layer')
       if (m.getSource('parcels')) m.removeSource('parcels')
       if (m.getSource('wells')) m.removeSource('wells')
-
-      m.addSource('wells', {
-        type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: [],
-        },
-      })
-      m.addLayer({
-        id: 'wells-layer',
-        type: 'circle',
-        source: 'wells',
-        paint: {
-          'circle-radius': 5,
-          'circle-color': ['case',
-            ['==', ['get', 'status'], 'PRODUCING'], '#7AB835',
-            '#D85A30'
-          ],
-          'circle-opacity': 0.9,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 0.4,
-        },
-      })
 
       fetch('/gonzales_parcels_enriched.geojson')
         .then((r) => r.json())
@@ -265,24 +242,95 @@ export default function Map({
           mm.on('click', 'parcels-fill', handleParcelClick)
           mm.on('mouseenter', 'parcels-fill', handleParcelEnter)
           mm.on('mouseleave', 'parcels-fill', handleParcelLeave)
+
+          // Add wells layer from Supabase
+          supabase
+            .from('gonzales_wells')
+            .select('latitude, longitude, well_status, operator_name, lease_name')
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null)
+            .then(({ data: wellsRows }) => {
+              if (!wellsRows || !map.current) return
+              const wellsGeoJSON: GeoJSON.FeatureCollection = {
+                type: 'FeatureCollection',
+                features: wellsRows
+                  .map((w) => ({
+                    type: 'Feature' as const,
+                    geometry: {
+                      type: 'Point' as const,
+                      coordinates: [Number(w.longitude), Number(w.latitude)],
+                    },
+                    properties: {
+                      status: w.well_status,
+                      operator: w.operator_name,
+                      lease: w.lease_name,
+                    },
+                  }))
+                  .filter(
+                    (f) =>
+                      Number.isFinite((f.geometry as GeoJSON.Point).coordinates[0]) &&
+                      Number.isFinite((f.geometry as GeoJSON.Point).coordinates[1])
+                  ),
+              }
+
+              if (map.current.getSource('wells')) {
+                ;(map.current.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
+              } else {
+                map.current.addSource('wells', { type: 'geojson', data: wellsGeoJSON })
+                map.current.addLayer({
+                  id: 'wells-layer',
+                  type: 'circle',
+                  source: 'wells',
+                  paint: {
+                    'circle-radius': 4,
+                    'circle-color': [
+                      'case',
+                      ['==', ['get', 'status'], 'PRODUCING'], '#16a34a',
+                      ['==', ['get', 'status'], 'SHUT IN'], '#dc2626',
+                      '#9ca3af',
+                    ],
+                    'circle-opacity': 0.85,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-opacity': 0.6,
+                  },
+                })
+
+                map.current.off('click', 'wells-layer', handleWellsClick)
+                map.current.off('mouseenter', 'wells-layer', handleWellsEnter)
+                map.current.off('mouseleave', 'wells-layer', handleWellsLeave)
+                map.current.on('click', 'wells-layer', handleWellsClick)
+                map.current.on('mouseenter', 'wells-layer', handleWellsEnter)
+                map.current.on('mouseleave', 'wells-layer', handleWellsLeave)
+              }
+
+              if (map.current.getLayer('wells-layer')) {
+                map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
+              }
+            })
         })
         .catch((err) => {
           console.error('Failed to load parcels GeoJSON:', err)
         })
-
-      updateWells()
       flyToSelectedTract()
     }
 
     map.current.on('style.load', addLayers)
     if (map.current.isStyleLoaded()) addLayers()
-  }, [onOwnerClick, updateWells, flyToSelectedTract])
+
+    return () => {
+      if (!map.current) return
+      map.current.off('style.load', addLayers)
+    }
+  }, [onOwnerClick, flyToSelectedTract, showWells])
 
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return
-    updateWells()
+    if (map.current.getLayer('wells-layer')) {
+      map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
+    }
     flyToSelectedTract()
-  }, [wells, showWells, updateWells, flyToSelectedTract])
+  }, [showWells, flyToSelectedTract])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%', background: '#F8F8F8' }} />
 }
