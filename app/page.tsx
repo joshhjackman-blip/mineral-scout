@@ -21,11 +21,15 @@ type TractOwner = {
   propensity_score: number
   mailing_city?: string
   mailing_state?: string
+  mailing_zip?: string
+  address_1?: string
   mailing_address?: string
   out_of_state?: boolean
   motivated?: boolean
   acreage?: number
   ownership_pct?: number
+  phone?: string
+  email?: string
 }
 
 type TractRecord = {
@@ -113,6 +117,11 @@ export default function Home() {
   const [minScore, setMinScore] = useState(0)
   const [showWells, setShowWells] = useState(true)
   const [showOwners, setShowOwners] = useState(true)
+  const [skipTracing, setSkipTracing] = useState<string | null>(null)
+
+  const handleSkipTrace = (ownerName: string) => {
+    setSkipTracing(ownerName)
+  }
 
   useEffect(() => {
     let mounted = true
@@ -500,6 +509,8 @@ export default function Home() {
                   const score = toNumber(owner.propensity_score)
                   const acreage = toNumber(owner.acreage)
                   const ownershipPct = toNumber(owner.ownership_pct)
+                  const hasPhone = Boolean(owner.phone)
+                  const hasEmail = Boolean(owner.email)
                   return (
                     <div
                       key={`${owner.owner_name}-${index}`}
@@ -516,22 +527,56 @@ export default function Home() {
                           <div style={{ fontSize: 12, color: '#F5F3EE', fontWeight: 600 }}>
                             {index + 1}. {owner.owner_name}
                           </div>
-                          <div style={{ fontSize: 10, color: '#7A7870', marginTop: 3 }}>
-                            {owner.mailing_city}, {owner.mailing_state}
-                            {owner.out_of_state && (
-                              <span style={{ marginLeft: 6, color: '#EF9F27' }}>OOS</span>
-                            )}
-                            {owner.motivated && (
-                              <span style={{ marginLeft: 6, color: '#F44336' }}>HOT</span>
-                            )}
+                          <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
+                            {owner.address_1 || owner.mailing_address || 'Address unknown'}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#7A7870' }}>
+                            {owner.mailing_city || 'Unknown city'}, {owner.mailing_state || '--'} {owner.mailing_zip || ''}
                           </div>
                           <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
                             {acreage > 0 ? `${acreage.toFixed(2)} acres` : 'Acreage unknown'} ·{' '}
                             {ownershipPct > 0 ? `${ownershipPct.toFixed(4)}%` : 'Ownership unknown'}
                           </div>
-                          <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
-                            {owner.mailing_address || 'Mailing address unavailable'}
-                          </div>
+                          {!hasPhone && !hasEmail ? (
+                            <button
+                              onClick={() => handleSkipTrace(owner.owner_name)}
+                              style={{
+                                marginTop: 6,
+                                fontSize: 10,
+                                padding: '3px 10px',
+                                borderRadius: 4,
+                                background: 'transparent',
+                                border: '0.5px solid #4A4F5E',
+                                color: '#7A7870',
+                                cursor: 'pointer',
+                                fontFamily: 'monospace',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#EF9F27')}
+                              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#4A4F5E')}
+                            >
+                              ⟳ Skip trace contact info
+                            </button>
+                          ) : (
+                            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              {hasPhone && (
+                                <div style={{ fontSize: 10, color: '#F5F3EE', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ color: '#7A7870' }}>📞</span>
+                                  <span>{owner.phone}</span>
+                                  <a href={`tel:${owner.phone}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>call</a>
+                                </div>
+                              )}
+                              {hasEmail && (
+                                <div style={{ fontSize: 10, color: '#F5F3EE', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ color: '#7A7870' }}>✉</span>
+                                  <span>{owner.email}</span>
+                                  <a href={`mailto:${owner.email}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>email</a>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                           <span
@@ -544,14 +589,16 @@ export default function Home() {
                           >
                             {score}/10
                           </span>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button style={{ fontSize: 10, borderRadius: 6, border: '0.5px solid #3A4155', background: '#1E2535', color: '#7A7870', padding: '3px 6px', cursor: 'pointer' }}>
-                              Phone · Skip trace
-                            </button>
-                            <button style={{ fontSize: 10, borderRadius: 6, border: '0.5px solid #3A4155', background: '#1E2535', color: '#7A7870', padding: '3px 6px', cursor: 'pointer' }}>
-                              Email · Skip trace
-                            </button>
-                          </div>
+                          {owner.out_of_state && (
+                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.3)' }}>
+                              OOS
+                            </span>
+                          )}
+                          {owner.motivated && (
+                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.3)' }}>
+                              HOT
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -685,6 +732,92 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      {skipTracing && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: '#1E2535',
+              border: '0.5px solid #2A2F3E',
+              borderRadius: 12,
+              padding: '24px',
+              width: 320,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#F5F3EE', marginBottom: 8 }}>
+              Skip trace this owner?
+            </div>
+            <div style={{ fontSize: 12, color: '#7A7870', marginBottom: 6 }}>
+              {skipTracing}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: '#7A7870',
+                marginBottom: 20,
+                padding: '10px 12px',
+                background: '#0D1220',
+                borderRadius: 6,
+                lineHeight: 1.5,
+              }}
+            >
+              This will search for phone number and email address.
+              Uses 1 skip trace credit from your monthly allowance.
+              <br />
+              <br />
+              <span style={{ color: '#EF9F27' }}>
+                Prospector: 100/mo · Professional: 500/mo · Enterprise: unlimited
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setSkipTracing(null)}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: 6,
+                  background: 'transparent',
+                  border: '0.5px solid #2A2F3E',
+                  color: '#7A7870',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  console.log('Skip tracing:', skipTracing)
+                  setSkipTracing(null)
+                }}
+                style={{
+                  flex: 1,
+                  padding: '9px',
+                  borderRadius: 6,
+                  background: 'rgba(239,159,39,0.15)',
+                  border: '0.5px solid rgba(239,159,39,0.4)',
+                  color: '#EF9F27',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  fontFamily: 'monospace',
+                }}
+              >
+                Skip trace →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
