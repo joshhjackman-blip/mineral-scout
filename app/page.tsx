@@ -31,6 +31,9 @@ type ParcelSelection = {
   top_owner: string
   top_owner_state: string
   top_operator: string
+  abstract_label: string
+  level1_sur: string
+  owners_json: string
 }
 
 export default function Home() {
@@ -43,6 +46,16 @@ export default function Home() {
   const [wells, setWells] = useState<WellRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<(OwnerRecord & Partial<ParcelSelection>) | null>(null)
+
+  const selectedOwnersList = useMemo(() => {
+    if (!selected?.owners_json) return []
+    try {
+      const parsed = JSON.parse(selected.owners_json) as Array<Record<string, unknown>>
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }, [selected?.owners_json])
 
   useEffect(() => {
     let mounted = true
@@ -287,42 +300,82 @@ export default function Home() {
       {/* OWNER PANEL */}
       {selected && (
         <div style={{ width: 280, background: '#161B27', borderLeft: '0.5px solid #2A2F3E', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '14px 16px 12px', borderBottom: '0.5px solid #1E2535', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em', marginBottom: 5 }}>MINERAL OWNER</div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: '#F5F3EE', lineHeight: 1.35 }}>{selected.owner_name}</div>
+          {/* Tract header */}
+          <div style={{ padding: '14px 16px 12px', borderBottom: '0.5px solid #1E2535' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+              <div style={{ fontSize: 9, color: '#7A7870', letterSpacing: '0.08em' }}>TRACT</div>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#7A7870', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
             </div>
-            <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#7A7870', fontSize: 18, cursor: 'pointer', padding: 0, lineHeight: 1 }}>×</button>
+            <div style={{ fontSize: 13, fontWeight: 500, color: '#F5F3EE' }}>
+              {selected.abstract_label ?? 'Unknown Abstract'}
+            </div>
+            <div style={{ fontSize: 11, color: '#7A7870', marginTop: 2 }}>
+              {selected.level1_sur ?? 'Unknown Survey'}
+            </div>
+            <div style={{ fontSize: 11, color: '#7A7870', marginTop: 2 }}>
+              {selected.owner_count ?? 0} owners · {selected.top_operator ?? 'Unknown operator'}
+            </div>
           </div>
-          <div style={{ padding: '10px 16px', borderBottom: '0.5px solid #1E2535', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {selected.out_of_state && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'rgba(239,159,39,0.12)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.3)' }}>Out of state</span>}
-            {selected.motivated && <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'rgba(122,184,53,0.12)', color: '#7AB835', border: '0.5px solid rgba(122,184,53,0.3)' }}>Motivated</span>}
-            <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, background: 'rgba(255,255,255,0.06)', color: '#7A7870', border: '0.5px solid rgba(255,255,255,0.12)' }}>{selected.operator_name}</span>
+
+          {/* Owner list */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {selectedOwnersList.map((owner, i) => {
+              const score = Number(owner.propensity_score ?? 0)
+              const scoreChipColor =
+                score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
+              const acreage = Number(owner.acreage ?? 0)
+              const ownershipPct = Number(owner.ownership_pct ?? 0)
+              return (
+                <div key={i} style={{ padding: '10px 16px', borderBottom: '0.5px solid #1A1F2E' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1, marginRight: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, color: '#F5F3EE', lineHeight: 1.3 }}>
+                        {i + 1}. {String(owner.owner_name ?? 'Unknown Owner')}
+                      </div>
+                      <div style={{ fontSize: 10, color: '#7A7870', marginTop: 2 }}>
+                        {owner.mailing_city && owner.mailing_state
+                          ? `${String(owner.mailing_city)}, ${String(owner.mailing_state)}`
+                          : 'Address unknown'}
+                      </div>
+                      {acreage > 0 && (
+                        <div style={{ fontSize: 10, color: '#7A7870' }}>
+                          {acreage.toFixed(2)} acres
+                        </div>
+                      )}
+                      {ownershipPct > 0 && (
+                        <div style={{ fontSize: 10, color: '#7A7870' }}>
+                          {ownershipPct.toFixed(4)}% ownership
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: scoreChipColor, fontFamily: 'monospace' }}>
+                        {score}/10
+                      </div>
+                      {owner.out_of_state && (
+                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.3)' }}>
+                          OOS
+                        </span>
+                      )}
+                      {owner.motivated && (
+                        <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 8, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.3)' }}>
+                          HOT
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
-          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1E2535', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {[
-              { label: 'PROPENSITY', val: `${selected.propensity_score}/10` },
-              { label: 'LOCATION', val: `${selected.mailing_city}, ${selected.mailing_state}` },
-              { label: 'OPERATOR', val: selected.operator_name },
-              { label: 'STATUS', val: selected.motivated ? 'Motivated' : 'Standard' },
-            ].map(m => (
-              <div key={m.label} style={{ background: '#1E2535', borderRadius: 6, padding: '8px 10px' }}>
-                <div style={{ fontSize: 9, color: '#7A7870', marginBottom: 3 }}>{m.label}</div>
-                <div style={{ fontSize: 13, fontWeight: 500, color: '#F5F3EE', fontFamily: 'monospace' }}>{m.val}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #1E2535', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Top owner: {selected.top_owner ?? selected.owner_name}</div>
-            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Owners in tract: {selected.owner_count ?? 1}</div>
-            <div style={{ fontSize: 12, color: '#F5F3EE' }}>Location: {selected.top_owner_state ?? selected.mailing_state}</div>
-          </div>
-          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8, marginTop: 'auto' }}>
-            <button style={{ width: '100%', padding: '9px', borderRadius: 6, background: 'rgba(239,159,39,0.15)', border: '0.5px solid rgba(239,159,39,0.4)', color: '#EF9F27', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
-              Add to pipeline
+
+          {/* Actions */}
+          <div style={{ padding: '12px 16px', borderTop: '0.5px solid #1E2535', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button style={{ width: '100%', padding: '9px', borderRadius: 6, background: 'rgba(244,67,54,0.15)', border: '0.5px solid rgba(244,67,54,0.4)', color: '#F44336', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
+              Add all to pipeline
             </button>
             <button style={{ width: '100%', padding: '9px', borderRadius: 6, background: 'transparent', border: '0.5px solid #2A2F3E', color: '#7A7870', fontSize: 12, cursor: 'pointer', fontFamily: 'monospace' }}>
-              Get contact info
+              Export tract owners
             </button>
           </div>
         </div>

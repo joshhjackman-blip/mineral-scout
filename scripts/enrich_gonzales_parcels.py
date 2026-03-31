@@ -59,6 +59,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     page = 0
 
     while True:
+        # Pull lightweight core fields first to avoid statement timeouts.
         result = (
             client.table("gonzales_mineral_ownership")
             .select(
@@ -84,6 +85,26 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
             break
 
     print(f"Total motivated owners fetched: {len(all_owners)}")
+
+    # Fetch raw_record separately in manageable chunks and merge by id.
+    owners_by_id: dict[str, dict[str, Any]] = {
+        str(owner["id"]): owner for owner in all_owners
+    }
+    owner_ids = list(owners_by_id.keys())
+    chunk_size = 500
+    for start in range(0, len(owner_ids), chunk_size):
+        chunk_ids = owner_ids[start : start + chunk_size]
+        result = (
+            client.table("gonzales_mineral_ownership")
+            .select("id, raw_record")
+            .in_("id", chunk_ids)
+            .execute()
+        )
+        for row in result.data or []:
+            owner = owners_by_id.get(str(row.get("id")))
+            if owner is not None:
+                owner["raw_record"] = row.get("raw_record")
+
     return all_owners
 
 
@@ -294,7 +315,38 @@ def main() -> None:
                 highest.get("mailing_state") or ""
             )
             parcels_gdf.at[idx, "top_operator"] = top_operator
-            parcels_gdf.at[idx, "owners_json"] = json.dumps(owners)
+            owners_for_panel: list[dict[str, Any]] = []
+            for owner in sorted(
+                owners, key=lambda item: to_int(item.get("propensity_score")), reverse=True
+            ):
+                raw_record = owner.get("raw_record")
+                interest_value = None
+                if isinstance(raw_record, dict):
+                    interest_value = raw_record.get("Interest")
+                try:
+                    ownership_pct = (
+                        round(float(interest_value) * 100.0, 4)
+                        if interest_value is not None
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    ownership_pct = None
+
+                owners_for_panel.append(
+                    {
+                        "owner_name": owner.get("owner_name"),
+                        "propensity_score": to_int(owner.get("propensity_score")),
+                        "mailing_city": owner.get("mailing_city", ""),
+                        "mailing_state": owner.get("mailing_state", ""),
+                        "out_of_state": bool(owner.get("out_of_state", False)),
+                        "motivated": bool(owner.get("motivated", False)),
+                        "operator_name": owner.get("operator_name", ""),
+                        "acreage": owner.get("acreage", 0),
+                        "ownership_pct": ownership_pct,
+                    }
+                )
+
+            parcels_gdf.at[idx, "owners_json"] = json.dumps(owners_for_panel)
 
             polygon_rankings.append(
                 {

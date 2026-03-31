@@ -25,6 +25,9 @@ export type OwnerRecord = {
   top_owner_state?: string
   max_propensity_score?: number
   owners_json?: string
+  top_operator?: string
+  abstract_label?: string
+  level1_sur?: string
 }
 
 export type WellRecord = {
@@ -290,7 +293,13 @@ export default function Map({
                 owner_count: ownerCount,
                 top_owner_state: String(props.top_owner_state ?? ''),
                 max_propensity_score: maxScore,
-                owners_json: String(props.owners_json ?? '[]'),
+                owners_json:
+                  typeof props.owners_json === 'string'
+                    ? props.owners_json
+                    : JSON.stringify(props.owners_json ?? []),
+                top_operator: String(props.top_operator ?? ''),
+                abstract_label: String(props.ABSTRACT_L ?? ''),
+                level1_sur: String(props.LEVEL1_SUR ?? ''),
               })
             }
           })
