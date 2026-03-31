@@ -126,6 +126,7 @@ export default function Home() {
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
   const [showWells, setShowWells] = useState(true)
+  const [showPermits, setShowPermits] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
@@ -924,6 +925,7 @@ export default function Home() {
           ) : (
             <MineralMap
               showWells={showWells}
+              showPermits={showPermits}
               onOwnerClick={(tract) => setSelected(tract)}
             />
           )}
@@ -1035,6 +1037,9 @@ export default function Home() {
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
         <button onClick={() => setShowWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showWells ? '#7AB835' : '#6B7280', cursor: 'pointer' }}>
           ● Active wells
+        </button>
+        <button onClick={() => setShowPermits((prev) => !prev)} style={{ background: 'none', border: 'none', color: showPermits ? '#2563eb' : '#6B7280', cursor: 'pointer' }}>
+          ● New permits
         </button>
 
         <span style={{ marginLeft: 'auto', fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Scale:</span>

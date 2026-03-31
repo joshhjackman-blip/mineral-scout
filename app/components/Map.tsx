@@ -26,9 +26,11 @@ export type OwnerRecord = {
 
 export default function Map({
   showWells,
+  showPermits,
   onOwnerClick,
 }: {
   showWells: boolean
+  showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -168,6 +170,73 @@ export default function Map({
           map.current.on('mouseenter', 'wells-layer', () => { m.getCanvas().style.cursor = 'pointer' })
           map.current.on('mouseleave', 'wells-layer', () => { m.getCanvas().style.cursor = '' })
         })
+
+      // Add permits layer
+      supabase
+        .from('gonzales_permits')
+        .select('latitude, longitude, operator_name, lease_name, filed_date, permit_type')
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
+        .then(({ data: permits }) => {
+          if (!permits || !map.current) return
+          const permitsGeoJSON: GeoJSON.FeatureCollection = {
+            type: 'FeatureCollection',
+            features: permits
+              .filter(
+                (p) =>
+                  Number.isFinite(Number(p.longitude)) && Number.isFinite(Number(p.latitude))
+              )
+              .map((p) => ({
+                type: 'Feature' as const,
+                geometry: {
+                  type: 'Point' as const,
+                  coordinates: [Number(p.longitude), Number(p.latitude)],
+                },
+                properties: {
+                  operator: p.operator_name,
+                  lease: p.lease_name,
+                  date: p.filed_date,
+                  type: p.permit_type,
+                },
+              })),
+          }
+          if (!map.current.getSource('permits')) {
+            map.current.addSource('permits', { type: 'geojson', data: permitsGeoJSON })
+            map.current.addLayer({
+              id: 'permits-layer',
+              type: 'circle',
+              source: 'permits',
+              layout: { visibility: showPermits ? 'visible' : 'none' },
+              paint: {
+                'circle-radius': 7,
+                'circle-color': '#2563eb',
+                'circle-opacity': 0.8,
+                'circle-stroke-width': 2,
+                'circle-stroke-color': '#ffffff',
+                'circle-stroke-opacity': 0.9,
+              },
+            })
+            map.current.on('click', 'permits-layer', (e) => {
+              const props = e.features?.[0]?.properties
+              if (!props || !map.current) return
+              new mapboxgl.Popup({ closeButton: false, offset: 10 })
+                .setLngLat((e.features![0].geometry as GeoJSON.Point).coordinates as [number, number])
+                .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+                  <div style="font-weight:600;color:#1d4ed8">New Permit Filed</div>
+                  <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
+                  <div style="color:#6b7280">${props.operator ?? ''}</div>
+                  <div style="color:#6b7280;font-size:11px">Filed: ${props.date ?? ''}</div>
+                </div>`)
+                .addTo(map.current)
+            })
+            map.current.on('mouseenter', 'permits-layer', () => {
+              m.getCanvas().style.cursor = 'pointer'
+            })
+            map.current.on('mouseleave', 'permits-layer', () => {
+              m.getCanvas().style.cursor = ''
+            })
+          }
+        })
     }
 
     m.on('load', tryAddLayers)
@@ -180,7 +249,10 @@ export default function Map({
     if (map.current.getLayer('wells-layer')) {
       map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
     }
-  }, [showWells])
+    if (map.current.getLayer('permits-layer')) {
+      map.current.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
+    }
+  }, [showWells, showPermits])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
