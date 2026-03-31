@@ -392,107 +392,112 @@ export default function Home() {
           height: 48,
           minHeight: 48,
           borderBottom: '0.5px solid #1E2535',
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr 1fr 1fr',
+          display: 'flex',
           alignItems: 'center',
           padding: '0 14px',
-          columnGap: 10,
+          gap: 12,
         }}
       >
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setNavMenuOpen((prev) => !prev)}
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 6,
-              border: '0.5px solid #2A2F3E',
-              background: '#1E2535',
-              color: '#F5F3EE',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              padding: 0,
-            }}
-            aria-label="Open navigation menu"
-          >
-            <span
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setNavMenuOpen((prev) => !prev)}
               style={{
-                display: 'inline-flex',
-                flexDirection: 'column',
-                gap: 3,
-                width: 12,
-              }}
-            >
-              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
-              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
-              <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
-            </span>
-          </button>
-          {navMenuOpen && (
-            <div
-              style={{
-                position: 'absolute',
-                top: 36,
-                left: 0,
-                zIndex: 1200,
-                background: '#1E2535',
+                width: 30,
+                height: 30,
+                borderRadius: 6,
                 border: '0.5px solid #2A2F3E',
-                borderRadius: 8,
-                minWidth: 140,
-                overflow: 'hidden',
-                boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
+                background: '#1E2535',
+                color: '#F5F3EE',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: 0,
               }}
+              aria-label="Open navigation menu"
             >
-              <button
-                onClick={() => {
-                  window.location.href = '/'
-                }}
+              <span
                 style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#F5F3EE',
-                  fontSize: 12,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  gap: 3,
+                  width: 12,
                 }}
               >
-                Map
-              </button>
-              <button
-                onClick={() => {
-                  window.location.href = '/crm'
-                }}
+                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+                <span style={{ display: 'block', height: 1.5, background: '#F5F3EE' }} />
+              </span>
+            </button>
+            {navMenuOpen && (
+              <div
                 style={{
-                  width: '100%',
-                  textAlign: 'left',
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#F5F3EE',
-                  fontSize: 12,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  borderTop: '0.5px solid #2A2F3E',
+                  position: 'absolute',
+                  top: 36,
+                  left: 0,
+                  zIndex: 1200,
+                  background: '#1E2535',
+                  border: '0.5px solid #2A2F3E',
+                  borderRadius: 8,
+                  minWidth: 140,
+                  overflow: 'hidden',
+                  boxShadow: '0 8px 20px rgba(0,0,0,0.35)',
                 }}
               >
-                CRM
-              </button>
-            </div>
-          )}
+                <button
+                  onClick={() => {
+                    window.location.href = '/'
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#F5F3EE',
+                    fontSize: 12,
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Map
+                </button>
+                <button
+                  onClick={() => {
+                    window.location.href = '/crm'
+                  }}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#F5F3EE',
+                    fontSize: 12,
+                    padding: '10px 12px',
+                    cursor: 'pointer',
+                    borderTop: '0.5px solid #2A2F3E',
+                  }}
+                >
+                  CRM
+                </button>
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              color: '#EF9F27',
+              fontFamily: 'monospace',
+              fontSize: 13,
+              letterSpacing: '0.12em',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            MINERAL MAP
+          </div>
         </div>
-        <div
-          style={{
-            color: '#EF9F27',
-            fontFamily: 'monospace',
-            fontSize: 13,
-            letterSpacing: '0.12em',
-            fontWeight: 600,
-          }}
-        >
-          MINERAL MAP
+        <div style={{ flex: 1, textAlign: 'center', color: '#7A7870', fontSize: 11 }}>
+          Gonzales County, TX · 553 tracts
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
@@ -533,34 +538,6 @@ export default function Home() {
           >
             CRM
           </button>
-        </div>
-        <div style={{ textAlign: 'center', color: '#7A7870', fontSize: 11 }}>
-          Gonzales County, TX · 553 tracts
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          {[
-            { label: 'owners', value: '73,589' },
-            { label: 'out of state', value: '13,551' },
-            { label: 'motivated', value: '13,152' },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              style={{
-                background: '#1E2535',
-                border: '0.5px solid #2A2F3E',
-                borderRadius: 999,
-                padding: '4px 10px',
-                display: 'flex',
-                gap: 6,
-                alignItems: 'center',
-              }}
-            >
-              <span style={{ color: '#EF9F27', fontFamily: 'monospace', fontSize: 11 }}>
-                {stat.value}
-              </span>
-              <span style={{ color: '#7A7870', fontSize: 10 }}>{stat.label}</span>
-            </div>
-          ))}
         </div>
       </div>
 
