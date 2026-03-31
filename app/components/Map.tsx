@@ -57,7 +57,7 @@ export default function Map({
   showMotivated: boolean
   owners: OwnerRecord[]
   wells: WellRecord[]
-  onOwnerClick: (owner: OwnerRecord) => void
+  onOwnerClick: (owner: Record<string, unknown>) => void
   focusedTract?: { abstract_label: string } | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -297,32 +297,7 @@ export default function Map({
             console.log('Parcel clicked:', e.features?.[0]?.properties)
             const props = e.features?.[0]?.properties
             if (props && onOwnerClick) {
-              onOwnerClick({
-                abstract_label: String(props.ABSTRACT_L ?? ''),
-                level1_sur: String(props.LEVEL1_SUR ?? ''),
-                owner_count: Number(props.owner_count ?? 0),
-                top_operator: String(props.top_operator ?? ''),
-                owners_json:
-                  typeof props.owners_json === 'string'
-                    ? props.owners_json
-                    : JSON.stringify(props.owners_json ?? []),
-                max_propensity_score: Number(props.max_propensity_score ?? 0),
-                // keep OwnerRecord shape compatibility
-                id: 0,
-                owner_name: String(props.top_owner ?? props.owner_name ?? 'Unknown Owner'),
-                mailing_city: '',
-                mailing_state: String(props.top_owner_state ?? ''),
-                operator_name: String(props.top_operator ?? props.operator_name ?? ''),
-                propensity_score: Number(props.max_propensity_score ?? props.propensity_score ?? 0),
-                motivated: Number(props.owner_count ?? 0) > 0,
-                out_of_state: false,
-                acreage: null,
-                prod_cumulative_sum_oil: null,
-                rrc_lease_id: null,
-                latitude: null,
-                longitude: null,
-                well_status: String(props.well_status ?? 'UNKNOWN'),
-              })
+              onOwnerClick(props as unknown as Record<string, unknown>)
             }
           })
 

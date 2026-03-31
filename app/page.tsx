@@ -32,6 +32,25 @@ type TractOwner = {
   email?: string
 }
 
+type TractSelection = {
+  abstract_label?: string
+  level1_sur?: string
+  owner_count?: number
+  top_operator?: string
+  owners_json?: string
+  max_propensity_score?: number
+  ABSTRACT_L?: string
+  LEVEL1_SUR?: string
+  field_name?: string
+  well_status?: string
+  first_date?: string
+  prod_cumulative_sum_oil?: number
+  first_6_month_oil?: number
+  first_12_month_oil?: number
+  first_24_month_oil?: number
+  first_60_month_oil?: number
+}
+
 type TractRecord = {
   abstract_label: string
   level1_sur: string
@@ -112,7 +131,7 @@ const estimateLeaseExpiration = (firstDate?: string) => {
 export default function Home() {
   const [owners, setOwners] = useState<OwnerRecord[]>([])
   const [tracts, setTracts] = useState<TractRecord[]>([])
-  const [selected, setSelected] = useState<Partial<TractRecord> | null>(null)
+  const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
@@ -214,6 +233,13 @@ export default function Home() {
     [productionSeries]
   )
 
+  const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
+  const surveyName = selected?.level1_sur ?? selected?.LEVEL1_SUR ?? 'Unknown'
+  const ownerCount = toNumber(selected?.owner_count)
+  const topOperator = selected?.top_operator ?? 'Unknown'
+  const ownersJson = selected?.owners_json ?? '[]'
+  const maxScore = toNumber(selected?.max_propensity_score)
+
   return (
     <div
       style={{
@@ -307,20 +333,20 @@ export default function Home() {
               </button>
 
               <div style={{ fontSize: 22, fontFamily: 'monospace', color: '#F5F3EE', fontWeight: 600 }}>
-                TRACT {selected.abstract_label}
+                TRACT {abstractLabel}
               </div>
-              <div style={{ color: '#7A7870', marginTop: 4 }}>{selected.level1_sur} Survey</div>
+              <div style={{ color: '#7A7870', marginTop: 4 }}>{surveyName} Survey</div>
               <div style={{ borderTop: '0.5px solid #2A2F3E', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
-                  {toNumber(selected.max_propensity_score)}/10 HOT
+                  {maxScore}/10 HOT
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
-                  {toNumber(selected.owner_count)} owners
+                  {ownerCount} owners
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', color: '#7A7870', border: '0.5px solid rgba(255,255,255,0.12)' }}>
-                  {selected.top_operator}
+                  {topOperator}
                 </span>
               </div>
 
@@ -361,7 +387,7 @@ export default function Home() {
               </div>
 
               <div style={{ fontSize: 12, color: '#EF9F27', fontWeight: 600, marginBottom: 8 }}>
-                ALL OWNERS IN TRACT ({selectedOwners.length})
+                ALL OWNERS IN TRACT ({parseOwners(ownersJson).length})
               </div>
               <div style={{ background: '#12192A', border: '0.5px solid #2A2F3E', borderRadius: 8, overflow: 'hidden' }}>
                 {selectedOwners.map((owner, index) => {
@@ -622,7 +648,7 @@ export default function Home() {
               minScore={minScore}
               showWells={showWells}
               showMotivated={showOwners}
-              onOwnerClick={(tract) => setSelected(tract as Partial<TractRecord>)}
+              onOwnerClick={(tract) => setSelected(tract)}
               selectedTract={selected ?? null}
             />
           )}
