@@ -583,8 +583,8 @@ export default function Home() {
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
-                <div style={{ height: 140 }}>
-                  <ResponsiveContainer width="100%" height="100%">
+                <div style={{ width: '100%', height: 140, minHeight: 140 }}>
+                  <ResponsiveContainer width="100%" height={140}>
                     <LineChart data={productionData}>
                       <XAxis dataKey="month" stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />
                       <YAxis stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />

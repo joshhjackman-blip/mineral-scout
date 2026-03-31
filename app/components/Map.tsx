@@ -97,7 +97,10 @@ export default function Map({
     })
 
     const handleParcelClick = (e: mapboxgl.MapLayerMouseEvent) => {
-      console.log('Parcel clicked:', e.features?.[0]?.properties)
+      console.log('Raw features:', e.features)
+      console.log('Feature count:', e.features?.length)
+      console.log('First feature:', e.features?.[0])
+      console.log('Properties:', e.features?.[0]?.properties)
       const props = e.features?.[0]?.properties
       if (props && onOwnerClick) {
         onOwnerClick(props as unknown as Record<string, unknown>)
@@ -152,7 +155,7 @@ export default function Map({
           if (mm.getSource('parcels')) {
             ;(mm.getSource('parcels') as mapboxgl.GeoJSONSource).setData(data)
           } else {
-            mm.addSource('parcels', { type: 'geojson', data })
+            mm.addSource('parcels', { type: 'geojson', data, generateId: true })
           }
 
           if (!mm.getLayer('parcels-fill')) {
