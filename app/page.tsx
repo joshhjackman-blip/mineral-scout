@@ -84,7 +84,7 @@ const scoreBadgeColor = (score: number) =>
 const COUNTY_STATS = [
   { val: '73,589', lbl: 'Total mineral owners' },
   { val: '13,551', lbl: 'Out of state (18%)' },
-  { val: '22,997', lbl: 'Motivated sellers (5+)' },
+  { val: '69,398', lbl: 'Motivated sellers (1+)' },
   { val: '3,950', lbl: 'Hot leads (8-10)' },
   { val: '553', lbl: 'Survey tracts' },
   { val: '4,512', lbl: 'Active wells' },
@@ -614,7 +614,7 @@ export default function Home() {
           {[
             { val: '73,589', lbl: 'owners' },
             { val: '3,950', lbl: 'hot leads' },
-            { val: '22,997', lbl: 'motivated' },
+            { val: '69,398', lbl: 'motivated' },
           ].map((s) => (
             <div
               key={s.lbl}
