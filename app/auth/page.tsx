@@ -16,23 +16,17 @@ export default function Auth() {
     console.log('handleSubmit called', { email, password, mode })
     setLoading(true)
     setError(null)
-    setMessage(null)
 
-    if (mode === 'login') {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInError) {
-        setError(signInError.message)
-      } else {
-        router.push('/')
-        router.refresh()
-      }
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    console.log('Supabase response:', { data, error })
+
+    if (error) {
+      console.error('Auth error:', error.message, error.status)
+      setError(error.message)
     } else {
-      const { error: signUpError } = await supabase.auth.signUp({ email, password })
-      if (signUpError) {
-        setError(signUpError.message)
-      } else {
-        setMessage('Check your email to confirm your account.')
-      }
+      console.log('Login success, redirecting...')
+      router.push('/')
+      router.refresh()
     }
     setLoading(false)
   }
