@@ -68,21 +68,31 @@ export default function Map({
           console.log('GeoJSON received, features:', data.features?.length)
           if (!map.current) return
 
-          map.current.addSource('parcels', { type: 'geojson', data })
+          const scoreExpr = [
+            'to-number',
+            ['coalesce', ['get', 'max_propensity_score'], 0],
+          ] as const
+
+          if (map.current.getLayer('parcels-outline')) map.current.removeLayer('parcels-outline')
+          if (map.current.getLayer('parcels-outline-casing')) map.current.removeLayer('parcels-outline-casing')
+          if (map.current.getLayer('parcels-fill')) map.current.removeLayer('parcels-fill')
+          if (map.current.getSource('parcels')) map.current.removeSource('parcels')
+
+          map.current.addSource('parcels', { type: 'geojson', data, generateId: true })
           map.current.addLayer({
             id: 'parcels-fill',
             type: 'fill',
             source: 'parcels',
             paint: {
               'fill-color': [
-                'step', ['get', 'max_propensity_score'],
+                'step', scoreExpr,
                 '#1a3a1a', 3, '#2d6a2d', 4, '#4CAF50',
                 5, '#8BC34A', 6, '#FFC107', 7, '#FF9800',
                 8, '#F44336', 9, '#B71C1C', 10, '#FF0000'
               ],
               'fill-opacity': [
-                'step', ['get', 'max_propensity_score'],
-                0.15, 3, 0.25, 4, 0.4, 5, 0.55,
+                'step', scoreExpr,
+                0.22, 3, 0.3, 4, 0.45, 5, 0.58,
                 6, 0.65, 7, 0.75, 8, 0.85, 9, 0.9, 10, 1.0
               ]
             }
@@ -98,7 +108,7 @@ export default function Map({
             paint: {
               // Dark casing improves separation between adjacent, similarly colored tracts.
               'line-color': '#0f172a',
-              'line-width': ['step', ['get', 'max_propensity_score'],
+              'line-width': ['step', scoreExpr,
                 1.4, 6, 2.0, 8, 2.8],
               'line-opacity': 0.45
             }
@@ -112,9 +122,9 @@ export default function Map({
               'line-cap': 'round',
             },
             paint: {
-              'line-color': ['step', ['get', 'max_propensity_score'],
+              'line-color': ['step', scoreExpr,
                 '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
-              'line-width': ['step', ['get', 'max_propensity_score'],
+              'line-width': ['step', scoreExpr,
                 0.8, 6, 1.2, 8, 1.9],
               'line-opacity': 0.95
             }
