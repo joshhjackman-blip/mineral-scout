@@ -29,31 +29,36 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Allow override in case BatchData updates route paths across API versions.
-    const endpoint =
-      process.env.BATCH_SKIP_TRACING_ENDPOINT ??
-      'https://api.batchdata.com/api/v1/property/skip-trace'
+    const response = await fetch('https://api.batchskiptracing.com/api/beta/peopleSarch', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        address,
+        city,
+        state,
+        zip,
+      }),
+    })
 
-    const response = await fetch(
-      endpoint,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          firstName,
-          lastName,
-          address,
-          city,
-          state,
-          zip,
-        }),
-      }
-    )
+    const responseText = await response.text()
+    console.log('BatchSkipTracing raw response:', responseText.substring(0, 500))
 
-    const data = (await response.json()) as SkipTraceApiResponse
+    let data: SkipTraceApiResponse
+    try {
+      data = JSON.parse(responseText) as SkipTraceApiResponse
+    } catch {
+      console.error(
+        'Failed to parse response as JSON:',
+        responseText.substring(0, 200)
+      )
+      return NextResponse.json({ error: 'Invalid API response' }, { status: 500 })
+    }
+
     console.log('BatchSkipTracing response:', JSON.stringify(data, null, 2))
 
     if (!response.ok) {
