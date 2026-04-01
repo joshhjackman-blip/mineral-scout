@@ -1,10 +1,8 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function Auth() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState<'login' | 'signup'>('login')
@@ -26,8 +24,7 @@ export default function Auth() {
       setError(error.message)
     } else {
       console.log('Login success, redirecting...')
-      router.push('/')
-      router.refresh()
+      window.location.href = '/'
     }
     setLoading(false)
   }

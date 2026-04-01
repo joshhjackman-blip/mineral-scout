@@ -29,13 +29,14 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // If not logged in and not on auth page, redirect to auth
-  if (!session && !req.nextUrl.pathname.startsWith('/auth')) {
+  const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
+  const isApiRoute = req.nextUrl.pathname.startsWith('/api')
+
+  if (!session && !isAuthPage && !isApiRoute) {
     return NextResponse.redirect(new URL('/auth', req.url))
   }
 
-  // If logged in and on auth page, redirect to map
-  if (session && req.nextUrl.pathname.startsWith('/auth')) {
+  if (session && isAuthPage) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
@@ -43,5 +44,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 }
