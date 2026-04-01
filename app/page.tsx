@@ -136,7 +136,9 @@ export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
-  const [showWells, setShowWells] = useState(true)
+  const [showActiveWells, setShowActiveWells] = useState(true)
+  const [showShutInWells, setShowShutInWells] = useState(true)
+  const [showUnknownWells, setShowUnknownWells] = useState(true)
   const [showPermits, setShowPermits] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
@@ -1038,7 +1040,9 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
-              showWells={showWells}
+              showActiveWells={showActiveWells}
+              showShutInWells={showShutInWells}
+              showUnknownWells={showUnknownWells}
               showPermits={showPermits}
               onOwnerClick={(tract) => setSelected(tract)}
             />
@@ -1149,8 +1153,14 @@ export default function Home() {
         <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
 
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
-        <button onClick={() => setShowWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showWells ? '#7AB835' : '#6B7280', cursor: 'pointer' }}>
+        <button onClick={() => setShowActiveWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showActiveWells ? '#16a34a' : '#6B7280', cursor: 'pointer' }}>
           ● Active wells
+        </button>
+        <button onClick={() => setShowShutInWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showShutInWells ? '#dc2626' : '#6B7280', cursor: 'pointer' }}>
+          ● Shut in wells
+        </button>
+        <button onClick={() => setShowUnknownWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showUnknownWells ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}>
+          ● Unknown wells
         </button>
         <button onClick={() => setShowPermits((prev) => !prev)} style={{ background: 'none', border: 'none', color: showPermits ? '#2563eb' : '#6B7280', cursor: 'pointer' }}>
           ● New permits

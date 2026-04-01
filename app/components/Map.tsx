@@ -25,11 +25,15 @@ export type OwnerRecord = {
 }
 
 export default function Map({
-  showWells,
+  showActiveWells,
+  showShutInWells,
+  showUnknownWells,
   showPermits,
   onOwnerClick,
 }: {
-  showWells: boolean
+  showActiveWells: boolean
+  showShutInWells: boolean
+  showUnknownWells: boolean
   showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
 }) {
@@ -97,7 +101,9 @@ export default function Map({
         ] as const
 
         if (map.current.getLayer('permits-layer')) map.current.removeLayer('permits-layer')
-        if (map.current.getLayer('wells-layer')) map.current.removeLayer('wells-layer')
+        if (map.current.getLayer('wells-unknown-layer')) map.current.removeLayer('wells-unknown-layer')
+        if (map.current.getLayer('wells-shut-in-layer')) map.current.removeLayer('wells-shut-in-layer')
+        if (map.current.getLayer('wells-active-layer')) map.current.removeLayer('wells-active-layer')
         if (map.current.getLayer('parcels-outline')) map.current.removeLayer('parcels-outline')
         if (map.current.getLayer('parcels-fill')) map.current.removeLayer('parcels-fill')
         if (map.current.getSource('permits')) map.current.removeSource('permits')
@@ -178,6 +184,13 @@ export default function Map({
           m.getCanvas().style.cursor = ''
         })
 
+        const toWellStatusGroup = (status: unknown): 'ACTIVE' | 'SHUT_IN' | 'UNKNOWN' => {
+          const value = String(status ?? '').toUpperCase().trim()
+          if (value.includes('PRODUCING') || value.includes('ACTIVE')) return 'ACTIVE'
+          if (value.includes('SHUT')) return 'SHUT_IN'
+          return 'UNKNOWN'
+        }
+
         const wellsGeoJSON: GeoJSON.FeatureCollection = {
           type: 'FeatureCollection',
           features: wells
@@ -185,51 +198,85 @@ export default function Map({
             .map((w) => ({
               type: 'Feature' as const,
               geometry: { type: 'Point' as const, coordinates: [Number(w.longitude), Number(w.latitude)] },
-              properties: { status: w.well_status, operator: w.operator_name, lease: w.lease_name }
+              properties: {
+                status: w.well_status,
+                status_group: toWellStatusGroup(w.well_status),
+                operator: w.operator_name,
+                lease: w.lease_name,
+              }
             }))
         }
 
-        // 3) Wells dots (above polygons)
+        // 3) Wells dots split by status (above polygons)
         map.current.addSource('wells', { type: 'geojson', data: wellsGeoJSON })
         map.current.addLayer({
-          id: 'wells-layer',
+          id: 'wells-active-layer',
           type: 'circle',
           source: 'wells',
-          layout: { visibility: showWells ? 'visible' : 'none' },
+          filter: ['==', ['get', 'status_group'], 'ACTIVE'],
+          layout: { visibility: showActiveWells ? 'visible' : 'none' },
           paint: {
-            'circle-radius': ['case',
-              ['==', ['get', 'status'], 'PRODUCING'], 6,
-              ['==', ['get', 'status'], 'SHUT IN'], 5,
-              3
-            ],
-            'circle-color': ['case',
-              ['==', ['get', 'status'], 'PRODUCING'], '#16a34a',
-              ['==', ['get', 'status'], 'SHUT IN'], '#dc2626',
-              '#9ca3af'
-            ],
+            'circle-radius': 6,
+            'circle-color': '#16a34a',
             'circle-opacity': 0.95,
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',
             'circle-stroke-opacity': 1,
           }
         })
-        map.current.on('click', 'wells-layer', (e) => {
-          const props = e.features?.[0]?.properties
-          if (!props || !map.current) return
-          new mapboxgl.Popup({ closeButton: false, offset: 10 })
-            .setLngLat((e.features![0].geometry as GeoJSON.Point).coordinates as [number, number])
-            .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
-              <div style="font-weight:600">${props.lease ?? 'Well'}</div>
-              <div style="color:#6b7280">${props.operator ?? ''}</div>
-              <div style="color:${props.status === 'PRODUCING' ? '#16a34a' : '#dc2626'}">● ${props.status}</div>
-            </div>`)
-            .addTo(map.current)
+        map.current.addLayer({
+          id: 'wells-shut-in-layer',
+          type: 'circle',
+          source: 'wells',
+          filter: ['==', ['get', 'status_group'], 'SHUT_IN'],
+          layout: { visibility: showShutInWells ? 'visible' : 'none' },
+          paint: {
+            'circle-radius': 5,
+            'circle-color': '#dc2626',
+            'circle-opacity': 0.95,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 1,
+          }
         })
-        map.current.on('mouseenter', 'wells-layer', () => {
-          m.getCanvas().style.cursor = 'pointer'
+        map.current.addLayer({
+          id: 'wells-unknown-layer',
+          type: 'circle',
+          source: 'wells',
+          filter: ['==', ['get', 'status_group'], 'UNKNOWN'],
+          layout: { visibility: showUnknownWells ? 'visible' : 'none' },
+          paint: {
+            'circle-radius': 4,
+            'circle-color': '#9ca3af',
+            'circle-opacity': 0.95,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 1,
+          }
         })
-        map.current.on('mouseleave', 'wells-layer', () => {
-          m.getCanvas().style.cursor = ''
+
+        const wellLayerIds = ['wells-active-layer', 'wells-shut-in-layer', 'wells-unknown-layer'] as const
+        wellLayerIds.forEach((layerId) => {
+          map.current?.on('click', layerId, (e) => {
+            const props = e.features?.[0]?.properties
+            if (!props || !map.current) return
+            const statusGroup = String(props.status_group ?? 'UNKNOWN')
+            const statusColor = statusGroup === 'ACTIVE' ? '#16a34a' : statusGroup === 'SHUT_IN' ? '#dc2626' : '#6b7280'
+            new mapboxgl.Popup({ closeButton: false, offset: 10 })
+              .setLngLat((e.features![0].geometry as GeoJSON.Point).coordinates as [number, number])
+              .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+                <div style="font-weight:600">${props.lease ?? 'Well'}</div>
+                <div style="color:#6b7280">${props.operator ?? ''}</div>
+                <div style="color:${statusColor}">● ${props.status ?? 'UNKNOWN'}</div>
+              </div>`)
+              .addTo(map.current)
+          })
+          map.current?.on('mouseenter', layerId, () => {
+            m.getCanvas().style.cursor = 'pointer'
+          })
+          map.current?.on('mouseleave', layerId, () => {
+            m.getCanvas().style.cursor = ''
+          })
         })
 
         const permitsGeoJSON: GeoJSON.FeatureCollection = {
@@ -304,13 +351,19 @@ export default function Map({
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
-    if (map.current.getLayer('wells-layer')) {
-      map.current.setLayoutProperty('wells-layer', 'visibility', showWells ? 'visible' : 'none')
+    if (map.current.getLayer('wells-active-layer')) {
+      map.current.setLayoutProperty('wells-active-layer', 'visibility', showActiveWells ? 'visible' : 'none')
+    }
+    if (map.current.getLayer('wells-shut-in-layer')) {
+      map.current.setLayoutProperty('wells-shut-in-layer', 'visibility', showShutInWells ? 'visible' : 'none')
+    }
+    if (map.current.getLayer('wells-unknown-layer')) {
+      map.current.setLayoutProperty('wells-unknown-layer', 'visibility', showUnknownWells ? 'visible' : 'none')
     }
     if (map.current.getLayer('permits-layer')) {
       map.current.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
     }
-  }, [showWells, showPermits])
+  }, [showActiveWells, showShutInWells, showUnknownWells, showPermits])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
