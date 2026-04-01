@@ -71,6 +71,12 @@ type TractRecord = {
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
+type SkipTraceResult = {
+  ownerName: string
+  phone: string | null
+  email: string | null
+  dealId: string | null
+}
 
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
@@ -141,6 +147,7 @@ export default function Home() {
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
+  const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
   const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
   const [pipelineSaving, setPipelineSaving] = useState(false)
@@ -244,18 +251,24 @@ export default function Home() {
           .select('id')
           .eq('owner_name', skipTracing.owner_name)
           .maybeSingle()
+        let savedDealId: string | null = existingDeal?.id ?? null
 
         if (existingDeal) {
           await supabase
             .from('deals')
             .update({
               tag: 'skip_traced',
+              phone: phone ?? null,
+              email: email ?? null,
               notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
               updated_at: new Date().toISOString(),
             })
             .eq('id', existingDeal.id)
+          savedDealId = existingDeal.id
         } else {
-          await supabase.from('deals').insert({
+          const { data: insertedDeal } = await supabase
+            .from('deals')
+            .insert({
             owner_name: skipTracing.owner_name,
             tract_abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
             tract_survey: selected?.LEVEL1_SUR ?? selected?.level1_sur ?? '',
@@ -267,8 +280,13 @@ export default function Home() {
             propensity_score: skipTracing.propensity_score ?? 0,
             source: 'skip_trace',
             tag: 'skip_traced',
+            phone: phone ?? null,
+            email: email ?? null,
             notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
           })
+            .select('id')
+            .single()
+          savedDealId = insertedDeal?.id ?? null
         }
 
         setPipelineOwners((prev) => {
@@ -277,13 +295,12 @@ export default function Home() {
           return next
         })
 
-        const resultMsg =
-          [phone ? `📞 ${phone}` : null, email ? `✉ ${email}` : null]
-            .filter(Boolean)
-            .join('  ') || 'No contact info found'
-
-        setToast(`${skipTracing.owner_name}: ${resultMsg}`)
-        setTimeout(() => setToast(null), 6000)
+        setSkipTraceResult({
+          ownerName: skipTracing.owner_name,
+          phone,
+          email,
+          dealId: savedDealId,
+        })
       } else {
         setToast(`Skip trace failed: ${result.error}`)
         setTimeout(() => setToast(null), 4000)
@@ -1362,6 +1379,76 @@ export default function Home() {
                 }}
               >
                 {skipTraceLoading ? 'Searching...' : 'Skip trace →'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {skipTraceResult && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            background: '#FFFFFF', borderRadius: 12, padding: '28px 32px',
+            width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
+          }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+              Skip Trace Complete
+            </div>
+            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>
+              {skipTraceResult.ownerName}
+            </div>
+
+            <div style={{ background: '#F8F8F8', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+              {skipTraceResult.phone ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>📞</span>
+                  <a href={`tel:${skipTraceResult.phone}`} style={{ fontSize: 14, color: '#111827', fontWeight: 500, textDecoration: 'none' }}>
+                    {skipTraceResult.phone}
+                  </a>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 8 }}>No phone found</div>
+              )}
+              {skipTraceResult.email ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 16 }}>✉️</span>
+                  <a href={`mailto:${skipTraceResult.email}`} style={{ fontSize: 14, color: '#111827', fontWeight: 500, textDecoration: 'none' }}>
+                    {skipTraceResult.email}
+                  </a>
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: '#9CA3AF' }}>No email found</div>
+              )}
+            </div>
+
+            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 20 }}>
+              Contact info saved to pipeline. View and manage this lead in the CRM.
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => setSkipTraceResult(null)}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 8,
+                  background: 'transparent', border: '1px solid #E5E7EB',
+                  color: '#6B7280', fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Stay here
+              </button>
+              <button
+                onClick={() => window.location.href = '/crm'}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 8,
+                  background: '#EF9F27', border: 'none',
+                  color: '#fff', fontSize: 13, cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                Go to CRM →
               </button>
             </div>
           </div>

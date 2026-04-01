@@ -21,6 +21,8 @@ type Deal = {
   tract_abstract: string | null
   tract_survey: string | null
   operator_name: string | null
+  phone: string | null
+  email: string | null
   mailing_address: string | null
   mailing_city: string | null
   mailing_state: string | null
@@ -172,6 +174,8 @@ export default function CrmPage() {
       tract_abstract: toSave.tract_abstract ?? null,
       tract_survey: toSave.tract_survey ?? null,
       operator_name: toSave.operator_name ?? null,
+      phone: toSave.phone ?? null,
+      email: toSave.email ?? null,
       mailing_address: toSave.mailing_address ?? null,
       mailing_city: toSave.mailing_city ?? null,
       mailing_state: toSave.mailing_state ?? null,
@@ -498,6 +502,8 @@ export default function CrmPage() {
                     { label: 'TRACT', field: 'tract_abstract' },
                     { label: 'SURVEY', field: 'tract_survey' },
                     { label: 'OPERATOR', field: 'operator_name' },
+                    { label: 'PHONE', field: 'phone' },
+                    { label: 'EMAIL', field: 'email' },
                     { label: 'CITY', field: 'mailing_city' },
                     { label: 'STATE', field: 'mailing_state' },
                     { label: 'ZIP', field: 'mailing_zip' },
@@ -528,6 +534,20 @@ export default function CrmPage() {
                     </div>
                   ))}
                 </div>
+                {(editingDeal.phone || editingDeal.email) && (
+                  <div style={{ marginTop: 12, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                    {editingDeal.phone && (
+                      <a href={`tel:${editingDeal.phone}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none' }}>
+                        📞 {editingDeal.phone}
+                      </a>
+                    )}
+                    {editingDeal.email && (
+                      <a href={`mailto:${editingDeal.email}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none' }}>
+                        ✉ {editingDeal.email}
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
