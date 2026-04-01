@@ -13,6 +13,7 @@ export default function Auth() {
   const [message, setMessage] = useState<string | null>(null)
 
   const handleSubmit = async () => {
+    console.log('handleSubmit called', { email, password, mode })
     setLoading(true)
     setError(null)
     setMessage(null)
