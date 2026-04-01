@@ -1,27 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-type SkipTracePhone = {
-  phone?: string | null
-}
-
-type SkipTraceEmail = {
-  email?: string | null
-}
-
-type SkipTraceApiResponse = {
-  output?: {
-    phones?: SkipTracePhone[]
-    emails?: SkipTraceEmail[]
-  }
-  error?: string
-}
-
 export async function POST(req: NextRequest) {
   const { firstName, lastName, address, city, state, zip } = await req.json()
-
-  if (!firstName && !lastName) {
-    return NextResponse.json({ error: 'Name required' }, { status: 400 })
-  }
 
   const apiKey = process.env.BATCH_SKIP_TRACING_API_KEY
   if (!apiKey) {
@@ -29,58 +9,66 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = await fetch('https://api.batchskiptracing.com/api/beta/peopleSarch', {
+    const response = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        firstName,
-        lastName,
-        address,
-        city,
-        state,
-        zip,
+        requests: [
+          {
+            firstName,
+            lastName,
+            address,
+            city,
+            state,
+            zip,
+          },
+        ],
       }),
     })
 
     const responseText = await response.text()
-    console.log('BatchSkipTracing raw response:', responseText.substring(0, 500))
+    console.log('BatchData status:', response.status)
+    console.log('BatchData raw response:', responseText.substring(0, 1000))
 
-    let data: SkipTraceApiResponse
+    let data: unknown
     try {
-      data = JSON.parse(responseText) as SkipTraceApiResponse
+      data = JSON.parse(responseText)
     } catch {
-      console.error(
-        'Failed to parse response as JSON:',
-        responseText.substring(0, 200)
-      )
-      return NextResponse.json({ error: 'Invalid API response' }, { status: 500 })
-    }
-
-    console.log('BatchSkipTracing response:', JSON.stringify(data, null, 2))
-
-    if (!response.ok) {
       return NextResponse.json(
-        { error: data?.error ?? 'Skip trace request failed' },
-        { status: response.status }
+        {
+          error: 'Invalid API response',
+          raw: responseText.substring(0, 300),
+        },
+        { status: 500 }
       )
     }
 
+    const dataRecord = data as Record<string, unknown>
+    const result =
+      (dataRecord?.results as unknown[] | undefined)?.[0] ??
+      (dataRecord?.data as unknown[] | undefined)?.[0] ??
+      dataRecord
+
+    const resultRecord = result as Record<string, unknown>
     const phones: string[] = []
     const emails: string[] = []
 
-    if (Array.isArray(data?.output?.phones)) {
-      data.output.phones.forEach((p) => {
-        if (p?.phone) phones.push(p.phone)
-      })
-    }
-    if (Array.isArray(data?.output?.emails)) {
-      data.output.emails.forEach((e) => {
-        if (e?.email) emails.push(e.email)
-      })
-    }
+    const phoneList = (resultRecord?.phoneNumbers as unknown[] | undefined) ?? (resultRecord?.phones as unknown[] | undefined) ?? []
+    phoneList.forEach((p: unknown) => {
+      const pRecord = p as Record<string, unknown>
+      const num = (pRecord?.number as string | undefined) ?? (pRecord?.phone as string | undefined) ?? (typeof p === 'string' ? p : undefined)
+      if (num && typeof num === 'string') phones.push(num)
+    })
+
+    const emailList = (resultRecord?.emails as unknown[] | undefined) ?? []
+    emailList.forEach((e: unknown) => {
+      const eRecord = e as Record<string, unknown>
+      const addr = (eRecord?.address as string | undefined) ?? (eRecord?.email as string | undefined) ?? (typeof e === 'string' ? e : undefined)
+      if (addr && typeof addr === 'string') emails.push(addr)
+    })
 
     return NextResponse.json({
       success: true,
@@ -90,6 +78,6 @@ export async function POST(req: NextRequest) {
     })
   } catch (err) {
     console.error('Skip trace error:', err)
-    return NextResponse.json({ error: 'Skip trace failed' }, { status: 500 })
+    return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
