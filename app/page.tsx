@@ -684,6 +684,24 @@ export default function Home() {
             Comps
           </a>
           <button
+            onClick={async () => {
+              await supabase.auth.signOut()
+              window.location.href = '/auth'
+            }}
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              background: '#FFFFFF',
+              cursor: 'pointer',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Sign out
+          </button>
+          <button
             onClick={() => {
               const params = new URLSearchParams({
                 minScore: String(minScore),
