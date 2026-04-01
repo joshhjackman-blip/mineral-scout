@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 type Comp = {
@@ -260,6 +260,25 @@ export default function Comps() {
   const pricePerNRIAcre =
     calcNRI && calcAcreage ? market / (Number(calcNRI) * Number(calcAcreage)) : 0
 
+  const marketRows = useMemo(
+    () => comps.filter((c) => c.source === 'market'),
+    [comps]
+  )
+  const avgMultiple = useMemo(() => {
+    const values = marketRows
+      .map((c) => Number(c.royalty_multiple))
+      .filter((v) => Number.isFinite(v) && v > 0)
+    if (!values.length) return 0
+    return values.reduce((sum, v) => sum + v, 0) / values.length
+  }, [marketRows])
+  const avgPricePerNriAcre = useMemo(() => {
+    const values = marketRows
+      .map((c) => Number(c.price_per_nri_acre))
+      .filter((v) => Number.isFinite(v) && v > 0)
+    if (!values.length) return 0
+    return values.reduce((sum, v) => sum + v, 0) / values.length
+  }, [marketRows])
+
   const handleSubmit = async () => {
     if (!form.monthly_royalty || !form.sale_price) return
     const monthly = Number(form.monthly_royalty)
@@ -412,11 +431,10 @@ export default function Comps() {
                 margin: '0 0 6px',
               }}
             >
-              Comp Calculator
+              Eagle Ford Comp Calculator
             </h1>
             <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>
-              Estimate mineral rights values and track closed deal comps for
-              Gonzales County.
+              Institutional valuation console for Gonzales County mineral rights.
             </p>
           </div>
           <button
@@ -615,25 +633,79 @@ export default function Comps() {
         </div>
 
         {/* Market Context */}
-        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: '24px 28px', marginBottom: 32, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <h2 style={{ fontFamily: 'Georgia, serif', fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>Gonzales County Market Context</h2>
-          <p style={{ fontSize: 13, color: '#9CA3AF', margin: '0 0 20px' }}>Current Eagle Ford benchmarks · Updated Q1 2026</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+        <div
+          style={{
+            background: '#0B0F14',
+            border: '1px solid #1F2937',
+            borderRadius: 12,
+            padding: '24px 28px',
+            marginBottom: 32,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+          }}
+        >
+          <h2
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 20,
+              fontWeight: 700,
+              color: '#F9FAFB',
+              margin: '0 0 6px',
+            }}
+          >
+            Gonzales County Market Context
+          </h2>
+          <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 18px' }}>
+            Eagle Ford reference tape · Bloomberg-style benchmark view · Q1 2026
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
             {[
-              { label: 'EOG Core - Producing', val: '4x - 5x', sub: 'annual royalty', color: '#065F46', bg: '#ECFDF5', border: '#A7F3D0' },
-              { label: 'Baytex - Producing', val: '3x - 4x', sub: 'annual royalty', color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
-              { label: 'Declining Production', val: '2x - 3x', sub: 'annual royalty', color: '#B45309', bg: '#FEF3C7', border: '#FDE68A' },
-              { label: 'Shut-in / No Production', val: '1x - 2x', sub: 'annual royalty', color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' },
+              { label: 'Reference Transactions', val: String(marketRows.length), sub: 'market-tagged comps' },
+              { label: 'Avg Royalty Multiple', val: avgMultiple > 0 ? `${avgMultiple.toFixed(2)}x` : '—', sub: 'weighted simple mean' },
+              {
+                label: 'Avg $ / NRI Acre',
+                val: avgPricePerNriAcre > 0 ? `$${Math.round(avgPricePerNriAcre).toLocaleString()}` : '—',
+                sub: 'reference sample',
+              },
+              { label: 'Core Operator Range', val: '4.0x–5.0x', sub: 'EOG producing blocks' },
             ].map((m) => (
-              <div key={m.label} style={{ background: m.bg, border: `1px solid ${m.border}`, borderRadius: 8, padding: '14px 16px' }}>
-                <div style={{ fontSize: 10, fontWeight: 600, color: m.color, letterSpacing: '0.06em', marginBottom: 6, textTransform: 'uppercase' }}>{m.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: m.color, fontFamily: 'Georgia, serif' }}>{m.val}</div>
-                <div style={{ fontSize: 11, color: m.color, marginTop: 2, opacity: 0.7 }}>{m.sub}</div>
+              <div
+                key={m.label}
+                style={{
+                  background: '#111827',
+                  border: '1px solid #374151',
+                  borderRadius: 8,
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', marginBottom: 6, textTransform: 'uppercase' }}>
+                  {m.label}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#F59E0B', fontFamily: 'Georgia, serif' }}>{m.val}</div>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{m.sub}</div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: 16, padding: '10px 14px', background: '#F9FAFB', borderRadius: 6, fontSize: 12, color: '#6B7280' }}>
-            💡 <strong style={{ color: '#111827' }}>Rule of thumb:</strong> EOG-operated producing minerals in Gonzales County core trade at 4-5× annual royalty. Out-of-state estate sellers frequently accept 3× offers. Shut-in wells often close at 1.5-2×.
+          <div style={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9CA3AF', borderBottom: '1px solid #374151' }}>
+              <div style={{ padding: '10px 12px' }}>Segment</div>
+              <div style={{ padding: '10px 12px' }}>Multiple Band</div>
+              <div style={{ padding: '10px 12px' }}>Underwriting Read</div>
+            </div>
+            {[
+              ['EOG Core Producing', '4.0x–5.0x', 'Premium, low-friction liquidity'],
+              ['Baytex Producing', '3.0x–4.0x', 'Mid-band clearing market'],
+              ['Declining Production', '2.0x–3.0x', 'Discount for volume decay'],
+              ['Shut-In / Non-Producing', '1.0x–2.0x', 'Optionality-driven pricing'],
+            ].map(([segment, band, read]) => (
+              <div key={segment} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', borderTop: '1px solid #1F2937' }}>
+                <div style={{ padding: '10px 12px', fontSize: 12, color: '#E5E7EB' }}>{segment}</div>
+                <div style={{ padding: '10px 12px', fontSize: 12, color: '#F59E0B', fontWeight: 600 }}>{band}</div>
+                <div style={{ padding: '10px 12px', fontSize: 12, color: '#9CA3AF' }}>{read}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, fontSize: 11, color: '#9CA3AF' }}>
+            For internal valuation calibration only. Final pricing should be adjusted for title, operator risk, decline curve, and seller profile.
           </div>
         </div>
 
@@ -928,8 +1000,23 @@ export default function Comps() {
                           ).toLocaleString()}`
                         : '—'}
                     </td>
-                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#6B7280', textTransform: 'capitalize' }}>
-                      {comp.source || 'manual'}
+                    <td style={{ padding: '12px 16px', fontSize: 12 }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          border: comp.source === 'market' ? '1px solid #0EA5E9' : '1px solid #D1D5DB',
+                          background: comp.source === 'market' ? '#E0F2FE' : '#FFFFFF',
+                          color: comp.source === 'market' ? '#0369A1' : '#6B7280',
+                          textTransform: 'uppercase',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          letterSpacing: '0.06em',
+                        }}
+                      >
+                        {comp.source || 'manual'}
+                      </span>
                     </td>
                     <td
                       style={{
@@ -947,8 +1034,8 @@ export default function Comps() {
             </table>
           )}
           <div style={{ padding: '12px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', gap: 16, fontSize: 11, color: '#9CA3AF' }}>
-            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#E0F2FE', border: '1px solid #BAE6FD', borderRadius: 2, marginRight: 4 }} />Eagle Ford reference transactions</span>
-            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 2, marginRight: 4 }} />Your closed deals</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#E0F2FE', border: '1px solid #BAE6FD', borderRadius: 2, marginRight: 4 }} />Reference market tape (Eagle Ford)</span>
+            <span><span style={{ display: 'inline-block', width: 10, height: 10, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 2, marginRight: 4 }} />User-entered closed deals</span>
           </div>
         </div>
       </div>
