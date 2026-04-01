@@ -161,30 +161,44 @@ export default function CRM() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 font-sans">
-      <header className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 shadow-sm">
+      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-amber-500 rounded-md flex items-center justify-center">
+          <div className="w-7 h-7 bg-amber-400 rounded-md flex items-center justify-center">
             <span className="text-white text-sm font-bold">M</span>
           </div>
-          <span className="font-serif text-base font-bold text-gray-900">Mineral Map</span>
+          <span className="font-serif text-base font-bold text-white">Mineral Map</span>
           <span className="text-gray-300 text-sm">·</span>
-          <span className="text-sm font-medium text-gray-500">CRM & Pipeline</span>
+          <span className="text-sm font-medium text-gray-400">CRM & Pipeline</span>
         </div>
         <nav className="flex items-center gap-1">
-          <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+          <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
           </Link>
-          <Link href="/comps" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+          <Link href="/comps" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <BarChart2 size={13} />Comps
           </Link>
-          <Link href="/methodology" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+          <Link href="/methodology" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <BookOpen size={13} />Methodology
           </Link>
         </nav>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+        <aside className="w-80 shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
+          <div className="px-3 py-2 border-b border-gray-200 bg-white">
+            <div className="grid grid-cols-3 gap-1">
+              {[
+                { label: 'Total', val: deals.length },
+                { label: 'Hot', val: deals.filter((d) => (d.tag ?? 'prospect') === 'hot').length, color: 'text-red-600' },
+                { label: 'Follow up', val: deals.filter((d) => d.follow_up_date && isOverdue(d.follow_up_date)).length, color: 'text-amber-600' },
+              ].map((s) => (
+                <div key={s.label} className="text-center py-1">
+                  <div className={`text-base font-bold font-serif ${s.color ?? 'text-gray-900'}`}>{s.val}</div>
+                  <div className="text-xs text-gray-400">{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="p-3 border-b border-gray-100">
             <div className="relative mb-2">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -192,7 +206,7 @@ export default function CRM() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search owners, operators..."
-                className="w-full pl-8 pr-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
               />
             </div>
             <div className="flex gap-1 flex-wrap">
@@ -215,7 +229,7 @@ export default function CRM() {
             </div>
           </div>
 
-          <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-100">
+          <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-100 font-semibold">
             {filtered.length} leads
           </div>
 
@@ -229,7 +243,7 @@ export default function CRM() {
                 key={deal.id}
                 onClick={() => handleSelectDeal(deal)}
                 className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                  selected?.id === deal.id ? 'bg-amber-50 border-l-2 border-l-amber-400' : ''
+                  selected?.id === deal.id ? 'bg-white border-l-2 border-l-amber-500 shadow-sm' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-2 mb-1">
@@ -270,15 +284,15 @@ export default function CRM() {
             </div>
           </main>
         ) : editingDeal && (
-          <main className="flex-1 overflow-y-auto bg-gray-50">
+          <main className="flex-1 overflow-y-auto bg-gray-100">
             <div className="max-w-3xl mx-auto p-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm border-b-2 border-b-amber-400">
                 <div className="flex items-start justify-between mb-3">
                   <input
                     value={editingDeal.owner_name ?? ''}
                     onChange={(e) => setEditingDeal((p) => p ? { ...p, owner_name: e.target.value } : null)}
                     onBlur={() => handleSaveDeal()}
-                    className="text-xl font-bold text-gray-900 bg-transparent border-none outline-none w-full font-serif"
+                    className="text-2xl font-bold tracking-tight text-gray-900 bg-transparent border-none outline-none w-full font-serif"
                   />
                   {lastSaved && (
                     <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1 mt-1">
@@ -304,8 +318,8 @@ export default function CRM() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Lead Info</div>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Lead Info</div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                   {[
                     { label: 'Tract', field: 'tract_abstract', icon: <MapPin size={13} /> },
@@ -351,8 +365,8 @@ export default function CRM() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Offer & Valuation</div>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Offer & Valuation</div>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="relative flex-1">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
@@ -384,8 +398,8 @@ export default function CRM() {
                 )}
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Follow-up Reminder</div>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Follow-up Reminder</div>
                 <div className="flex items-center gap-3 mb-3">
                   <input
                     type="date"
@@ -423,14 +437,14 @@ export default function CRM() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Contact Log</div>
+              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Contact Log</div>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {['Called - no answer', 'Called - spoke', 'Left voicemail', 'Sent letter', 'Sent email', 'Met in person'].map((method) => (
                     <button
                       key={method}
                       onClick={() => handleLogContact(method)}
-                      className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 transition-colors font-medium inline-flex items-center gap-1"
+                      className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 bg-white shadow-sm hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 transition-colors font-medium inline-flex items-center gap-1"
                     >
                       <Plus size={12} />{method}
                     </button>
@@ -451,9 +465,9 @@ export default function CRM() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</div>
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest pb-3 border-b border-gray-100 w-full">Notes</div>
                   {lastSaved && <span className="text-xs text-gray-400">Saved {lastSaved}</span>}
                 </div>
                 <textarea
