@@ -298,6 +298,20 @@ export default function CrmPage() {
           >
             Methodology
           </a>
+          <a
+            href="/comps"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Comps
+          </a>
         </div>
         <div style={{ color: '#111827', fontSize: 12, fontWeight: 600 }}>CRM & Pipeline</div>
       </div>

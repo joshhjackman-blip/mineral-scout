@@ -227,6 +227,19 @@ export default function MethodologyPage() {
           >
             CRM &rarr;
           </a>
+          <a
+            href="/comps"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+            }}
+          >
+            Comps
+          </a>
         </div>
       </div>
 

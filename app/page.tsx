@@ -84,7 +84,7 @@ const scoreBadgeColor = (score: number) =>
 const COUNTY_STATS = [
   { val: '73,589', lbl: 'Total mineral owners' },
   { val: '13,551', lbl: 'Out of state (18%)' },
-  { val: '22,638', lbl: 'Motivated sellers (5+)' },
+  { val: '22,997', lbl: 'Motivated sellers (5+)' },
   { val: '3,950', lbl: 'Hot leads (8-10)' },
   { val: '553', lbl: 'Survey tracts' },
   { val: '4,512', lbl: 'Active wells' },
@@ -612,7 +612,7 @@ export default function Home() {
           {[
             { val: '73,589', lbl: 'owners' },
             { val: '3,950', lbl: 'hot leads' },
-            { val: '22,638', lbl: 'motivated' },
+            { val: '22,997', lbl: 'motivated' },
           ].map((s) => (
             <div
               key={s.lbl}
@@ -655,6 +655,20 @@ export default function Home() {
             }}
           >
             CRM →
+          </a>
+          <a
+            href="/comps"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Comps
           </a>
           <button
             onClick={() => {
