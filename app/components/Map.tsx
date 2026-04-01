@@ -95,8 +95,8 @@ export default function Map({
               'line-color': ['step', ['get', 'max_propensity_score'],
                 '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
               'line-width': ['step', ['get', 'max_propensity_score'],
-                0.3, 6, 0.6, 8, 1.2],
-              'line-opacity': 0.7
+                0.6, 6, 1.0, 8, 1.6],
+              'line-opacity': 0.85
             }
           })
 
