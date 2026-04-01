@@ -42,6 +42,7 @@ export default function Map({
     onOwnerClickRef.current = onOwnerClick
   }, [onOwnerClick])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (map.current || !mapContainer.current) return
 

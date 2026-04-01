@@ -44,6 +44,7 @@ type TractSelection = {
   field_name?: string
   well_status?: string
   first_date?: string
+  est_lease_expiration?: string
   prod_cumulative_sum_oil?: number
   first_6_month_oil?: number
   first_12_month_oil?: number
@@ -61,6 +62,7 @@ type TractRecord = {
   field_name?: string
   well_status?: string
   first_date?: string
+  est_lease_expiration?: string
   prod_cumulative_sum_oil?: number
   first_6_month_oil?: number
   first_12_month_oil?: number
@@ -354,8 +356,8 @@ export default function Home() {
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
   const maxScore = toNumber(selected?.max_propensity_score)
-  const fieldName = (selected as any)?.field_name ?? 'Unknown'
-  const estExpiration = (selected as any)?.est_lease_expiration ?? 'Unknown'
+  const fieldName = selected?.field_name ?? 'Unknown'
+  const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
 
   return (
     <div
