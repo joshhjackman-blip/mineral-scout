@@ -288,7 +288,7 @@ export default function MethodologyPage() {
           <p style={{ margin: 0, color: '#374151', lineHeight: 1.8, fontSize: 15 }}>
             Each owner receives weighted points across legal, geographic, and
             asset-level signals. Total points are normalized to a 0-10 scale.
-            Owners with scores 6-10 are marked as motivated and prioritized for
+            Owners with scores 5-10 are marked as motivated and prioritized for
             outreach.
           </p>
 
