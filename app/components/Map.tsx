@@ -143,7 +143,33 @@ export default function Map({
 
         map.current.on('click', 'parcels-fill', (e) => {
           const props = e.features?.[0]?.properties
-          if (props) onOwnerClickRef.current(props as Record<string, unknown>)
+          if (props) {
+            onOwnerClickRef.current(props as Record<string, unknown>)
+
+            // Fly to clicked parcel
+            if (e.features?.[0]?.geometry) {
+              const geometry = e.features[0].geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon
+              const bounds = new mapboxgl.LngLatBounds()
+
+              const addCoords = (coords: number[][]) => {
+                coords.forEach((c) => bounds.extend([c[0], c[1]] as [number, number]))
+              }
+
+              if (geometry.type === 'Polygon') {
+                addCoords(geometry.coordinates[0] as number[][])
+              } else if (geometry.type === 'MultiPolygon') {
+                geometry.coordinates.forEach((poly) => addCoords(poly[0] as number[][]))
+              }
+
+              if (!bounds.isEmpty()) {
+                map.current?.fitBounds(bounds, {
+                  padding: 120,
+                  duration: 800,
+                  maxZoom: 14
+                })
+              }
+            }
+          }
         })
         map.current.on('mouseenter', 'parcels-fill', () => {
           m.getCanvas().style.cursor = 'pointer'
