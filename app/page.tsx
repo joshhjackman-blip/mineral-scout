@@ -140,6 +140,7 @@ export default function Home() {
   const [showPermits, setShowPermits] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
+  const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
   const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
   const [pipelineSaving, setPipelineSaving] = useState(false)
@@ -212,44 +213,89 @@ export default function Home() {
 
   const handleSkipTraceConfirm = async () => {
     if (!skipTracing) return
+    setSkipTraceLoading(true)
 
-    const tractAbstract = selected?.ABSTRACT_L ?? selected?.abstract_label ?? ''
-    const tractSurvey = selected?.LEVEL1_SUR ?? selected?.level1_sur ?? ''
+    try {
+      const nameParts = (skipTracing.owner_name ?? '').trim().split(' ')
+      const firstName = nameParts[0] ?? ''
+      const lastName = nameParts.slice(1).join(' ') ?? ''
 
-    const { error } = await supabase
-      .from('deals')
-      .insert({
-        owner_name: skipTracing.owner_name,
-        tract_abstract: tractAbstract,
-        tract_survey: tractSurvey,
-        operator_name: skipTracing.operator_name ?? '',
-        mailing_city: skipTracing.mailing_city ?? '',
-        mailing_state: skipTracing.mailing_state ?? '',
-        mailing_address: skipTracing.address_1 ?? skipTracing.mailing_address ?? '',
-        acreage: skipTracing.acreage ?? null,
-        propensity_score: skipTracing.propensity_score ?? 0,
-        source: 'skip_trace',
-        tag: 'skip_traced',
-        notes: 'Skip trace requested — contact info pending (phone/email placeholder)',
+      const response = await fetch('/api/skiptrace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          address: skipTracing.address_1 ?? '',
+          city: skipTracing.mailing_city ?? '',
+          state: skipTracing.mailing_state ?? '',
+          zip: skipTracing.mailing_zip ?? '',
+        }),
       })
-      .select()
 
-    if (error) {
-      console.error('Failed to save skip trace deal:', error.message)
-      showToast(`Failed to skip trace ${skipTracing.owner_name}: ${error.message}`, 'error')
-      return
+      const result = await response.json()
+
+      if (result.success) {
+        const phone = result.phones?.[0] ?? null
+        const email = result.emails?.[0] ?? null
+
+        const { data: existingDeal } = await supabase
+          .from('deals')
+          .select('id')
+          .eq('owner_name', skipTracing.owner_name)
+          .maybeSingle()
+
+        if (existingDeal) {
+          await supabase
+            .from('deals')
+            .update({
+              tag: 'skip_traced',
+              notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existingDeal.id)
+        } else {
+          await supabase.from('deals').insert({
+            owner_name: skipTracing.owner_name,
+            tract_abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
+            tract_survey: selected?.LEVEL1_SUR ?? selected?.level1_sur ?? '',
+            operator_name: skipTracing.operator_name ?? '',
+            mailing_city: skipTracing.mailing_city ?? '',
+            mailing_state: skipTracing.mailing_state ?? '',
+            mailing_address: skipTracing.address_1 ?? '',
+            acreage: skipTracing.acreage ?? null,
+            propensity_score: skipTracing.propensity_score ?? 0,
+            source: 'skip_trace',
+            tag: 'skip_traced',
+            notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
+          })
+        }
+
+        setPipelineOwners((prev) => {
+          const next = new Set(prev)
+          next.add(skipTracing.owner_name)
+          return next
+        })
+
+        const resultMsg =
+          [phone ? `📞 ${phone}` : null, email ? `✉ ${email}` : null]
+            .filter(Boolean)
+            .join('  ') || 'No contact info found'
+
+        setToast(`${skipTracing.owner_name}: ${resultMsg}`)
+        setTimeout(() => setToast(null), 6000)
+      } else {
+        setToast(`Skip trace failed: ${result.error}`)
+        setTimeout(() => setToast(null), 4000)
+      }
+    } catch (err) {
+      console.error('Skip trace failed:', err)
+      setToast('Skip trace failed - check console')
+      setTimeout(() => setToast(null), 4000)
     }
 
-    setPipelineOwners((prev) => {
-      const next = new Set(prev)
-      next.add(skipTracing.owner_name)
-      return next
-    })
+    setSkipTraceLoading(false)
     setSkipTracing(null)
-    showToast(`${skipTracing.owner_name} skip traced and added to pipeline`)
-    setTimeout(() => {
-      window.location.href = '/crm'
-    }, 1000)
   }
 
   useEffect(() => {
@@ -1273,6 +1319,7 @@ export default function Home() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button
                 onClick={() => setSkipTracing(null)}
+                disabled={skipTraceLoading}
                 style={{
                   flex: 1,
                   padding: '9px',
@@ -1281,26 +1328,23 @@ export default function Home() {
                   border: '0.5px solid #E5E7EB',
                   color: '#6B7280',
                   fontSize: 12,
-                  cursor: 'pointer',
+                  cursor: skipTraceLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSkipTraceConfirm}
+                disabled={skipTraceLoading}
                 style={{
-                  flex: 1,
-                  padding: '9px',
-                  borderRadius: 6,
-                  background: 'rgba(239,159,39,0.15)',
+                  flex: 1, padding: '9px', borderRadius: 6,
+                  background: skipTraceLoading ? 'rgba(239,159,39,0.08)' : 'rgba(239,159,39,0.15)',
                   border: '0.5px solid rgba(239,159,39,0.4)',
-                  color: '#EF9F27',
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  fontFamily: 'Inter, sans-serif',
+                  color: '#EF9F27', fontSize: 12, cursor: skipTraceLoading ? 'not-allowed' : 'pointer',
+                  fontFamily: 'monospace'
                 }}
               >
-                Skip trace →
+                {skipTraceLoading ? 'Searching...' : 'Skip trace →'}
               </button>
             </div>
           </div>
