@@ -29,8 +29,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Allow override in case BatchData updates route paths across API versions.
+    const endpoint =
+      process.env.BATCH_SKIP_TRACING_ENDPOINT ??
+      'https://api.batchdata.com/api/v1/property/skip-trace'
+
     const response = await fetch(
-      'https://api.batchskiptracing.com/api/beta/propertySearch',
+      endpoint,
       {
         method: 'POST',
         headers: {
