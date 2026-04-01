@@ -352,6 +352,7 @@ export default function Map({
     m.on('load', tryAddLayers)
 
     return () => { map.current?.remove(); map.current = null; layersReady.current = false }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

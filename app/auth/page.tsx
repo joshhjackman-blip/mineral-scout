@@ -10,6 +10,7 @@ export default function Auth() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [message, setMessage] = useState<string | null>(null)
 
   const handleSubmit = async () => {
