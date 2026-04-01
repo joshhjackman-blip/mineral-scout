@@ -656,6 +656,25 @@ export default function Home() {
           >
             CRM →
           </a>
+          <button
+            onClick={() => {
+              const params = new URLSearchParams({
+                minScore: String(minScore),
+                motivatedOnly: String(motivatedOnly),
+                outOfStateOnly: String(outOfStateOnly),
+                ownerType: ownerTypeFilter,
+              })
+              window.open(`/api/export?${params.toString()}`, '_blank')
+            }}
+            style={{
+              fontSize: 12, color: '#6B7280', padding: '6px 12px',
+              borderRadius: 6, border: '1px solid #E5E7EB',
+              background: '#FFFFFF', cursor: 'pointer',
+              fontFamily: 'Inter, sans-serif'
+            }}
+          >
+            Export CSV
+          </button>
         </div>
       </div>
 
@@ -911,8 +930,34 @@ export default function Home() {
                 <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
                   Add all to pipeline
                 </button>
-                <button style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
-                  Export CSV
+                <button
+                  onClick={() => {
+                    const owners = JSON.parse(selected?.owners_json ?? '[]') as TractOwner[]
+                    const headers = ['Owner Name', 'City', 'State', 'Zip', 'Operator', 'Score', 'OOS', 'Motivated', 'Acreage', 'Ownership %']
+                    const rows = owners.map((o) => [
+                      `"${(o.owner_name ?? '').replace(/"/g, '""')}"`,
+                      `"${(o.mailing_city ?? '').replace(/"/g, '""')}"`,
+                      `"${(o.mailing_state ?? '').replace(/"/g, '""')}"`,
+                      `"${(o.mailing_zip ?? '').replace(/"/g, '""')}"`,
+                      `"${(o.operator_name ?? '').replace(/"/g, '""')}"`,
+                      o.propensity_score ?? 0,
+                      o.out_of_state ? 'Yes' : 'No',
+                      o.motivated ? 'Yes' : 'No',
+                      o.acreage ?? '',
+                      o.ownership_pct ?? '',
+                    ].join(','))
+                    const csv = [headers.join(','), ...rows].join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `tract-${selected?.ABSTRACT_L ?? selected?.abstract_label ?? 'owners'}-${new Date().toISOString().split('T')[0]}.csv`
+                    a.click()
+                    URL.revokeObjectURL(url)
+                  }}
+                  style={{ flex: 1, padding: '9px', borderRadius: 6, border: '0.5px solid #E5E7EB', background: 'transparent', color: '#6B7280', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}
+                >
+                  Export tract owners CSV
                 </button>
               </div>
             </div>
