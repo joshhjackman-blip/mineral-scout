@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
-  Phone, Mail, Plus, Search,
+  Phone, Mail, Search,
   MapPin, BarChart2, BookOpen, Clock,
   DollarSign, User, Building2,
   CheckCircle2, Circle, XCircle, Flame,
@@ -42,6 +42,8 @@ type ContactEntry = {
   outcome?: string | null
   notes?: string | null
 }
+
+type Task = { id: string; text: string; done: boolean; dealId: string }
 
 const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   hot:            { label: 'Hot',           color: 'text-red-700',     bg: 'bg-red-50 border-red-200',       icon: <Flame size={11} /> },
@@ -82,6 +84,7 @@ export default function CRM() {
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState('all')
   const [search, setSearch] = useState('')
+  const [tasks, setTasks] = useState<Task[]>([])
 
   useEffect(() => {
     supabase.from('deals').select('*').order('updated_at', { ascending: false }).then(({ data }) => {
@@ -184,7 +187,7 @@ export default function CRM() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-80 shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
+        <aside className="w-[260px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-200 bg-white">
             <div className="grid grid-cols-3 gap-1">
               {[
@@ -273,215 +276,320 @@ export default function CRM() {
           </div>
         </aside>
 
-        {!selected ? (
-          <main className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                <User size={20} className="text-gray-400" />
-              </div>
-              <div className="text-sm font-medium text-gray-500">Select a lead</div>
-              <div className="text-xs text-gray-400 mt-1">Choose a lead from the list to view details</div>
-            </div>
-          </main>
-        ) : editingDeal && (
-          <main className="flex-1 overflow-y-auto bg-gray-100">
-            <div className="max-w-3xl mx-auto p-6">
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm border-b-2 border-b-amber-400">
-                <div className="flex items-start justify-between mb-3">
-                  <input
-                    value={editingDeal.owner_name ?? ''}
-                    onChange={(e) => setEditingDeal((p) => p ? { ...p, owner_name: e.target.value } : null)}
-                    onBlur={() => handleSaveDeal()}
-                    className="text-2xl font-bold tracking-tight text-gray-900 bg-transparent border-none outline-none w-full font-serif"
-                  />
-                  {lastSaved && (
-                    <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1 mt-1">
-                      <Save size={11} />Saved {lastSaved}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(TAG_CONFIG).map(([key, cfg]) => (
-                    <button
-                      key={key}
-                      onClick={() => handleTagChange(key)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
-                        editingDeal.tag === key
-                          ? `${cfg.bg} ${cfg.color} shadow-sm`
-                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
-                      }`}
-                    >
-                      {cfg.icon}{cfg.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Lead Info</div>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
-                  {[
-                    { label: 'Tract', field: 'tract_abstract', icon: <MapPin size={13} /> },
-                    { label: 'Survey', field: 'tract_survey', icon: <MapPin size={13} /> },
-                    { label: 'Operator', field: 'operator_name', icon: <Building2 size={13} /> },
-                    { label: 'Address', field: 'mailing_address', icon: <MapPin size={13} /> },
-                    { label: 'City', field: 'mailing_city', icon: null },
-                    { label: 'State', field: 'mailing_state', icon: null },
-                    { label: 'Zip', field: 'mailing_zip', icon: null },
-                    { label: 'Acreage', field: 'acreage', icon: null },
-                  ].map(({ label, field, icon }) => (
-                    <div key={field}>
-                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1">
-                        {icon}{label}
-                      </div>
-                      <input
-                        value={String(editingDeal[field as keyof Deal] ?? '')}
-                        onChange={(e) => setEditingDeal((p) => p ? { ...p, [field]: e.target.value } : null)}
-                        onBlur={() => handleSaveDeal()}
-                        className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
-                      />
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-gray-100">
-                  <div>
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Phone size={13} />Phone</div>
-                    {editingDeal.phone ? (
-                      <a href={`tel:${editingDeal.phone}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.phone}</a>
-                    ) : (
-                      <span className="text-sm text-gray-400 italic">Not skip traced</span>
-                    )}
+        <main className="flex-1 overflow-hidden flex">
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+            {!selected || !editingDeal ? (
+              <div className="h-full flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <User size={20} className="text-gray-400" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Mail size={13} />Email</div>
-                    {editingDeal.email ? (
-                      <a href={`mailto:${editingDeal.email}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.email}</a>
-                    ) : (
-                      <span className="text-sm text-gray-400 italic">Not skip traced</span>
-                    )}
-                  </div>
+                  <div className="text-sm font-medium text-gray-500">Select a lead</div>
+                  <div className="text-xs text-gray-400 mt-1">Choose a lead from the list to view details</div>
                 </div>
               </div>
-
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Offer & Valuation</div>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+            ) : (
+              <>
+                <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm border-b-2 border-b-amber-400">
+                  <div className="flex items-start justify-between mb-3">
                     <input
-                      type="number"
-                      placeholder="Your offer amount"
-                      value={editingDeal.offer_amount ?? ''}
-                      onChange={(e) => setEditingDeal((p) => p ? { ...p, offer_amount: e.target.value === '' ? null : Number(e.target.value) } : null)}
+                      value={editingDeal.owner_name ?? ''}
+                      onChange={(e) => setEditingDeal((p) => p ? { ...p, owner_name: e.target.value } : null)}
                       onBlur={() => handleSaveDeal()}
-                      className="w-full pl-7 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                      className="text-2xl font-bold tracking-tight text-gray-900 bg-transparent border-none outline-none w-full font-serif"
                     />
+                    {lastSaved && (
+                      <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1 mt-1">
+                        <Save size={11} />Saved {lastSaved}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(TAG_CONFIG).map(([key, cfg]) => (
+                      <button
+                        key={key}
+                        onClick={() => handleTagChange(key)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                          editingDeal.tag === key
+                            ? `${cfg.bg} ${cfg.color} shadow-sm`
+                            : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                        }`}
+                      >
+                        {cfg.icon}{cfg.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
-                {annual > 0 && (
-                  <div className="grid grid-cols-3 gap-3">
+
+                <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Lead Info</div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                     {[
-                      { label: 'Conservative', mult: 3, muted: true },
-                      { label: 'Market Rate', mult: 4, muted: false },
-                      { label: 'Aggressive', mult: 5, muted: true },
-                    ].map((c) => (
-                      <div key={c.mult} className={`rounded-lg p-3 text-center border ${c.muted ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200'}`}>
-                        <div className="text-xs text-gray-500 mb-1">{c.label} ({c.mult}x)</div>
-                        <div className={`text-base font-bold font-serif ${c.muted ? 'text-gray-700' : 'text-amber-700'}`}>
-                          ${(annual * c.mult).toLocaleString()}
+                      { label: 'Tract', field: 'tract_abstract', icon: <MapPin size={13} /> },
+                      { label: 'Survey', field: 'tract_survey', icon: <MapPin size={13} /> },
+                      { label: 'Operator', field: 'operator_name', icon: <Building2 size={13} /> },
+                      { label: 'Address', field: 'mailing_address', icon: <MapPin size={13} /> },
+                      { label: 'City', field: 'mailing_city', icon: null },
+                      { label: 'State', field: 'mailing_state', icon: null },
+                      { label: 'Zip', field: 'mailing_zip', icon: null },
+                      { label: 'Acreage', field: 'acreage', icon: null },
+                    ].map(({ label, field, icon }) => (
+                      <div key={field}>
+                        <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1">
+                          {icon}{label}
                         </div>
+                        <input
+                          value={String(editingDeal[field as keyof Deal] ?? '')}
+                          onChange={(e) => setEditingDeal((p) => p ? { ...p, [field]: e.target.value } : null)}
+                          onBlur={() => handleSaveDeal()}
+                          className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
+                        />
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Follow-up Reminder</div>
-                <div className="flex items-center gap-3 mb-3">
-                  <input
-                    type="date"
-                    value={editingDeal.follow_up_date ?? ''}
-                    onChange={(e) => setEditingDeal((p) => p ? { ...p, follow_up_date: e.target.value } : null)}
-                    onBlur={() => handleSaveDeal()}
-                    className="text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:border-amber-400 transition-all [color-scheme:light]"
-                  />
-                  {editingDeal.follow_up_date && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                      isOverdue(editingDeal.follow_up_date)
-                        ? 'bg-red-50 text-red-600'
-                        : 'bg-amber-50 text-amber-600'
-                    }`}>
-                      {formatDate(editingDeal.follow_up_date)}
-                    </span>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-gray-100">
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Phone size={13} />Phone</div>
+                      {editingDeal.phone ? (
+                        <a href={`tel:${editingDeal.phone}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.phone}</a>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">Not skip traced</span>
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Mail size={13} />Email</div>
+                      {editingDeal.email ? (
+                        <a href={`mailto:${editingDeal.email}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.email}</a>
+                      ) : (
+                        <span className="text-sm text-gray-400 italic">Not skip traced</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Offer & Valuation</div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                      <input
+                        type="number"
+                        placeholder="Your offer amount"
+                        value={editingDeal.offer_amount ?? ''}
+                        onChange={(e) => setEditingDeal((p) => p ? { ...p, offer_amount: e.target.value === '' ? null : Number(e.target.value) } : null)}
+                        onBlur={() => handleSaveDeal()}
+                        className="w-full pl-7 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                      />
+                    </div>
+                  </div>
+                  {annual > 0 && (
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { label: 'Conservative', mult: 3, muted: true },
+                        { label: 'Market Rate', mult: 4, muted: false },
+                        { label: 'Aggressive', mult: 5, muted: true },
+                      ].map((c) => (
+                        <div key={c.mult} className={`rounded-lg p-3 text-center border ${c.muted ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200'}`}>
+                          <div className="text-xs text-gray-500 mb-1">{c.label} ({c.mult}x)</div>
+                          <div className={`text-base font-bold font-serif ${c.muted ? 'text-gray-700' : 'text-amber-700'}`}>
+                            ${(annual * c.mult).toLocaleString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <div className="flex gap-2">
-                  {[{ label: '+3d', days: 3 }, { label: '+1w', days: 7 }, { label: '+2w', days: 14 }, { label: '+1mo', days: 30 }].map((q) => (
-                    <button
-                      key={q.days}
-                      onClick={() => {
-                        const d = new Date()
-                        d.setDate(d.getDate() + q.days)
-                        const ds = d.toISOString().split('T')[0]
-                        setEditingDeal((p) => p ? { ...p, follow_up_date: ds } : null)
-                        handleSaveDeal({ follow_up_date: ds } as Partial<Deal>)
-                      }}
-                      className="px-3 py-1 text-xs border border-gray-200 rounded-md text-gray-500 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                    >
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
-                <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Contact Log</div>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {['Called - no answer', 'Called - spoke', 'Left voicemail', 'Sent letter', 'Sent email', 'Met in person'].map((method) => (
-                    <button
-                      key={method}
-                      onClick={() => handleLogContact(method)}
-                      className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 bg-white shadow-sm hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 transition-colors font-medium inline-flex items-center gap-1"
-                    >
-                      <Plus size={12} />{method}
-                    </button>
-                  ))}
+                <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">Follow-up Reminder</div>
+                  <div className="flex items-center gap-3 mb-3">
+                    <input
+                      type="date"
+                      value={editingDeal.follow_up_date ?? ''}
+                      onChange={(e) => setEditingDeal((p) => p ? { ...p, follow_up_date: e.target.value } : null)}
+                      onBlur={() => handleSaveDeal()}
+                      className="text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:border-amber-400 transition-all [color-scheme:light]"
+                    />
+                    {editingDeal.follow_up_date && (
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        isOverdue(editingDeal.follow_up_date)
+                          ? 'bg-red-50 text-red-600'
+                          : 'bg-amber-50 text-amber-600'
+                      }`}>
+                        {formatDate(editingDeal.follow_up_date)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {[{ label: '+3d', days: 3 }, { label: '+1w', days: 7 }, { label: '+2w', days: 14 }, { label: '+1mo', days: 30 }].map((q) => (
+                      <button
+                        key={q.days}
+                        onClick={() => {
+                          const d = new Date()
+                          d.setDate(d.getDate() + q.days)
+                          const ds = d.toISOString().split('T')[0]
+                          setEditingDeal((p) => p ? { ...p, follow_up_date: ds } : null)
+                          handleSaveDeal({ follow_up_date: ds } as Partial<Deal>)
+                        }}
+                        className="px-3 py-1 text-xs border border-gray-200 rounded-md text-gray-500 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                      >
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-0">
-                  {contactLog.length === 0 ? (
-                    <div className="text-sm text-gray-400 italic">No contacts logged yet</div>
-                  ) : contactLog.map((entry, i) => (
-                    <div key={entry.id ?? `${entry.logged_at}-${i}`} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
-                      <div className="text-xs text-gray-400 w-20 shrink-0">
-                        {new Date(entry.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </div>
-                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                      <div className="text-sm text-gray-700">{entry.method}</div>
+
+                <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest pb-3 border-b border-gray-100 w-full">Notes</div>
+                    {lastSaved && <span className="text-xs text-gray-400">Saved {lastSaved}</span>}
+                  </div>
+                  <textarea
+                    value={editingDeal.notes ?? ''}
+                    onChange={(e) => setEditingDeal((p) => p ? { ...p, notes: e.target.value } : null)}
+                    onBlur={() => handleSaveDeal()}
+                    placeholder="Add notes about this lead..."
+                    rows={5}
+                    className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all resize-none leading-relaxed"
+                  />
+                </div>
+              </>
+            )}
+          </div>
+
+          <aside className="w-72 shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+            {selected ? (
+              <>
+                <div className="p-4 border-b border-gray-100">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Quick Actions</div>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => handleLogContact('Called — spoke')}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
+                    >
+                      <Phone size={14} />Log a call
+                    </button>
+                    <button
+                      onClick={() => handleLogContact('Sent letter')}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
+                    >
+                      <Mail size={14} />Log mail sent
+                    </button>
+                    <button
+                      onClick={() => handleLogContact('Left voicemail')}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
+                    >
+                      <Phone size={14} />Left voicemail
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-4 border-b border-gray-100">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Lead Score</div>
+                  <div className="flex items-center gap-3">
+                    <div className={`text-3xl font-bold font-serif ${
+                      (selected.propensity_score ?? 0) >= 8 ? 'text-red-600' :
+                      (selected.propensity_score ?? 0) >= 6 ? 'text-amber-600' : 'text-gray-500'
+                    }`}>
+                      {selected.propensity_score ?? 0}
+                      <span className="text-lg text-gray-400 font-normal">/10</span>
                     </div>
-                  ))}
+                    <div>
+                      <div className="text-sm font-medium text-gray-700">
+                        {(selected.propensity_score ?? 0) >= 8 ? 'Hot lead' :
+                         (selected.propensity_score ?? 0) >= 6 ? 'Warm lead' : 'Low priority'}
+                      </div>
+                      <div className="text-xs text-gray-400">Source: {selected.source ?? 'map'}</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        (selected.propensity_score ?? 0) >= 8 ? 'bg-red-500' :
+                        (selected.propensity_score ?? 0) >= 6 ? 'bg-amber-400' : 'bg-gray-300'
+                      }`}
+                      style={{ width: `${((selected.propensity_score ?? 0) / 10) * 100}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest pb-3 border-b border-gray-100 w-full">Notes</div>
-                  {lastSaved && <span className="text-xs text-gray-400">Saved {lastSaved}</span>}
+                <div className="p-4 border-b border-gray-100">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tasks</div>
+                    <button
+                      onClick={() => {
+                        const task = prompt('Add task:')
+                        if (task) {
+                          setTasks((prev) => [...prev, { id: Date.now().toString(), text: task, done: false, dealId: selected.id }])
+                        }
+                      }}
+                      className="text-xs text-amber-600 hover:text-amber-700 font-medium"
+                    >
+                      + Add
+                    </button>
+                  </div>
+                  {tasks.filter((t) => t.dealId === selected.id).length === 0 ? (
+                    <div className="text-xs text-gray-400 italic">No tasks yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {tasks.filter((t) => t.dealId === selected.id).map((task) => (
+                        <div key={task.id} className="flex items-start gap-2">
+                          <button
+                            onClick={() => setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, done: !t.done } : t))}
+                            className="mt-0.5 shrink-0"
+                          >
+                            {task.done
+                              ? <CheckCircle2 size={15} className="text-emerald-500" />
+                              : <Circle size={15} className="text-gray-300 hover:text-amber-400" />
+                            }
+                          </button>
+                          <span className={`text-sm leading-tight ${task.done ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+                            {task.text}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  value={editingDeal.notes ?? ''}
-                  onChange={(e) => setEditingDeal((p) => p ? { ...p, notes: e.target.value } : null)}
-                  onBlur={() => handleSaveDeal()}
-                  placeholder="Add notes about this lead..."
-                  rows={5}
-                  className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all resize-none leading-relaxed"
-                />
+
+                <div className="p-4">
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Activity</div>
+                  {contactLog.length === 0 ? (
+                    <div className="text-xs text-gray-400 italic">No activity yet</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {contactLog.slice(0, 8).map((entry, i) => (
+                        <div key={entry.id ?? `${entry.logged_at}-${i}`} className="flex gap-3">
+                          <div className="flex flex-col items-center">
+                            <div className="w-2 h-2 rounded-full bg-amber-400 mt-1 shrink-0" />
+                            {i < contactLog.slice(0, 8).length - 1 && <div className="w-px flex-1 bg-gray-100 mt-1" />}
+                          </div>
+                          <div className="pb-3">
+                            <div className="text-sm text-gray-700 leading-tight">{entry.method}</div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              {new Date(entry.logged_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-400 italic mt-8">
+                Select a lead to see tasks and activity
               </div>
-            </div>
-          </main>
-        )}
+            )}
+          </aside>
+        </main>
       </div>
     </div>
   )
