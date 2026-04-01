@@ -995,7 +995,17 @@ export default function Home() {
                       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                     }}
                   >
-                    <div style={{ color: '#111827', fontFamily: 'Georgia, serif', fontSize: 22, fontWeight: 700 }}>
+                    <div
+                      style={{
+                        color: '#111827',
+                        fontFamily: '"Times New Roman", Georgia, serif',
+                        fontSize: 24,
+                        fontWeight: 700,
+                        letterSpacing: '0.02em',
+                        fontVariantNumeric: 'tabular-nums lining-nums',
+                        fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                      }}
+                    >
                       {card.val}
                     </div>
                     <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Inter, sans-serif' }}>{card.lbl}</div>
