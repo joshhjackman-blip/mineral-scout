@@ -135,6 +135,20 @@ const SCORE_DISTRIBUTION = [
   { score: '0', owners: 124 },
 ]
 
+const TOTAL_OWNER_COUNT = SCORE_DISTRIBUTION.reduce(
+  (sum, row) => sum + row.owners,
+  0
+)
+const MOTIVATED_OWNER_COUNT = SCORE_DISTRIBUTION.reduce((sum, row) => {
+  return Number(row.score) >= 6 ? sum + row.owners : sum
+}, 0)
+const MOTIVATED_OWNER_PCT =
+  (MOTIVATED_OWNER_COUNT / TOTAL_OWNER_COUNT) * 100
+const SCORE_DISTRIBUTION_WITH_SHARE = SCORE_DISTRIBUTION.map((row) => ({
+  ...row,
+  share: (row.owners / TOTAL_OWNER_COUNT) * 100,
+}))
+
 export default function MethodologyPage() {
   return (
     <div
@@ -379,6 +393,79 @@ export default function MethodologyPage() {
                   <Bar dataKey="owners" fill="#EF9F27" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+            <div
+              style={{
+                marginTop: 14,
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 8,
+              }}
+            >
+              <div
+                style={{
+                  border: '1px solid #FCD34D',
+                  background: '#FFFBEB',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ fontSize: 11, color: '#92400E', marginBottom: 4 }}>
+                  Motivated owners (score {'>='} 6)
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                  {MOTIVATED_OWNER_COUNT.toLocaleString()} ({MOTIVATED_OWNER_PCT.toFixed(1)}%)
+                </div>
+              </div>
+              <div
+                style={{
+                  border: '1px solid #E5E7EB',
+                  background: '#F9FAFB',
+                  borderRadius: 10,
+                  padding: '10px 12px',
+                }}
+              >
+                <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 4 }}>
+                  Total scored owners
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+                  {TOTAL_OWNER_COUNT.toLocaleString()}
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 12, borderTop: '1px solid #F3F4F6', paddingTop: 10 }}>
+              <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>
+                Current score buckets
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+                  gap: 8,
+                }}
+              >
+                {SCORE_DISTRIBUTION_WITH_SHARE.map((bucket) => (
+                  <div
+                    key={bucket.score}
+                    style={{
+                      border: '1px solid #E5E7EB',
+                      borderRadius: 10,
+                      background: '#FFFFFF',
+                      padding: '8px 10px',
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: '#6B7280' }}>
+                      Score {bucket.score}
+                    </div>
+                    <div style={{ fontSize: 14, color: '#111827', fontWeight: 600 }}>
+                      {bucket.owners.toLocaleString()}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                      {bucket.share.toFixed(1)}% of owners
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
