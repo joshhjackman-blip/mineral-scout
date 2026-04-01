@@ -83,9 +83,9 @@ const scoreBadgeColor = (score: number) =>
 
 const COUNTY_STATS = [
   { val: '73,589', lbl: 'Total owners' },
-  { val: '3,950', lbl: '🔴 Hot (8-10)' },
-  { val: '19,047', lbl: '🟠 Motivated (5-7)' },
-  { val: '46,401', lbl: '🟡 Prospect (2-4)' },
+  { val: '3,950', lbl: 'Hot (8-10)' },
+  { val: '19,047', lbl: 'Motivated (5-7)' },
+  { val: '46,401', lbl: 'Prospect (2-4)' },
   { val: '553', lbl: 'Survey tracts' },
   { val: '4,512', lbl: 'Active wells' },
 ]
