@@ -622,8 +622,10 @@ export default function Home() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {[
             { val: '73,589', lbl: 'owners' },
-            { val: '3,950', lbl: 'hot leads' },
-            { val: '69,398', lbl: 'motivated' },
+            { val: '3,950', lbl: 'hot' },
+            { val: '19,047', lbl: 'motivated' },
+            { val: '46,401', lbl: 'prospect' },
+            { val: '10,656', lbl: 'low' },
           ].map((s) => (
             <div
               key={s.lbl}
@@ -1284,20 +1286,6 @@ export default function Home() {
           ● New permits
         </button>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, fontSize: 11 }}>
-          <span style={{ color: '#6B7280' }}>Scale:</span>
-          {[
-            { color: '#9E9E9E', label: 'Low' },
-            { color: '#81C784', label: 'Prospect' },
-            { color: '#FF9800', label: 'Motivated' },
-            { color: '#F44336', label: 'Hot' },
-          ].map(t => (
-            <div key={t.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: t.color }} />
-              <span style={{ color: '#6B7280' }}>{t.label}</span>
-            </div>
-          ))}
-        </div>
       </div>
 
       {toast && (
