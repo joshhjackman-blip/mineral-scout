@@ -88,15 +88,35 @@ export default function Map({
             }
           })
           map.current.addLayer({
+            id: 'parcels-outline-casing',
+            type: 'line',
+            source: 'parcels',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              // Dark casing improves separation between adjacent, similarly colored tracts.
+              'line-color': '#0f172a',
+              'line-width': ['step', ['get', 'max_propensity_score'],
+                1.4, 6, 2.0, 8, 2.8],
+              'line-opacity': 0.45
+            }
+          })
+          map.current.addLayer({
             id: 'parcels-outline',
             type: 'line',
             source: 'parcels',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
             paint: {
               'line-color': ['step', ['get', 'max_propensity_score'],
                 '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
               'line-width': ['step', ['get', 'max_propensity_score'],
-                0.6, 6, 1.0, 8, 1.6],
-              'line-opacity': 0.85
+                0.8, 6, 1.2, 8, 1.9],
+              'line-opacity': 0.95
             }
           })
 
