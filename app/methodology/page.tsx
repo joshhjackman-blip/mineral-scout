@@ -90,9 +90,10 @@ const FAQS = [
   },
 ]
 
-const TOTAL_OWNER_COUNT = SCORE_DISTRIBUTION.reduce((sum, row) => sum + row.owners, 0)
-const MOTIVATED_OWNER_COUNT = SCORE_DISTRIBUTION.reduce((sum, row) => (Number(row.score) >= 5 ? sum + row.owners : sum), 0)
-const HOT_LEAD_COUNT = SCORE_DISTRIBUTION.reduce((sum, row) => (Number(row.score) >= 8 ? sum + row.owners : sum), 0)
+const TOTAL_OWNER_COUNT = 73589
+const MOTIVATED_OWNER_COUNT = 69398
+const HOT_LEAD_COUNT = 3950
+const OUT_OF_STATE_COUNT = 13551
 
 export default function MethodologyPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
@@ -170,13 +171,17 @@ export default function MethodologyPage() {
                 </ResponsiveContainer>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                   <div className="text-xs text-gray-400 mb-1">Total owners</div>
                   <div className="font-serif text-xl font-bold text-gray-900">{TOTAL_OWNER_COUNT.toLocaleString()}</div>
                 </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="text-xs text-blue-700 mb-1">Out of state</div>
+                  <div className="font-serif text-xl font-bold text-blue-700">{OUT_OF_STATE_COUNT.toLocaleString()}</div>
+                </div>
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="text-xs text-amber-700 mb-1">Motivated (5+)</div>
+                  <div className="text-xs text-amber-700 mb-1">Motivated (1+)</div>
                   <div className="font-serif text-xl font-bold text-amber-700">{MOTIVATED_OWNER_COUNT.toLocaleString()}</div>
                 </div>
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
