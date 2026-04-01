@@ -82,10 +82,10 @@ const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
 const COUNTY_STATS = [
-  { val: '73,589', lbl: 'Total mineral owners' },
-  { val: '13,551', lbl: 'Out of state (18%)' },
-  { val: '69,398', lbl: 'Motivated sellers (1+)' },
-  { val: '3,950', lbl: 'Hot leads (8-10)' },
+  { val: '73,589', lbl: 'Total owners' },
+  { val: '3,950', lbl: '🔴 Hot (8-10)' },
+  { val: '19,047', lbl: '🟠 Motivated (5-7)' },
+  { val: '46,401', lbl: '🟡 Prospect (2-4)' },
   { val: '553', lbl: 'Survey tracts' },
   { val: '4,512', lbl: 'Active wells' },
 ]
@@ -147,6 +147,7 @@ export default function Home() {
   const [showUnknownWells, setShowUnknownWells] = useState(true)
   const [showPermits, setShowPermits] = useState(true)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
+  const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
@@ -397,12 +398,20 @@ export default function Home() {
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
   )
+  const tierByScore = (score: number): 'hot' | 'motivated' | 'prospect' | 'low' => {
+    if (score >= 8) return 'hot'
+    if (score >= 5) return 'motivated'
+    if (score >= 2) return 'prospect'
+    return 'low'
+  }
   const filteredOwnersList = useMemo(() => {
     return selectedOwners.filter((owner) => {
+      const score = toNumber(owner.propensity_score)
+      if (tierFilter !== 'all' && tierByScore(score) !== tierFilter) return false
       if (ownerTypeFilter === 'all') return true
       return classifyOwner(String(owner.owner_name ?? '')) === ownerTypeFilter
     })
-  }, [selectedOwners, ownerTypeFilter])
+  }, [selectedOwners, ownerTypeFilter, tierFilter])
   const productionData = useMemo(() => {
     if (!selected) return []
     const s = selected as Record<string, unknown>
@@ -1226,6 +1235,29 @@ export default function Home() {
             </button>
           ))}
         </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
+          <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Tier:</span>
+          {(['all', 'hot', 'motivated', 'prospect', 'low'] as const).map(tier => {
+            const colors: Record<string, string> = {
+              hot: '#F44336', motivated: '#FF9800', prospect: '#81C784', low: '#9E9E9E', all: '#EF9F27'
+            }
+            return (
+              <button
+                key={tier}
+                onClick={() => setTierFilter(tier)}
+                style={{
+                  fontSize: 10, padding: '3px 10px', borderRadius: 10, cursor: 'pointer',
+                  fontFamily: 'monospace',
+                  background: tierFilter === tier ? `${colors[tier]}20` : 'transparent',
+                  border: tierFilter === tier ? `0.5px solid ${colors[tier]}` : '0.5px solid #E5E7EB',
+                  color: tierFilter === tier ? colors[tier] : '#6B7280',
+                }}
+              >
+                {tier === 'all' ? 'All' : tier.charAt(0).toUpperCase() + tier.slice(1)}
+              </button>
+            )
+          })}
+        </div>
 
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Min score</span>
         <input
@@ -1252,10 +1284,18 @@ export default function Home() {
           ● New permits
         </button>
 
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Scale:</span>
-        <div style={{ width: 180, height: 8, borderRadius: 5, overflow: 'hidden', display: 'flex' }}>
-          {['#1a3a1a', '#2d6a2d', '#4CAF50', '#8BC34A', '#FFC107', '#FF9800', '#F44336', '#B71C1C'].map((color) => (
-            <div key={color} style={{ flex: 1, background: color }} />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, fontSize: 11 }}>
+          <span style={{ color: '#6B7280' }}>Scale:</span>
+          {[
+            { color: '#9E9E9E', label: 'Low' },
+            { color: '#81C784', label: 'Prospect' },
+            { color: '#FF9800', label: 'Motivated' },
+            { color: '#F44336', label: 'Hot' },
+          ].map(t => (
+            <div key={t.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: t.color }} />
+              <span style={{ color: '#6B7280' }}>{t.label}</span>
+            </div>
           ))}
         </div>
       </div>
