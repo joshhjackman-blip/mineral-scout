@@ -89,6 +89,19 @@ export default function Auth() {
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 transition-all"
               />
             </div>
+            <div
+              onClick={() => {
+                setEmail('demo@mineralmap.io')
+                setPassword('EagleFord2026')
+              }}
+              className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg cursor-pointer hover:bg-amber-100 transition-colors"
+            >
+              <div className="w-2 h-2 rounded-full bg-amber-400" />
+              <div>
+                <div className="text-xs font-semibold text-amber-700">Try the demo</div>
+                <div className="text-xs text-amber-600">demo@mineralmap.io · EagleFord2026</div>
+              </div>
+            </div>
             <button
               onClick={handleSubmit}
               disabled={loading}
