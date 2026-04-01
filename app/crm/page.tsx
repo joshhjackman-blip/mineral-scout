@@ -1,6 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import {
+  BarChart2,
+  BookOpen,
+  Calendar,
+  ChevronRight,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  Search,
+} from 'lucide-react'
 
 import { supabase } from '@/lib/supabase'
 
@@ -48,34 +59,36 @@ type ContactLogEntry = {
   notes?: string | null
 }
 
-const TAG_CONFIG = {
-  all: { label: 'All', color: '#6B7280', bg: 'rgba(255,255,255,0.04)' },
-  hot: { label: 'Hot', color: '#B91C1C', bg: '#FEE2E2' },
-  nurture: { label: 'Nurture', color: '#B45309', bg: '#FEF3C7' },
-  prospect: { label: 'Prospect', color: '#6B7280', bg: '#F3F4F6' },
-  not_interested: { label: 'Not interested', color: '#9CA3AF', bg: '#F9FAFB' },
-  offer_sent: { label: 'Offer sent', color: '#1D4ED8', bg: '#EFF6FF' },
-  under_contract: { label: 'Under contract', color: '#065F46', bg: '#ECFDF5' },
-  closed: { label: 'Closed', color: '#065F46', bg: '#ECFDF5' },
-  skip_traced: { label: 'Skip traced', color: '#065F46', bg: '#ECFDF5' },
-} as const
+const TAG_LABELS: Record<TagKey, string> = {
+  all: 'All',
+  hot: 'Hot',
+  nurture: 'Nurture',
+  prospect: 'Prospect',
+  not_interested: 'Not interested',
+  offer_sent: 'Offer sent',
+  under_contract: 'Under contract',
+  closed: 'Closed',
+  skip_traced: 'Skip traced',
+}
+
+const TAG_STYLES: Record<string, { bg: string; color: string; border: string }> = {
+  hot:            { bg: '#FEE2E2', color: '#B91C1C', border: '#FECACA' },
+  nurture:        { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
+  prospect:       { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' },
+  not_interested: { bg: '#F9FAFB', color: '#9CA3AF', border: '#F3F4F6' },
+  skip_traced:    { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
+  offer_sent:     { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  under_contract: { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
+  closed:         { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
+}
 
 const TagBadge = ({ tag }: { tag: string | null }) => {
-  const key = (tag ?? 'prospect') as keyof typeof TAG_CONFIG
-  const cfg = TAG_CONFIG[key] ?? TAG_CONFIG.prospect
+  const key = (tag ?? 'prospect') as TagKey
+  const label = TAG_LABELS[key] ?? TAG_LABELS.prospect
+  const style = TAG_STYLES[key] ?? TAG_STYLES.prospect
   return (
-    <span
-      style={{
-        fontSize: 9,
-        padding: '2px 8px',
-        borderRadius: 10,
-        fontWeight: 600,
-        background: cfg.bg,
-        color: cfg.color,
-        border: `0.5px solid ${cfg.color}40`,
-      }}
-    >
-      {cfg.label}
+    <span className="badge" style={{ background: style.bg, color: style.color, border: `1px solid ${style.border}` }}>
+      {label}
     </span>
   )
 }
@@ -239,11 +252,11 @@ export default function CrmPage() {
     <div
       style={{
         height: '100vh',
-        background: '#F8F8F8',
+        background: '#F4F5F7',
         color: '#111827',
         display: 'flex',
         flexDirection: 'column',
-        fontFamily: 'Inter, sans-serif',
+        fontFamily: '"DM Sans", system-ui, sans-serif',
       }}
     >
       <div
@@ -274,6 +287,9 @@ export default function CrmPage() {
           <a
             href="/"
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
               color: '#6B7280',
               fontSize: 12,
               textDecoration: 'none',
@@ -282,38 +298,47 @@ export default function CrmPage() {
               padding: '4px 12px',
             }}
           >
-            ← Map
+            <MapPin size={14} />
+            Map
           </a>
           <a
             href="/methodology"
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
               color: '#6B7280',
               fontSize: 12,
               textDecoration: 'none',
               border: '1px solid #E5E7EB',
               borderRadius: 999,
               padding: '4px 12px',
-              fontFamily: 'Inter, sans-serif',
             }}
           >
+            <BookOpen size={14} />
             Methodology
           </a>
           <a
             href="/comps"
             style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
               fontSize: 12,
               color: '#6B7280',
               textDecoration: 'none',
               padding: '6px 12px',
               borderRadius: 6,
               border: '1px solid #E5E7EB',
-              fontFamily: 'Inter, sans-serif',
             }}
           >
+            <BarChart2 size={14} />
             Comps
           </a>
         </div>
-        <div style={{ color: '#111827', fontSize: 12, fontWeight: 600 }}>CRM & Pipeline</div>
+        <div style={{ color: '#111827', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+          CRM & Pipeline <ChevronRight size={14} />
+        </div>
       </div>
 
       <div
@@ -351,21 +376,16 @@ export default function CrmPage() {
             {label}
           </button>
         ))}
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search owners / tracts / operator"
-          style={{
-            marginLeft: 'auto',
-            minWidth: 240,
-            background: '#F9FAFB',
-            border: '1px solid #E5E7EB',
-            borderRadius: 8,
-            color: '#111827',
-            padding: '6px 10px',
-            fontSize: 11,
-          }}
-        />
+        <div style={{ marginLeft: 'auto', minWidth: 280, position: 'relative' }}>
+          <Search size={14} style={{ position: 'absolute', left: 10, top: 8, color: '#9CA3AF' }} />
+          <input
+            className="input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search owners / tracts / operator"
+            style={{ paddingLeft: 30, fontSize: 12, background: '#FFFFFF' }}
+          />
+        </div>
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
@@ -389,8 +409,10 @@ export default function CrmPage() {
                 <div
                   key={deal.id}
                   onClick={() => handleSelectDeal(deal)}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#F9FAFB'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = editingDeal?.id === deal.id ? '#FEF3C7' : 'white'}
                   style={{
-                    background: '#FFFFFF',
+                    background: editingDeal?.id === deal.id ? '#FEF3C7' : 'white',
                     border: editingDeal?.id === deal.id
                       ? '1px solid #EF9F27'
                       : '1px solid #E5E7EB',
@@ -472,6 +494,7 @@ export default function CrmPage() {
             <div>
               <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
                 <input
+                  className="input"
                   value={editingDeal.owner_name ?? ''}
                   onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, owner_name: e.target.value } : prev))}
                   onBlur={() => handleSaveDeal()}
@@ -479,31 +502,29 @@ export default function CrmPage() {
                     fontSize: 20,
                     fontWeight: 500,
                     color: '#111827',
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
                     width: '100%',
                     marginBottom: 8,
                   }}
                 />
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {Object.entries(TAG_CONFIG).filter(([k]) => k !== 'all').map(([key, cfg]) => (
+                  {Object.entries(TAG_LABELS).filter(([k]) => k !== 'all').map(([key, label]) => {
+                    const style = TAG_STYLES[key] ?? TAG_STYLES.prospect
+                    return (
                     <button
                       key={key}
                       onClick={() => handleTagChange(editingDeal.id, key)}
+                      className="badge"
                       style={{
-                        fontSize: 10,
-                        padding: '3px 10px',
-                        borderRadius: 10,
                         cursor: 'pointer',
-                        background: editingDeal.tag === key ? cfg.bg : 'transparent',
-                        border: editingDeal.tag === key ? `0.5px solid ${cfg.color}` : '0.5px solid #E5E7EB',
-                        color: editingDeal.tag === key ? cfg.color : '#9CA3AF',
+                        background: editingDeal.tag === key ? style.bg : '#FFFFFF',
+                        border: editingDeal.tag === key ? `1px solid ${style.border}` : '1px solid #E5E7EB',
+                        color: editingDeal.tag === key ? style.color : '#9CA3AF',
                       }}
                     >
-                      {cfg.label}
+                      {label}
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
@@ -527,22 +548,13 @@ export default function CrmPage() {
                     <div key={field}>
                       <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 3 }}>{label}</div>
                       <input
+                        className="input"
                         value={String(editingDeal[field as keyof Deal] ?? '')}
                         onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
                         onBlur={() => handleSaveDeal()}
                         style={{
-                          fontSize: 12,
-                          color: '#111827',
                           background: '#F9FAFB',
-                          border: '1px solid #E5E7EB',
-                          borderRadius: 6,
-                          padding: '5px 8px',
-                          width: '100%',
-                          outline: 'none',
-                          fontFamily: 'Inter, sans-serif',
-                        }}
-                        onFocus={(e) => {
-                          e.currentTarget.style.borderColor = '#EF9F27'
+                          fontSize: 12,
                         }}
                       />
                     </div>
@@ -551,13 +563,13 @@ export default function CrmPage() {
                 {(editingDeal.phone || editingDeal.email) && (
                   <div style={{ marginTop: 12, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
                     {editingDeal.phone && (
-                      <a href={`tel:${editingDeal.phone}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none' }}>
-                        📞 {editingDeal.phone}
+                      <a href={`tel:${editingDeal.phone}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Phone size={14} /> {editingDeal.phone}
                       </a>
                     )}
                     {editingDeal.email && (
-                      <a href={`mailto:${editingDeal.email}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none' }}>
-                        ✉ {editingDeal.email}
+                      <a href={`mailto:${editingDeal.email}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Mail size={14} /> {editingDeal.email}
                       </a>
                     )}
                   </div>
@@ -571,6 +583,7 @@ export default function CrmPage() {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
                   <span style={{ fontSize: 12, color: '#6B7280' }}>$</span>
                   <input
+                    className="input"
                     type="number"
                     placeholder="Your offer amount"
                     value={editingDeal.offer_amount ?? ''}
@@ -581,13 +594,8 @@ export default function CrmPage() {
                     onBlur={() => handleSaveDeal()}
                     style={{
                       fontSize: 14,
-                      color: '#111827',
                       background: '#F9FAFB',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: 6,
-                      padding: '6px 10px',
                       width: 200,
-                      outline: 'none',
                     }}
                   />
                 </div>
@@ -623,18 +631,14 @@ export default function CrmPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <input
+                    className="input"
                     type="date"
                     value={editingDeal.follow_up_date ?? ''}
                     onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, follow_up_date: e.target.value } : prev))}
                     onBlur={() => handleSaveDeal()}
                     style={{
                       fontSize: 12,
-                      color: '#111827',
                       background: '#F9FAFB',
-                      border: '1px solid #E5E7EB',
-                      borderRadius: 6,
-                      padding: '5px 8px',
-                      outline: 'none',
                       colorScheme: 'dark',
                     }}
                   />
@@ -653,8 +657,12 @@ export default function CrmPage() {
                             ? 'rgba(244,67,54,0.3)'
                             : 'rgba(239,159,39,0.3)'
                         }`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
                       }}
                     >
+                      <Calendar size={14} />
                       {formatDate(editingDeal.follow_up_date)}
                     </span>
                   )}
@@ -687,7 +695,10 @@ export default function CrmPage() {
                         color: '#374151',
                       }}
                     >
-                      {q.label}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Plus size={12} />
+                        {q.label.replace('+', '').trim()}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -756,6 +767,7 @@ export default function CrmPage() {
                   {lastSaved && <div style={{ fontSize: 9, color: '#9CA3AF' }}>Saved {lastSaved}</div>}
                 </div>
                 <textarea
+                  className="input"
                   value={editingDeal.notes ?? ''}
                   onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
                   onBlur={() => handleSaveDeal()}
@@ -763,20 +775,10 @@ export default function CrmPage() {
                   style={{
                     width: '100%',
                     minHeight: 140,
-                    background: '#F9FAFB',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: 6,
-                    padding: '10px 12px',
-                    color: '#111827',
                     fontSize: 12,
                     resize: 'vertical',
-                    outline: 'none',
-                    fontFamily: 'Inter, sans-serif',
                     lineHeight: 1.5,
                     colorScheme: 'dark',
-                  }}
-                  onFocus={(e) => {
-                    e.currentTarget.style.borderColor = '#EF9F27'
                   }}
                 />
               </div>
