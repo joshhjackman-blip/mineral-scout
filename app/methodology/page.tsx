@@ -1,355 +1,615 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 
-type SignalKey =
-  | 'out_of_state_owner'
-  | 'estate_or_probate'
-  | 'life_estate'
-  | 'irrevocable_trust'
-  | 'living_trust'
-  | 'out_of_state_llc_lp'
-  | 'po_box'
-  | 'small_acreage'
-  | 'steep_decline'
-  | 'tiny_interest'
-  | 'low_value'
+type SignalCard = {
+  title: string
+  points: string
+  meaning: string
+  why: string
+  angle: string
+}
 
-const SIGNALS: Array<{ key: SignalKey; label: string; points: number }> = [
-  { key: 'out_of_state_owner', label: 'Out of state owner', points: 3 },
-  { key: 'estate_or_probate', label: 'Estate or probate', points: 4 },
-  { key: 'life_estate', label: 'Life estate', points: 4 },
-  { key: 'irrevocable_trust', label: 'Irrevocable trust', points: 3 },
-  { key: 'living_trust', label: 'Living trust', points: 2 },
-  { key: 'out_of_state_llc_lp', label: 'Out of state LLC/LP', points: 2 },
-  { key: 'po_box', label: 'PO Box address', points: 1 },
-  { key: 'small_acreage', label: 'Small acreage (<5 acres)', points: 3 },
-  { key: 'steep_decline', label: 'Steep production decline', points: 3 },
-  { key: 'tiny_interest', label: 'Tiny fractional interest', points: 2 },
-  { key: 'low_value', label: 'Low appraised value', points: 2 },
+const SIGNAL_CARDS: SignalCard[] = [
+  {
+    title: 'Out of State Address',
+    points: '+3 points',
+    meaning: 'Mailing address is outside Texas.',
+    why:
+      "No physical connection to land. Receives only a check in mail. Out-of-state owners consistently accept lower multiples. Managing a small royalty from another state is administratively burdensome - property taxes, division orders, and operator changes all require attention they often can't give.",
+    angle:
+      'Lead with simplicity and remote closing. Emphasize lump sum vs ongoing administrative burden of a small royalty check.',
+  },
+  {
+    title: 'Estate or Probate',
+    points: '+4 points',
+    meaning: 'The word "Estate" appears in the owner name.',
+    why:
+      'Mineral rights inside a probate estate create legal complexity for heirs. The estate must be kept open as long as minerals are held, generating ongoing legal fees. Heirs across multiple states often disagree on disposition. A clean cash offer removes complexity. This is consistently the highest-converting owner type in mineral acquisitions.',
+    angle:
+      '"We work with estates regularly and can close quickly. One payment, estate closed." Talk directly to executor or administrator.',
+  },
+  {
+    title: 'Life Estate',
+    points: '+4 points',
+    meaning: 'Owner name contains "Life Estate".',
+    why:
+      'A life estate holder has rights only during their lifetime, then ownership passes to remaindermen. Holders are typically older and may prefer converting a constrained asset into immediate liquidity.',
+    angle:
+      'Focus on liquidity and legacy: convert the asset to cash now rather than leaving legal complexity for family.',
+  },
+  {
+    title: 'Irrevocable Trust',
+    points: '+3 points',
+    meaning: 'Owner name contains "Irrevocable".',
+    why:
+      'Trustees have fiduciary duty to administer assets prudently. Small, remote mineral interests are high-friction to administer. Selling converts to cleaner, easier-to-manage cash.',
+    angle:
+      'Contact trustee directly and frame as simplification of fiduciary obligations.',
+  },
+  {
+    title: 'Living Trust',
+    points: '+2 points',
+    meaning: 'Owner name contains "Living Trust".',
+    why:
+      'Living trusts are estate-planning vehicles. This signals financially organized owners who may be receptive to transactions that simplify their estate.',
+    angle:
+      'Acknowledge planning intent and emphasize quick close plus full paperwork handling.',
+  },
+  {
+    title: 'Out of State LLC or LP',
+    points: '+2 points',
+    meaning: 'Business entity with out-of-state mailing address.',
+    why:
+      'Entity owners are economically driven with minimal emotional attachment. Remote entity administration of Texas minerals through agents is usually low priority.',
+    angle:
+      'Be direct and financial. Lead with certainty of close and clean terms.',
+  },
+  {
+    title: 'PO Box Address',
+    points: '+1 point',
+    meaning: 'Mailing address is a PO Box.',
+    why:
+      'A PO Box can indicate mobility, intermediated communications, or intentional separation from physical location. In each case, attachment to the asset tends to be weaker.',
+    angle:
+      'Make first-touch outreach highly actionable with simple response options.',
+  },
+  {
+    title: 'Small Acreage - under 5 acres',
+    points: '+3 points',
+    meaning: 'Mineral interest is under 5 net acres.',
+    why:
+      'Very small interests often produce small checks while preserving admin overhead (taxes, operator notices, division orders). Owners may prefer one-time conversion to cash.',
+    angle:
+      'Anchor on lump-sum conversion of a low monthly stream.',
+  },
+  {
+    title: 'Small Acreage - 5 to 15 acres',
+    points: '+2 points',
+    meaning: 'Mineral interest is between 5 and 15 net acres.',
+    why:
+      'Still a relatively small ownership position with moderate administrative burden and variable return.',
+    angle:
+      'Use the same lump-sum framing, adjusted for larger ownership size.',
+  },
+  {
+    title: 'Steep Production Decline',
+    points: '+3 points',
+    meaning: 'First 6-month production is >2.5x 60-month production.',
+    why:
+      'Shrinking royalty checks create urgency. Owners experiencing declines often seek to lock value before further deterioration.',
+    angle:
+      'Position offer timing around decline trajectory and certainty of proceeds.',
+  },
+  {
+    title: 'Tiny Fractional Interest',
+    points: '+2 points',
+    meaning: 'Net revenue interest is less than 0.1%.',
+    why:
+      'Extremely small fractional interests can produce negligible cashflow and receive minimal owner attention.',
+    angle:
+      'Emphasize unexpected value realization for a very small position.',
+  },
+  {
+    title: 'Low Appraised Value',
+    points: '+2 points',
+    meaning: 'County appraises interest below $5,000.',
+    why:
+      'Low valuation indicates constrained earning potential relative to ongoing ownership complexity.',
+    angle:
+      'Lead with total offer amount and certainty.',
+  },
 ]
 
 const SCORE_DISTRIBUTION = [
-  { score: '10', owners: 657 },
-  { score: '9', owners: 1190 },
-  { score: '8', owners: 2103 },
-  { score: '7', owners: 7232 },
-  { score: '6', owners: 2542 },
-  { score: '5', owners: 9273 },
-  { score: '4', owners: 26362 },
-  { score: '3', owners: 6936 },
-  { score: '2', owners: 6638 },
-  { score: '1', owners: 6465 },
-  { score: '0', owners: 4191 },
+  { score: '10', owners: 2175 },
+  { score: '9', owners: 1801 },
+  { score: '8', owners: 7133 },
+  { score: '7', owners: 2601 },
+  { score: '6', owners: 8928 },
+  { score: '5', owners: 25829 },
+  { score: '4', owners: 7399 },
+  { score: '3', owners: 6667 },
+  { score: '2', owners: 6696 },
+  { score: '1', owners: 4236 },
+  { score: '0', owners: 124 },
 ]
-
-const LAYER_CARDS = [
-  {
-    id: 'parcels',
-    title: 'Parcel Polygons',
-    detail: 'Color intensity reflects the highest-scoring owner in each tract. Click any tract to open a ranked owner list instantly.',
-  },
-  {
-    id: 'wells',
-    title: 'Well Dots ● green ● red',
-    detail:
-      'Green wells indicate production and active royalties. Red wells indicate shut-in status. Shut-in owners often have immediate motivation because income has dropped.',
-  },
-  {
-    id: 'permits',
-    title: 'Blue Dots ●',
-    detail:
-      'Blue dots indicate recent nearby drilling activity. New development can create urgency and pricing pressure before broad market outreach begins.',
-  },
-] as const
-
-const FAQS = [
-  {
-    q: 'How accurate are the scores?',
-    a: 'Scores are directional, not absolute. They prioritize outreach order by combining owner profile, asset characteristics, and activity signals into one ranking.',
-  },
-  {
-    q: 'What does HBP mean?',
-    a: 'HBP means Held by Production. If a lease continues producing, it can stay active beyond its primary term.',
-  },
-  {
-    q: 'What is a survey abstract?',
-    a: 'A survey abstract is a land reference unit used to organize tracts and ownership records for mapping and title work.',
-  },
-  {
-    q: 'Why do some tracts show no owners?',
-    a: 'Some tracts have incomplete or unmatched ownership records. These are retained on the map so coverage remains complete as matching improves.',
-  },
-  {
-    q: 'How often is data updated?',
-    a: 'Property, production, and activity datasets are refreshed on a recurring cadence, with scoring recalculated after each refresh cycle.',
-  },
-  {
-    q: 'What makes someone NOT motivated to sell?',
-    a: 'Large acreage, strong stable cash flow, nearby residency, and low ownership friction are common characteristics of lower motivation.',
-  },
-]
-
-const scoreColor = (score: number) => {
-  if (score <= 3) return '#16A34A'
-  if (score <= 6) return '#D97706'
-  if (score <= 8) return '#F97316'
-  return '#DC2626'
-}
-
-const scoreMessage = (score: number) => {
-  if (score <= 3) return 'Low motivation — focus elsewhere'
-  if (score <= 5) return 'Some signals — worth monitoring'
-  if (score <= 7) return 'Warm lead — add to nurture list'
-  if (score <= 9) return 'Hot lead — prioritize outreach now'
-  return '🔴 Maximum motivation — call today'
-}
 
 export default function MethodologyPage() {
-  const [signals, setSignals] = useState<Record<SignalKey, boolean>>({
-    out_of_state_owner: false,
-    estate_or_probate: false,
-    life_estate: false,
-    irrevocable_trust: false,
-    living_trust: false,
-    out_of_state_llc_lp: false,
-    po_box: false,
-    small_acreage: false,
-    steep_decline: false,
-    tiny_interest: false,
-    low_value: false,
-  })
-  const [openLayer, setOpenLayer] = useState<(typeof LAYER_CARDS)[number]['id'] | null>(null)
-  const [openFaq, setOpenFaq] = useState<number | null>(0)
-
-  const rawScore = useMemo(
-    () =>
-      SIGNALS.reduce((sum, signal) => (signals[signal.key] ? sum + signal.points : sum), 0),
-    [signals]
-  )
-  const score = Math.min(10, rawScore)
-  const focusedOwners = 13724
-  const totalOwners = 73589
-  const focusedPct = Math.round((focusedOwners / totalOwners) * 100)
-
   return (
-    <div style={{ minHeight: '100vh', background: '#F8F8F8', color: '#111827', fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 20px 48px' }}>
-        {/* Hero */}
-        <section style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 28, marginBottom: 18 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 36, fontWeight: 700, marginBottom: 10 }}>
-            How Mineral Map Works
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#F8F8F8',
+        color: '#111827',
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div
+        style={{
+          height: 52,
+          background: '#FFFFFF',
+          borderBottom: '1px solid #E5E7EB',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              background: '#EF9F27',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>
+              M
+            </span>
           </div>
-          <div style={{ color: '#4B5563', fontSize: 16, lineHeight: 1.6, maxWidth: 760 }}>
-            The most sophisticated mineral rights prospecting platform ever built for the Eagle Ford Basin.
-          </div>
-          <a href="#calculator" style={{ display: 'inline-block', marginTop: 20, color: '#EF9F27', textDecoration: 'none', fontWeight: 600 }}>
-            Explore the scoring system ↓
+          <span
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 16,
+              fontWeight: 700,
+              color: '#111827',
+            }}
+          >
+            Mineral Map
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a
+            href="/"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+            }}
+          >
+            Back to Map
           </a>
+          <a
+            href="/crm"
+            style={{
+              fontSize: 12,
+              color: '#EF9F27',
+              textDecoration: 'none',
+              padding: '6px 14px',
+              borderRadius: 6,
+              border: '1px solid #EF9F27',
+              fontWeight: 500,
+            }}
+          >
+            CRM &rarr;
+          </a>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 780, margin: '0 auto', padding: '34px 20px 54px' }}>
+        <section style={{ marginBottom: 30 }}>
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: '0.14em',
+              color: '#9CA3AF',
+              fontWeight: 600,
+              marginBottom: 12,
+            }}
+          >
+            MINERAL MAP INTELLIGENCE
+          </div>
+          <h1
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 38,
+              lineHeight: 1.15,
+              margin: 0,
+              marginBottom: 14,
+            }}
+          >
+            How We Score Mineral Rights Owners
+          </h1>
+          <p
+            style={{
+              fontSize: 16,
+              color: '#374151',
+              lineHeight: 1.8,
+              margin: 0,
+              maxWidth: 740,
+            }}
+          >
+            Mineral Map assigns every mineral owner in Gonzales County a
+            Propensity Score from 0 to 10 - a data-driven measure of how likely
+            they are to sell their mineral interests. This document explains the
+            methodology behind every signal, what each map layer represents, and
+            how to interpret the scores in your acquisition work.
+          </p>
+          <div style={{ marginTop: 14, fontSize: 12, color: '#6B7280' }}>
+            Last updated: March 2026 - Gonzales County, TX
+          </div>
         </section>
 
-        {/* Calculator */}
-        <section id="calculator" style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 18 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>BUILD A PROPENSITY SCORE</div>
-          <div style={{ color: '#6B7280', marginBottom: 16 }}>Toggle signals on/off and watch the score update live:</div>
+        <section style={{ marginBottom: 34 }}>
+          <h2
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 28,
+              margin: 0,
+              marginBottom: 12,
+            }}
+          >
+            The Propensity Score (0-10)
+          </h2>
+          <p style={{ margin: 0, color: '#374151', lineHeight: 1.8, fontSize: 15 }}>
+            Each owner receives weighted points across legal, geographic, and
+            asset-level signals. Total points are normalized to a 0-10 scale.
+            Owners with scores 6-10 are marked as motivated and prioritized for
+            outreach.
+          </p>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {SIGNALS.map((signal) => (
-              <label
-                key={signal.key}
+          <div
+            style={{
+              marginTop: 16,
+              border: '1px solid #E5E7EB',
+              borderRadius: 12,
+              background: '#fff',
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 10,
+              }}
+            >
+              <span style={{ fontSize: 13, color: '#6B7280' }}>
+                Example score threshold
+              </span>
+              <span style={{ fontSize: 13, color: '#111827', fontWeight: 600 }}>
+                Motivated {'>='} 6
+              </span>
+            </div>
+            <div
+              style={{
+                width: '100%',
+                height: 11,
+                borderRadius: 999,
+                background:
+                  'linear-gradient(90deg, #22C55E 0%, #EAB308 45%, #F97316 70%, #DC2626 100%)',
+                position: 'relative',
+              }}
+            >
+              <div
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: '#F9FAFB',
+                  position: 'absolute',
+                  left: '60%',
+                  top: -5,
+                  width: 2,
+                  height: 22,
+                  background: '#111827',
+                }}
+              />
+            </div>
+            <div
+              style={{
+                marginTop: 8,
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: 11,
+                color: '#6B7280',
+              }}
+            >
+              <span>0</span>
+              <span>2</span>
+              <span>4</span>
+              <span>6</span>
+              <span>8</span>
+              <span>10</span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 18,
+              border: '1px solid #E5E7EB',
+              borderRadius: 12,
+              background: '#fff',
+              padding: 16,
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                marginBottom: 10,
+                fontSize: 14,
+                color: '#111827',
+                fontWeight: 600,
+              }}
+            >
+              Current score distribution
+            </h3>
+            <div style={{ width: '100%', height: 210 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={SCORE_DISTRIBUTION}>
+                  <XAxis
+                    dataKey="score"
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={42}
+                  />
+                  <Bar dataKey="owners" fill="#EF9F27" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </section>
+
+        <section style={{ marginBottom: 34 }}>
+          <h2
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 28,
+              margin: 0,
+              marginBottom: 12,
+            }}
+          >
+            Signal Reference Table
+          </h2>
+          <p style={{ margin: 0, color: '#374151', lineHeight: 1.8, fontSize: 15 }}>
+            These are the exact signals used in the current model and how to
+            interpret them in real acquisition workflows.
+          </p>
+
+          <div
+            style={{
+              marginTop: 16,
+              display: 'grid',
+              gap: 12,
+              gridTemplateColumns: '1fr',
+            }}
+          >
+            {SIGNAL_CARDS.map((signal) => (
+              <div
+                key={signal.title}
+                style={{
                   border: '1px solid #E5E7EB',
-                  borderRadius: 8,
-                  padding: '10px 12px',
-                  cursor: 'pointer',
+                  background: '#fff',
+                  borderRadius: 12,
+                  padding: 14,
                 }}
               >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={signals[signal.key]}
-                    onChange={() =>
-                      setSignals((prev) => ({ ...prev, [signal.key]: !prev[signal.key] }))
-                    }
-                  />
-                  <span style={{ fontSize: 13 }}>{signal.label}</span>
-                </span>
-                <span style={{ fontSize: 12, color: '#6B7280' }}>+{signal.points} pts</span>
-              </label>
-            ))}
-          </div>
-
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 8 }}>LIVE SCORE</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1, height: 16, background: '#E5E7EB', borderRadius: 999, overflow: 'hidden' }}>
                 <div
                   style={{
-                    width: `${(score / 10) * 100}%`,
-                    height: '100%',
-                    background: scoreColor(score),
-                    transition: 'width 220ms ease, background 220ms ease',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    gap: 10,
+                    marginBottom: 8,
                   }}
-                />
-              </div>
-              <div style={{ minWidth: 54, textAlign: 'right', color: scoreColor(score), fontWeight: 700 }}>
-                {score}/10
-              </div>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: '#6B7280' }}>
-              [ 0 1 2 3 4 5 6 7 8 9 10 ] &nbsp;&nbsp; LOW → WARM → HOT 🔴
-            </div>
-            <div style={{ marginTop: 10, fontSize: 14, color: scoreColor(score), fontWeight: 600 }}>
-              {scoreMessage(score)}
-            </div>
-          </div>
-        </section>
-
-        {/* Layers */}
-        <section style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 18 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
-            WHAT EACH MAP LAYER TELLS YOU
-          </div>
-          <div style={{ display: 'grid', gap: 10 }}>
-            {LAYER_CARDS.map((card) => {
-              const isOpen = openLayer === card.id
-              return (
-                <div key={card.id} style={{ border: '1px solid #E5E7EB', borderRadius: 10, overflow: 'hidden' }}>
-                  <button
-                    onClick={() => setOpenLayer(isOpen ? null : card.id)}
+                >
+                  <h3
                     style={{
-                      width: '100%',
-                      background: '#FFFFFF',
-                      border: 'none',
-                      textAlign: 'left',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
+                      margin: 0,
+                      fontSize: 16,
+                      fontFamily: 'Georgia, serif',
                       color: '#111827',
                     }}
                   >
-                    <span style={{ fontWeight: 600 }}>{card.title}</span>
-                    <span style={{ color: '#6B7280', fontSize: 12 }}>{isOpen ? 'Hide ↑' : 'Click to expand →'}</span>
-                  </button>
-                  <div style={{ maxHeight: isOpen ? 140 : 0, transition: 'max-height 220ms ease', overflow: 'hidden', background: '#F9FAFB' }}>
-                    <div style={{ padding: '0 14px 14px', color: '#4B5563', fontSize: 13, lineHeight: 1.6 }}>
-                      {card.id === 'parcels' && (
-                        <div style={{ display: 'flex', height: 8, borderRadius: 4, overflow: 'hidden', margin: '8px 0 12px', border: '1px solid #E5E7EB' }}>
-                          {['#1a3a1a', '#4CAF50', '#FFC107', '#FF9800', '#F44336'].map((c) => (
-                            <div key={c} style={{ flex: 1, background: c }} />
-                          ))}
-                        </div>
-                      )}
-                      {card.detail}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* Distribution */}
-        <section style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 18 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, marginBottom: 14 }}>
-            HOW GONZALES COUNTY SCORES
-          </div>
-          <div style={{ width: '100%', height: 290 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={SCORE_DISTRIBUTION}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="score" stroke="#6B7280" />
-                <YAxis stroke="#6B7280" />
-                <Tooltip
-                  formatter={(value) => `${Number(value ?? 0).toLocaleString()} owners`}
-                  labelFormatter={(label) => `Score ${label}`}
-                  contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB' }}
-                />
-                <Bar dataKey="owners" fill="#EF9F27" radius={[6, 6, 0, 0]} animationDuration={900} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <div style={{ marginTop: 10, background: '#FEF3C7', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 8, padding: '10px 12px', fontSize: 13 }}>
-            You are focused on {focusedOwners.toLocaleString()} owners ({focusedPct}%) most likely to sell.
-          </div>
-        </section>
-
-        {/* FAQ */}
-        <section style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 18 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>FAQ</div>
-          <div style={{ display: 'grid', gap: 8 }}>
-            {FAQS.map((item, index) => {
-              const open = openFaq === index
-              return (
-                <div key={item.q} style={{ border: '1px solid #E5E7EB', borderRadius: 10, overflow: 'hidden' }}>
-                  <button
-                    onClick={() => setOpenFaq(open ? null : index)}
+                    {signal.title}
+                  </h3>
+                  <span
                     style={{
-                      width: '100%',
-                      border: 'none',
-                      background: '#FFFFFF',
-                      textAlign: 'left',
-                      padding: '11px 13px',
-                      fontSize: 14,
-                      color: '#111827',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      justifyContent: 'space-between',
+                      fontSize: 12,
+                      color: '#B45309',
+                      fontWeight: 700,
+                      border: '1px solid #FCD34D',
+                      background: '#FFFBEB',
+                      borderRadius: 999,
+                      padding: '3px 9px',
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <span>{item.q}</span>
-                    <span style={{ color: '#6B7280' }}>{open ? '−' : '+'}</span>
-                  </button>
-                  <div style={{ maxHeight: open ? 140 : 0, transition: 'max-height 200ms ease', overflow: 'hidden', background: '#F9FAFB' }}>
-                    <div style={{ padding: '0 13px 12px', color: '#4B5563', fontSize: 13, lineHeight: 1.6 }}>{item.a}</div>
-                  </div>
+                    {signal.points}
+                  </span>
                 </div>
-              )
-            })}
+                <p style={{ margin: 0, color: '#374151', fontSize: 13, marginBottom: 8 }}>
+                  <strong>Meaning:</strong> {signal.meaning}
+                </p>
+                <p style={{ margin: 0, color: '#374151', fontSize: 13, marginBottom: 8 }}>
+                  <strong>Why it matters:</strong> {signal.why}
+                </p>
+                <p style={{ margin: 0, color: '#374151', fontSize: 13 }}>
+                  <strong>Outreach angle:</strong> {signal.angle}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* CTA */}
-        <section style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
-          <div style={{ fontFamily: 'Georgia, serif', fontSize: 24, fontWeight: 700, marginBottom: 12 }}>
-            Ready to find your next acquisition?
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <a
-              href="/"
+        <section style={{ marginBottom: 34 }}>
+          <h2
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 28,
+              margin: 0,
+              marginBottom: 12,
+            }}
+          >
+            Understanding the Map Layers
+          </h2>
+          <div
+            style={{
+              display: 'grid',
+              gap: 12,
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            }}
+          >
+            <div
               style={{
-                textDecoration: 'none',
-                padding: '9px 14px',
-                borderRadius: 8,
                 border: '1px solid #E5E7EB',
-                color: '#374151',
-                fontSize: 13,
+                borderRadius: 12,
+                background: '#fff',
+                padding: 14,
               }}
             >
-              ← Back to Map
-            </a>
-            <a
-              href="/crm"
+              <h3 style={{ margin: 0, marginBottom: 8, fontSize: 15, color: '#111827' }}>
+                Parcel Layer
+              </h3>
+              <p style={{ margin: 0, color: '#374151', fontSize: 13, lineHeight: 1.7 }}>
+                Every polygon represents a survey parcel aggregated by abstract.
+                Fill color reflects maximum propensity score observed among
+                owners linked to that tract.
+              </p>
+            </div>
+            <div
               style={{
-                textDecoration: 'none',
-                padding: '9px 14px',
-                borderRadius: 8,
-                border: '1px solid #EF9F27',
-                color: '#EF9F27',
-                fontWeight: 600,
-                fontSize: 13,
+                border: '1px solid #E5E7EB',
+                borderRadius: 12,
+                background: '#fff',
+                padding: 14,
               }}
             >
-              Open CRM →
-            </a>
+              <h3 style={{ margin: 0, marginBottom: 8, fontSize: 15, color: '#111827' }}>
+                Motivated Owners
+              </h3>
+              <p style={{ margin: 0, color: '#374151', fontSize: 13, lineHeight: 1.7 }}>
+                The right panel highlights owners with score 6+ and surfaces the
+                highest-priority records first, including direct mailing details
+                and context for outreach.
+              </p>
+            </div>
+            <div
+              style={{
+                border: '1px solid #E5E7EB',
+                borderRadius: 12,
+                background: '#fff',
+                padding: 14,
+              }}
+            >
+              <h3 style={{ margin: 0, marginBottom: 8, fontSize: 15, color: '#111827' }}>
+                New Permits
+              </h3>
+              <p style={{ margin: 0, color: '#374151', fontSize: 13, lineHeight: 1.7 }}>
+                Blue pulsing dots indicate recent permit activity. Permit
+                proximity can increase urgency, especially for owners with small
+                fractional interests and declining legacy production.
+              </p>
+            </div>
           </div>
+        </section>
+
+        <section style={{ marginBottom: 34 }}>
+          <h2
+            style={{
+              fontFamily: 'Georgia, serif',
+              fontSize: 28,
+              margin: 0,
+              marginBottom: 12,
+            }}
+          >
+            Frequently Asked Questions
+          </h2>
+
+          <div style={{ display: 'grid', gap: 10 }}>
+            {[
+              {
+                q: 'Is the score a prediction guarantee?',
+                a: 'No. It is a prioritization tool based on historical patterns and current parcel/owner signals.',
+              },
+              {
+                q: 'Can two owners in the same tract have different scores?',
+                a: 'Yes. Parcel context is shared, but owner-level legal and address signals can differ substantially.',
+              },
+              {
+                q: 'How often is scoring refreshed?',
+                a: 'Scoring updates when source records are re-ingested and enrichment scripts are rerun.',
+              },
+              {
+                q: 'Why are some high-producing tracts still motivated?',
+                a: 'Ownership complexity (estate/trust), fractionalization, and remote administration can outweigh production strength.',
+              },
+            ].map((faq) => (
+              <div
+                key={faq.q}
+                style={{
+                  border: '1px solid #E5E7EB',
+                  background: '#fff',
+                  borderRadius: 12,
+                  padding: 14,
+                }}
+              >
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#111827', marginBottom: 6 }}>
+                  {faq.q}
+                </div>
+                <div style={{ fontSize: 13, color: '#374151', lineHeight: 1.7 }}>{faq.a}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section
+          style={{
+            border: '1px solid #FCD34D',
+            background: '#FFFBEB',
+            borderRadius: 14,
+            padding: '18px 16px',
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              marginBottom: 8,
+              fontFamily: 'Georgia, serif',
+              fontSize: 24,
+              color: '#111827',
+            }}
+          >
+            Built for disciplined acquisition teams
+          </h2>
+          <p style={{ margin: 0, color: '#374151', lineHeight: 1.8, fontSize: 14 }}>
+            The methodology is intentionally conservative and transparent. Use
+            the score as a ranking engine, then validate with title, current
+            lease context, and owner-specific conversation history in CRM.
+          </p>
         </section>
       </div>
     </div>
