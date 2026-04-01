@@ -29,11 +29,16 @@ OUTPUT_PARCELS = Path("data/gonzales_parcels_enriched.geojson")
 PUBLIC_PARCELS = Path("public/gonzales_parcels_enriched.geojson")
 
 
-def require_env(name: str) -> str:
+def require_env(name: str, aliases: tuple[str, ...] = ()) -> str:
     value = os.getenv(name)
-    if not value:
-        raise ValueError(f"Missing required environment variable: {name}")
-    return value
+    if value:
+        return value
+    for alias in aliases:
+        alias_value = os.getenv(alias)
+        if alias_value:
+            return alias_value
+    alias_text = f" (or one of: {', '.join(aliases)})" if aliases else ""
+    raise ValueError(f"Missing required environment variable: {name}{alias_text}")
 
 
 def normalize_lease_id(value: Any) -> str:
@@ -177,9 +182,22 @@ def to_int(value: Any) -> int:
         return 0
 
 
+def is_missing(value: Any) -> bool:
+    if value is None:
+        return True
+    try:
+        # NaN is the only value where value != value is True.
+        return bool(value != value)
+    except Exception:
+        return False
+
+
 def main() -> None:
-    supabase_url = require_env("SUPABASE_URL")
-    supabase_key = require_env("SUPABASE_KEY")
+    supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
+    supabase_key = require_env(
+        "SUPABASE_KEY",
+        ("SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    )
     client = create_client(supabase_url, supabase_key)
 
     # 1) Fetch all motivated owners with pagination
@@ -324,6 +342,24 @@ def main() -> None:
             owners_by_abstract_id[norm_text(abstract_id)].append(owner)
 
     # 4) Enrich polygons
+    default_polygon_props = {
+        "max_propensity_score": 0,
+        "owner_count": 0,
+        "top_owner": "",
+        "top_owner_state": "",
+        "top_operator": "",
+        "owners_json": "[]",
+        "field_name": "",
+        "first_date": "",
+        "est_lease_expiration": "Unknown",
+        "first_6_month_oil": 0,
+        "first_12_month_oil": 0,
+        "first_24_month_oil": 0,
+        "first_60_month_oil": 0,
+        "prod_cumulative_sum_oil": 0,
+        "decline_pct": 0,
+        "production_trend": "unknown",
+    }
     matched_polygons = 0
     represented_owner_ids: set[str] = set()
     polygon_rankings: list[dict[str, Any]] = []
@@ -507,22 +543,14 @@ def main() -> None:
                 }
             )
         else:
-            parcels_gdf.at[idx, "max_propensity_score"] = 0
-            parcels_gdf.at[idx, "field_name"] = "Unknown"
-            parcels_gdf.at[idx, "first_date"] = ""
-            parcels_gdf.at[idx, "est_lease_expiration"] = "Unknown"
-            parcels_gdf.at[idx, "owner_count"] = 0
-            parcels_gdf.at[idx, "top_owner"] = ""
-            parcels_gdf.at[idx, "top_owner_state"] = ""
-            parcels_gdf.at[idx, "top_operator"] = ""
-            parcels_gdf.at[idx, "owners_json"] = "[]"
-            parcels_gdf.at[idx, "first_6_month_oil"] = 0
-            parcels_gdf.at[idx, "first_12_month_oil"] = 0
-            parcels_gdf.at[idx, "first_24_month_oil"] = 0
-            parcels_gdf.at[idx, "first_60_month_oil"] = 0
-            parcels_gdf.at[idx, "prod_cumulative_sum_oil"] = 0
-            parcels_gdf.at[idx, "decline_pct"] = 0
-            parcels_gdf.at[idx, "production_trend"] = "stable"
+            for key, value in default_polygon_props.items():
+                parcels_gdf.at[idx, key] = value
+
+    # Safety pass: guarantee all features have defaults if owner matching left gaps.
+    for idx in parcels_gdf.index:
+        if is_missing(parcels_gdf.at[idx, "max_propensity_score"]):
+            for key, value in default_polygon_props.items():
+                parcels_gdf.at[idx, key] = value
 
     # 5) Save and copy
     OUTPUT_PARCELS.parent.mkdir(parents=True, exist_ok=True)
