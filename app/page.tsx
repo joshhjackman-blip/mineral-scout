@@ -303,39 +303,56 @@ export default function Home() {
 
     const loadData = async () => {
       setLoading(true)
+      try {
+        const response = await fetch('/api/parcels', { cache: 'no-store' })
+        let parcelsData: unknown
 
-      const tractsResp = await fetch('/gonzales_parcels_enriched.geojson').then((res) => res.json())
+        if (response.ok) {
+          parcelsData = await response.json()
+        } else {
+          // Fallback for local/dev edge cases where API route reload lags.
+          parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
+        }
 
-      if (!mounted) return
+        if (!mounted) return
 
-      const rows: TractRecord[] = ((tractsResp?.features ?? []) as Array<{ properties?: Record<string, unknown> }>)
-        .map((feature) => {
-          const props = feature.properties ?? {}
-          const ownersJsonRaw = props.owners_json
-          return {
-            abstract_label: String(props.ABSTRACT_L ?? ''),
-            level1_sur: String(props.LEVEL1_SUR ?? ''),
-            owner_count: toNumber(props.owner_count),
-            top_operator: String(props.top_operator ?? 'Unknown'),
-            max_propensity_score: toNumber(props.max_propensity_score),
-            owners_json:
-              typeof ownersJsonRaw === 'string'
-                ? ownersJsonRaw
-                : JSON.stringify(ownersJsonRaw ?? []),
-            field_name: String(props.field_name ?? ''),
-            well_status: String(props.well_status ?? ''),
-            first_date: String(props.first_date ?? ''),
-            prod_cumulative_sum_oil: toNumber(props.prod_cumulative_sum_oil),
-            first_6_month_oil: toNumber(props.first_6_month_oil),
-            first_12_month_oil: toNumber(props.first_12_month_oil),
-            first_24_month_oil: toNumber(props.first_24_month_oil),
-            first_60_month_oil: toNumber(props.first_60_month_oil),
-          }
-        })
-        .filter((tract) => tract.abstract_label !== '')
+        const rows: TractRecord[] = (((parcelsData as { features?: unknown[] })?.features ?? []) as Array<{ properties?: Record<string, unknown> }>)
+          .map((feature) => {
+            const props = feature.properties ?? {}
+            const ownersJsonRaw = props.owners_json
+            return {
+              abstract_label: String(props.ABSTRACT_L ?? ''),
+              level1_sur: String(props.LEVEL1_SUR ?? ''),
+              owner_count: toNumber(props.owner_count),
+              top_operator: String(props.top_operator ?? 'Unknown'),
+              max_propensity_score: toNumber(props.max_propensity_score),
+              owners_json:
+                typeof ownersJsonRaw === 'string'
+                  ? ownersJsonRaw
+                  : JSON.stringify(ownersJsonRaw ?? []),
+              field_name: String(props.field_name ?? ''),
+              well_status: String(props.well_status ?? ''),
+              first_date: String(props.first_date ?? ''),
+              est_lease_expiration: String(props.est_lease_expiration ?? ''),
+              prod_cumulative_sum_oil: toNumber(props.prod_cumulative_sum_oil),
+              first_6_month_oil: toNumber(props.first_6_month_oil),
+              first_12_month_oil: toNumber(props.first_12_month_oil),
+              first_24_month_oil: toNumber(props.first_24_month_oil),
+              first_60_month_oil: toNumber(props.first_60_month_oil),
+            }
+          })
+          .filter((tract) => tract.abstract_label !== '')
 
-      setTracts(rows)
-      setLoading(false)
+        setTracts(rows)
+      } catch (err) {
+        console.error('Failed to load parcel data:', err)
+        if (mounted) {
+          setTracts([])
+          showToast('Failed to load map data', 'error')
+        }
+      } finally {
+        if (mounted) setLoading(false)
+      }
     }
 
     loadData()
