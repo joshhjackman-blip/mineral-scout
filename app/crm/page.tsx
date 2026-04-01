@@ -1,185 +1,117 @@
 'use client'
-
 import { useEffect, useMemo, useState } from 'react'
-import {
-  BarChart2,
-  BookOpen,
-  Calendar,
-  ChevronRight,
-  Mail,
-  MapPin,
-  Phone,
-  Plus,
-  Search,
-} from 'lucide-react'
-
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
-
-type TagKey =
-  | 'all'
-  | 'hot'
-  | 'nurture'
-  | 'prospect'
-  | 'not_interested'
-  | 'offer_sent'
-  | 'under_contract'
-  | 'closed'
-  | 'skip_traced'
+import {
+  Phone, Mail, Plus, Search,
+  MapPin, BarChart2, BookOpen, Clock,
+  DollarSign, User, Building2,
+  CheckCircle2, Circle, XCircle, Flame,
+  TrendingUp, Save
+} from 'lucide-react'
 
 type Deal = {
   id: string
   owner_name: string
-  tract_abstract: string | null
-  tract_survey: string | null
-  operator_name: string | null
-  phone: string | null
-  email: string | null
-  mailing_address: string | null
-  mailing_city: string | null
-  mailing_state: string | null
-  mailing_zip: string | null
-  acreage: number | null
-  monthly_royalty: number | null
-  propensity_score: number | null
-  tag: string | null
-  offer_amount: number | null
-  follow_up_date: string | null
-  source: string | null
-  notes: string | null
-  created_at: string | null
-  updated_at: string | null
+  tract_abstract?: string | null
+  tract_survey?: string | null
+  operator_name?: string | null
+  mailing_address?: string | null
+  mailing_city?: string | null
+  mailing_state?: string | null
+  mailing_zip?: string | null
+  acreage?: number | null
+  monthly_royalty?: number | null
+  propensity_score?: number | null
+  tag?: string | null
+  offer_amount?: number | null
+  follow_up_date?: string | null
+  source?: string | null
+  notes?: string | null
+  phone?: string | null
+  email?: string | null
+  created_at?: string | null
+  updated_at?: string | null
 }
 
-type ContactLogEntry = {
-  id?: string
-  deal_id?: string
+type ContactEntry = {
+  id: string
+  deal_id: string
   logged_at: string
   method: string
   outcome?: string | null
   notes?: string | null
 }
 
-const TAG_LABELS: Record<TagKey, string> = {
-  all: 'All',
-  hot: 'Hot',
-  nurture: 'Nurture',
-  prospect: 'Prospect',
-  not_interested: 'Not interested',
-  offer_sent: 'Offer sent',
-  under_contract: 'Under contract',
-  closed: 'Closed',
-  skip_traced: 'Skip traced',
+const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  hot:            { label: 'Hot',           color: 'text-red-700',     bg: 'bg-red-50 border-red-200',       icon: <Flame size={11} /> },
+  nurture:        { label: 'Nurture',       color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200',   icon: <TrendingUp size={11} /> },
+  prospect:       { label: 'Prospect',      color: 'text-slate-600',   bg: 'bg-slate-50 border-slate-200',   icon: <Circle size={11} /> },
+  not_interested: { label: 'Not Interested',color: 'text-slate-400',   bg: 'bg-slate-50 border-slate-100',   icon: <XCircle size={11} /> },
+  skip_traced:    { label: 'Skip Traced',   color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
+  offer_sent:     { label: 'Offer Sent',    color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',     icon: <DollarSign size={11} /> },
+  closed:         { label: 'Closed',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
 }
 
-const TAG_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  hot:            { bg: '#FEE2E2', color: '#B91C1C', border: '#FECACA' },
-  nurture:        { bg: '#FEF3C7', color: '#92400E', border: '#FDE68A' },
-  prospect:       { bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' },
-  not_interested: { bg: '#F9FAFB', color: '#9CA3AF', border: '#F3F4F6' },
-  skip_traced:    { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
-  offer_sent:     { bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
-  under_contract: { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
-  closed:         { bg: '#ECFDF5', color: '#065F46', border: '#A7F3D0' },
-}
-
-const TagBadge = ({ tag }: { tag: string | null }) => {
-  const key = (tag ?? 'prospect') as TagKey
-  const label = TAG_LABELS[key] ?? TAG_LABELS.prospect
-  const style = TAG_STYLES[key] ?? TAG_STYLES.prospect
+const TagBadge = ({ tag }: { tag: string }) => {
+  const cfg = TAG_CONFIG[tag] ?? TAG_CONFIG.prospect
   return (
-    <span className="badge" style={{ background: style.bg, color: style.color, border: `1px solid ${style.border}` }}>
-      {label}
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.bg} ${cfg.color}`}>
+      {cfg.icon}{cfg.label}
     </span>
   )
 }
 
-const formatDate = (value?: string | null) => {
-  if (!value) return ''
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
+const isOverdue = (date: string) => new Date(date) < new Date()
 
-const isOverdue = (value?: string | null) => {
-  if (!value) return false
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return false
+const formatDate = (date: string) => {
+  const d = new Date(date)
   const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  return d < today
+  const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+  if (diff === 0) return 'Today'
+  if (diff === 1) return 'Tomorrow'
+  if (diff < 0) return `${Math.abs(diff)}d overdue`
+  return `in ${diff}d`
 }
 
-const daysSinceAdded = (value?: string | null) => {
-  if (!value) return null
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return null
-  const diffMs = Date.now() - d.getTime()
-  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
-}
-
-const toNullableNumber = (value: unknown): number | null => {
-  if (value === '' || value === null || value === undefined) return null
-  const n = Number(value)
-  return Number.isFinite(n) ? n : null
-}
-
-export default function CrmPage() {
+export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
-  const [search, setSearch] = useState('')
-  const [tagFilter, setTagFilter] = useState<TagKey>('all')
+  const [selected, setSelected] = useState<Deal | null>(null)
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null)
-  const [contactLog, setContactLog] = useState<ContactLogEntry[]>([])
+  const [contactLog, setContactLog] = useState<ContactEntry[]>([])
   const [lastSaved, setLastSaved] = useState<string | null>(null)
+  const [activeTag, setActiveTag] = useState('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
-    const load = async () => {
-      const { data, error } = await supabase
-        .from('deals')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (error) {
-        console.error('Failed to load deals:', error.message)
-        return
-      }
-      setDeals((data ?? []) as Deal[])
-    }
-    load()
+    supabase.from('deals').select('*').order('updated_at', { ascending: false }).then(({ data }) => {
+      setDeals((data as Deal[]) ?? [])
+    })
   }, [])
 
-  const visibleDeals = useMemo(() => {
-    return deals.filter((deal) => {
-      if (tagFilter !== 'all' && (deal.tag ?? 'prospect') !== tagFilter) return false
-      if (!search.trim()) return true
-      const q = search.trim().toLowerCase()
-      return (
-        (deal.owner_name ?? '').toLowerCase().includes(q) ||
-        (deal.tract_abstract ?? '').toLowerCase().includes(q) ||
-        (deal.tract_survey ?? '').toLowerCase().includes(q) ||
-        (deal.operator_name ?? '').toLowerCase().includes(q)
-      )
-    })
-  }, [deals, search, tagFilter])
+  const filtered = useMemo(() => deals.filter((d) => {
+    if (activeTag !== 'all' && (d.tag ?? 'prospect') !== activeTag) return false
+    if (
+      search &&
+      !(d.owner_name ?? '').toLowerCase().includes(search.toLowerCase()) &&
+      !(d.operator_name ?? '').toLowerCase().includes(search.toLowerCase())
+    ) return false
+    return true
+  }), [deals, activeTag, search])
 
   const handleSelectDeal = async (deal: Deal) => {
-    setEditingDeal({ ...deal })
-    setLastSaved(null)
-
-    const { data, error } = await supabase
+    setSelected(deal)
+    setEditingDeal({ ...deal, tag: deal.tag ?? 'prospect' })
+    const { data } = await supabase
       .from('contact_log')
       .select('*')
       .eq('deal_id', deal.id)
       .order('logged_at', { ascending: false })
-
-    if (error) {
-      console.error('Failed to load contact log:', error.message)
-      setContactLog([])
-      return
-    }
-    setContactLog((data ?? []) as ContactLogEntry[])
+    setContactLog((data as ContactEntry[]) ?? [])
   }
 
   const handleSaveDeal = async (overrides?: Partial<Deal>) => {
-    const toSave = { ...(editingDeal ?? {}), ...(overrides ?? {}) } as Deal
+    const toSave = { ...editingDeal, ...overrides }
     if (!toSave?.id) return
 
     const payload = {
@@ -187,604 +119,355 @@ export default function CrmPage() {
       tract_abstract: toSave.tract_abstract ?? null,
       tract_survey: toSave.tract_survey ?? null,
       operator_name: toSave.operator_name ?? null,
-      phone: toSave.phone ?? null,
-      email: toSave.email ?? null,
       mailing_address: toSave.mailing_address ?? null,
       mailing_city: toSave.mailing_city ?? null,
       mailing_state: toSave.mailing_state ?? null,
       mailing_zip: toSave.mailing_zip ?? null,
-      acreage: toNullableNumber(toSave.acreage),
-      monthly_royalty: toNullableNumber(toSave.monthly_royalty),
-      propensity_score: toNullableNumber(toSave.propensity_score),
+      acreage: toSave.acreage === null || toSave.acreage === undefined ? null : Number(toSave.acreage),
+      monthly_royalty: toSave.monthly_royalty === null || toSave.monthly_royalty === undefined ? null : Number(toSave.monthly_royalty),
+      propensity_score: toSave.propensity_score === null || toSave.propensity_score === undefined ? null : Number(toSave.propensity_score),
       tag: toSave.tag ?? 'prospect',
-      offer_amount: toNullableNumber(toSave.offer_amount),
+      offer_amount: toSave.offer_amount === null || toSave.offer_amount === undefined ? null : Number(toSave.offer_amount),
       follow_up_date: toSave.follow_up_date || null,
-      source: toSave.source ?? 'map',
+      source: toSave.source ?? null,
       notes: toSave.notes ?? '',
+      phone: toSave.phone ?? null,
+      email: toSave.email ?? null,
       updated_at: new Date().toISOString(),
     }
 
-    const { error } = await supabase
-      .from('deals')
-      .update(payload)
-      .eq('id', toSave.id)
-
-    if (error) {
-      console.error('Failed to save deal:', error.message)
-      return
-    }
-
-    setDeals((prev) => prev.map((d) => (d.id === toSave.id ? { ...d, ...payload } : d)))
-    setEditingDeal((prev) => (prev?.id === toSave.id ? { ...prev, ...payload } : prev))
+    await supabase.from('deals').update(payload).eq('id', toSave.id)
+    setDeals((prev) => prev.map((d) => d.id === toSave.id ? ({ ...d, ...payload } as Deal) : d))
+    setSelected((prev) => prev?.id === toSave.id ? ({ ...prev, ...payload } as Deal) : prev)
+    setEditingDeal((prev) => prev?.id === toSave.id ? ({ ...prev, ...payload } as Deal) : prev)
     setLastSaved('just now')
   }
 
-  const handleLogContact = async (dealId: string, method: string) => {
+  const handleTagChange = async (tag: string) => {
+    if (!editingDeal) return
+    setEditingDeal((prev) => prev ? { ...prev, tag } : null)
+    await supabase.from('deals').update({ tag, updated_at: new Date().toISOString() }).eq('id', editingDeal.id)
+    setDeals((prev) => prev.map((d) => d.id === editingDeal.id ? { ...d, tag } : d))
+  }
+
+  const handleLogContact = async (method: string) => {
+    if (!editingDeal) return
     const loggedAt = new Date().toISOString()
-    const { error } = await supabase.from('contact_log').insert({
-      deal_id: dealId,
-      method,
-      logged_at: loggedAt,
-    })
-    if (error) {
-      console.error('Failed to log contact:', error.message)
-      return
-    }
-    setContactLog((prev) => [{ method, logged_at: loggedAt }, ...prev])
+    await supabase.from('contact_log').insert({ deal_id: editingDeal.id, method, logged_at: loggedAt })
+    setContactLog((prev) => [{ id: Date.now().toString(), deal_id: editingDeal.id, logged_at: loggedAt, method }, ...prev])
   }
 
-  const handleTagChange = async (dealId: string, tag: string) => {
-    setEditingDeal((prev) => (prev ? { ...prev, tag } : prev))
-
-    const { error } = await supabase
-      .from('deals')
-      .update({ tag, updated_at: new Date().toISOString() })
-      .eq('id', dealId)
-    if (error) {
-      console.error('Failed to update tag:', error.message)
-      return
-    }
-    setDeals((prev) => prev.map((d) => (d.id === dealId ? { ...d, tag } : d)))
-    setLastSaved('just now')
-  }
+  const annual = editingDeal?.monthly_royalty ? Number(editingDeal.monthly_royalty) * 12 : 0
 
   return (
-    <div
-      style={{
-        height: '100vh',
-        background: '#F4F5F7',
-        color: '#111827',
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: '"DM Sans", system-ui, sans-serif',
-      }}
-    >
-      <div
-        style={{
-          height: 52,
-          minHeight: 52,
-          background: '#FFFFFF',
-          borderBottom: '1px solid #E5E7EB',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 20px',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              color: '#111827',
-              fontFamily: 'Georgia, serif',
-              fontSize: 16,
-              letterSpacing: '-0.01em',
-              fontWeight: 700,
-            }}
-          >
-            Mineral Map
+    <div className="h-screen flex flex-col bg-gray-50 font-sans">
+      <header className="h-12 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 bg-amber-500 rounded-md flex items-center justify-center">
+            <span className="text-white text-sm font-bold">M</span>
           </div>
-          <a
-            href="/"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              color: '#6B7280',
-              fontSize: 12,
-              textDecoration: 'none',
-              border: '1px solid #E5E7EB',
-              borderRadius: 999,
-              padding: '4px 12px',
-            }}
-          >
-            <MapPin size={14} />
-            Map
-          </a>
-          <a
-            href="/methodology"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              color: '#6B7280',
-              fontSize: 12,
-              textDecoration: 'none',
-              border: '1px solid #E5E7EB',
-              borderRadius: 999,
-              padding: '4px 12px',
-            }}
-          >
-            <BookOpen size={14} />
-            Methodology
-          </a>
-          <a
-            href="/comps"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 12,
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #E5E7EB',
-            }}
-          >
-            <BarChart2 size={14} />
-            Comps
-          </a>
+          <span className="font-serif text-base font-bold text-gray-900">Mineral Map</span>
+          <span className="text-gray-300 text-sm">·</span>
+          <span className="text-sm font-medium text-gray-500">CRM & Pipeline</span>
         </div>
-        <div style={{ color: '#111827', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-          CRM & Pipeline <ChevronRight size={14} />
-        </div>
-      </div>
+        <nav className="flex items-center gap-1">
+          <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+            <MapPin size={13} />Map
+          </Link>
+          <Link href="/comps" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+            <BarChart2 size={13} />Comps
+          </Link>
+          <Link href="/methodology" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors">
+            <BookOpen size={13} />Methodology
+          </Link>
+        </nav>
+      </header>
 
-      <div
-        style={{
-          padding: 12,
-          borderBottom: '1px solid #E5E7EB',
-          background: '#FFFFFF',
-          display: 'flex',
-          gap: 8,
-          flexWrap: 'wrap',
-        }}
-      >
-        {([
-          ['all', 'All'],
-          ['hot', 'Hot'],
-          ['nurture', 'Nurture'],
-          ['prospect', 'Prospect'],
-          ['not_interested', 'Not Interested'],
-          ['skip_traced', 'Skip Traced'],
-        ] as Array<[TagKey, string]>).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTagFilter(key)}
-            style={{
-              fontSize: 10,
-              padding: '4px 10px',
-              borderRadius: 10,
-              border: tagFilter === key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
-              background: tagFilter === key ? '#FEF3C7' : '#FFFFFF',
-              color: tagFilter === key ? '#B45309' : '#6B7280',
-              fontFamily: 'Inter, sans-serif',
-              cursor: 'pointer',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-        <div style={{ marginLeft: 'auto', minWidth: 280, position: 'relative' }}>
-          <Search size={14} style={{ position: 'absolute', left: 10, top: 8, color: '#9CA3AF' }} />
-          <input
-            className="input"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search owners / tracts / operator"
-            style={{ paddingLeft: 30, fontSize: 12, background: '#FFFFFF' }}
-          />
-        </div>
-      </div>
-
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <div
-          style={{
-            width: 380,
-            minWidth: 380,
-            borderRight: '1px solid #E5E7EB',
-            overflowY: 'auto',
-            padding: 12,
-          }}
-        >
-          {visibleDeals.length === 0 ? (
-            <div style={{ color: '#6B7280', fontSize: 12, padding: '20px 8px' }}>
-              No deals match this filter.
+      <div className="flex flex-1 overflow-hidden">
+        <aside className="w-80 shrink-0 bg-white border-r border-gray-200 flex flex-col overflow-hidden">
+          <div className="p-3 border-b border-gray-100">
+            <div className="relative mb-2">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search owners, operators..."
+                className="w-full pl-8 pr-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
+              />
             </div>
-          ) : (
-            visibleDeals.map((deal) => {
-              const ageDays = daysSinceAdded(deal.created_at)
-              return (
-                <div
-                  key={deal.id}
-                  onClick={() => handleSelectDeal(deal)}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#F9FAFB'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = editingDeal?.id === deal.id ? '#FEF3C7' : 'white'}
-                  style={{
-                    background: editingDeal?.id === deal.id ? '#FEF3C7' : 'white',
-                    border: editingDeal?.id === deal.id
-                      ? '1px solid #EF9F27'
-                      : '1px solid #E5E7EB',
-                    borderRadius: 8,
-                    padding: '12px 14px',
-                    marginBottom: 8,
-                    cursor: 'pointer',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                  }}
+            <div className="flex gap-1 flex-wrap">
+              {['all', ...Object.keys(TAG_CONFIG)].map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTag(tag)}
+                  className={`px-2 py-0.5 text-xs rounded-md border transition-colors ${
+                    activeTag === tag
+                      ? 'bg-amber-50 border-amber-300 text-amber-700 font-medium'
+                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, gap: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: '#111827' }}>{deal.owner_name}</div>
-                    <TagBadge tag={deal.tag} />
-                  </div>
-                  <div style={{ fontSize: 10, color: '#6B7280' }}>
-                    {deal.tract_abstract ?? '--'} · {deal.operator_name ?? 'Unknown operator'}
-                  </div>
-                  <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
-                    {deal.mailing_city ?? 'Unknown city'}, {deal.mailing_state ?? '--'}
-                    {deal.acreage ? ` · ${deal.acreage} acres` : ''}
-                    {deal.monthly_royalty ? ` · $${Number(deal.monthly_royalty).toLocaleString()}/mo` : ''}
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {deal.follow_up_date && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: '2px 8px',
-                          borderRadius: 10,
-                          background: isOverdue(deal.follow_up_date)
-                            ? 'rgba(244,67,54,0.15)'
-                            : 'rgba(239,159,39,0.12)',
-                          color: isOverdue(deal.follow_up_date) ? '#F44336' : '#EF9F27',
-                          border: isOverdue(deal.follow_up_date)
-                            ? '0.5px solid rgba(244,67,54,0.3)'
-                            : '0.5px solid rgba(239,159,39,0.3)',
-                        }}
-                      >
-                        Follow-up {formatDate(deal.follow_up_date)}
-                      </span>
-                    )}
-                    {typeof ageDays === 'number' && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          padding: '2px 8px',
-                          borderRadius: 10,
-                          background: '#F3F4F6',
-                          border: '1px solid #E5E7EB',
-                          color: '#6B7280',
-                        }}
-                      >
-                        Added {ageDays}d ago
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', background: '#FFFFFF', borderLeft: '1px solid #E5E7EB' }}>
-          {!editingDeal ? (
-            <div
-              style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#9CA3AF',
-                fontSize: 13,
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              [select a lead from the list to view details]
+                  {tag === 'all' ? 'All' : TAG_CONFIG[tag]?.label}
+                  {tag !== 'all' && (
+                    <span className="ml-1 text-gray-400">{deals.filter((d) => (d.tag ?? 'prospect') === tag).length}</span>
+                  )}
+                </button>
+              ))}
             </div>
-          ) : (
-            <div>
-              <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                <input
-                  className="input"
-                  value={editingDeal.owner_name ?? ''}
-                  onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, owner_name: e.target.value } : prev))}
-                  onBlur={() => handleSaveDeal()}
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 500,
-                    color: '#111827',
-                    width: '100%',
-                    marginBottom: 8,
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {Object.entries(TAG_LABELS).filter(([k]) => k !== 'all').map(([key, label]) => {
-                    const style = TAG_STYLES[key] ?? TAG_STYLES.prospect
-                    return (
+          </div>
+
+          <div className="px-3 py-2 text-xs text-gray-400 border-b border-gray-100">
+            {filtered.length} leads
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {filtered.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="text-sm text-gray-400">No leads found</div>
+              </div>
+            ) : filtered.map((deal) => (
+              <button
+                key={deal.id}
+                onClick={() => handleSelectDeal(deal)}
+                className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
+                  selected?.id === deal.id ? 'bg-amber-50 border-l-2 border-l-amber-400' : ''
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-1">
+                  <span className="text-sm font-medium text-gray-900 leading-tight">{deal.owner_name}</span>
+                  <TagBadge tag={deal.tag ?? 'prospect'} />
+                </div>
+                <div className="text-xs text-gray-400 mb-1">
+                  {deal.tract_abstract ?? '--'} · {deal.operator_name ?? '--'}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-400">
+                  {deal.mailing_city && <span>{deal.mailing_city}, {deal.mailing_state}</span>}
+                  {deal.acreage ? <span>{deal.acreage} ac</span> : null}
+                  {deal.monthly_royalty ? <span>${Number(deal.monthly_royalty).toLocaleString()}/mo</span> : null}
+                </div>
+                {deal.follow_up_date && (
+                  <div className={`mt-1.5 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${
+                    isOverdue(deal.follow_up_date)
+                      ? 'bg-red-50 text-red-600'
+                      : 'bg-amber-50 text-amber-600'
+                  }`}>
+                    <Clock size={10} />
+                    {formatDate(deal.follow_up_date)}
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        {!selected ? (
+          <main className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                <User size={20} className="text-gray-400" />
+              </div>
+              <div className="text-sm font-medium text-gray-500">Select a lead</div>
+              <div className="text-xs text-gray-400 mt-1">Choose a lead from the list to view details</div>
+            </div>
+          </main>
+        ) : editingDeal && (
+          <main className="flex-1 overflow-y-auto bg-gray-50">
+            <div className="max-w-3xl mx-auto p-6">
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+                <div className="flex items-start justify-between mb-3">
+                  <input
+                    value={editingDeal.owner_name ?? ''}
+                    onChange={(e) => setEditingDeal((p) => p ? { ...p, owner_name: e.target.value } : null)}
+                    onBlur={() => handleSaveDeal()}
+                    className="text-xl font-bold text-gray-900 bg-transparent border-none outline-none w-full font-serif"
+                  />
+                  {lastSaved && (
+                    <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1 mt-1">
+                      <Save size={11} />Saved {lastSaved}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(TAG_CONFIG).map(([key, cfg]) => (
                     <button
                       key={key}
-                      onClick={() => handleTagChange(editingDeal.id, key)}
-                      className="badge"
-                      style={{
-                        cursor: 'pointer',
-                        background: editingDeal.tag === key ? style.bg : '#FFFFFF',
-                        border: editingDeal.tag === key ? `1px solid ${style.border}` : '1px solid #E5E7EB',
-                        color: editingDeal.tag === key ? style.color : '#9CA3AF',
-                      }}
+                      onClick={() => handleTagChange(key)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                        editingDeal.tag === key
+                          ? `${cfg.bg} ${cfg.color} shadow-sm`
+                          : 'bg-white border-gray-200 text-gray-400 hover:border-gray-300'
+                      }`}
                     >
-                      {label}
+                      {cfg.icon}{cfg.label}
                     </button>
-                    )
-                  })}
+                  ))}
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
-                  LEAD INFO
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Lead Info</div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4">
                   {[
-                    { label: 'TRACT', field: 'tract_abstract' },
-                    { label: 'SURVEY', field: 'tract_survey' },
-                    { label: 'OPERATOR', field: 'operator_name' },
-                    { label: 'PHONE', field: 'phone' },
-                    { label: 'EMAIL', field: 'email' },
-                    { label: 'CITY', field: 'mailing_city' },
-                    { label: 'STATE', field: 'mailing_state' },
-                    { label: 'ZIP', field: 'mailing_zip' },
-                    { label: 'ADDRESS', field: 'mailing_address' },
-                    { label: 'ACREAGE', field: 'acreage' },
-                  ].map(({ label, field }) => (
+                    { label: 'Tract', field: 'tract_abstract', icon: <MapPin size={13} /> },
+                    { label: 'Survey', field: 'tract_survey', icon: <MapPin size={13} /> },
+                    { label: 'Operator', field: 'operator_name', icon: <Building2 size={13} /> },
+                    { label: 'Address', field: 'mailing_address', icon: <MapPin size={13} /> },
+                    { label: 'City', field: 'mailing_city', icon: null },
+                    { label: 'State', field: 'mailing_state', icon: null },
+                    { label: 'Zip', field: 'mailing_zip', icon: null },
+                    { label: 'Acreage', field: 'acreage', icon: null },
+                  ].map(({ label, field, icon }) => (
                     <div key={field}>
-                      <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 3 }}>{label}</div>
+                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1">
+                        {icon}{label}
+                      </div>
                       <input
-                        className="input"
                         value={String(editingDeal[field as keyof Deal] ?? '')}
-                        onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
+                        onChange={(e) => setEditingDeal((p) => p ? { ...p, [field]: e.target.value } : null)}
                         onBlur={() => handleSaveDeal()}
-                        style={{
-                          background: '#F9FAFB',
-                          fontSize: 12,
-                        }}
+                        className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
                       />
                     </div>
                   ))}
                 </div>
-                {(editingDeal.phone || editingDeal.email) && (
-                  <div style={{ marginTop: 12, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                    {editingDeal.phone && (
-                      <a href={`tel:${editingDeal.phone}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Phone size={14} /> {editingDeal.phone}
-                      </a>
-                    )}
-                    {editingDeal.email && (
-                      <a href={`mailto:${editingDeal.email}`} style={{ fontSize: 12, color: '#EF9F27', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <Mail size={14} /> {editingDeal.email}
-                      </a>
+
+                <div className="grid grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-gray-100">
+                  <div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Phone size={13} />Phone</div>
+                    {editingDeal.phone ? (
+                      <a href={`tel:${editingDeal.phone}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.phone}</a>
+                    ) : (
+                      <span className="text-sm text-gray-400 italic">Not skip traced</span>
                     )}
                   </div>
-                )}
+                  <div>
+                    <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Mail size={13} />Email</div>
+                    {editingDeal.email ? (
+                      <a href={`mailto:${editingDeal.email}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.email}</a>
+                    ) : (
+                      <span className="text-sm text-gray-400 italic">Not skip traced</span>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
-                  OFFER
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Offer & Valuation</div>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      placeholder="Your offer amount"
+                      value={editingDeal.offer_amount ?? ''}
+                      onChange={(e) => setEditingDeal((p) => p ? { ...p, offer_amount: e.target.value === '' ? null : Number(e.target.value) } : null)}
+                      onBlur={() => handleSaveDeal()}
+                      className="w-full pl-7 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all"
+                    />
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, color: '#6B7280' }}>$</span>
-                  <input
-                    className="input"
-                    type="number"
-                    placeholder="Your offer amount"
-                    value={editingDeal.offer_amount ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      setEditingDeal((prev) => (prev ? { ...prev, offer_amount: value === '' ? null : Number(value) } : prev))
-                    }}
-                    onBlur={() => handleSaveDeal()}
-                    style={{
-                      fontSize: 14,
-                      background: '#F9FAFB',
-                      width: 200,
-                    }}
-                  />
-                </div>
-                {editingDeal.monthly_royalty && Number(editingDeal.monthly_royalty) > 0 && (
-                  <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '10px 12px' }}>
-                    <div style={{ fontSize: 9, color: '#6B7280', marginBottom: 8 }}>COMP ESTIMATE</div>
+                {annual > 0 && (
+                  <div className="grid grid-cols-3 gap-3">
                     {[
-                      { label: 'Conservative (3x annual)', mult: 3, color: '#6B7280' },
-                      { label: 'Market rate (4x annual)', mult: 4, color: '#EF9F27' },
-                      { label: 'Aggressive (5x annual)', mult: 5, color: '#6B7280' },
+                      { label: 'Conservative', mult: 3, muted: true },
+                      { label: 'Market Rate', mult: 4, muted: false },
+                      { label: 'Aggressive', mult: 5, muted: true },
                     ].map((c) => (
-                      <div key={c.mult} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                        <span style={{ fontSize: 11, color: '#6B7280' }}>{c.label}</span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontFamily: 'Inter, sans-serif',
-                            color: c.color,
-                            fontWeight: c.mult === 4 ? 600 : 400,
-                          }}
-                        >
-                          ${(Number(editingDeal.monthly_royalty) * 12 * c.mult).toLocaleString()}
-                        </span>
+                      <div key={c.mult} className={`rounded-lg p-3 text-center border ${c.muted ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <div className="text-xs text-gray-500 mb-1">{c.label} ({c.mult}x)</div>
+                        <div className={`text-base font-bold font-serif ${c.muted ? 'text-gray-700' : 'text-amber-700'}`}>
+                          ${(annual * c.mult).toLocaleString()}
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
-                  FOLLOW-UP REMINDER
-                </div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Follow-up Reminder</div>
+                <div className="flex items-center gap-3 mb-3">
                   <input
-                    className="input"
                     type="date"
                     value={editingDeal.follow_up_date ?? ''}
-                    onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, follow_up_date: e.target.value } : prev))}
+                    onChange={(e) => setEditingDeal((p) => p ? { ...p, follow_up_date: e.target.value } : null)}
                     onBlur={() => handleSaveDeal()}
-                    style={{
-                      fontSize: 12,
-                      background: '#F9FAFB',
-                      colorScheme: 'dark',
-                    }}
+                    className="text-sm border border-gray-200 rounded-md px-3 py-1.5 focus:outline-none focus:border-amber-400 transition-all [color-scheme:light]"
                   />
                   {editingDeal.follow_up_date && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        padding: '3px 10px',
-                        borderRadius: 10,
-                        background: isOverdue(editingDeal.follow_up_date)
-                          ? 'rgba(244,67,54,0.15)'
-                          : 'rgba(239,159,39,0.12)',
-                        color: isOverdue(editingDeal.follow_up_date) ? '#F44336' : '#EF9F27',
-                        border: `1px solid ${
-                          isOverdue(editingDeal.follow_up_date)
-                            ? 'rgba(244,67,54,0.3)'
-                            : 'rgba(239,159,39,0.3)'
-                        }`,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      <Calendar size={14} />
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                      isOverdue(editingDeal.follow_up_date)
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-amber-50 text-amber-600'
+                    }`}>
                       {formatDate(editingDeal.follow_up_date)}
                     </span>
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                  {[
-                    { label: '+3 days', days: 3 },
-                    { label: '+1 week', days: 7 },
-                    { label: '+2 weeks', days: 14 },
-                    { label: '+1 month', days: 30 },
-                  ].map((q) => (
+                <div className="flex gap-2">
+                  {[{ label: '+3d', days: 3 }, { label: '+1w', days: 7 }, { label: '+2w', days: 14 }, { label: '+1mo', days: 30 }].map((q) => (
                     <button
                       key={q.days}
                       onClick={() => {
-                        if (!editingDeal) return
                         const d = new Date()
                         d.setDate(d.getDate() + q.days)
-                        const dateStr = d.toISOString().split('T')[0]
-                        const nextDeal = { ...editingDeal, follow_up_date: dateStr }
-                        setEditingDeal(nextDeal)
-                        handleSaveDeal(nextDeal)
+                        const ds = d.toISOString().split('T')[0]
+                        setEditingDeal((p) => p ? { ...p, follow_up_date: ds } : null)
+                        handleSaveDeal({ follow_up_date: ds } as Partial<Deal>)
                       }}
-                      style={{
-                        fontSize: 10,
-                        padding: '3px 8px',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        background: 'transparent',
-                        border: '1px solid #E5E7EB',
-                        color: '#374151',
-                      }}
+                      className="px-3 py-1 text-xs border border-gray-200 rounded-md text-gray-500 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
                     >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                        <Plus size={12} />
-                        {q.label.replace('+', '').trim()}
-                      </span>
+                      {q.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#111827', marginBottom: 12, fontWeight: 700 }}>
-                  CONTACT LOG
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                  {['Called — no answer', 'Called — spoke', 'Left voicemail', 'Sent letter', 'Sent email', 'Met in person'].map((outcome) => (
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4 shadow-sm">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Contact Log</div>
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {['Called - no answer', 'Called - spoke', 'Left voicemail', 'Sent letter', 'Sent email', 'Met in person'].map((method) => (
                     <button
-                      key={outcome}
-                      onClick={() => handleLogContact(editingDeal.id, outcome)}
-                      style={{
-                        fontSize: 10,
-                        padding: '4px 10px',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        background: '#FFFFFF',
-                        border: '1px solid #E5E7EB',
-                        color: '#374151',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = '#EF9F27'
-                        e.currentTarget.style.color = '#EF9F27'
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = '#E5E7EB'
-                        e.currentTarget.style.color = '#6B7280'
-                      }}
+                      key={method}
+                      onClick={() => handleLogContact(method)}
+                      className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 transition-colors font-medium inline-flex items-center gap-1"
                     >
-                      {outcome}
+                      <Plus size={12} />{method}
                     </button>
                   ))}
                 </div>
-                <div style={{ maxHeight: 160, overflowY: 'auto' }}>
-                  {contactLog.map((entry, i) => (
-                    <div
-                      key={entry.id ?? `${entry.logged_at}-${i}`}
-                      style={{
-                        display: 'flex',
-                        gap: 10,
-                        padding: '6px 0',
-                        borderBottom: '1px solid #F3F4F6',
-                        alignItems: 'flex-start',
-                      }}
-                    >
-                      <div style={{ fontSize: 9, color: '#6B7280', whiteSpace: 'nowrap', marginTop: 1 }}>
+                <div className="space-y-0">
+                  {contactLog.length === 0 ? (
+                    <div className="text-sm text-gray-400 italic">No contacts logged yet</div>
+                  ) : contactLog.map((entry, i) => (
+                    <div key={entry.id ?? `${entry.logged_at}-${i}`} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
+                      <div className="text-xs text-gray-400 w-20 shrink-0">
                         {new Date(entry.logged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                       </div>
-                      <div style={{ fontSize: 11, color: '#111827' }}>{entry.method}</div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                      <div className="text-sm text-gray-700">{entry.method}</div>
                     </div>
                   ))}
-                  {contactLog.length === 0 && (
-                    <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
-                      No contacts logged yet
-                    </div>
-                  )}
                 </div>
               </div>
 
-              <div style={{ padding: '16px 24px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ fontSize: 9, color: '#6B7280', letterSpacing: '0.08em', fontWeight: 600 }}>NOTES</div>
-                  {lastSaved && <div style={{ fontSize: 9, color: '#9CA3AF' }}>Saved {lastSaved}</div>}
+              <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Notes</div>
+                  {lastSaved && <span className="text-xs text-gray-400">Saved {lastSaved}</span>}
                 </div>
                 <textarea
-                  className="input"
                   value={editingDeal.notes ?? ''}
-                  onChange={(e) => setEditingDeal((prev) => (prev ? { ...prev, notes: e.target.value } : prev))}
+                  onChange={(e) => setEditingDeal((p) => p ? { ...p, notes: e.target.value } : null)}
                   onBlur={() => handleSaveDeal()}
-                  placeholder="Add your notes about this lead..."
-                  style={{
-                    width: '100%',
-                    minHeight: 140,
-                    fontSize: 12,
-                    resize: 'vertical',
-                    lineHeight: 1.5,
-                    colorScheme: 'dark',
-                  }}
+                  placeholder="Add notes about this lead..."
+                  rows={5}
+                  className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all resize-none leading-relaxed"
                 />
               </div>
             </div>
-          )}
-        </div>
+          </main>
+        )}
       </div>
     </div>
   )
