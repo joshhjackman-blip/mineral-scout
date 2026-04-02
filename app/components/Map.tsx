@@ -24,6 +24,15 @@ export type OwnerRecord = {
   [key: string]: unknown
 }
 
+const toWellType = (value: unknown): 'HORIZONTAL' | 'DIRECTIONAL' | 'VERTICAL' | 'UNKNOWN' => {
+  const s = String(value ?? '').toUpperCase().trim()
+  if (s.startsWith('H')) return 'HORIZONTAL'
+  if (s.startsWith('D')) return 'DIRECTIONAL'
+  if (s.startsWith('V')) return 'VERTICAL'
+  if (!s) return 'UNKNOWN'
+  return 'VERTICAL'
+}
+
 export default function Map({
   showActiveWells,
   showShutInWells,
@@ -74,7 +83,7 @@ export default function Map({
           fetch('/api/parcels'),
           supabase
             .from('gonzales_wells')
-            .select('latitude, longitude, well_status, operator_name, lease_name')
+            .select('latitude, longitude, well_status, operator_name, lease_name, well_type')
             .not('latitude', 'is', null)
             .not('longitude', 'is', null),
           supabase
@@ -208,6 +217,7 @@ export default function Map({
                 status_group: toWellStatusGroup(w.well_status),
                 operator: w.operator_name,
                 lease: w.lease_name,
+                well_type: toWellType(w.well_type),
               }
             }))
         }
@@ -225,6 +235,40 @@ export default function Map({
             'circle-color': '#16a34a',
             'circle-opacity': 0.95,
             'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 1,
+          }
+        })
+        map.current.addLayer({
+          id: 'horizontal-wells-layer',
+          type: 'circle',
+          source: 'wells',
+          filter: ['all', ['==', ['get', 'status_group'], 'ACTIVE'], ['==', ['get', 'well_type'], 'HORIZONTAL']],
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 6.8,
+            'circle-color': '#16a34a',
+            'circle-opacity': 0.95,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 1,
+          }
+        })
+        map.current.addLayer({
+          id: 'vertical-wells-layer',
+          type: 'circle',
+          source: 'wells',
+          filter: [
+            'all',
+            ['==', ['get', 'status_group'], 'ACTIVE'],
+            ['!=', ['get', 'well_type'], 'HORIZONTAL'],
+          ],
+          layout: { visibility: 'none' },
+          paint: {
+            'circle-radius': 4.2,
+            'circle-color': '#16a34a',
+            'circle-opacity': 0.78,
+            'circle-stroke-width': 1.5,
             'circle-stroke-color': '#ffffff',
             'circle-stroke-opacity': 1,
           }
@@ -260,7 +304,13 @@ export default function Map({
           }
         })
 
-        const wellLayerIds = ['wells-active-layer', 'wells-shut-in-layer', 'wells-unknown-layer'] as const
+        const wellLayerIds = [
+          'wells-active-layer',
+          'horizontal-wells-layer',
+          'vertical-wells-layer',
+          'wells-shut-in-layer',
+          'wells-unknown-layer',
+        ] as const
         wellLayerIds.forEach((layerId) => {
           map.current?.on('click', layerId, (e) => {
             const props = e.features?.[0]?.properties
@@ -269,10 +319,13 @@ export default function Map({
             const statusColor = statusGroup === 'ACTIVE' ? '#16a34a' : statusGroup === 'SHUT_IN' ? '#dc2626' : '#6b7280'
             new mapboxgl.Popup({ closeButton: false, offset: 10 })
               .setLngLat((e.features![0].geometry as GeoJSON.Point).coordinates as [number, number])
-              .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
-                <div style="font-weight:600">${props.lease ?? 'Well'}</div>
+              .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px 8px">
+                <div style="font-weight:600;color:#111827">${props.lease ?? 'Well'}</div>
                 <div style="color:#6b7280">${props.operator ?? ''}</div>
-                <div style="color:${statusColor}">● ${props.status ?? 'UNKNOWN'}</div>
+                <div style="margin-top:4px;display:flex;gap:8px;align-items:center">
+                  <span style="color:${statusColor}">● ${props.status ?? 'Unknown'}</span>
+                  <span style="color:#6b7280;font-size:11px">${props.well_type ?? ''}</span>
+                </div>
               </div>`)
               .addTo(map.current)
           })
@@ -359,6 +412,12 @@ export default function Map({
     if (!map.current?.isStyleLoaded()) return
     if (map.current.getLayer('wells-active-layer')) {
       map.current.setLayoutProperty('wells-active-layer', 'visibility', showActiveWells ? 'visible' : 'none')
+    }
+    if (map.current.getLayer('horizontal-wells-layer')) {
+      map.current.setLayoutProperty('horizontal-wells-layer', 'visibility', showActiveWells ? 'visible' : 'none')
+    }
+    if (map.current.getLayer('vertical-wells-layer')) {
+      map.current.setLayoutProperty('vertical-wells-layer', 'visibility', showActiveWells ? 'visible' : 'none')
     }
     if (map.current.getLayer('wells-shut-in-layer')) {
       map.current.setLayoutProperty('wells-shut-in-layer', 'visibility', showShutInWells ? 'visible' : 'none')

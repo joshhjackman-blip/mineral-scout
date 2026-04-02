@@ -53,6 +53,8 @@ type TractSelection = {
   first_12_month_oil?: number
   first_24_month_oil?: number
   first_60_month_oil?: number
+  horizontal_well_count?: number
+  vertical_well_count?: number
 }
 
 type TractRecord = {
@@ -71,6 +73,8 @@ type TractRecord = {
   first_12_month_oil?: number
   first_24_month_oil?: number
   first_60_month_oil?: number
+  horizontal_well_count?: number
+  vertical_well_count?: number
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
@@ -427,6 +431,8 @@ export default function Home() {
               first_12_month_oil: toNumber(props.first_12_month_oil),
               first_24_month_oil: toNumber(props.first_24_month_oil),
               first_60_month_oil: toNumber(props.first_60_month_oil),
+              horizontal_well_count: toNumber(props.horizontal_well_count),
+              vertical_well_count: toNumber(props.vertical_well_count),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
@@ -543,6 +549,8 @@ export default function Home() {
   const maxScore = toNumber(selected?.max_propensity_score)
   const fieldName = selected?.field_name ?? 'Unknown'
   const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
+  const horizontalWellCount = toNumber(selected?.horizontal_well_count)
+  const verticalWellCount = toNumber(selected?.vertical_well_count)
 
   return (
     <div
@@ -863,6 +871,11 @@ export default function Home() {
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
                   {topOperator}
                 </span>
+                {(horizontalWellCount > 0 || verticalWellCount > 0) && (
+                  <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#ECFDF5', color: '#166534', border: '1px solid #BBF7D0' }}>
+                    {horizontalWellCount}H · {verticalWellCount}V
+                  </span>
+                )}
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -891,6 +904,11 @@ export default function Home() {
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {fieldName}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
+                {(horizontalWellCount > 0 || verticalWellCount > 0) && (
+                  <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>
+                    Well mix: {horizontalWellCount} horizontal · {verticalWellCount} vertical
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
@@ -1166,6 +1184,8 @@ export default function Home() {
                         first_12_month_oil: tract.first_12_month_oil,
                         first_24_month_oil: tract.first_24_month_oil,
                         first_60_month_oil: tract.first_60_month_oil,
+                        horizontal_well_count: tract.horizontal_well_count,
+                        vertical_well_count: tract.vertical_well_count,
                       })
                     }
                     style={{
@@ -1399,6 +1419,26 @@ export default function Home() {
             <span style={{ fontSize: 11, color: l.val ? '#374151' : '#9CA3AF' }}>{l.label}</span>
           </div>
         ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 8 }}>
+          {[
+            { label: 'Horizontal wells', color: '#16a34a', size: 10 },
+            { label: 'Vertical wells', color: '#16a34a', size: 6 },
+          ].map((item) => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <div
+                style={{
+                  width: item.size,
+                  height: item.size,
+                  borderRadius: '50%',
+                  background: item.color,
+                  border: '1.5px solid #ffffff',
+                  boxShadow: '0 0 0 1px rgba(107,114,128,0.25)',
+                }}
+              />
+              <span style={{ fontSize: 11, color: '#6B7280' }}>{item.label}</span>
+            </div>
+          ))}
+        </div>
 
       </div>
 
