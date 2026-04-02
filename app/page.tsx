@@ -472,14 +472,40 @@ export default function Home() {
     if (score >= 2) return 'prospect'
     return 'low'
   }
+  const deduplicatedOwners = useMemo(() => {
+    const seen = new Map<string, TractOwner>()
+    for (const owner of selectedOwners) {
+      const name = String(owner.owner_name ?? '').trim()
+      if (!name) continue
+      const existing = seen.get(name)
+      if (!existing || Number(owner.propensity_score ?? 0) > Number(existing.propensity_score ?? 0)) {
+        seen.set(name, owner)
+      }
+    }
+    return Array.from(seen.values()).sort(
+      (a, b) => Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
+    )
+  }, [selectedOwners])
+
   const filteredOwnersList = useMemo(() => {
-    return selectedOwners.filter((owner) => {
+    return deduplicatedOwners.filter((owner) => {
       const score = toNumber(owner.propensity_score)
       if (tierFilter !== 'all' && tierByScore(score) !== tierFilter) return false
       if (ownerTypeFilter === 'all') return true
       return classifyOwner(String(owner.owner_name ?? '')) === ownerTypeFilter
     })
-  }, [selectedOwners, ownerTypeFilter, tierFilter])
+  }, [deduplicatedOwners, ownerTypeFilter, tierFilter])
+
+  const cleanOwnersList = useMemo(() => {
+    return filteredOwnersList.filter((owner: TractOwner) => {
+      const name = (owner.owner_name ?? '').trim()
+      if (!name || name.length < 3) return false
+      if (/^MAP\d{4}/.test(name)) return false
+      if (/^\d+$/.test(name)) return false
+      if (name === 'UNKNOWN' || name === 'N/A') return false
+      return true
+    })
+  }, [filteredOwnersList])
   const productionData = useMemo(() => {
     if (!selected) return []
     const s = selected as Record<string, unknown>
@@ -884,7 +910,7 @@ export default function Home() {
                 )}
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                {filteredOwnersList.map((owner: TractOwner, i: number) => {
+                {cleanOwnersList.map((owner: TractOwner, i: number) => {
                   const score = Number(owner.propensity_score ?? 0)
                   const isExpanded = expandedOwner === i
                   const signals = isExpanded ? getScoreBreakdown(owner) : []
