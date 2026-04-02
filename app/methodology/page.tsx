@@ -57,18 +57,18 @@ const SIGNALS: SignalCard[] = [
   },
 ]
 
-const SCORE_DISTRIBUTION = [
-  { score: '10', owners: 2175 },
-  { score: '9', owners: 1801 },
-  { score: '8', owners: 7133 },
-  { score: '7', owners: 2601 },
-  { score: '6', owners: 8928 },
-  { score: '5', owners: 25829 },
-  { score: '4', owners: 7399 },
-  { score: '3', owners: 6667 },
-  { score: '2', owners: 6696 },
-  { score: '1', owners: 4236 },
-  { score: '0', owners: 124 },
+const SCORE_DATA = [
+  { score: '10', count: 657, hot: true },
+  { score: '9', count: 1190, hot: true },
+  { score: '8', count: 2103, hot: true },
+  { score: '7', count: 7232, warm: true },
+  { score: '6', count: 2542, warm: true },
+  { score: '5', count: 9273 },
+  { score: '4', count: 26362 },
+  { score: '3', count: 6936 },
+  { score: '2', count: 6638 },
+  { score: '1', count: 6465 },
+  { score: '0', count: 4191 },
 ]
 
 const FAQS = [
@@ -89,11 +89,6 @@ const FAQS = [
     a: 'Legal complexity, remote ownership, and fractional interests can outweigh current production strength.',
   },
 ]
-
-const TOTAL_OWNER_COUNT = 73589
-const MOTIVATED_OWNER_COUNT = 69398
-const HOT_LEAD_COUNT = 3950
-const OUT_OF_STATE_COUNT = 13551
 
 export default function MethodologyPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
@@ -120,7 +115,7 @@ export default function MethodologyPage() {
         <aside className="w-56 shrink-0 bg-white border-r border-gray-200 overflow-y-auto p-4">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Contents</div>
           <nav className="space-y-1">
-            {['Propensity Score', 'Score Distribution', 'Signal Reference', 'Map Layers', 'FAQ'].map((section) => (
+            {['Propensity Score', 'Score Distribution', 'Signal Reference', 'Map Layers', 'Data Accuracy', 'FAQ'].map((section) => (
               <a
                 key={section}
                 href={`#${section.toLowerCase().replace(/ /g, '-')}`}
@@ -163,31 +158,25 @@ export default function MethodologyPage() {
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Score Distribution</div>
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={SCORE_DISTRIBUTION}>
+                  <BarChart data={SCORE_DATA}>
                     <XAxis dataKey="score" tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} axisLine={false} tickLine={false} width={44} />
-                    <Bar dataKey="owners" fill="#F59E0B" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="count" fill="#F59E0B" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <div className="text-xs text-gray-400 mb-1">Total owners</div>
-                  <div className="font-serif text-xl font-bold text-gray-900">{TOTAL_OWNER_COUNT.toLocaleString()}</div>
-                </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="text-xs text-blue-700 mb-1">Out of state</div>
-                  <div className="font-serif text-xl font-bold text-blue-700">{OUT_OF_STATE_COUNT.toLocaleString()}</div>
-                </div>
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="text-xs text-amber-700 mb-1">Motivated (1+)</div>
-                  <div className="font-serif text-xl font-bold text-amber-700">{MOTIVATED_OWNER_COUNT.toLocaleString()}</div>
-                </div>
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <div className="text-xs text-red-600 mb-1">Hot leads (8–10)</div>
-                  <div className="font-serif text-xl font-bold text-red-600">{HOT_LEAD_COUNT.toLocaleString()}</div>
-                </div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { val: '3,950', lbl: 'Hot leads (score 8-10)', color: 'text-red-700', bg: 'bg-red-50' },
+                  { val: '19,047', lbl: 'Motivated (score 5-7)', color: 'text-amber-700', bg: 'bg-amber-50' },
+                  { val: '46,401', lbl: 'Prospect (score 2-4)', color: 'text-green-700', bg: 'bg-green-50' },
+                ].map((card) => (
+                  <div key={card.lbl} className={`${card.bg} border border-gray-200 rounded-lg p-3`}>
+                    <div className={`text-xs mb-1 ${card.color}`}>{card.lbl}</div>
+                    <div className={`font-serif text-xl font-bold ${card.color}`}>{card.val}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </section>
@@ -242,6 +231,70 @@ export default function MethodologyPage() {
               ))}
             </div>
           </section>
+
+          <div id="data-accuracy" className="mb-8">
+            <h2 className="font-serif text-2xl font-bold text-gray-900 mb-2">Data Accuracy</h2>
+            <p className="text-sm text-gray-500 mb-6">Not all data fields carry the same confidence level. Here is what to trust and what to treat as an estimate.</p>
+
+            <div className="space-y-3">
+              {[
+                {
+                  label: 'Owner names & mailing addresses',
+                  confidence: 'High',
+                  color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                  desc: 'Sourced directly from the county appraisal district mineral roll - the same official record operators use for division orders. Updated annually.'
+                },
+                {
+                  label: 'Decimal interest (division order)',
+                  confidence: 'High',
+                  color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                  desc: 'From the appraisal district interest field. Matches what operators have on file for royalty payments. Expressed as a 6-decimal fraction.'
+                },
+                {
+                  label: 'Well locations & operator names',
+                  confidence: 'High',
+                  color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                  desc: 'Texas RRC GPS coordinates and operator assignments. Updated monthly. Very reliable for active wells.'
+                },
+                {
+                  label: 'Production history',
+                  confidence: 'High',
+                  color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+                  desc: 'RRC-reported production data. Accurate but reported with a 2-3 month lag. Cumulative figures are reliable; recent months may be incomplete.'
+                },
+                {
+                  label: 'Propensity scores',
+                  confidence: 'Estimate',
+                  color: 'text-amber-700 bg-amber-50 border-amber-200',
+                  desc: 'Based on signals correlated with seller motivation - not a guarantee of willingness to sell. A score of 9 means multiple strong signals are present. Use scores to prioritize outreach, not to predict outcomes.'
+                },
+                {
+                  label: 'Estimated monthly royalty',
+                  confidence: 'Estimate',
+                  color: 'text-amber-700 bg-amber-50 border-amber-200',
+                  desc: 'Calculated from cumulative production ÷ 60 months × decimal interest × $70/bbl oil price. Treat as a ballpark figure. Actual royalties depend on current production rates, deductions, commodity mix, and price received.'
+                },
+                {
+                  label: 'Est. lease expiration',
+                  confidence: 'Approximate',
+                  color: 'text-orange-700 bg-orange-50 border-orange-200',
+                  desc: 'Estimated as first production date + 5 years. Most active Eagle Ford leases are HBP (Held by Production) and do not expire while producing. Use as a flag, not a definitive date.'
+                },
+              ].map((item) => (
+                <div key={item.label} className="flex items-start gap-4 bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1">
+                      <span className="font-serif text-sm font-bold text-gray-900">{item.label}</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${item.color}`}>
+                        {item.confidence}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <section id="faq">
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
