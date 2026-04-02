@@ -194,7 +194,9 @@ export default function Home() {
     const name = (owner.owner_name ?? '').toUpperCase()
     const state = (owner.mailing_state ?? '').toUpperCase()
     const address = (owner.mailing_address ?? owner.address_1 ?? '').toUpperCase()
-    const acreage = Number(owner.acreage ?? 0)
+    const grossAc = Number(owner.acreage ?? 0)
+    const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
+    const acreage = grossAc > 0 && interest > 0 ? grossAc * interest : grossAc
     const nri = Number(owner.ownership_pct ?? 0) / 100
     const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
 
@@ -890,6 +892,12 @@ export default function Home() {
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
                   const typeLabel = ownerType === 'trust' ? 'TRUST' : ownerType === 'company' ? 'CO' : 'IND'
+                  const grossAcres = Number(owner.acreage ?? 0)
+                  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
+                    (Number(owner.ownership_pct ?? 0) / 100)
+                  const netAcres = grossAcres > 0 && decimalInterest > 0
+                    ? grossAcres * decimalInterest
+                    : null
 
                   return (
                     <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
@@ -918,14 +926,18 @@ export default function Home() {
                                 : 'Address unknown'}
                             </div>
                             <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {Number(owner.acreage ?? 0) > 0 && Number(owner.acreage) < 5000 && (
+                              {netAcres !== null && netAcres > 0 && (
                                 <span style={{ fontSize: 10, color: '#6B7280' }}>
-                                  {Number(owner.acreage).toFixed(2)} net ac
+                                  {netAcres < 0.01
+                                    ? `${netAcres.toFixed(4)} NMA`
+                                    : netAcres < 1
+                                      ? `${netAcres.toFixed(3)} NMA`
+                                      : `${netAcres.toFixed(2)} NMA`}
                                 </span>
                               )}
                               {Number(owner.ownership_pct ?? 0) > 0 && (
                                 <>
-                                  {Number(owner.acreage ?? 0) > 0 && Number(owner.acreage) < 5000 ? ' · ' : ''}
+                                  {netAcres !== null && netAcres > 0 ? ' · ' : ''}
                                   {`${Number(owner.ownership_pct).toFixed(4)}% ownership`}
                                 </>
                               )}
