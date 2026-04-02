@@ -28,6 +28,8 @@ type TractOwner = {
   motivated?: boolean
   acreage?: number
   ownership_pct?: number
+  decimal_interest?: number
+  interest_type?: string
   prod_cumulative_sum_oil?: number
   phone?: string
   email?: string
@@ -226,6 +228,24 @@ export default function Home() {
       signals.push('Active production')
 
     return signals
+  }
+
+  const estimateMonthlyRoyalty = (owner: TractOwner, selectedTract: TractSelection | null): string | null => {
+    const interest = Number(owner.ownership_pct ?? 0) / 100
+    if (!interest || interest <= 0) return null
+
+    // Get monthly production from tract data (cumulative / 60 months as proxy)
+    const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
+    if (!cumOil) return null
+
+    const avgMonthlyBbls = cumOil / 60
+    const oilPrice = 70 // $/bbl
+    const monthlyRoyalty = avgMonthlyBbls * interest * oilPrice
+
+    if (monthlyRoyalty < 1) return null
+    return monthlyRoyalty < 1000
+      ? `$${monthlyRoyalty.toFixed(0)}/mo`
+      : `$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
   }
 
   const handleAddToPipelineConfirm = async () => {
@@ -902,6 +922,28 @@ export default function Home() {
                               {Number(owner.acreage ?? 0) > 0 && `${Number(owner.acreage).toFixed(2)} acres`}
                               {Number(owner.ownership_pct ?? 0) > 0 && ` · ${Number(owner.ownership_pct).toFixed(4)}% ownership`}
                             </div>
+                            {Number(owner.ownership_pct ?? 0) > 0 && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
+                                <span style={{ color: '#9CA3AF' }}>DO Interest:</span>
+                                <span style={{ color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
+                                  {Number((owner.ownership_pct ?? 0) / 100).toFixed(6)}
+                                </span>
+                                <span style={{ color: '#9CA3AF' }}>
+                                  ({Number(owner.ownership_pct).toFixed(4)}%)
+                                </span>
+                              </div>
+                            )}
+                            {(() => {
+                              const royalty = estimateMonthlyRoyalty(owner, selected)
+                              return royalty ? (
+                                <div style={{ fontSize: 10, marginTop: 2 }}>
+                                  <span style={{ color: '#9CA3AF' }}>Est. royalty: </span>
+                                  <span style={{ color: '#16a34a', fontWeight: 600, fontFamily: 'monospace' }}>
+                                    {royalty}
+                                  </span>
+                                </div>
+                              ) : null
+                            })()}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>

@@ -134,19 +134,32 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
         str(owner["id"]): owner for owner in all_owners
     }
     owner_ids = list(owners_by_id.keys())
+    cursor = 0
     chunk_size = 500
-    for start in range(0, len(owner_ids), chunk_size):
-        chunk_ids = owner_ids[start : start + chunk_size]
-        result = (
-            client.table("gonzales_mineral_ownership")
-            .select("id, raw_record")
-            .in_("id", chunk_ids)
-            .execute()
-        )
+    min_chunk_size = 50
+    while cursor < len(owner_ids):
+        chunk_ids = owner_ids[cursor : cursor + chunk_size]
+        try:
+            result = (
+                client.table("gonzales_mineral_ownership")
+                .select("id, raw_record")
+                .in_("id", chunk_ids)
+                .execute()
+            )
+        except Exception as exc:
+            if "statement timeout" in str(exc).lower() and chunk_size > min_chunk_size:
+                chunk_size = max(min_chunk_size, chunk_size // 2)
+                print(
+                    f"raw_record chunk timed out; retrying with chunk_size={chunk_size}"
+                )
+                continue
+            raise
+
         for row in result.data or []:
             owner = owners_by_id.get(str(row.get("id")))
             if owner is not None:
                 owner["raw_record"] = row.get("raw_record")
+        cursor += len(chunk_ids)
 
     return all_owners
 
@@ -528,6 +541,18 @@ def main() -> None:
                             ownership_pct
                             if ownership_pct is not None
                             else owner.get("ownership_pct", 0)
+                        ),
+                        "decimal_interest": (
+                            float(
+                                (owner.get("raw_record") or {}).get("Interest", 0) or 0
+                            )
+                            if isinstance(owner.get("raw_record"), dict)
+                            else 0
+                        ),
+                        "interest_type": (
+                            (owner.get("raw_record") or {}).get("Interest Type", "")
+                            if isinstance(owner.get("raw_record"), dict)
+                            else ""
                         ),
                     }
                 )
