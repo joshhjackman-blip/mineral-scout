@@ -5,8 +5,6 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
-const PARCELS_URL =
-  'https://mqesjubowxcrvzhymyoy.supabase.co/storage/v1/object/public/raw-data/gonzales_parcels_enriched.geojson'
 
 export type OwnerRecord = {
   id?: number
@@ -73,7 +71,7 @@ export default function Map({
 
       try {
         const [parcelsResponse, wellsResult, permitsResult] = await Promise.all([
-          fetch(PARCELS_URL),
+          fetch('/api/parcels'),
           supabase
             .from('gonzales_wells')
             .select('latitude, longitude, well_status, operator_name, lease_name')

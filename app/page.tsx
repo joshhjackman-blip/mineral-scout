@@ -14,7 +14,6 @@ import {
 import { supabase } from '@/lib/supabase'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
-const PARCELS_URL = 'https://mqesjubowxcrvzhymyoy.supabase.co/storage/v1/object/public/raw-data/gonzales_parcels_enriched.geojson'
 
 type TractOwner = {
   owner_name: string
@@ -392,7 +391,7 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
       try {
-        const response = await fetch(PARCELS_URL, { cache: 'no-store' })
+        const response = await fetch('/api/parcels', { cache: 'no-store' })
         let parcelsData: unknown
 
         if (response.ok) {
