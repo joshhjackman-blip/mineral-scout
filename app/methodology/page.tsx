@@ -88,6 +88,10 @@ const FAQS = [
     q: 'Why do some producing tracts still score high?',
     a: 'Legal complexity, remote ownership, and fractional interests can outweigh current production strength.',
   },
+  {
+    q: 'What is a Net Mineral Acre (NMA)?',
+    a: "A Net Mineral Acre represents your actual ownership stake in the minerals under a tract. It is calculated by multiplying the gross tract acreage by your decimal interest. For example, if a tract covers 640 gross acres and you own a 0.125 decimal interest, you own 80 Net Mineral Acres. A landowner with 12,800 gross acres but a 0.000001 decimal interest owns only 0.0128 NMA - a tiny fraction worth very little. Mineral Map displays NMA rather than gross acres because it more accurately reflects the economic size of an owner's interest and their motivation to sell.",
+  },
 ]
 
 export default function MethodologyPage() {
@@ -115,7 +119,7 @@ export default function MethodologyPage() {
         <aside className="w-56 shrink-0 bg-white border-r border-gray-200 overflow-y-auto p-4">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Contents</div>
           <nav className="space-y-1">
-            {['Propensity Score', 'Score Distribution', 'Signal Reference', 'Map Layers', 'Data Accuracy', 'FAQ'].map((section) => (
+            {['Propensity Score', 'Score Distribution', 'Signal Reference', 'Map Layers', 'Data Accuracy'].map((section) => (
               <a
                 key={section}
                 href={`#${section.toLowerCase().replace(/ /g, '-')}`}
@@ -124,6 +128,9 @@ export default function MethodologyPage() {
                 {section}
               </a>
             ))}
+            <a href="#faq" className="block px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md transition-colors">
+              FAQ & Glossary
+            </a>
           </nav>
         </aside>
 
@@ -298,7 +305,7 @@ export default function MethodologyPage() {
 
           <section id="faq">
             <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">FAQ</div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">FAQ & Glossary</div>
               {FAQS.map((faq, i) => (
                 <div key={faq.q} className="border-b border-gray-200 py-4 last:border-b-0">
                   <button
