@@ -143,10 +143,10 @@ export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
-  const [showActiveWells, setShowActiveWells] = useState(true)
-  const [showShutInWells, setShowShutInWells] = useState(true)
-  const [showUnknownWells, setShowUnknownWells] = useState(true)
-  const [showPermits, setShowPermits] = useState(true)
+  const [showActiveWells, setShowActiveWells] = useState(false)
+  const [showShutInWells, setShowShutInWells] = useState(false)
+  const [showUnknownWells, setShowUnknownWells] = useState(false)
+  const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
@@ -1296,18 +1296,21 @@ export default function Home() {
         <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
 
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
-        <button onClick={() => setShowActiveWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showActiveWells ? '#16a34a' : '#6B7280', cursor: 'pointer' }}>
-          ● Active wells
-        </button>
-        <button onClick={() => setShowShutInWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showShutInWells ? '#dc2626' : '#6B7280', cursor: 'pointer' }}>
-          ● Shut in wells
-        </button>
-        <button onClick={() => setShowUnknownWells((prev) => !prev)} style={{ background: 'none', border: 'none', color: showUnknownWells ? '#9CA3AF' : '#6B7280', cursor: 'pointer' }}>
-          ● Unknown wells
-        </button>
-        <button onClick={() => setShowPermits((prev) => !prev)} style={{ background: 'none', border: 'none', color: showPermits ? '#2563eb' : '#6B7280', cursor: 'pointer' }}>
-          ● New permits
-        </button>
+        {[
+          { label: 'Active wells', val: showActiveWells, set: setShowActiveWells, color: '#16a34a' },
+          { label: 'Shut-in wells', val: showShutInWells, set: setShowShutInWells, color: '#dc2626' },
+          { label: 'Unknown wells', val: showUnknownWells, set: setShowUnknownWells, color: '#9CA3AF' },
+          { label: 'New permits', val: showPermits, set: setShowPermits, color: '#2563eb' },
+        ].map((l) => (
+          <div
+            key={l.label}
+            onClick={() => l.set(!l.val)}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', opacity: l.val ? 1 : 0.4 }}
+          >
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: l.val ? l.color : '#9CA3AF' }} />
+            <span style={{ fontSize: 11, color: l.val ? '#374151' : '#9CA3AF' }}>{l.label}</span>
+          </div>
+        ))}
 
       </div>
 

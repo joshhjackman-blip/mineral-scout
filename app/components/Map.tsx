@@ -219,7 +219,7 @@ export default function Map({
           type: 'circle',
           source: 'wells',
           filter: ['==', ['get', 'status_group'], 'ACTIVE'],
-          layout: { visibility: showActiveWells ? 'visible' : 'none' },
+          layout: { visibility: 'none' },
           paint: {
             'circle-radius': 6,
             'circle-color': '#16a34a',
@@ -234,7 +234,7 @@ export default function Map({
           type: 'circle',
           source: 'wells',
           filter: ['==', ['get', 'status_group'], 'SHUT_IN'],
-          layout: { visibility: showShutInWells ? 'visible' : 'none' },
+          layout: { visibility: 'none' },
           paint: {
             'circle-radius': 5,
             'circle-color': '#dc2626',
@@ -249,7 +249,7 @@ export default function Map({
           type: 'circle',
           source: 'wells',
           filter: ['==', ['get', 'status_group'], 'UNKNOWN'],
-          layout: { visibility: showUnknownWells ? 'visible' : 'none' },
+          layout: { visibility: 'none' },
           paint: {
             'circle-radius': 4,
             'circle-color': '#9ca3af',
@@ -309,7 +309,7 @@ export default function Map({
           id: 'permits-layer',
           type: 'circle',
           source: 'permits',
-          layout: { visibility: showPermits ? 'visible' : 'none' },
+          layout: { visibility: 'none' },
           paint: {
             'circle-radius': 7,
             'circle-color': '#2563eb',
