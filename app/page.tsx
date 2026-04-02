@@ -231,21 +231,20 @@ export default function Home() {
   }
 
   const estimateMonthlyRoyalty = (owner: TractOwner, selectedTract: TractSelection | null): string | null => {
-    const interest = Number(owner.ownership_pct ?? 0) / 100
-    if (!interest || interest <= 0) return null
+    const decimalInterest = Number(owner.decimal_interest ?? 0) ||
+      (Number(owner.ownership_pct ?? 0) / 100)
+    if (!decimalInterest || decimalInterest <= 0) return null
 
-    // Get monthly production from tract data (cumulative / 60 months as proxy)
     const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
     if (!cumOil) return null
 
     const avgMonthlyBbls = cumOil / 60
-    const oilPrice = 70 // $/bbl
-    const monthlyRoyalty = avgMonthlyBbls * interest * oilPrice
+    const oilPrice = 70
+    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice
 
-    if (monthlyRoyalty < 1) return null
-    return monthlyRoyalty < 1000
-      ? `$${monthlyRoyalty.toFixed(0)}/mo`
-      : `$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
+    if (monthlyRoyalty < 0.50) return null
+    if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
+    return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
   }
 
   const handleAddToPipelineConfirm = async () => {
@@ -919,8 +918,17 @@ export default function Home() {
                                 : 'Address unknown'}
                             </div>
                             <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {Number(owner.acreage ?? 0) > 0 && `${Number(owner.acreage).toFixed(2)} acres`}
-                              {Number(owner.ownership_pct ?? 0) > 0 && ` · ${Number(owner.ownership_pct).toFixed(4)}% ownership`}
+                              {Number(owner.acreage ?? 0) > 0 && Number(owner.acreage) < 5000 && (
+                                <span style={{ fontSize: 10, color: '#6B7280' }}>
+                                  {Number(owner.acreage).toFixed(2)} net ac
+                                </span>
+                              )}
+                              {Number(owner.ownership_pct ?? 0) > 0 && (
+                                <>
+                                  {Number(owner.acreage ?? 0) > 0 && Number(owner.acreage) < 5000 ? ' · ' : ''}
+                                  {`${Number(owner.ownership_pct).toFixed(4)}% ownership`}
+                                </>
+                              )}
                             </div>
                             {Number(owner.ownership_pct ?? 0) > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
