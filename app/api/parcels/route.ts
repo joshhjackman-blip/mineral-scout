@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   )
 
   const { data, error } = await adminClient.storage
-    .from('raw-data')
+    .from('Raw-Data')
     .download('gonzales_parcels_enriched.geojson')
 
   if (error || !data) {
