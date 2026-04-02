@@ -243,7 +243,7 @@ export default function Map({
           id: 'horizontal-wells-layer',
           type: 'circle',
           source: 'wells',
-          filter: ['all', ['==', ['get', 'status_group'], 'ACTIVE'], ['==', ['get', 'well_type'], 'HORIZONTAL']],
+          filter: ['==', ['get', 'well_type'], 'HORIZONTAL'],
           layout: { visibility: 'none' },
           paint: {
             'circle-radius': 6.8,
@@ -258,11 +258,7 @@ export default function Map({
           id: 'vertical-wells-layer',
           type: 'circle',
           source: 'wells',
-          filter: [
-            'all',
-            ['==', ['get', 'status_group'], 'ACTIVE'],
-            ['!=', ['get', 'well_type'], 'HORIZONTAL'],
-          ],
+          filter: ['!=', ['get', 'well_type'], 'HORIZONTAL'],
           layout: { visibility: 'none' },
           paint: {
             'circle-radius': 4.2,
