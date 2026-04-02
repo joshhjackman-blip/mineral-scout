@@ -28,6 +28,7 @@ type TractOwner = {
   motivated?: boolean
   acreage?: number
   ownership_pct?: number
+  prod_cumulative_sum_oil?: number
   phone?: string
   email?: string
 }
@@ -158,6 +159,7 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null)
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
+  const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -179,6 +181,51 @@ export default function Home() {
   const handleOpenAddToPipeline = (owner: TractOwner) => {
     setPipelineCandidate(owner)
     setPipelineTag(getDefaultPipelineTag(owner))
+  }
+
+  const handleAddToPipeline = (owner: TractOwner) => {
+    handleOpenAddToPipeline(owner)
+  }
+
+  const getScoreBreakdown = (owner: TractOwner): string[] => {
+    const signals: string[] = []
+    const name = (owner.owner_name ?? '').toUpperCase()
+    const state = (owner.mailing_state ?? '').toUpperCase()
+    const address = (owner.mailing_address ?? owner.address_1 ?? '').toUpperCase()
+    const acreage = Number(owner.acreage ?? 0)
+    const nri = Number(owner.ownership_pct ?? 0) / 100
+    const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
+
+    if (state && state !== 'TX' && state !== 'TEXAS' && state.length > 0)
+      signals.push('Out of state owner')
+    if (name.includes('LIFE ESTATE'))
+      signals.push('Life estate')
+    else if (name.includes('ESTATE'))
+      signals.push('Estate or probate')
+    if (name.includes('IRREVOCABLE'))
+      signals.push('Irrevocable trust')
+    if (name.includes('LIVING TRUST') || name.includes('LIV TR'))
+      signals.push('Living trust')
+    else if (name.includes('TRUST') && !name.includes('IRREVOCABLE') && !name.includes('LIFE ESTATE'))
+      signals.push('Trust')
+    if ((name.includes('LLC') || name.includes('LP')) && state !== 'TX')
+      signals.push('Out of state LLC or LP')
+    if (address.includes('P.O.') || address.includes('PO BOX'))
+      signals.push('PO Box address')
+    if (acreage > 0 && acreage < 5)
+      signals.push('Very small acreage - under 5 acres')
+    else if (acreage >= 5 && acreage < 15)
+      signals.push('Small acreage - 5 to 15 acres')
+    else if (acreage >= 15 && acreage < 40)
+      signals.push('Small acreage - 15 to 40 acres')
+    if (nri > 0 && nri < 0.001)
+      signals.push('Tiny fractional interest')
+    else if (nri >= 0.001 && nri < 0.005)
+      signals.push('Small fractional interest')
+    if (cumOil > 0)
+      signals.push('Active production')
+
+    return signals
   }
 
   const handleAddToPipelineConfirm = async () => {
@@ -816,156 +863,114 @@ export default function Home() {
                 )}
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                {filteredOwnersList.map((owner, index) => {
-                  const score = toNumber(owner.propensity_score)
-                  const acreage = toNumber(owner.acreage)
-                  const ownershipPct = toNumber(owner.ownership_pct)
-                  const hasPhone = Boolean(owner.phone)
-                  const hasEmail = Boolean(owner.email)
+                {filteredOwnersList.map((owner: TractOwner, i: number) => {
+                  const score = Number(owner.propensity_score ?? 0)
+                  const isExpanded = expandedOwner === i
+                  const signals = isExpanded ? getScoreBreakdown(owner) : []
+                  const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
-                  const typeColor = ownerType === 'trust' ? '#7AB835' :
-                    ownerType === 'company' ? '#378ADD' : '#6B7280'
-                  const typeLabel = ownerType === 'trust' ? 'TRUST' :
-                    ownerType === 'company' ? 'CO' : 'IND'
+                  const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
+                  const typeLabel = ownerType === 'trust' ? 'TRUST' : ownerType === 'company' ? 'CO' : 'IND'
+
                   return (
-                    <div
-                      key={`${owner.owner_name}-${index}`}
-                      style={{ padding: '10px 16px', borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
-                      onMouseEnter={(event) => {
-                        event.currentTarget.style.background = '#FFFBEB'
-                      }}
-                      onMouseLeave={(event) => {
-                        event.currentTarget.style.background = 'transparent'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ flex: 1, marginRight: 8 }}>
-                          <div style={{ fontSize: 12, color: '#111827', fontWeight: 600 }}>
-                            {index + 1}. {owner.owner_name}
-                            <span
-                              style={{
-                                fontSize: 9, padding: '1px 5px', borderRadius: 6,
-                                background: `${typeColor}20`,
-                                color: typeColor,
-                                border: `0.5px solid ${typeColor}40`,
-                                marginLeft: 6,
-                              }}
-                            >
+                    <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                      <div
+                        onClick={() => setExpandedOwner(isExpanded ? null : i)}
+                        style={{
+                          padding: '10px 16px',
+                          cursor: 'pointer',
+                          background: isExpanded ? '#FFFBEB' : 'transparent',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isExpanded) e.currentTarget.style.background = '#F9FAFB'
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isExpanded) e.currentTarget.style.background = isExpanded ? '#FFFBEB' : 'transparent'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div style={{ flex: 1, marginRight: 8 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
+                              {i + 1}. {owner.owner_name}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
+                              {owner.mailing_city && owner.mailing_state
+                                ? `${owner.mailing_city}, ${owner.mailing_state}`
+                                : 'Address unknown'}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#6B7280' }}>
+                              {Number(owner.acreage ?? 0) > 0 && `${Number(owner.acreage).toFixed(2)} acres`}
+                              {Number(owner.ownership_pct ?? 0) > 0 && ` · ${Number(owner.ownership_pct).toFixed(4)}% ownership`}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
+                              {score}/10
+                            </div>
+                            <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: `${typeColor}15`, color: typeColor, border: `0.5px solid ${typeColor}30` }}>
                               {typeLabel}
                             </span>
+                            {owner.out_of_state && (
+                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(239,159,39,0.12)', color: '#B45309', border: '0.5px solid rgba(239,159,39,0.3)' }}>OOS</span>
+                            )}
                           </div>
-                          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
-                            {owner.address_1 || owner.mailing_address || 'Address unknown'}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#6B7280' }}>
-                            {owner.mailing_city || 'Unknown city'}, {owner.mailing_state || '--'} {owner.mailing_zip || ''}
-                          </div>
-                          <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
-                            {acreage > 0 ? `${acreage.toFixed(2)} acres` : 'Acreage unknown'} ·{' '}
-                            {ownershipPct > 0 ? `${ownershipPct.toFixed(4)}%` : 'Ownership unknown'}
-                          </div>
-                          {pipelineOwners.has(owner.owner_name) ? (
-                            <div style={{ fontSize: 10, color: '#7AB835', marginTop: 6 }}>
-                              ✓ In pipeline
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => handleOpenAddToPipeline(owner)}
-                              style={{
-                                marginTop: 6,
-                                fontSize: 10,
-                                padding: '3px 10px',
-                                borderRadius: 4,
-                                background: 'rgba(55,138,221,0.14)',
-                                border: '0.5px solid rgba(55,138,221,0.5)',
-                                color: '#378ADD',
-                                cursor: 'pointer',
-                                fontFamily: 'Inter, sans-serif',
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.borderColor = '#63AEFF'
-                                e.currentTarget.style.background = 'rgba(55,138,221,0.24)'
-                                e.currentTarget.style.color = '#63AEFF'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.borderColor = 'rgba(55,138,221,0.5)'
-                                e.currentTarget.style.background = 'rgba(55,138,221,0.14)'
-                                e.currentTarget.style.color = '#378ADD'
-                              }}
-                            >
-                              + Add to pipeline
-                            </button>
-                          )}
-                          {!hasPhone && !hasEmail ? (
-                            <button
-                              onClick={() => handleSkipTrace(owner)}
-                              style={{
-                                marginTop: 6,
-                                fontSize: 10,
-                                padding: '3px 10px',
-                                borderRadius: 4,
-                                background: 'rgba(122,184,53,0.16)',
-                                border: '0.5px solid rgba(122,184,53,0.6)',
-                                color: '#7AB835',
-                                cursor: 'pointer',
-                                fontFamily: 'Inter, sans-serif',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 4,
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.borderColor = '#A8E063'
-                                e.currentTarget.style.background = 'rgba(122,184,53,0.24)'
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.borderColor = 'rgba(122,184,53,0.6)'
-                                e.currentTarget.style.background = 'rgba(122,184,53,0.16)'
-                              }}
-                            >
-                              ⟳ Skip trace contact info
-                            </button>
-                          ) : (
-                            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                              {hasPhone && (
-                                <div style={{ fontSize: 10, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ color: '#6B7280' }}>📞</span>
-                                  <span>{owner.phone}</span>
-                                  <a href={`tel:${owner.phone}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>call</a>
-                                </div>
-                              )}
-                              {hasEmail && (
-                                <div style={{ fontSize: 10, color: '#111827', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ color: '#6B7280' }}>✉</span>
-                                  <span>{owner.email}</span>
-                                  <a href={`mailto:${owner.email}`} style={{ fontSize: 9, color: '#EF9F27', textDecoration: 'none' }}>email</a>
-                                </div>
-                              )}
-                            </div>
-                          )}
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: scoreBadgeColor(score),
-                              fontFamily: 'Inter, sans-serif',
-                              fontWeight: 600,
-                            }}
-                          >
-                            {score}/10
-                          </span>
-                          {owner.out_of_state && (
-                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 10, background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A', fontWeight: 500 }}>
-                              OOS
-                            </span>
-                          )}
-                          {owner.motivated && (
-                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 10, background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA', fontWeight: 500 }}>
-                              HOT
-                            </span>
-                          )}
+                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▶</span>
+                          {isExpanded ? 'Hide score breakdown' : 'Why this score?'}
                         </div>
                       </div>
+
+                      {isExpanded && (
+                        <div style={{ padding: '8px 16px 12px 28px', background: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: '#92400E', letterSpacing: '0.08em', marginBottom: 6, textTransform: 'uppercase' }}>
+                            Score Signals
+                          </div>
+                          {signals.length === 0 ? (
+                            <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>No strong signals detected</div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {signals.map((signal, si) => (
+                                <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#EF9F27', flexShrink: 0 }} />
+                                  <span style={{ fontSize: 11, color: '#374151' }}>{signal}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleAddToPipeline(owner)
+                              }}
+                              style={{
+                                fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                                background: pipelineOwners.has(owner.owner_name) ? 'rgba(122,184,53,0.15)' : 'rgba(239,159,39,0.12)',
+                                border: pipelineOwners.has(owner.owner_name) ? '0.5px solid #7AB835' : '0.5px solid #EF9F27',
+                                color: pipelineOwners.has(owner.owner_name) ? '#7AB835' : '#B45309',
+                              }}
+                            >
+                              {pipelineOwners.has(owner.owner_name) ? '✓ In pipeline' : '+ Add to pipeline'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleSkipTrace(owner)
+                              }}
+                              style={{
+                                fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
+                                background: 'transparent',
+                                border: '0.5px solid #E5E7EB',
+                                color: '#6B7280',
+                              }}
+                            >
+                              Skip trace
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
