@@ -85,7 +85,7 @@ const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
 const COUNTY_STATS = [
-  { val: '73,589', lbl: 'Total owners' },
+  { val: '73,430', lbl: 'Total owners' },
   { val: '3,950', lbl: 'Hot (8-10)' },
   { val: '19,047', lbl: 'Motivated (5-7)' },
   { val: '46,401', lbl: 'Prospect (2-4)' },
@@ -680,7 +680,7 @@ export default function Home() {
                   Gonzales County, TX
                 </div>
                 <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
-                  553 tracts · 73,589 owners
+                  553 tracts · 73,430 owners
                 </div>
               </div>
             )}
@@ -715,7 +715,7 @@ export default function Home() {
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {[
-            { val: '73,589', lbl: 'owners' },
+            { val: '73,430', lbl: 'owners' },
             { val: '3,950', lbl: 'hot' },
             { val: '19,047', lbl: 'motivated' },
             { val: '46,401', lbl: 'prospect' },
