@@ -29,14 +29,17 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  const isAuthPage = req.nextUrl.pathname.startsWith('/auth')
+  const isPublicPage =
+    req.nextUrl.pathname.startsWith('/auth') ||
+    req.nextUrl.pathname.startsWith('/landing') ||
+    req.nextUrl.pathname.startsWith('/pricing')
   const isApiRoute = req.nextUrl.pathname.startsWith('/api')
 
-  if (!session && !isAuthPage && !isApiRoute) {
-    return NextResponse.redirect(new URL('/auth', req.url))
+  if (!session && !isPublicPage && !isApiRoute) {
+    return NextResponse.redirect(new URL('/landing', req.url))
   }
 
-  if (session && isAuthPage) {
+  if (session && req.nextUrl.pathname.startsWith('/auth')) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
