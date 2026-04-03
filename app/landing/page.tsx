@@ -74,7 +74,7 @@ export default function Landing() {
           </div>
         </nav>
 
-        <div style={{ textAlign: 'center', padding: '88px 52px 26px' }}>
+        <div style={{ textAlign: 'center', padding: '110px 52px 40px' }}>
           <div
             style={{
               display: 'inline-flex',
@@ -95,7 +95,7 @@ export default function Landing() {
           <div
             style={{
               fontFamily: "'DM Serif Display', serif",
-              fontSize: 56,
+              fontSize: 64,
               color: '#fff',
               lineHeight: 1.08,
               letterSpacing: '-0.02em',
@@ -107,7 +107,7 @@ export default function Landing() {
             before anyone else.
           </div>
 
-          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.36)', maxWidth: 580, margin: '0 auto', lineHeight: 1.7 }}>
+          <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.36)', maxWidth: 680, margin: '0 auto', lineHeight: 1.75 }}>
             Mineral Map combines county ownership data, well context, and motivation scoring to prioritize acquisition
             outreach for Eagle Ford minerals.
           </p>
@@ -117,10 +117,10 @@ export default function Landing() {
               href="/auth"
               style={{
                 display: 'inline-block',
-                padding: '12px 22px',
+                padding: '14px 24px',
                 background: '#EF9F27',
                 borderRadius: 9,
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: 600,
                 color: '#3a1e00',
                 textDecoration: 'none',
@@ -132,10 +132,10 @@ export default function Landing() {
               href="/pricing"
               style={{
                 display: 'inline-block',
-                padding: '12px 22px',
+                padding: '14px 24px',
                 border: '1px solid rgba(255,255,255,0.14)',
                 borderRadius: 9,
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: 500,
                 color: 'rgba(255,255,255,0.72)',
                 textDecoration: 'none',
@@ -146,36 +146,7 @@ export default function Landing() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '44px 52px 64px' }}>
-          <div
-            style={{
-              width: 920,
-              maxWidth: '100%',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: 16,
-              padding: 26,
-            }}
-          >
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 16 }}>
-              {[
-                { k: '73,430', l: 'Scored owners' },
-                { k: '2,630', l: 'Horizontal wells' },
-                { k: '3,950', l: 'Hot leads (8-10)' },
-                { k: '553', l: 'Survey tracts' },
-              ].map((item) => (
-                <div key={item.l} style={{ textAlign: 'left' }}>
-                  <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 30, color: '#fff', lineHeight: 1.1 }}>
-                    {item.k}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>{item.l}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ textAlign: 'center', paddingBottom: 46, fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>
+        <div style={{ textAlign: 'center', padding: '44px 0 56px', fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>
           mineralmap.io · Eagle Ford Basin
         </div>
       </div>

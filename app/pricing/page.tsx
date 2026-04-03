@@ -21,7 +21,10 @@ export default function Pricing() {
             <div style={{ width: 28, height: 28, background: '#EF9F27', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: 14, color: '#fff', fontWeight: 700 }}>M</div>
             <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#fff', letterSpacing: '-0.01em' }}>Mineral Map</span>
           </Link>
-          <Link href="/auth" style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '7px 16px', textDecoration: 'none', fontWeight: 500 }}>Sign in</Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Link href="/landing" style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '7px 16px', textDecoration: 'none', fontWeight: 500 }}>← Back to landing</Link>
+            <Link href="/auth" style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '7px 16px', textDecoration: 'none', fontWeight: 500 }}>Sign in</Link>
+          </div>
         </nav>
 
         <div style={{ textAlign: 'center', padding: '64px 52px 48px' }}>

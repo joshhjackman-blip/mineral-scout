@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
@@ -32,6 +33,14 @@ export default function Auth() {
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
+        <div className="mb-4">
+          <Link
+            href="/landing"
+            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-500 rounded-md px-3 py-1.5 transition-colors"
+          >
+            ← Back to landing
+          </Link>
+        </div>
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 bg-amber-400 rounded-lg flex items-center justify-center">
             <span className="text-white text-lg font-bold">M</span>
