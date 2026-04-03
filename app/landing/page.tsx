@@ -74,7 +74,7 @@ export default function Landing() {
           </div>
         </nav>
 
-        <div style={{ textAlign: 'center', padding: '110px 52px 40px' }}>
+        <div style={{ textAlign: 'center', padding: '130px 52px 60px' }}>
           <div
             style={{
               display: 'inline-flex',
@@ -87,7 +87,7 @@ export default function Landing() {
             }}
           >
             <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#EF9F27' }} />
-            <span style={{ fontSize: 12, color: 'rgba(239,159,39,0.85)', fontWeight: 500, letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: 14, color: 'rgba(239,159,39,0.85)', fontWeight: 500, letterSpacing: '0.04em' }}>
               Gonzales County intelligence platform
             </span>
           </div>
@@ -95,11 +95,11 @@ export default function Landing() {
           <div
             style={{
               fontFamily: "'DM Serif Display', serif",
-              fontSize: 64,
+              fontSize: 84,
               color: '#fff',
-              lineHeight: 1.08,
+              lineHeight: 1.04,
               letterSpacing: '-0.02em',
-              marginBottom: 14,
+              marginBottom: 20,
             }}
           >
             Find the right mineral owners
@@ -107,20 +107,20 @@ export default function Landing() {
             before anyone else.
           </div>
 
-          <p style={{ fontSize: 18, color: 'rgba(255,255,255,0.36)', maxWidth: 680, margin: '0 auto', lineHeight: 1.75 }}>
+          <p style={{ fontSize: 22, color: 'rgba(255,255,255,0.36)', maxWidth: 900, margin: '0 auto', lineHeight: 1.7 }}>
             Mineral Map combines county ownership data, well context, and motivation scoring to prioritize acquisition
             outreach for Eagle Ford minerals.
           </p>
 
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 34 }}>
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginTop: 44 }}>
             <Link
               href="/auth"
               style={{
                 display: 'inline-block',
-                padding: '14px 24px',
+                padding: '16px 30px',
                 background: '#EF9F27',
                 borderRadius: 9,
-                fontSize: 15,
+                fontSize: 18,
                 fontWeight: 600,
                 color: '#3a1e00',
                 textDecoration: 'none',
@@ -132,10 +132,10 @@ export default function Landing() {
               href="/pricing"
               style={{
                 display: 'inline-block',
-                padding: '14px 24px',
+                padding: '16px 30px',
                 border: '1px solid rgba(255,255,255,0.14)',
                 borderRadius: 9,
-                fontSize: 15,
+                fontSize: 18,
                 fontWeight: 500,
                 color: 'rgba(255,255,255,0.72)',
                 textDecoration: 'none',
