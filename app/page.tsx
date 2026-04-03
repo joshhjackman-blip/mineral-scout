@@ -166,12 +166,20 @@ export default function Home() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
+  const [isMobile, setIsMobile] = useState(false)
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
     setToast(message)
     setTimeout(() => setToast(null), 3500)
   }
+
+  useEffect(() => {
+    const updateMobile = () => setIsMobile(window.innerWidth < 1024)
+    updateMobile()
+    window.addEventListener('resize', updateMobile)
+    return () => window.removeEventListener('resize', updateMobile)
+  }, [])
 
   const getDefaultPipelineTag = (owner: TractOwner): PipelineTag => {
     const score = toNumber(owner.propensity_score)
@@ -555,7 +563,7 @@ export default function Home() {
   return (
     <div
       style={{
-        height: '100vh',
+        height: '100dvh',
         background: '#FFFFFF',
         color: '#111827',
         display: 'flex',
@@ -566,14 +574,15 @@ export default function Home() {
       {/* Top header */}
       <div
         style={{
-          height: 52,
+          height: isMobile ? 56 : 52,
           background: '#FFFFFF',
           borderBottom: '1px solid #E5E7EB',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 20px',
+          padding: isMobile ? '0 10px' : '0 20px',
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          gap: isMobile ? 8 : 0,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -718,17 +727,32 @@ export default function Home() {
             Mineral Map
           </span>
         </div>
-        <div style={{ fontSize: 13, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+        <div style={{ fontSize: 13, color: '#6B7280', fontFamily: 'Inter, sans-serif', display: isMobile ? 'none' : 'block' }}>
           Gonzales County, TX · 553 tracts
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {[
-            { val: '73,430', lbl: 'owners' },
-            { val: '3,950', lbl: 'hot' },
-            { val: '19,047', lbl: 'motivated' },
-            { val: '46,401', lbl: 'prospect' },
-            { val: '10,656', lbl: 'low' },
-          ].map((s) => (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            maxWidth: isMobile ? '55vw' : 'none',
+            overflowX: isMobile ? 'auto' : 'visible',
+            paddingBottom: isMobile ? 2 : 0,
+            flexShrink: 1,
+          }}
+        >
+          {(isMobile
+            ? [
+              { val: '73,430', lbl: 'owners' },
+              { val: '3,950', lbl: 'hot' },
+            ]
+            : [
+              { val: '73,430', lbl: 'owners' },
+              { val: '3,950', lbl: 'hot' },
+              { val: '19,047', lbl: 'motivated' },
+              { val: '46,401', lbl: 'prospect' },
+              { val: '10,656', lbl: 'low' },
+            ]).map((s) => (
             <div
               key={s.lbl}
               style={{
@@ -736,6 +760,7 @@ export default function Home() {
                 background: '#FEF3C7',
                 borderRadius: 20,
                 border: '1px solid #FDE68A',
+                whiteSpace: 'nowrap',
               }}
             >
               <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E' }}>{s.val}</span>
@@ -752,6 +777,7 @@ export default function Home() {
               borderRadius: 6,
               border: '1px solid #E5E7EB',
               fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
             }}
           >
             Methodology
@@ -767,6 +793,7 @@ export default function Home() {
               border: '1px solid #EF9F27',
               fontWeight: 500,
               fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
             }}
           >
             CRM →
@@ -781,6 +808,7 @@ export default function Home() {
               borderRadius: 6,
               border: '1px solid #E5E7EB',
               fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
             }}
           >
             Comps
@@ -799,6 +827,7 @@ export default function Home() {
               background: '#FFFFFF',
               cursor: 'pointer',
               fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
             }}
           >
             Sign out
@@ -817,7 +846,8 @@ export default function Home() {
               fontSize: 12, color: '#6B7280', padding: '6px 12px',
               borderRadius: 6, border: '1px solid #E5E7EB',
               background: '#FFFFFF', cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif'
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
             }}
           >
             Export CSV
@@ -825,16 +855,19 @@ export default function Home() {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row' }}>
         {/* Left panel */}
         <div
           style={{
-            width: 420,
-            minWidth: 420,
+            width: isMobile ? '100%' : 420,
+            minWidth: isMobile ? 0 : 420,
             background: '#F8F8F8',
-            borderRight: '1px solid #E5E7EB',
+            borderRight: isMobile ? 'none' : '1px solid #E5E7EB',
+            borderTop: isMobile ? '1px solid #E5E7EB' : 'none',
             overflowY: 'auto',
             padding: 14,
+            order: isMobile ? 2 : 1,
+            maxHeight: isMobile ? '52dvh' : 'none',
           }}
         >
           {selected ? (
@@ -1261,7 +1294,15 @@ export default function Home() {
         </div>
 
         {/* Map area */}
-        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+        <div
+          style={{
+            flex: isMobile ? '0 0 48dvh' : 1,
+            minWidth: 0,
+            minHeight: isMobile ? '48dvh' : 0,
+            position: 'relative',
+            order: isMobile ? 1 : 2,
+          }}
+        >
           {loading ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Inter, sans-serif' }}>
               Loading...
@@ -1281,17 +1322,19 @@ export default function Home() {
       {/* Bottom bar */}
       <div
         style={{
-          height: 44,
-          minHeight: 44,
+          height: isMobile ? 58 : 44,
+          minHeight: isMobile ? 58 : 44,
           background: '#FFFFFF',
           borderTop: '1px solid #E5E7EB',
           display: 'flex',
           alignItems: 'center',
-          gap: 20,
-          padding: '0 16px',
+          gap: isMobile ? 14 : 20,
+          padding: isMobile ? '0 10px' : '0 16px',
           color: '#374151',
           fontSize: 11,
           boxShadow: '0 -1px 3px rgba(0,0,0,0.04)',
+          overflowX: 'auto',
+          whiteSpace: 'nowrap',
         }}
       >
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Motivated only</span>

@@ -9,14 +9,16 @@ export default function Landing() {
         href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap"
         rel="stylesheet"
       />
-      <div style={{ background: '#0b0f1c', minHeight: '100vh', fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ background: '#0b0f1c', minHeight: '100dvh', fontFamily: "'DM Sans', sans-serif" }}>
         <nav
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '22px 52px',
+            padding: 'clamp(14px, 4vw, 22px) clamp(14px, 6vw, 52px)',
             borderBottom: '1px solid rgba(255,255,255,0.06)',
+            gap: 10,
+            flexWrap: 'wrap',
           }}
         >
           <Link href="/landing" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
@@ -41,7 +43,7 @@ export default function Landing() {
               Mineral Map
             </span>
           </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Link
               href="/pricing"
               style={{
@@ -74,7 +76,7 @@ export default function Landing() {
           </div>
         </nav>
 
-        <div style={{ textAlign: 'center', padding: '130px 52px 60px' }}>
+        <div style={{ textAlign: 'center', padding: 'clamp(56px, 12vh, 130px) clamp(16px, 6vw, 52px) clamp(32px, 8vh, 60px)' }}>
           <div
             style={{
               display: 'inline-flex',
@@ -87,7 +89,7 @@ export default function Landing() {
             }}
           >
             <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#EF9F27' }} />
-            <span style={{ fontSize: 14, color: 'rgba(239,159,39,0.85)', fontWeight: 500, letterSpacing: '0.04em' }}>
+            <span style={{ fontSize: 'clamp(11px, 2.8vw, 14px)', color: 'rgba(239,159,39,0.85)', fontWeight: 500, letterSpacing: '0.04em' }}>
               Gonzales County intelligence platform
             </span>
           </div>
@@ -95,7 +97,7 @@ export default function Landing() {
           <div
             style={{
               fontFamily: "'DM Serif Display', serif",
-              fontSize: 84,
+              fontSize: 'clamp(40px, 11vw, 84px)',
               color: '#fff',
               lineHeight: 1.04,
               letterSpacing: '-0.02em',
@@ -107,20 +109,20 @@ export default function Landing() {
             before anyone else.
           </div>
 
-          <p style={{ fontSize: 22, color: 'rgba(255,255,255,0.36)', maxWidth: 900, margin: '0 auto', lineHeight: 1.7 }}>
+          <p style={{ fontSize: 'clamp(16px, 4.6vw, 22px)', color: 'rgba(255,255,255,0.36)', maxWidth: 900, margin: '0 auto', lineHeight: 1.7 }}>
             Mineral Map combines county ownership data, well context, and motivation scoring to prioritize acquisition
             outreach for Eagle Ford minerals.
           </p>
 
-          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginTop: 44 }}>
+          <div style={{ display: 'flex', gap: 14, justifyContent: 'center', marginTop: 44, flexWrap: 'wrap' }}>
             <Link
               href="/auth"
               style={{
                 display: 'inline-block',
-                padding: '16px 30px',
+                padding: 'clamp(12px, 3.8vw, 16px) clamp(18px, 6vw, 30px)',
                 background: '#EF9F27',
                 borderRadius: 9,
-                fontSize: 18,
+                fontSize: 'clamp(14px, 4.2vw, 18px)',
                 fontWeight: 600,
                 color: '#3a1e00',
                 textDecoration: 'none',
@@ -132,10 +134,10 @@ export default function Landing() {
               href="/pricing"
               style={{
                 display: 'inline-block',
-                padding: '16px 30px',
+                padding: 'clamp(12px, 3.8vw, 16px) clamp(18px, 6vw, 30px)',
                 border: '1px solid rgba(255,255,255,0.14)',
                 borderRadius: 9,
-                fontSize: 18,
+                fontSize: 'clamp(14px, 4.2vw, 18px)',
                 fontWeight: 500,
                 color: 'rgba(255,255,255,0.72)',
                 textDecoration: 'none',
