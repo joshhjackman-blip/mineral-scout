@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = await fetch('https://api.tracerfy.com/trace/', {
+    const response = await fetch('https://www.tracerfy.com/api/trace/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
