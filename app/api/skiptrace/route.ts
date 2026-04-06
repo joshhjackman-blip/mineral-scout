@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
       .from('skip_trace_cache')
       .select('phones, emails')
       .ilike('owner_name', ownerName.trim())
-      .single()
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
     if (cached) {
       console.log('Skip trace cache hit for:', ownerName)
@@ -104,6 +106,8 @@ export async function POST(req: NextRequest) {
         .select('id')
         .ilike('owner_name', normalizedOwnerName)
         .ilike('mailing_address', normalizedAddress)
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle()
 
       if (existingCache?.id) {
