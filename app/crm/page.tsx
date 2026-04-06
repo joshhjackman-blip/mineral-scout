@@ -189,6 +189,45 @@ export default function CRM() {
     setContactLog((prev) => [{ id: Date.now().toString(), deal_id: editingDeal.id, logged_at: loggedAt, method }, ...prev])
   }
 
+  const handleRunSkipTraceFromCRM = useCallback(async () => {
+    if (!editingDeal) return
+
+    const nameParts = (editingDeal.owner_name ?? '').trim().split(/\s+/)
+    const firstName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : (nameParts[0] ?? '')
+    const lastName = nameParts.length > 1 ? nameParts[0] : ''
+
+    const res = await fetch('/api/skiptrace', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        address: editingDeal.mailing_address ?? '',
+        city: editingDeal.mailing_city ?? '',
+        state: editingDeal.mailing_state ?? '',
+        zip: editingDeal.mailing_zip ?? '',
+        ownerName: editingDeal.owner_name,
+      }),
+    })
+
+    const result = await res.json()
+    const phone = result.phones?.[0] ?? null
+    const email = result.emails?.[0] ?? null
+
+    if (phone || email) {
+      await supabase
+        .from('deals')
+        .update({ phone, email, tag: 'skip_traced', updated_at: new Date().toISOString() })
+        .eq('id', editingDeal.id)
+
+      setEditingDeal((prev) => (prev ? { ...prev, phone, email, tag: 'skip_traced' } : null))
+      setSelected((prev) => (prev?.id === editingDeal.id ? { ...prev, phone, email, tag: 'skip_traced' } : prev))
+      setDeals((prev) => prev.map((d) => (d.id === editingDeal.id ? { ...d, phone, email, tag: 'skip_traced' } : d)))
+    } else {
+      alert('No contact info found for this owner.')
+    }
+  }, [editingDeal])
+
   const annual = editingDeal?.monthly_royalty ? Number(editingDeal.monthly_royalty) * 12 : 0
 
   return (
@@ -428,7 +467,10 @@ export default function CRM() {
                       {editingDeal.phone ? (
                         <a href={`tel:${editingDeal.phone}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.phone}</a>
                       ) : (
-                        <span className="text-sm text-gray-400 italic">Not skip traced</span>
+                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
+                          Not skip traced yet
+                        </span>
                       )}
                     </div>
                     <div>
@@ -436,10 +478,24 @@ export default function CRM() {
                       {editingDeal.email ? (
                         <a href={`mailto:${editingDeal.email}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.email}</a>
                       ) : (
-                        <span className="text-sm text-gray-400 italic">Not skip traced</span>
+                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
+                          Not skip traced yet
+                        </span>
                       )}
                     </div>
                   </div>
+                  {!editingDeal.phone && !editingDeal.email && (
+                    <button
+                      onClick={() => {
+                        void handleRunSkipTraceFromCRM()
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors mt-2"
+                    >
+                      <Phone size={12} />
+                      Run skip trace
+                    </button>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-xl border border-gray-200 p-6 mb-4 shadow-sm">
