@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
   const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -36,20 +37,26 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const response = await fetch('https://www.tracerfy.com/api/trace/', {
+    // Use find_owner: false since we know the name but only have mailing address not property address
+    const body: Record<string, unknown> = {
+      address,
+      city,
+      state,
+      zip,
+      find_owner: false,
+      first_name: firstName,
+      last_name: lastName,
+    }
+
+    console.log('Tracerfy request:', JSON.stringify(body))
+
+    const response = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        first_name: firstName,
-        last_name: lastName,
-        address: address,
-        city: city,
-        state: state,
-        zip: zip,
-      }),
+      body: JSON.stringify(body),
     })
 
     const responseText = await response.text()
@@ -60,35 +67,39 @@ export async function POST(req: NextRequest) {
     try {
       data = JSON.parse(responseText) as Record<string, unknown>
     } catch {
-      return NextResponse.json({ error: 'Invalid API response', raw: responseText.substring(0, 200) }, { status: 500 })
+      return NextResponse.json(
+        { error: 'Invalid API response', raw: responseText.substring(0, 300) },
+        { status: 500 }
+      )
     }
 
-    // Extract phones and emails from Tracerfy response
     const phones: string[] = []
     const emails: string[] = []
 
-    const result = (data.result as Record<string, unknown> | undefined) ?? {}
-    const phoneList = (data.phones as unknown[] | undefined)
-      ?? (data.phone_numbers as unknown[] | undefined)
-      ?? (result.phones as unknown[] | undefined)
-      ?? []
-    const emailList = (data.emails as unknown[] | undefined)
-      ?? (result.emails as unknown[] | undefined)
-      ?? []
+    // Extract from persons array
+    const persons = (data.persons as Array<Record<string, unknown>>) ?? []
+    for (const person of persons) {
+      const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
+      for (const p of personPhones) {
+        const num = p?.number
+        const isDnc = Boolean(p?.dnc)
+        if (typeof num === 'string' && num && !isDnc) phones.push(num)
+      }
+      // Also include DNC numbers but mark them — for now include all
+      for (const p of personPhones) {
+        const num = p?.number
+        const isDnc = Boolean(p?.dnc)
+        if (typeof num === 'string' && num && isDnc && !phones.includes(num)) phones.push(num)
+      }
 
-    phoneList.forEach((p: unknown) => {
-      const pRecord = p as Record<string, unknown>
-      const num = (pRecord?.number as string | undefined) ?? (pRecord?.phone as string | undefined) ?? (typeof p === 'string' ? p : undefined)
-      if (num && typeof num === 'string') phones.push(num)
-    })
+      const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
+      for (const e of personEmails) {
+        const addr = e?.email
+        if (typeof addr === 'string' && addr) emails.push(addr)
+      }
+    }
 
-    emailList.forEach((e: unknown) => {
-      const eRecord = e as Record<string, unknown>
-      const addr = (eRecord?.address as string | undefined) ?? (eRecord?.email as string | undefined) ?? (typeof e === 'string' ? e : undefined)
-      if (addr && typeof addr === 'string') emails.push(addr)
-    })
-
-    // 3) Save to cache
+    // 3) Save to cache if we got results
     if (ownerName && (phones.length > 0 || emails.length > 0)) {
       await supabase.from('skip_trace_cache').upsert(
         {
@@ -101,6 +112,7 @@ export async function POST(req: NextRequest) {
         },
         { onConflict: 'owner_name' }
       )
+      console.log('Saved to cache:', ownerName)
     }
 
     return NextResponse.json({
@@ -108,7 +120,8 @@ export async function POST(req: NextRequest) {
       phones,
       emails,
       cached: false,
-      raw: data,
+      hit: Boolean(data?.hit),
+      credits_deducted: Number(data?.credits_deducted ?? 0),
     })
   } catch (err) {
     console.error('Tracerfy error:', err)
