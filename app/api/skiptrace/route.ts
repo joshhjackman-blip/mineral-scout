@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 type SkipTracePhone = {
   phone?: string | null
@@ -17,13 +18,35 @@ type SkipTraceApiResponse = {
 }
 
 export async function POST(req: NextRequest) {
-  const { firstName, lastName, address, city, state, zip } = await req.json()
+  const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
 
   if (!firstName && !lastName) {
     return NextResponse.json({ error: 'Name required' }, { status: 400 })
   }
 
   const apiKey = process.env.BATCH_SKIP_TRACING_API_KEY
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  if (ownerName) {
+    const { data: cached } = await supabase
+      .from('skip_trace_cache')
+      .select('phones, emails')
+      .ilike('owner_name', ownerName.trim())
+      .single()
+
+    if (cached) {
+      console.log('Skip trace cache hit for:', ownerName)
+      return NextResponse.json({
+        success: true,
+        phones: (cached as { phones?: string[] }).phones ?? [],
+        emails: (cached as { emails?: string[] }).emails ?? [],
+        cached: true,
+      })
+    }
+  }
   if (!apiKey) {
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
@@ -72,11 +95,44 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    if (ownerName && (phones.length > 0 || emails.length > 0)) {
+      const normalizedOwnerName = ownerName.trim()
+      const normalizedAddress = String(address ?? '').trim()
+
+      const { data: existingCache } = await supabase
+        .from('skip_trace_cache')
+        .select('id')
+        .ilike('owner_name', normalizedOwnerName)
+        .ilike('mailing_address', normalizedAddress)
+        .maybeSingle()
+
+      if (existingCache?.id) {
+        await supabase
+          .from('skip_trace_cache')
+          .update({
+            phones,
+            emails,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingCache.id)
+      } else {
+        await supabase.from('skip_trace_cache').insert({
+          owner_name: normalizedOwnerName,
+          mailing_address: normalizedAddress,
+          phones,
+          emails,
+          source: 'batchdata',
+          updated_at: new Date().toISOString(),
+        })
+      }
+      console.log('Saved to skip trace cache:', ownerName)
+    }
+
     return NextResponse.json({
       success: true,
       phones,
       emails,
-      raw: data,
+      cached: false,
     })
   } catch (err) {
     console.error('Skip trace error:', err)
