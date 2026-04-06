@@ -124,6 +124,9 @@ const toNumber = (value: unknown): number => {
 const normalizeLeaseId = (value: unknown): string =>
   String(value ?? '').replace(/^0+/, '').trim()
 
+const ownerRowDomId = (ownerName: string): string =>
+  `owner-${ownerName.trim().replace(/\s+/g, '-')}`
+
 const parseOwners = (ownersJson: unknown): TractOwner[] => {
   if (Array.isArray(ownersJson)) return ownersJson as TractOwner[]
   if (typeof ownersJson !== 'string') return []
@@ -192,6 +195,7 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [highlightedOwner, setHighlightedOwner] = useState<string | null>(null)
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
@@ -573,7 +577,12 @@ export default function Home() {
 
   const handleSearchSelect = async (result: OwnerSearchResult) => {
     const ownerName = String(result.owner_name ?? '').trim()
-    if (!ownerName) return
+    if (!ownerName) {
+      setSearchQuery('')
+      setSearchResults([])
+      setSearchOpen(false)
+      return
+    }
 
     const leaseId = normalizeLeaseId(result.rrc_lease_id)
     const normalizedOwner = ownerName.toUpperCase()
@@ -589,15 +598,33 @@ export default function Home() {
 
     if (!tract) {
       showToast(`No mapped tract found for ${ownerName}`, 'error')
+      setSearchQuery('')
+      setSearchResults([])
+      setSearchOpen(false)
       return
     }
 
     setSelected(toTractSelection(tract))
+    setHighlightedOwner(normalizedOwner)
+
+    setTimeout(() => {
+      const el = document.getElementById(ownerRowDomId(ownerName))
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }, 400)
+
+    setTimeout(() => setHighlightedOwner(null), 3000)
+
     setMapFocusTarget({
       leaseId: leaseId || null,
       ownerName,
       nonce: Date.now(),
     })
+
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
   }
 
   const topTracts = useMemo(
@@ -1178,6 +1205,9 @@ export default function Home() {
                 {cleanOwnersList.map((owner: TractOwner, i: number) => {
                   const score = Number(owner.propensity_score ?? 0)
                   const isExpanded = expandedOwner === i
+                  const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
+                  const isHighlighted = highlightedOwner === normalizedOwnerName
+                  const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const signals = isExpanded ? getScoreBreakdown(owner) : []
                   const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
@@ -1193,17 +1223,22 @@ export default function Home() {
                   return (
                     <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
                       <div
+                        id={ownerElementId}
                         onClick={() => setExpandedOwner(isExpanded ? null : i)}
                         style={{
                           padding: '10px 16px',
                           cursor: 'pointer',
-                          background: isExpanded ? '#FFFBEB' : 'transparent',
+                          background: isHighlighted ? '#FEF3C7' : isExpanded ? '#FFFBEB' : 'transparent',
+                          borderLeft: isHighlighted ? '3px solid #EF9F27' : '3px solid transparent',
+                          transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          if (!isExpanded) e.currentTarget.style.background = '#F9FAFB'
+                          if (!isExpanded && !isHighlighted) e.currentTarget.style.background = '#F9FAFB'
                         }}
                         onMouseLeave={(e) => {
-                          if (!isExpanded) e.currentTarget.style.background = isExpanded ? '#FFFBEB' : 'transparent'
+                          if (!isExpanded && !isHighlighted) {
+                            e.currentTarget.style.background = 'transparent'
+                          }
                         }}
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
