@@ -86,6 +86,22 @@ type SkipTraceResult = {
   cached?: boolean
 }
 
+type OwnerSearchResult = {
+  owner_name: string
+  mailing_city?: string | null
+  mailing_state?: string | null
+  propensity_score?: number | null
+  rrc_lease_id?: string | number | null
+  operator_name?: string | null
+  acreage?: number | null
+}
+
+type MapFocusTarget = {
+  leaseId: string | null
+  ownerName: string
+  nonce: number
+}
+
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
@@ -103,6 +119,9 @@ const toNumber = (value: unknown): number => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
+
+const normalizeLeaseId = (value: unknown): string =>
+  String(value ?? '').replace(/^0+/, '').trim()
 
 const parseOwners = (ownersJson: unknown): TractOwner[] => {
   if (Array.isArray(ownersJson)) return ownersJson as TractOwner[]
@@ -168,6 +187,13 @@ export default function Home() {
   const [navMenuOpen, setNavMenuOpen] = useState(false)
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searching, setSearching] = useState(false)
+  // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -200,6 +226,34 @@ export default function Home() {
 
   const handleAddToPipeline = (owner: TractOwner) => {
     handleOpenAddToPipeline(owner)
+  }
+
+  const handleSearch = async (query: string) => {
+    setSearchQuery(query)
+    const trimmed = query.trim()
+    if (trimmed.length < 3) {
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+
+    setSearching(true)
+    const { data, error } = await supabase
+      .from('gonzales_mineral_ownership')
+      .select('owner_name, mailing_city, mailing_state, propensity_score, rrc_lease_id, operator_name, acreage')
+      .ilike('owner_name', `%${trimmed}%`)
+      .order('propensity_score', { ascending: false })
+      .limit(10)
+
+    if (error) {
+      console.error('Owner search failed:', error.message)
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+
+    setSearchResults((data ?? []) as OwnerSearchResult[])
+    setSearching(false)
   }
 
   const getScoreBreakdown = (owner: TractOwner): string[] => {
@@ -472,6 +526,54 @@ export default function Home() {
     }
   }, [])
 
+  const toTractSelection = (tract: TractRecord): TractSelection => ({
+    abstract_label: tract.abstract_label,
+    level1_sur: tract.level1_sur,
+    owner_count: tract.owner_count,
+    top_operator: tract.top_operator,
+    owners_json: tract.owners_json,
+    max_propensity_score: tract.max_propensity_score,
+    field_name: tract.field_name,
+    well_status: tract.well_status,
+    first_date: tract.first_date,
+    prod_cumulative_sum_oil: tract.prod_cumulative_sum_oil,
+    first_6_month_oil: tract.first_6_month_oil,
+    first_12_month_oil: tract.first_12_month_oil,
+    first_24_month_oil: tract.first_24_month_oil,
+    first_60_month_oil: tract.first_60_month_oil,
+    horizontal_well_count: tract.horizontal_well_count,
+    vertical_well_count: tract.vertical_well_count,
+  })
+
+  const handleSearchSelect = async (result: OwnerSearchResult) => {
+    const ownerName = String(result.owner_name ?? '').trim()
+    if (!ownerName) return
+
+    const leaseId = normalizeLeaseId(result.rrc_lease_id)
+    const normalizedOwner = ownerName.toUpperCase()
+
+    const tract = tracts.find((t) => {
+      const owners = parseOwners(t.owners_json) as Array<Record<string, unknown>>
+      return owners.some((owner) => {
+        const ownerLease = normalizeLeaseId(owner.rrc_lease_id)
+        if (leaseId && ownerLease) return ownerLease === leaseId
+        return String(owner.owner_name ?? '').trim().toUpperCase() === normalizedOwner
+      })
+    })
+
+    if (!tract) {
+      showToast(`No mapped tract found for ${ownerName}`, 'error')
+      return
+    }
+
+    setSelected(toTractSelection(tract))
+    setMapFocusTarget({
+      leaseId: leaseId || null,
+      ownerName,
+      nonce: Date.now(),
+    })
+  }
+
   const topTracts = useMemo(
     () =>
       [...tracts]
@@ -736,9 +838,92 @@ export default function Home() {
             Mineral Map
           </span>
         </div>
-        <div style={{ fontSize: 13, color: '#6B7280', fontFamily: 'Inter, sans-serif', display: isMobile ? 'none' : 'block' }}>
-          Gonzales County, TX · 553 tracts
-        </div>
+        {!isMobile && (
+          <div style={{ position: 'relative', flex: 1, maxWidth: 360, margin: '0 16px' }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#F3F4F6', border: '1px solid #E5E7EB',
+              borderRadius: 8, padding: '6px 12px',
+              transition: 'all 0.15s'
+            }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round">
+                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search owners..."
+                value={searchQuery}
+                onChange={(e) => { void handleSearch(e.target.value); setSearchOpen(true) }}
+                onFocus={() => setSearchOpen(true)}
+                onBlur={() => setTimeout(() => setSearchOpen(false), 200)}
+                style={{
+                  border: 'none', background: 'transparent', outline: 'none',
+                  fontSize: 13, color: '#111827', width: '100%',
+                  fontFamily: 'Inter, sans-serif'
+                }}
+              />
+              {searching && (
+                <div style={{ width: 12, height: 12, border: '2px solid #E5E7EB', borderTopColor: '#EF9F27', borderRadius: '50%', animation: 'spin 0.6s linear infinite', flexShrink: 0 }} />
+              )}
+            </div>
+
+            {searchOpen && searchResults.length > 0 && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000, overflow: 'hidden'
+              }}>
+                {searchResults.map((result, i) => {
+                  const score = Number(result.propensity_score ?? 0)
+                  const scoreColor = score >= 8 ? '#F44336' : score >= 5 ? '#FF9800' : score >= 2 ? '#8BC34A' : '#9E9E9E'
+                  return (
+                    <div
+                      key={`${result.owner_name}-${i}`}
+                      onMouseDown={() => {
+                        setSearchQuery(result.owner_name)
+                        setSearchOpen(false)
+                        void handleSearchSelect(result)
+                      }}
+                      style={{
+                        padding: '10px 14px', cursor: 'pointer',
+                        borderBottom: i < searchResults.length - 1 ? '1px solid #F3F4F6' : 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#F9FAFB' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{result.owner_name}</div>
+                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                          {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
+                          {result.operator_name ? ` · ${result.operator_name}` : ''}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>{score}/10</span>
+                        {result.acreage && <span style={{ fontSize: 10, color: '#9CA3AF' }}>{Number(result.acreage).toFixed(1)} ac</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div style={{ padding: '8px 14px', fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', background: '#FAFAFA' }}>
+                  {searchResults.length} results · sorted by score
+                </div>
+              </div>
+            )}
+
+            {searchOpen && searchQuery.length >= 3 && searchResults.length === 0 && !searching && (
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
+                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                padding: '16px 14px', fontSize: 13, color: '#9CA3AF', textAlign: 'center',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000
+              }}>
+                No owners found for &quot;{searchQuery}&quot;
+              </div>
+            )}
+          </div>
+        )}
         <div
           style={{
             display: 'flex',
@@ -1161,26 +1346,7 @@ export default function Home() {
                 {topTracts.map((tract, index) => (
                   <div
                     key={`${tract.abstract_label}-${tract.level1_sur}-${index}`}
-                    onClick={() =>
-                      setSelected({
-                        abstract_label: tract.abstract_label,
-                        level1_sur: tract.level1_sur,
-                        owner_count: tract.owner_count,
-                        top_operator: tract.top_operator,
-                        owners_json: tract.owners_json,
-                        max_propensity_score: tract.max_propensity_score,
-                        field_name: tract.field_name,
-                        well_status: tract.well_status,
-                        first_date: tract.first_date,
-                        prod_cumulative_sum_oil: tract.prod_cumulative_sum_oil,
-                        first_6_month_oil: tract.first_6_month_oil,
-                        first_12_month_oil: tract.first_12_month_oil,
-                        first_24_month_oil: tract.first_24_month_oil,
-                        first_60_month_oil: tract.first_60_month_oil,
-                        horizontal_well_count: tract.horizontal_well_count,
-                        vertical_well_count: tract.vertical_well_count,
-                      })
-                    }
+                    onClick={() => setSelected(toTractSelection(tract))}
                     style={{
                       background: '#FFFFFF',
                       border: '1px solid #E5E7EB',
@@ -1273,6 +1439,7 @@ export default function Home() {
               showShutInWells={showShutInWells}
               showUnknownWells={showUnknownWells}
               showPermits={showPermits}
+              focusTarget={selected}
               onOwnerClick={(tract) => setSelected(tract)}
             />
           )}

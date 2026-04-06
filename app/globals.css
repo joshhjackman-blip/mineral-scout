@@ -221,3 +221,9 @@ button, a { transition: all 0.15s ease; }
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

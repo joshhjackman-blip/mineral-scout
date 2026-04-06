@@ -39,12 +39,14 @@ export default function Map({
   showUnknownWells,
   showPermits,
   onOwnerClick,
+  focusTarget,
 }: {
   showActiveWells: boolean
   showShutInWells: boolean
   showUnknownWells: boolean
   showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
+  focusTarget?: Record<string, unknown> | null
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -425,6 +427,47 @@ export default function Map({
       map.current.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
     }
   }, [showActiveWells, showShutInWells, showUnknownWells, showPermits])
+
+  useEffect(() => {
+    if (!focusTarget || !map.current?.isStyleLoaded()) return
+
+    const source = map.current.getSource('parcels') as mapboxgl.GeoJSONSource | undefined
+    const sourceData = (source?._data as GeoJSON.FeatureCollection | undefined) ?? undefined
+    const features = sourceData?.features ?? []
+
+    const selectedAbstract = String(
+      focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? ''
+    ).trim()
+    const selectedSurvey = String(
+      focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? ''
+    ).trim()
+
+    if (!selectedAbstract || !selectedSurvey) return
+
+    const matched = features.find((feature) => {
+      const props = (feature.properties ?? {}) as Record<string, unknown>
+      const featureAbstract = String(props.abstract_label ?? props.ABSTRACT_L ?? '').trim()
+      const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '').trim()
+      return featureAbstract === selectedAbstract && featureSurvey === selectedSurvey
+    })
+
+    if (!matched?.geometry) return
+
+    const bounds = new mapboxgl.LngLatBounds()
+    const addCoords = (coords: number[][]) => {
+      coords.forEach((c) => bounds.extend([c[0], c[1]] as [number, number]))
+    }
+
+    if (matched.geometry.type === 'Polygon') {
+      addCoords((matched.geometry.coordinates[0] as number[][]) ?? [])
+    } else if (matched.geometry.type === 'MultiPolygon') {
+      matched.geometry.coordinates.forEach((poly) => addCoords((poly[0] as number[][]) ?? []))
+    }
+
+    if (!bounds.isEmpty()) {
+      map.current.fitBounds(bounds, { padding: 120, duration: 800, maxZoom: 14 })
+    }
+  }, [focusTarget])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
