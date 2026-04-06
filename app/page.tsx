@@ -250,15 +250,21 @@ export default function Home() {
       (Number(owner.ownership_pct ?? 0) / 100)
     if (!decimalInterest || decimalInterest <= 0) return null
 
-    // Conservative estimate: single average Eagle Ford well at maturity.
-    // Better to understate than overstate.
-    void selectedTract
-    const avgMonthlyBbls = 500
+    const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
+    const ownerCount = Number(selectedTract?.owner_count ?? 1)
+    if (!cumOil) return null
+
+    // Estimate number of wells from owner density as a practical proxy.
+    const estimatedWells = Math.max(1, Math.round(ownerCount / 150))
+
+    // Normalize cumulative oil to a per-well monthly value and cap outliers.
+    const perWellMonthly = Math.min(cumOil / estimatedWells / 60, 3000)
+
     const oilPrice = 70
     const royaltyFraction = 0.25
-    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice * royaltyFraction
+    const monthlyRoyalty = perWellMonthly * decimalInterest * oilPrice * royaltyFraction
 
-    if (monthlyRoyalty < 1) return null
+    if (monthlyRoyalty < 0.5) return null
     if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
     return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
   }
