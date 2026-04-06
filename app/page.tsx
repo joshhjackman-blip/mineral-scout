@@ -399,7 +399,6 @@ export default function Home() {
 
     try {
       const nameParts = (skipTracing.owner_name ?? '').trim().split(/\s+/)
-      // Mineral roll names are often LASTNAME FIRSTNAME.
       const firstName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : (nameParts[0] ?? '')
       const lastName = nameParts.length > 1 ? nameParts[0] : ''
 
@@ -409,7 +408,7 @@ export default function Home() {
         body: JSON.stringify({
           firstName,
           lastName,
-          address: skipTracing.address_1 ?? '',
+          address: skipTracing.mailing_address ?? skipTracing.address_1 ?? '',
           city: skipTracing.mailing_city ?? '',
           state: skipTracing.mailing_state ?? '',
           zip: skipTracing.mailing_zip ?? '',
@@ -418,52 +417,76 @@ export default function Home() {
       })
 
       const result = await response.json()
+      console.log('Skip trace result:', result)
 
       if (result.success) {
         const phone = result.phones?.[0] ?? null
         const email = result.emails?.[0] ?? null
+        console.log('Saving to CRM - phone:', phone, 'email:', email)
 
-        const { data: existingDeal } = await supabase
+        const skipRecord = skipTracing as unknown as Record<string, unknown>
+        const dealData = {
+          owner_name: skipTracing.owner_name,
+          tract_abstract: (skipRecord.tract_abstract as string | undefined) ?? selected?.ABSTRACT_L ?? '',
+          tract_survey: (skipRecord.tract_survey as string | undefined) ?? selected?.LEVEL1_SUR ?? '',
+          operator_name: skipTracing.operator_name ?? '',
+          mailing_address: skipTracing.mailing_address ?? skipTracing.address_1 ?? '',
+          mailing_city: skipTracing.mailing_city ?? '',
+          mailing_state: skipTracing.mailing_state ?? '',
+          mailing_zip: skipTracing.mailing_zip ?? '',
+          acreage: skipTracing.acreage ?? null,
+          propensity_score: skipTracing.propensity_score ?? 0,
+          tag: 'skip_traced',
+          phone,
+          email,
+          source: 'skip_trace',
+          updated_at: new Date().toISOString(),
+          notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
+        }
+        console.log('Deal data to save:', dealData)
+
+        const { data: existing, error: existingError } = await supabase
           .from('deals')
-          .select('id')
+          .select('id, phone, email')
           .eq('owner_name', skipTracing.owner_name)
           .maybeSingle()
-        let savedDealId: string | null = existingDeal?.id ?? null
+        if (existingError) {
+          console.error('Existing deal lookup error:', existingError)
+          throw existingError
+        }
+        console.log('Existing deal:', existing)
 
-        if (existingDeal) {
-          await supabase
+        let savedDeal: { id?: string } | null = null
+        if (existing?.id) {
+          const { data, error } = await supabase
             .from('deals')
             .update({
               tag: 'skip_traced',
               phone: phone ?? null,
               email: email ?? null,
-              notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
               updated_at: new Date().toISOString(),
             })
-            .eq('id', existingDeal.id)
-          savedDealId = existingDeal.id
-        } else {
-          const { data: insertedDeal } = await supabase
-            .from('deals')
-            .insert({
-            owner_name: skipTracing.owner_name,
-            tract_abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
-            tract_survey: selected?.LEVEL1_SUR ?? selected?.level1_sur ?? '',
-            operator_name: skipTracing.operator_name ?? '',
-            mailing_city: skipTracing.mailing_city ?? '',
-            mailing_state: skipTracing.mailing_state ?? '',
-            mailing_address: skipTracing.address_1 ?? '',
-            acreage: skipTracing.acreage ?? null,
-            propensity_score: skipTracing.propensity_score ?? 0,
-            source: 'skip_trace',
-            tag: 'skip_traced',
-            phone: phone ?? null,
-            email: email ?? null,
-            notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
-          })
-            .select('id')
+            .eq('id', existing.id)
+            .select()
             .single()
-          savedDealId = insertedDeal?.id ?? null
+          console.log('Update result:', data, error)
+          if (error) {
+            console.error('Failed to update CRM deal:', error)
+            throw error
+          }
+          savedDeal = (data ?? null) as { id?: string } | null
+        } else {
+          const { data, error } = await supabase
+            .from('deals')
+            .insert(dealData)
+            .select()
+            .single()
+          console.log('Insert result:', data, error)
+          if (error) {
+            console.error('Failed to insert CRM deal:', error)
+            throw error
+          }
+          savedDeal = (data ?? null) as { id?: string } | null
         }
 
         setPipelineOwners((prev) => {
@@ -476,7 +499,7 @@ export default function Home() {
           ownerName: skipTracing.owner_name,
           phone,
           email,
-          dealId: savedDealId,
+          dealId: savedDeal?.id ?? null,
           cached: Boolean(result.cached),
         })
       } else {
@@ -484,13 +507,13 @@ export default function Home() {
         setTimeout(() => setToast(null), 4000)
       }
     } catch (err) {
-      console.error('Skip trace failed:', err)
+      console.error('Skip trace confirm error:', err)
       setToast('Skip trace failed - check console')
       setTimeout(() => setToast(null), 4000)
+    } finally {
+      setSkipTraceLoading(false)
+      setSkipTracing(null)
     }
-
-    setSkipTraceLoading(false)
-    setSkipTracing(null)
   }
 
   useEffect(() => {
