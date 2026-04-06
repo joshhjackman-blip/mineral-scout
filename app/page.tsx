@@ -94,6 +94,7 @@ type OwnerSearchResult = {
   rrc_lease_id?: string | number | null
   operator_name?: string | null
   acreage?: number | null
+  leaseCount?: number
 }
 
 type MapFocusTarget = {
@@ -231,8 +232,9 @@ export default function Home() {
   const handleSearch = async (query: string) => {
     setSearchQuery(query)
     const trimmed = query.trim()
-    if (trimmed.length < 3) {
+    if (trimmed.length < 2) {
       setSearchResults([])
+      setSearchOpen(false)
       setSearching(false)
       return
     }
@@ -243,17 +245,41 @@ export default function Home() {
       .select('owner_name, mailing_city, mailing_state, propensity_score, rrc_lease_id, operator_name, acreage')
       .ilike('owner_name', `%${trimmed}%`)
       .order('propensity_score', { ascending: false })
-      .limit(10)
+      .limit(50)
 
     if (error) {
       console.error('Owner search failed:', error.message)
       setSearchResults([])
       setSearching(false)
+      setSearchOpen(true)
       return
     }
 
-    setSearchResults((data ?? []) as OwnerSearchResult[])
+    const seen = new Map<string, OwnerSearchResult>()
+    for (const row of (data ?? []) as OwnerSearchResult[]) {
+      const key = String(row.owner_name ?? '').trim().toUpperCase()
+      if (!key) continue
+      if (!seen.has(key)) {
+        seen.set(key, { ...row, leaseCount: 1 })
+        continue
+      }
+
+      const existing = seen.get(key)!
+      const nextLeaseCount = Number(existing.leaseCount ?? 1) + 1
+      const existingScore = Number(existing.propensity_score ?? 0)
+      const rowScore = Number(row.propensity_score ?? 0)
+
+      // Keep the highest-scoring row while aggregating total lease matches.
+      if (rowScore > existingScore) {
+        seen.set(key, { ...row, leaseCount: nextLeaseCount })
+      } else {
+        existing.leaseCount = nextLeaseCount
+      }
+    }
+
+    setSearchResults(Array.from(seen.values()).slice(0, 10))
     setSearching(false)
+    setSearchOpen(true)
   }
 
   const getScoreBreakdown = (owner: TractOwner): string[] => {
@@ -896,7 +922,21 @@ export default function Home() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{result.owner_name}</div>
                         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                           {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
-                          {result.operator_name ? ` · ${result.operator_name}` : ''}
+                          {Number(result.leaseCount ?? 1) > 1 ? (
+                            <span
+                              style={{
+                                marginLeft: 6,
+                                background: '#F3F4F6',
+                                border: '1px solid #E5E7EB',
+                                borderRadius: 4,
+                                padding: '1px 5px',
+                                fontSize: 10,
+                                color: '#6B7280',
+                              }}
+                            >
+                              {result.leaseCount} leases
+                            </span>
+                          ) : result.operator_name ? ` · ${result.operator_name}` : ''}
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
@@ -912,7 +952,7 @@ export default function Home() {
               </div>
             )}
 
-            {searchOpen && searchQuery.length >= 3 && searchResults.length === 0 && !searching && (
+            {searchOpen && searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
                 background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
