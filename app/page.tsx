@@ -399,18 +399,25 @@ export default function Home() {
     owner: TractOwner,
     selectedTract: TractSelection | null
   ): string | null => {
-    void selectedTract
     const decimalInterest = Number(owner.decimal_interest ?? 0) ||
       (Number(owner.ownership_pct ?? 0) / 100)
     if (!decimalInterest || decimalInterest <= 0) return null
 
-    // Cap at a single average Eagle Ford well at maturity.
-    const avgMonthlyBbls = 500
+    const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
+    const ownerCount = Number(selectedTract?.owner_count ?? 1)
+    if (!cumOil) return null
+
+    // Estimate wells from owner density as a practical proxy.
+    const estimatedWells = Math.max(1, Math.round(ownerCount / 150))
+
+    // Normalize cumulative oil to per-well monthly output and cap extreme values.
+    const perWellMonthly = Math.min(cumOil / estimatedWells / 60, 3000)
+
     const oilPrice = 70
     const royaltyFraction = 0.25
-    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice * royaltyFraction
+    const monthlyRoyalty = perWellMonthly * decimalInterest * oilPrice * royaltyFraction
 
-    if (monthlyRoyalty < 1) return null
+    if (monthlyRoyalty < 0.5) return null
     if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
     return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
   }
