@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
@@ -151,7 +151,36 @@ export default function CRM() {
     setEditingDeal((prev) => prev ? { ...prev, tag } : null)
     await supabase.from('deals').update({ tag, updated_at: new Date().toISOString() }).eq('id', editingDeal.id)
     setDeals((prev) => prev.map((d) => d.id === editingDeal.id ? { ...d, tag } : d))
+    setSelected((prev) => prev?.id === editingDeal.id ? { ...prev, tag } : prev)
   }
+
+  const handleDeleteLead = useCallback(async () => {
+    if (!editingDeal) return
+    if (!confirm(`Delete ${editingDeal.owner_name} from pipeline?`)) return
+    const { error } = await supabase
+      .from('deals')
+      .delete()
+      .eq('id', editingDeal.id)
+    if (error) {
+      console.error('Failed to delete lead:', error)
+      return
+    }
+    setDeals((prev) => prev.filter((d) => d.id !== editingDeal.id))
+    setSelected(null)
+    setEditingDeal(null)
+    setContactLog([])
+  }, [editingDeal])
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Delete' && editingDeal && e.metaKey) {
+        e.preventDefault()
+        void handleDeleteLead()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [editingDeal, handleDeleteLead])
 
   const handleLogContact = async (method: string) => {
     if (!editingDeal) return
@@ -298,11 +327,55 @@ export default function CRM() {
                       onBlur={() => handleSaveDeal()}
                       className="text-2xl font-bold tracking-tight text-gray-900 bg-transparent border-none outline-none w-full font-serif"
                     />
-                    {lastSaved && (
-                      <span className="text-xs text-gray-400 shrink-0 flex items-center gap-1 mt-1">
-                        <Save size={11} />Saved {lastSaved}
-                      </span>
-                    )}
+                    <div className="shrink-0 flex items-center gap-2 mt-1">
+                      {lastSaved && (
+                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <Save size={11} />Saved {lastSaved}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => {
+                          void handleDeleteLead()
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 border border-transparent hover:border-red-200 rounded-md transition-colors"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>
+                        Delete lead
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pipeline stage bar */}
+                  <div className="flex items-center gap-1 mb-4 p-1 bg-gray-50 rounded-lg border border-gray-100">
+                    {[
+                      { key: 'prospect', label: 'Prospect' },
+                      { key: 'nurture', label: 'Nurture' },
+                      { key: 'hot', label: 'Hot' },
+                      { key: 'offer_sent', label: 'Offer Sent' },
+                      { key: 'closed', label: 'Closed' },
+                    ].map((stage) => {
+                      const stageOrder = ['prospect', 'nurture', 'hot', 'offer_sent', 'closed']
+                      const currentIdx = stageOrder.indexOf(editingDeal.tag ?? 'prospect')
+                      const thisIdx = stageOrder.indexOf(stage.key)
+                      const isActive = (editingDeal.tag ?? 'prospect') === stage.key
+                      const isPast = thisIdx < currentIdx
+
+                      return (
+                        <button
+                          key={stage.key}
+                          onClick={() => handleTagChange(stage.key)}
+                          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${
+                            isActive
+                              ? 'bg-white shadow-sm text-gray-900 border border-gray-200'
+                              : isPast
+                              ? 'text-gray-400 hover:text-gray-600'
+                              : 'text-gray-400 hover:text-gray-600'
+                          }`}
+                        >
+                          {stage.label}
+                        </button>
+                      )
+                    })}
                   </div>
 
                   <div className="flex flex-wrap gap-1.5">
