@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
@@ -41,6 +42,26 @@ export async function middleware(req: NextRequest) {
 
   if (session && req.nextUrl.pathname.startsWith('/auth')) {
     return NextResponse.redirect(new URL('/', req.url))
+  }
+
+  if (session && !isPublicPage && !isApiRoute) {
+    const adminClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: subscription } = await adminClient
+      .from('subscriptions')
+      .select('status')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+
+    const status = String(subscription?.status ?? '').toLowerCase()
+    const hasActiveSubscription = status === 'active' || status === 'trialing'
+
+    if (!hasActiveSubscription) {
+      return NextResponse.redirect(new URL('/pricing', req.url))
+    }
   }
 
   return res

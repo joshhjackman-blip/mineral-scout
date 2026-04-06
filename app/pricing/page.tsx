@@ -1,3 +1,6 @@
+'use client'
+
+import { useState } from 'react'
 import Link from 'next/link'
 
 const features = [
@@ -12,6 +15,29 @@ const features = [
 ]
 
 export default function Pricing() {
+  const [loading, setLoading] = useState(false)
+
+  const handleCheckout = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/checkout', { method: 'POST' })
+      const data = (await res.json()) as { url?: string; error?: string }
+      if (data.url) {
+        window.location.href = data.url
+        return
+      }
+      if (res.status === 401) {
+        window.location.href = '/auth'
+        return
+      }
+      setLoading(false)
+      alert(data.error ?? 'Unable to start checkout')
+    } catch {
+      setLoading(false)
+      alert('Unable to start checkout')
+    }
+  }
+
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
@@ -56,9 +82,30 @@ export default function Pricing() {
                 </li>
               ))}
             </ul>
-            <Link href="/auth" style={{ display: 'block', width: '100%', padding: 14, background: '#EF9F27', borderRadius: 9, fontSize: 14, fontWeight: 500, color: '#3a1e00', textAlign: 'center', textDecoration: 'none', letterSpacing: '0.01em' }}>
-              Get started →
-            </Link>
+            <button
+              onClick={() => {
+                void handleCheckout()
+              }}
+              disabled={loading}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: 14,
+                background: '#EF9F27',
+                borderRadius: 9,
+                fontSize: 14,
+                fontWeight: 500,
+                color: '#3a1e00',
+                textAlign: 'center',
+                textDecoration: 'none',
+                letterSpacing: '0.01em',
+                border: 'none',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? 'Loading...' : 'Get started →'}
+            </button>
             <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.18)', marginTop: 14 }}>No credit card required to request access</div>
           </div>
         </div>
