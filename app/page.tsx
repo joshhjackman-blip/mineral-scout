@@ -249,14 +249,15 @@ export default function Home() {
       (Number(owner.ownership_pct ?? 0) / 100)
     if (!decimalInterest || decimalInterest <= 0) return null
 
-    const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
-    if (!cumOil) return null
-
-    const avgMonthlyBbls = cumOil / 60
+    // Conservative estimate: single average Eagle Ford well at maturity.
+    // Better to understate than overstate.
+    void selectedTract
+    const avgMonthlyBbls = 500
     const oilPrice = 70
-    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice
+    const royaltyFraction = 0.25
+    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice * royaltyFraction
 
-    if (monthlyRoyalty < 0.50) return null
+    if (monthlyRoyalty < 1) return null
     if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
     return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
   }
