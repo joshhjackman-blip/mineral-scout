@@ -1,9 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 export async function POST(req: NextRequest) {
-  const { firstName, lastName, address, city, state, zip } = await req.json()
+  const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
 
   const apiKey = process.env.BATCH_SKIP_TRACING_API_KEY
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
+  if (ownerName) {
+    const { data: cached } = await supabase
+      .from('skip_trace_cache')
+      .select('phones, emails')
+      .ilike('owner_name', ownerName.trim())
+      .single()
+
+    if (cached) {
+      console.log('Skip trace cache hit for:', ownerName)
+      return NextResponse.json({
+        success: true,
+        phones: (cached as { phones?: string[] }).phones ?? [],
+        emails: (cached as { emails?: string[] }).emails ?? [],
+        cached: true,
+      })
+    }
+  }
+
   if (!apiKey) {
     return NextResponse.json({ error: 'API key not configured' }, { status: 500 })
   }
@@ -70,11 +94,25 @@ export async function POST(req: NextRequest) {
       if (addr && typeof addr === 'string') emails.push(addr)
     })
 
+    if (ownerName && (phones.length > 0 || emails.length > 0)) {
+      await supabase.from('skip_trace_cache').upsert(
+        {
+          owner_name: ownerName.trim(),
+          mailing_address: address ?? '',
+          phones,
+          emails,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'owner_name' }
+      )
+      console.log('Saved to skip trace cache:', ownerName)
+    }
+
     return NextResponse.json({
       success: true,
       phones,
       emails,
-      raw: data,
+      cached: false,
     })
   } catch (err) {
     console.error('Skip trace error:', err)

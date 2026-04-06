@@ -83,6 +83,7 @@ type SkipTraceResult = {
   phone: string | null
   email: string | null
   dealId: string | null
+  cached?: boolean
 }
 
 const scoreBadgeColor = (score: number) =>
@@ -384,6 +385,7 @@ export default function Home() {
           phone,
           email,
           dealId: savedDealId,
+          cached: Boolean(result.cached),
         })
       } else {
         setToast(`Skip trace failed: ${result.error}`)
@@ -1656,6 +1658,12 @@ export default function Home() {
             <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>
               {skipTraceResult.ownerName}
             </div>
+
+            {skipTraceResult.cached && (
+              <div style={{ fontSize: 11, color: '#16a34a', marginBottom: 8 }}>
+                ✓ Retrieved from shared cache
+              </div>
+            )}
 
             <div style={{ background: '#F8F8F8', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
               {skipTraceResult.phone ? (
