@@ -28,6 +28,7 @@ type TractOwner = {
   motivated?: boolean
   acreage?: number
   ownership_pct?: number
+  decimal_interest?: number
   phone?: string
   email?: string
 }
@@ -386,6 +387,27 @@ export default function Home() {
       return classifyOwner(String(owner.owner_name ?? '')) === ownerTypeFilter
     })
   }, [selectedOwners, ownerTypeFilter])
+
+  const estimateMonthlyRoyalty = (
+    owner: TractOwner,
+    selectedTract: TractSelection | null
+  ): string | null => {
+    void selectedTract
+    const decimalInterest = Number(owner.decimal_interest ?? 0) ||
+      (Number(owner.ownership_pct ?? 0) / 100)
+    if (!decimalInterest || decimalInterest <= 0) return null
+
+    // Cap at a single average Eagle Ford well at maturity.
+    const avgMonthlyBbls = 500
+    const oilPrice = 70
+    const royaltyFraction = 0.25
+    const monthlyRoyalty = avgMonthlyBbls * decimalInterest * oilPrice * royaltyFraction
+
+    if (monthlyRoyalty < 1) return null
+    if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
+    return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
+  }
+
   const productionData = useMemo(() => {
     if (!selected) return []
     const s = selected as Record<string, unknown>
@@ -785,6 +807,17 @@ export default function Home() {
                             {acreage > 0 ? `${acreage.toFixed(2)} acres` : 'Acreage unknown'} ·{' '}
                             {ownershipPct > 0 ? `${ownershipPct.toFixed(4)}%` : 'Ownership unknown'}
                           </div>
+                          {(() => {
+                            const royalty = estimateMonthlyRoyalty(owner, selected)
+                            return royalty ? (
+                              <div style={{ fontSize: 10, marginTop: 2 }}>
+                                <span style={{ color: '#9CA3AF' }}>Est. royalty: </span>
+                                <span style={{ color: '#16a34a', fontWeight: 600, fontFamily: 'monospace' }}>
+                                  {royalty}
+                                </span>
+                              </div>
+                            ) : null
+                          })()}
                           {pipelineOwners.has(owner.owner_name) ? (
                             <div style={{ fontSize: 10, color: '#7AB835', marginTop: 6 }}>
                               ✓ In pipeline
