@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
             city,
             state,
             zip,
+            apn: null,
+            countyFipsCode: '48177',
           },
         ],
       }),

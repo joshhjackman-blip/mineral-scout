@@ -398,9 +398,10 @@ export default function Home() {
     setSkipTraceLoading(true)
 
     try {
-      const nameParts = (skipTracing.owner_name ?? '').trim().split(' ')
-      const firstName = nameParts[0] ?? ''
-      const lastName = nameParts.slice(1).join(' ') ?? ''
+      const nameParts = (skipTracing.owner_name ?? '').trim().split(/\s+/)
+      // Mineral roll names are often LASTNAME FIRSTNAME.
+      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : (nameParts[0] ?? '')
+      const lastName = nameParts.length > 1 ? nameParts[0] : ''
 
       const response = await fetch('/api/skiptrace', {
         method: 'POST',
@@ -412,6 +413,7 @@ export default function Home() {
           city: skipTracing.mailing_city ?? '',
           state: skipTracing.mailing_state ?? '',
           zip: skipTracing.mailing_zip ?? '',
+          ownerName: skipTracing.owner_name,
         }),
       })
 
