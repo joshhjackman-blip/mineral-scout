@@ -115,6 +115,44 @@ const COUNTY_STATS = [
   { val: '4,512', lbl: 'Active wells' },
 ]
 
+const ONBOARDING_STEPS = [
+  {
+    step: '01',
+    title: 'Welcome to Mineral Map',
+    body: 'The complete mineral rights prospecting platform for the Eagle Ford Basin. Every owner scored, mapped, and ready to contact. This tour takes about 60 seconds.',
+  },
+  {
+    step: '02',
+    title: 'Read the map',
+    body: 'Every survey abstract is colored by acquisition opportunity. Red tracts have the most motivated sellers. Green tracts are low priority. The color tells you where to focus before you click anything.',
+  },
+  {
+    step: '03',
+    title: 'Click any tract',
+    body: 'Clicking a tract opens a ranked list of every fractional owner. Owners are sorted by propensity score — the most likely sellers at the top. Expand any row to see exactly why they scored that way.',
+  },
+  {
+    step: '04',
+    title: 'Search by owner name',
+    body: 'Use the search bar to find any of the 73,000+ mineral owners by name. Results are deduplicated and sorted by score so the most motivated version of each owner always appears first.',
+  },
+  {
+    step: '05',
+    title: 'Build your pipeline',
+    body: 'Add any owner to your pipeline with one click. The CRM tracks contacts, follow-up reminders, notes, and offers. Skip trace for phone and email directly from the owner row or the CRM.',
+  },
+  {
+    step: '06',
+    title: 'Value the deal',
+    body: 'Use the Comp Calculator to estimate value from monthly royalty income. Reference transactions from Gonzales County are included so you have market context before making an offer.',
+  },
+  {
+    step: '07',
+    title: 'Ready to prospect',
+    body: 'Start by clicking any red tract on the map. Your hottest leads are waiting.',
+  },
+]
+
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const parsed = Number(value)
@@ -196,6 +234,8 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searching, setSearching] = useState(false)
   const [highlightedOwner, setHighlightedOwner] = useState<string | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingStep, setOnboardingStep] = useState(0)
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
@@ -212,6 +252,17 @@ export default function Home() {
     window.addEventListener('resize', updateMobile)
     return () => window.removeEventListener('resize', updateMobile)
   }, [])
+
+  useEffect(() => {
+    const seen = window.localStorage.getItem('mineral_map_onboarded')
+    if (!seen) setShowOnboarding(true)
+  }, [])
+
+  const completeOnboarding = () => {
+    window.localStorage.setItem('mineral_map_onboarded', 'true')
+    setShowOnboarding(false)
+    setOnboardingStep(0)
+  }
 
   const getDefaultPipelineTag = (owner: TractOwner): PipelineTag => {
     const score = toNumber(owner.propensity_score)
@@ -1115,6 +1166,24 @@ export default function Home() {
             Account
           </a>
           <button
+            onClick={() => {
+              setOnboardingStep(0)
+              setShowOnboarding(true)
+            }}
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '6px 12px',
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Tour
+          </button>
+          <button
             onClick={async () => {
               await supabase.auth.signOut()
               window.location.href = '/auth'
@@ -1746,6 +1815,153 @@ export default function Home() {
           }}
         >
           {toastType === 'error' ? '✕' : '✓'} {toast}
+        </div>
+      )}
+
+      {showOnboarding && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              width: 'min(520px, calc(100vw - 24px))',
+              boxShadow: '0 32px 80px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: 3,
+                background: '#EF9F27',
+                width: `${((onboardingStep + 1) / ONBOARDING_STEPS.length) * 100}%`,
+                transition: 'width 0.3s ease',
+              }}
+            />
+
+            <div style={{ padding: '36px 40px 32px' }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: '#9CA3AF',
+                  letterSpacing: '0.12em',
+                  textTransform: 'uppercase',
+                  marginBottom: 20,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                Step {ONBOARDING_STEPS[onboardingStep].step} of {String(ONBOARDING_STEPS.length).padStart(2, '0')}
+              </div>
+
+              <h2
+                style={{
+                  fontFamily: 'Georgia, serif',
+                  fontSize: 24,
+                  fontWeight: 700,
+                  color: '#111827',
+                  marginBottom: 14,
+                  lineHeight: 1.2,
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {ONBOARDING_STEPS[onboardingStep].title}
+              </h2>
+
+              <p
+                style={{
+                  fontSize: 14,
+                  color: '#4B5563',
+                  lineHeight: 1.75,
+                  marginBottom: 36,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                {ONBOARDING_STEPS[onboardingStep].body}
+              </p>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <button
+                  onClick={completeOnboarding}
+                  style={{
+                    fontSize: 12,
+                    color: '#9CA3AF',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontFamily: 'Inter, sans-serif',
+                    padding: 0,
+                  }}
+                >
+                  Skip tour
+                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {onboardingStep > 0 && (
+                    <button
+                      onClick={() => setOnboardingStep((s) => s - 1)}
+                      style={{
+                        padding: '9px 20px',
+                        borderRadius: 7,
+                        fontSize: 13,
+                        background: 'transparent',
+                        border: '1px solid #E5E7EB',
+                        color: '#374151',
+                        cursor: 'pointer',
+                        fontFamily: 'Inter, sans-serif',
+                        fontWeight: 500,
+                      }}
+                    >
+                      Back
+                    </button>
+                  )}
+                  {onboardingStep < ONBOARDING_STEPS.length - 1 ? (
+                    <button
+                      onClick={() => setOnboardingStep((s) => s + 1)}
+                      style={{
+                        padding: '9px 24px',
+                        borderRadius: 7,
+                        fontSize: 13,
+                        background: '#111827',
+                        border: 'none',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      Next
+                    </button>
+                  ) : (
+                    <button
+                      onClick={completeOnboarding}
+                      style={{
+                        padding: '9px 24px',
+                        borderRadius: 7,
+                        fontSize: 13,
+                        background: '#EF9F27',
+                        border: 'none',
+                        color: '#fff',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      Start prospecting
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
