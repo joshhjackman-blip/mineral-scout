@@ -44,12 +44,28 @@ export async function middleware(req: NextRequest) {
   }
 
   if (session && !isPublicPage && !isApiRoute) {
-    const status = String(
+    const metaStatus = String(
       (session.user.user_metadata as Record<string, unknown> | undefined)?.subscription_status ?? ''
     ).toLowerCase()
-    if (status !== 'active' && status !== 'trialing') {
-      return NextResponse.redirect(new URL('/pricing', req.url))
+
+    // Fast path: trust fresh metadata when already active/trialing.
+    if (metaStatus === 'active' || metaStatus === 'trialing') {
+      return res
     }
+
+    // Fallback path: metadata may be stale, so check subscriptions table directly.
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('status')
+      .eq('user_id', session.user.id)
+      .maybeSingle()
+
+    const subStatus = String(sub?.status ?? '').toLowerCase()
+    if (subStatus === 'active' || subStatus === 'trialing') {
+      return res
+    }
+
+    return NextResponse.redirect(new URL('/pricing', req.url))
   }
 
   return res
