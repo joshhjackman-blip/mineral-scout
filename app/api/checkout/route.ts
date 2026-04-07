@@ -65,6 +65,9 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: session.user.email ?? undefined,
       metadata: { user_id: session.user.id ?? '' },
+      subscription_data: {
+        trial_period_days: 7,
+      },
       success_url: `${appUrl}/api/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/pricing`,
     })

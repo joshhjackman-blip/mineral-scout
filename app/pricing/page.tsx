@@ -104,9 +104,9 @@ export default function Pricing() {
                 opacity: loading ? 0.7 : 1,
               }}
             >
-              {loading ? 'Loading...' : 'Get started →'}
+              {loading ? 'Loading...' : 'Start 7-day free trial →'}
             </button>
-            <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.18)', marginTop: 14 }}>No credit card required to request access</div>
+            <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.18)', marginTop: 14 }}>7-day free trial · then $399/mo · cancel anytime</div>
           </div>
         </div>
 
