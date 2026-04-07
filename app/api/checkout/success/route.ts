@@ -12,23 +12,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/pricing', req.url))
   }
 
-  const session = await stripe.checkout.sessions.retrieve(sessionId)
-  const userId = session.metadata?.user_id
+  const stripeSession = await stripe.checkout.sessions.retrieve(sessionId)
+  const userId = stripeSession.metadata?.user_id
 
-  if (userId && session.status === 'complete') {
+  if (userId && stripeSession.status === 'complete') {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
     const stripeCustomerId =
-      typeof session.customer === 'string'
-        ? session.customer
-        : session.customer?.id ?? null
+      typeof stripeSession.customer === 'string'
+        ? stripeSession.customer
+        : stripeSession.customer?.id ?? null
     const stripeSubscriptionId =
-      typeof session.subscription === 'string'
-        ? session.subscription
-        : session.subscription?.id ?? null
+      typeof stripeSession.subscription === 'string'
+        ? stripeSession.subscription
+        : stripeSession.subscription?.id ?? null
 
     await supabase.from('subscriptions').upsert(
       {
@@ -40,6 +40,12 @@ export async function GET(req: NextRequest) {
       },
       { onConflict: 'user_id' }
     )
+
+    await supabase.auth.admin.updateUserById(userId, {
+      user_metadata: { subscription_status: 'active' },
+    })
+
+    console.log('Subscription activated for user:', userId)
   }
 
   return NextResponse.redirect(new URL('/', req.url))

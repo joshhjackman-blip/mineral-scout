@@ -32,11 +32,23 @@ export async function POST(req: NextRequest) {
     event.type === 'customer.subscription.deleted' ||
     event.type === 'customer.subscription.paused'
   ) {
-    const sub = event.data.object as Stripe.Subscription
+    const subscription = event.data.object as Stripe.Subscription
     await supabase
       .from('subscriptions')
       .update({ status: 'canceled', updated_at: new Date().toISOString() })
-      .eq('stripe_subscription_id', sub.id)
+      .eq('stripe_subscription_id', subscription.id)
+
+    const { data: sub } = await supabase
+      .from('subscriptions')
+      .select('user_id')
+      .eq('stripe_subscription_id', subscription.id)
+      .single()
+
+    if (sub?.user_id) {
+      await supabase.auth.admin.updateUserById(sub.user_id, {
+        user_metadata: { subscription_status: 'canceled' },
+      })
+    }
   }
 
   if (
@@ -48,6 +60,22 @@ export async function POST(req: NextRequest) {
       .from('subscriptions')
       .update({ status: sub.status, updated_at: new Date().toISOString() })
       .eq('stripe_subscription_id', sub.id)
+
+    const { data: subRow } = await supabase
+      .from('subscriptions')
+      .select('user_id')
+      .eq('stripe_subscription_id', sub.id)
+      .single()
+
+    if (subRow?.user_id) {
+      await supabase.auth.admin.updateUserById(subRow.user_id, {
+        user_metadata: {
+          subscription_status: sub.status === 'active' || sub.status === 'trialing'
+            ? 'active'
+            : sub.status,
+        },
+      })
+    }
   }
 
   return NextResponse.json({ received: true })
