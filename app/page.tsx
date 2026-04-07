@@ -1099,6 +1099,21 @@ export default function Home() {
           >
             Comps
           </a>
+          <a
+            href="/account"
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Account
+          </a>
           <button
             onClick={async () => {
               await supabase.auth.signOut()
