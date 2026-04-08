@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 
 import { supabase } from '@/lib/supabase'
+import AppLogo from '@/app/components/AppLogo'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -601,30 +602,7 @@ export default function Home() {
               </div>
             )}
           </div>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              background: '#EF9F27',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>M</span>
-          </div>
-          <span
-            style={{
-              fontFamily: 'Georgia, serif',
-              fontSize: 16,
-              fontWeight: 700,
-              color: '#111827',
-              letterSpacing: '-0.01em',
-            }}
-          >
-            Mineral Map
-          </span>
+          <AppLogo width={150} />
         </div>
         <div style={{ fontSize: 13, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
           Gonzales County, TX · 553 tracts

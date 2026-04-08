@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { supabase } from '@/lib/supabase'
+import AppLogo from '@/app/components/AppLogo'
 
 type TagKey =
   | 'all'
@@ -256,17 +257,7 @@ export default function CrmPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              color: '#111827',
-              fontFamily: 'Georgia, serif',
-              fontSize: 16,
-              letterSpacing: '-0.01em',
-              fontWeight: 700,
-            }}
-          >
-            Mineral Map
-          </div>
+          <AppLogo width={150} />
           <a
             href="/"
             style={{

@@ -1,5 +1,6 @@
 'use client'
 
+import AppLogo from '@/app/components/AppLogo'
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 
 type SignalCard = {
@@ -172,31 +173,7 @@ export default function MethodologyPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 28,
-              height: 28,
-              background: '#EF9F27',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <span style={{ color: '#fff', fontSize: 14, fontWeight: 700 }}>
-              M
-            </span>
-          </div>
-          <span
-            style={{
-              fontFamily: 'Georgia, serif',
-              fontSize: 16,
-              fontWeight: 700,
-              color: '#111827',
-            }}
-          >
-            Mineral Map
-          </span>
+          <AppLogo width={150} />
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
