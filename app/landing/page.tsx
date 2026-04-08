@@ -23,7 +23,7 @@ export default function Landing() {
           }}
         >
           <Link href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-            <AppLogo width={165} />
+            <AppLogo width={165} variant="light" />
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Link

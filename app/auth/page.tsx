@@ -43,7 +43,7 @@ export default function Auth() {
           </Link>
         </div>
         <div className="flex items-center justify-center mb-8">
-          <AppLogo width={220} />
+          <AppLogo width={220} variant="light" />
         </div>
 
         <div className="bg-white rounded-2xl p-8 shadow-2xl">

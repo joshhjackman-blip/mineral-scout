@@ -45,7 +45,7 @@ export default function Pricing() {
       <div style={{ background: '#0b0f1c', minHeight: '100vh', fontFamily: "'DM Sans', sans-serif" }}>
         <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 52px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
           <Link href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
-            <AppLogo width={165} />
+            <AppLogo width={165} variant="light" />
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Link href="/landing" style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '7px 16px', textDecoration: 'none', fontWeight: 500 }}>← Back to landing</Link>

@@ -1,0 +1,27 @@
+<svg width="360" height="100" viewBox="0 0 360 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="360" height="100" fill="transparent" />
+  <g transform="translate(6,8)">
+    <g stroke="#EF9F27" stroke-width="2">
+      <line x1="0" y1="14" x2="84" y2="14" />
+      <line x1="0" y1="36" x2="84" y2="36" />
+      <line x1="0" y1="58" x2="84" y2="58" />
+      <line x1="0" y1="80" x2="84" y2="80" />
+      <line x1="14" y1="0" x2="14" y2="86" />
+      <line x1="36" y1="0" x2="36" y2="86" />
+      <line x1="58" y1="0" x2="58" y2="86" />
+      <line x1="80" y1="0" x2="80" y2="86" />
+    </g>
+    <path
+      d="M48 18C50 20 55 20 58 22C60 24 60 28 58 30C56 32 53 34 52 38C50 42 53 46 56 48C60 51 66 50 68 54C70 58 66 61 63 63C59 66 56 69 53 71C49 73 44 73 41 70C38 67 37 63 34 61C31 59 27 57 26 53C25 49 27 45 31 43C34 41 38 39 39 35C40 31 37 27 39 24C41 21 45 21 48 18Z"
+      fill="#EF9F27"
+      opacity="0.95"
+    />
+    <circle cx="19" cy="74" r="2.5" fill="#EF9F27" />
+    <circle cx="70" cy="20" r="2.5" fill="#EF9F27" />
+    <circle cx="26" cy="22" r="2" fill="#EF9F27" />
+    <circle cx="64" cy="74" r="2" fill="#EF9F27" />
+  </g>
+  <text x="96" y="61" fill="#FFFFFF" font-size="52" font-weight="700" font-family="Inter, system-ui, sans-serif">
+    MineralMap
+  </text>
+</svg>

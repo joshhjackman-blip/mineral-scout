@@ -95,7 +95,7 @@ export default function Account() {
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-5 shrink-0">
         <div className="flex items-center gap-3">
-          <AppLogo width={130} />
+          <AppLogo width={130} variant="light" />
           <span className="text-gray-600 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">Account</span>
         </div>
