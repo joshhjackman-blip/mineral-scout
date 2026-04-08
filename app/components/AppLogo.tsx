@@ -7,7 +7,7 @@ type AppLogoProps = {
 
 export default function AppLogo({ width = 150, variant = 'default' }: AppLogoProps) {
   const safeWidth = Math.max(40, Math.round(width))
-  const safeHeight = Math.round((safeWidth * 100) / 360)
+  const safeHeight = Math.round((safeWidth * 100) / 420)
   const src = variant === 'light' ? '/mineral-map-logo-light.svg' : '/mineral-map-logo.svg'
 
   return (
