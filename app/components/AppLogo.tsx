@@ -6,12 +6,12 @@ type AppLogoProps = {
 
 export default function AppLogo({ width = 150 }: AppLogoProps) {
   const safeWidth = Math.max(40, Math.round(width))
-  const safeHeight = Math.round((safeWidth * 100) / 320)
+  const safeHeight = Math.round((safeWidth * 100) / 430)
 
   return (
     <Image
       src="/mineral-map-logo.svg"
-      alt="Mineral Map logo"
+      alt="MineralMap logo"
       width={safeWidth}
       height={safeHeight}
       priority
