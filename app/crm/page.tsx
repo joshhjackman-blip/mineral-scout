@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import AppLogo from '@/app/components/AppLogo'
 import {
   Phone, Mail, Search,
   MapPin, BarChart2, BookOpen, Clock,
@@ -234,10 +235,7 @@ export default function CRM() {
     <div className="h-screen flex flex-col bg-gray-50 font-sans">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-amber-400 rounded-md flex items-center justify-center">
-            <span className="text-white text-sm font-bold">M</span>
-          </div>
-          <span className="font-serif text-base font-bold text-white">Mineral Map</span>
+          <AppLogo width={130} />
           <span className="text-gray-300 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">CRM & Pipeline</span>
         </div>

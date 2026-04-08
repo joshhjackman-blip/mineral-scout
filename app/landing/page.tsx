@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import AppLogo from '@/app/components/AppLogo'
 
 export default function Landing() {
   return (
@@ -21,27 +22,8 @@ export default function Landing() {
             flexWrap: 'wrap',
           }}
         >
-          <Link href="/landing" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                background: '#EF9F27',
-                borderRadius: 5,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: "'DM Serif Display', serif",
-                fontSize: 14,
-                color: '#fff',
-                fontWeight: 700,
-              }}
-            >
-              M
-            </div>
-            <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#fff', letterSpacing: '-0.01em' }}>
-              Mineral Map
-            </span>
+          <Link href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <AppLogo width={165} />
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Link

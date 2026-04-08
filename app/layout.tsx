@@ -8,6 +8,9 @@ import "./globals.css"
 export const metadata: Metadata = {
   title: "Mineral Map",
   description: "Off-market mineral rights prospecting",
+  icons: {
+    icon: "/mineral-map-logo.svg",
+  },
 }
 
 export default function RootLayout({

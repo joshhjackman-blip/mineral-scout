@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import AppLogo from '@/app/components/AppLogo'
 
 const features = [
   'Full county GIS parcel map',
@@ -43,9 +44,8 @@ export default function Pricing() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet" />
       <div style={{ background: '#0b0f1c', minHeight: '100vh', fontFamily: "'DM Sans', sans-serif" }}>
         <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '22px 52px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <Link href="/landing" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
-            <div style={{ width: 28, height: 28, background: '#EF9F27', borderRadius: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: 14, color: '#fff', fontWeight: 700 }}>M</div>
-            <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 17, color: '#fff', letterSpacing: '-0.01em' }}>Mineral Map</span>
+          <Link href="/landing" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+            <AppLogo width={165} />
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <Link href="/landing" style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 7, padding: '7px 16px', textDecoration: 'none', fontWeight: 500 }}>← Back to landing</Link>

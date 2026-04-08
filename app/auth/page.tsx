@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import AppLogo from '@/app/components/AppLogo'
 
 export default function Auth() {
   const [email, setEmail] = useState('')
@@ -41,11 +42,8 @@ export default function Auth() {
             ← Back to landing
           </Link>
         </div>
-        <div className="flex items-center gap-3 justify-center mb-8">
-          <div className="w-10 h-10 bg-amber-400 rounded-lg flex items-center justify-center">
-            <span className="text-white text-lg font-bold">M</span>
-          </div>
-          <span className="font-serif text-2xl font-bold text-white">Mineral Map</span>
+        <div className="flex items-center justify-center mb-8">
+          <AppLogo width={220} />
         </div>
 
         <div className="bg-white rounded-2xl p-8 shadow-2xl">

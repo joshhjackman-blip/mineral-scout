@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { User, CreditCard, LogOut, MapPin, BarChart2 } from 'lucide-react'
+import AppLogo from '@/app/components/AppLogo'
 
 type SubscriptionRow = {
   status?: string | null
@@ -94,10 +95,7 @@ export default function Account() {
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-5 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-amber-400 rounded-md flex items-center justify-center">
-            <span className="text-white text-sm font-bold font-serif">M</span>
-          </div>
-          <span className="font-serif text-base font-bold text-white">Mineral Map</span>
+          <AppLogo width={130} />
           <span className="text-gray-600 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">Account</span>
         </div>

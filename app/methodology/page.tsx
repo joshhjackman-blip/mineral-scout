@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import AppLogo from '@/app/components/AppLogo'
 
 type SignalCard = {
   name: string
@@ -101,10 +102,7 @@ export default function MethodologyPage() {
     <div className="h-screen flex flex-col bg-gray-50">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-5 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 bg-amber-400 rounded-md flex items-center justify-center">
-            <span className="text-white text-sm font-bold">M</span>
-          </div>
-          <span className="font-serif text-base font-bold text-white">Mineral Map</span>
+          <AppLogo width={130} />
           <span className="text-gray-600 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">Methodology</span>
         </div>
