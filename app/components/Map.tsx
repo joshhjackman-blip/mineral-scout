@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import { supabase } from '@/lib/supabase'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -24,9 +25,11 @@ export type OwnerRecord = {
 }
 
 export default function Map({
+  showPermits,
   onOwnerClick,
   focusTarget,
 }: {
+  showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
 }) {
@@ -60,16 +63,24 @@ export default function Map({
         return
       }
 
-      console.log('Style ready, fetching parcels...')
+      console.log('Style ready, fetching parcels/permits...')
 
       try {
-        const parcelsResponse = await fetch('/api/parcels')
+        const [parcelsResponse, permitsResult] = await Promise.all([
+          fetch('/api/parcels'),
+          supabase
+            .from('gonzales_permits')
+            .select('latitude, longitude, operator_name, lease_name, filed_date, permit_type')
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null),
+        ])
 
         if (!parcelsResponse.ok) {
           throw new Error(`Parcels API failed (${parcelsResponse.status})`)
         }
 
         const parcelsData = await parcelsResponse.json()
+        const permits = permitsResult.data ?? []
 
         if (!map.current) return
         console.log('GeoJSON received, features:', parcelsData.features?.length)
@@ -79,8 +90,10 @@ export default function Map({
           ['coalesce', ['get', 'max_propensity_score'], 0],
         ] as const
 
+        if (map.current.getLayer('permits-layer')) map.current.removeLayer('permits-layer')
         if (map.current.getLayer('parcels-outline')) map.current.removeLayer('parcels-outline')
         if (map.current.getLayer('parcels-fill')) map.current.removeLayer('parcels-fill')
+        if (map.current.getSource('permits')) map.current.removeSource('permits')
         if (map.current.getSource('parcels')) map.current.removeSource('parcels')
 
         // 1) Parcel fill (bottom)
@@ -162,8 +175,62 @@ export default function Map({
           m.getCanvas().style.cursor = ''
         })
 
+        const permitsGeoJSON: GeoJSON.FeatureCollection = {
+          type: 'FeatureCollection',
+          features: permits
+            .filter((p) => Number.isFinite(Number(p.longitude)) && Number.isFinite(Number(p.latitude)))
+            .map((p) => ({
+              type: 'Feature' as const,
+              geometry: {
+                type: 'Point' as const,
+                coordinates: [Number(p.longitude), Number(p.latitude)],
+              },
+              properties: {
+                operator: p.operator_name,
+                lease: p.lease_name,
+                date: p.filed_date,
+                type: p.permit_type,
+              },
+            })),
+        }
+
+        map.current.addSource('permits', { type: 'geojson', data: permitsGeoJSON })
+        map.current.addLayer({
+          id: 'permits-layer',
+          type: 'circle',
+          source: 'permits',
+          layout: { visibility: showPermits ? 'visible' : 'none' },
+          paint: {
+            'circle-radius': 7,
+            'circle-color': '#2563eb',
+            'circle-opacity': 0.85,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-opacity': 1,
+          },
+        })
+        map.current.on('click', 'permits-layer', (e) => {
+          const props = e.features?.[0]?.properties
+          if (!props || !map.current) return
+          new mapboxgl.Popup({ closeButton: false, offset: 10 })
+            .setLngLat((e.features![0].geometry as GeoJSON.Point).coordinates as [number, number])
+            .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+              <div style="font-weight:600;color:#1d4ed8">New Permit Filed</div>
+              <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
+              <div style="color:#6b7280">${props.operator ?? ''}</div>
+              <div style="color:#6b7280;font-size:11px">Filed: ${props.date ?? ''}</div>
+            </div>`)
+            .addTo(map.current)
+        })
+        map.current.on('mouseenter', 'permits-layer', () => {
+          m.getCanvas().style.cursor = 'pointer'
+        })
+        map.current.on('mouseleave', 'permits-layer', () => {
+          m.getCanvas().style.cursor = ''
+        })
+
         layersReady.current = true
-        console.log('Parcel layers added successfully')
+        console.log('Parcel and permits layers added successfully')
       } catch (err) {
         console.error('Layer setup failed:', err)
         setTimeout(() => {
@@ -177,6 +244,13 @@ export default function Map({
     return () => { map.current?.remove(); map.current = null; layersReady.current = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!map.current?.isStyleLoaded()) return
+    if (map.current.getLayer('permits-layer')) {
+      map.current.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
+    }
+  }, [showPermits])
 
   useEffect(() => {
     if (!focusTarget || !map.current?.isStyleLoaded()) return

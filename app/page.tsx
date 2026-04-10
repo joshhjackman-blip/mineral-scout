@@ -212,6 +212,7 @@ export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
+  const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
@@ -1547,6 +1548,7 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
+              showPermits={showPermits}
               focusTarget={selected}
               onOwnerClick={(tract) => setSelected(tract)}
             />
@@ -1680,6 +1682,22 @@ export default function Home() {
           style={{ width: 160, accentColor: '#EF9F27' }}
         />
         <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
+
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
+        <button
+          onClick={() => setShowPermits((prev) => !prev)}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: showPermits ? '#2563eb' : '#6B7280',
+            cursor: 'pointer',
+            fontSize: 11,
+            fontFamily: 'Inter, sans-serif',
+            padding: 0,
+          }}
+        >
+          ● New permits
+        </button>
 
       </div>
 
