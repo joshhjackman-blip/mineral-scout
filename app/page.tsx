@@ -212,10 +212,6 @@ export default function Home() {
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [minScore, setMinScore] = useState(0)
-  const [showActiveWells, setShowActiveWells] = useState(false)
-  const [showShutInWells, setShowShutInWells] = useState(false)
-  const [showUnknownWells, setShowUnknownWells] = useState(false)
-  const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
@@ -381,29 +377,6 @@ export default function Home() {
     return signals
   }
 
-  const estimateMonthlyRoyalty = (owner: TractOwner, selectedTract: TractSelection | null): string | null => {
-    const decimalInterest = Number(owner.decimal_interest ?? 0) ||
-      (Number(owner.ownership_pct ?? 0) / 100)
-    if (!decimalInterest || decimalInterest <= 0) return null
-
-    const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
-    const ownerCount = Number(selectedTract?.owner_count ?? 1)
-    if (!cumOil) return null
-
-    // Estimate number of wells from owner density as a practical proxy.
-    const estimatedWells = Math.max(1, Math.round(ownerCount / 150))
-
-    // Normalize cumulative oil to a per-well monthly value and cap outliers.
-    const perWellMonthly = Math.min(cumOil / estimatedWells / 60, 3000)
-
-    const oilPrice = 70
-    const royaltyFraction = 0.25
-    const monthlyRoyalty = perWellMonthly * decimalInterest * oilPrice * royaltyFraction
-
-    if (monthlyRoyalty < 0.5) return null
-    if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
-    return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
-  }
 
   const handleAddToPipelineConfirm = async () => {
     if (!pipelineCandidate) return
@@ -798,8 +771,6 @@ export default function Home() {
   const maxScore = toNumber(selected?.max_propensity_score)
   const fieldName = selected?.field_name ?? 'Unknown'
   const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
-  const horizontalWellCount = toNumber(selected?.horizontal_well_count)
-  const verticalWellCount = toNumber(selected?.vertical_well_count)
 
   return (
     <div
@@ -1232,11 +1203,6 @@ export default function Home() {
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
                   {topOperator}
                 </span>
-                {(horizontalWellCount > 0 || verticalWellCount > 0) && (
-                  <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#ECFDF5', color: '#166534', border: '1px solid #BBF7D0' }}>
-                    {horizontalWellCount}H · {verticalWellCount}V
-                  </span>
-                )}
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -1265,11 +1231,6 @@ export default function Home() {
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {fieldName}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
-                {(horizontalWellCount > 0 || verticalWellCount > 0) && (
-                  <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>
-                    Well mix: {horizontalWellCount} horizontal · {verticalWellCount} vertical
-                  </div>
-                )}
                 <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
@@ -1366,17 +1327,6 @@ export default function Home() {
                                 </span>
                               </div>
                             )}
-                            {(() => {
-                              const royalty = estimateMonthlyRoyalty(owner, selected)
-                              return royalty ? (
-                                <div style={{ fontSize: 10, marginTop: 2 }}>
-                                  <span style={{ color: '#9CA3AF' }}>Est. royalty: </span>
-                                  <span style={{ color: '#16a34a', fontWeight: 600, fontFamily: 'monospace' }}>
-                                    {royalty}
-                                  </span>
-                                </div>
-                              ) : null
-                            })()}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
@@ -1597,10 +1547,6 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
-              showActiveWells={showActiveWells}
-              showShutInWells={showShutInWells}
-              showUnknownWells={showUnknownWells}
-              showPermits={showPermits}
               focusTarget={selected}
               onOwnerClick={(tract) => setSelected(tract)}
             />
@@ -1734,43 +1680,6 @@ export default function Home() {
           style={{ width: 160, accentColor: '#EF9F27' }}
         />
         <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
-
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
-        {[
-          { label: 'Active wells', val: showActiveWells, set: setShowActiveWells, color: '#16a34a' },
-          { label: 'Shut-in wells', val: showShutInWells, set: setShowShutInWells, color: '#dc2626' },
-          { label: 'Unknown wells', val: showUnknownWells, set: setShowUnknownWells, color: '#9CA3AF' },
-          { label: 'New permits', val: showPermits, set: setShowPermits, color: '#2563eb' },
-        ].map((l) => (
-          <div
-            key={l.label}
-            onClick={() => l.set(!l.val)}
-            style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', opacity: l.val ? 1 : 0.4 }}
-          >
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: l.val ? l.color : '#9CA3AF' }} />
-            <span style={{ fontSize: 11, color: l.val ? '#374151' : '#9CA3AF' }}>{l.label}</span>
-          </div>
-        ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginLeft: 8 }}>
-          {[
-            { label: 'Horizontal wells', color: '#16a34a', size: 10 },
-            { label: 'Vertical wells', color: '#16a34a', size: 6 },
-          ].map((item) => (
-            <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div
-                style={{
-                  width: item.size,
-                  height: item.size,
-                  borderRadius: '50%',
-                  background: item.color,
-                  border: '1.5px solid #ffffff',
-                  boxShadow: '0 0 0 1px rgba(107,114,128,0.25)',
-                }}
-              />
-              <span style={{ fontSize: 11, color: '#6B7280' }}>{item.label}</span>
-            </div>
-          ))}
-        </div>
 
       </div>
 
