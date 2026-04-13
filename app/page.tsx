@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import {
   LineChart,
   Line,
@@ -159,12 +160,36 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null)
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
     setToast(message)
     setTimeout(() => setToast(null), 3500)
   }
+
+  useEffect(() => {
+    let mounted = true
+    const loadSession = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!mounted) return
+      setIsAdmin(Boolean((session?.user?.user_metadata as Record<string, unknown> | undefined)?.is_admin))
+    }
+
+    void loadSession()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAdmin(Boolean((session?.user?.user_metadata as Record<string, unknown> | undefined)?.is_admin))
+    })
+
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const getDefaultPipelineTag = (owner: TractOwner): PipelineTag => {
     const score = toNumber(owner.propensity_score)
@@ -655,6 +680,22 @@ export default function Home() {
           >
             CRM →
           </a>
+          {isAdmin && (
+            <Link
+              href="/admin"
+              style={{
+                fontSize: 12,
+                color: '#6B7280',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid #E5E7EB',
+                textDecoration: 'none',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Admin
+            </Link>
+          )}
         </div>
       </div>
 
