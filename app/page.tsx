@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   LineChart,
@@ -116,6 +116,8 @@ const COUNTY_STATS = [
   { val: '4,512', lbl: 'Active wells' },
 ]
 
+const SKIP_TRACE_LIMIT = 200
+
 const ONBOARDING_STEPS = [
   {
     step: '01',
@@ -218,6 +220,7 @@ export default function Home() {
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
+  const [skipTraceUsage, setSkipTraceUsage] = useState<{ count: number; limit: number } | null>(null)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
   const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
   const [pipelineSaving, setPipelineSaving] = useState(false)
@@ -244,12 +247,43 @@ export default function Home() {
     setTimeout(() => setToast(null), 3500)
   }
 
+  const refreshSkipTraceUsage = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    if (!session) {
+      setSkipTraceUsage({ count: 0, limit: SKIP_TRACE_LIMIT })
+      return
+    }
+
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const { data, error } = await supabase
+      .from('skip_trace_usage')
+      .select('count')
+      .eq('user_id', session.user.id)
+      .eq('month', currentMonth)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Failed to fetch skip trace usage:', error)
+      return
+    }
+
+    const count = Number((data as { count?: number } | null)?.count ?? 0)
+    setSkipTraceUsage({ count, limit: SKIP_TRACE_LIMIT })
+  }, [])
+
   useEffect(() => {
     const updateMobile = () => setIsMobile(window.innerWidth < 1024)
     updateMobile()
     window.addEventListener('resize', updateMobile)
     return () => window.removeEventListener('resize', updateMobile)
   }, [])
+
+  useEffect(() => {
+    void refreshSkipTraceUsage()
+  }, [refreshSkipTraceUsage])
 
   useEffect(() => {
     const seen = window.localStorage.getItem('mineral_map_onboarded')
@@ -445,7 +479,26 @@ export default function Home() {
       const result = await response.json()
       console.log('Skip trace result:', result)
 
+      if (result.error === 'monthly_limit_reached') {
+        const usageCount = Number(result.count ?? SKIP_TRACE_LIMIT)
+        const usageLimit = Number(result.limit ?? SKIP_TRACE_LIMIT)
+        setSkipTraceUsage({ count: usageCount, limit: usageLimit })
+        alert('You have used all 200 skip traces for this month. Resets on the 1st.')
+        setSkipTraceLoading(false)
+        setSkipTracing(null)
+        return
+      }
+
       if (result.success) {
+        if (typeof result.count === 'number') {
+          setSkipTraceUsage({
+            count: Number(result.count),
+            limit: Number(result.limit ?? SKIP_TRACE_LIMIT),
+          })
+        } else {
+          void refreshSkipTraceUsage()
+        }
+
         const phone = result.phones?.[0] ?? null
         const email = result.emails?.[0] ?? null
         console.log('Saving to CRM - phone:', phone, 'email:', email)
@@ -1015,6 +1068,30 @@ export default function Home() {
                 No owners found for &quot;{searchQuery}&quot;
               </div>
             )}
+          </div>
+        )}
+        {!isMobile && skipTraceUsage && (
+          <div
+            style={{
+              fontSize: 11,
+              color: skipTraceUsage.count >= 180 ? '#dc2626' : '#9CA3AF',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              whiteSpace: 'nowrap',
+              marginRight: 8,
+            }}
+          >
+            <span>Skip traces:</span>
+            <span
+              style={{
+                fontWeight: 600,
+                color: skipTraceUsage.count >= 180 ? '#dc2626' : '#374151',
+              }}
+            >
+              {skipTraceUsage.count}
+            </span>
+            <span>/ {skipTraceUsage.limit}</span>
           </div>
         )}
         <div
@@ -2014,7 +2091,7 @@ export default function Home() {
               <br />
               <br />
               <span style={{ color: '#EF9F27' }}>
-                Prospector: 100/mo · Professional: 500/mo · Enterprise: unlimited
+                Monthly limit: {SKIP_TRACE_LIMIT} skip traces · resets on the 1st
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>

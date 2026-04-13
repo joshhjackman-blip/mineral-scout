@@ -21,6 +21,7 @@ export default function Account() {
   )
   const [user, setUser] = useState<{ id?: string; email?: string; created_at?: string } | null>(null)
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null)
+  const [skipTraceCount, setSkipTraceCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [cancelLoading, setCancelLoading] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' })
@@ -32,6 +33,7 @@ export default function Account() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session) {
+        setSkipTraceCount(0)
         setLoading(false)
         return
       }
@@ -43,6 +45,16 @@ export default function Account() {
         .eq('user_id', session.user.id)
         .maybeSingle()
       setSubscription((sub as SubscriptionRow | null) ?? null)
+
+      const currentMonth = new Date().toISOString().slice(0, 7)
+      const { data: usage } = await supabase
+        .from('skip_trace_usage')
+        .select('count')
+        .eq('user_id', session.user.id)
+        .eq('month', currentMonth)
+        .maybeSingle()
+      setSkipTraceCount((usage as { count?: number } | null)?.count ?? 0)
+
       setLoading(false)
     }
     void load()
@@ -188,6 +200,22 @@ export default function Account() {
               </Link>
             </div>
           )}
+
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="text-xs text-gray-400 mb-2">Skip traces this month</div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-400 rounded-full transition-all"
+                  style={{ width: `${Math.min(((skipTraceCount ?? 0) / 200) * 100, 100)}%` }}
+                />
+              </div>
+              <span className="text-xs font-medium text-gray-700 shrink-0">
+                {skipTraceCount ?? 0} / 200
+              </span>
+            </div>
+            <div className="text-xs text-gray-400 mt-1">Resets on the 1st of each month</div>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
