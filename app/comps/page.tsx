@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 
+export const dynamic = 'force-dynamic'
+
 type Comp = {
   id: string
   close_date: string

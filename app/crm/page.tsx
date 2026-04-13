@@ -11,6 +11,8 @@ import {
   TrendingUp, Save
 } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 type Deal = {
   id: string
   owner_name: string

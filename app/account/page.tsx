@@ -6,6 +6,8 @@ import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { User, CreditCard, LogOut, MapPin, BarChart2 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 
+export const dynamic = 'force-dynamic'
+
 type SubscriptionRow = {
   status?: string | null
 }

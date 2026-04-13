@@ -6,6 +6,8 @@ import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { Users, CreditCard, TrendingUp, Phone, ArrowLeft } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 
+export const dynamic = 'force-dynamic'
+
 type UserRow = {
   id: string
   email: string
