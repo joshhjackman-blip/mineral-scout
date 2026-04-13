@@ -274,12 +274,6 @@ export default function MethodologyPage() {
                   desc: 'Based on signals correlated with seller motivation - not a guarantee of willingness to sell. A score of 9 means multiple strong signals are present. Use scores to prioritize outreach, not to predict outcomes.'
                 },
                 {
-                  label: 'Estimated monthly royalty',
-                  confidence: 'Estimate',
-                  color: 'text-amber-700 bg-amber-50 border-amber-200',
-                  desc: 'Calculated from cumulative production ÷ 60 months × decimal interest × $70/bbl oil price. Treat as a ballpark figure. Actual royalties depend on current production rates, deductions, commodity mix, and price received.'
-                },
-                {
                   label: 'Est. lease expiration',
                   confidence: 'Approximate',
                   color: 'text-orange-700 bg-orange-50 border-orange-200',
