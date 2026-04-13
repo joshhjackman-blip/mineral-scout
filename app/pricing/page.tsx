@@ -11,8 +11,6 @@ const features = [
   'CRM & acquisition pipeline',
   'Skip tracing',
   'Comp calculator',
-  'CSV export for direct mail',
-  'Horizontal well classification',
 ]
 
 export default function Pricing() {
@@ -67,7 +65,7 @@ export default function Pricing() {
             <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 14 }}>Mineral Map</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
               <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 22, color: 'rgba(255,255,255,0.6)', fontWeight: 400 }}>$</span>
-              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 60, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>300</span>
+              <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: 60, color: '#fff', lineHeight: 1, letterSpacing: '-0.02em' }}>299</span>
               <span style={{ fontSize: 15, color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>/mo</span>
             </div>
             <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.3)', marginBottom: 32, marginTop: 6 }}>Billed monthly · Cancel anytime</div>
@@ -106,7 +104,7 @@ export default function Pricing() {
             >
               {loading ? 'Loading...' : 'Start 7-day free trial →'}
             </button>
-            <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.18)', marginTop: 14 }}>7-day free trial · then $300/mo · cancel anytime</div>
+            <div style={{ textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.18)', marginTop: 14 }}>7-day free trial · then $299/mo · cancel anytime</div>
           </div>
         </div>
 
