@@ -56,6 +56,7 @@ type TractSelection = {
   first_60_month_oil?: number
   horizontal_well_count?: number
   vertical_well_count?: number
+  SHAPE_AREA?: number
 }
 
 type TractRecord = {
@@ -76,6 +77,7 @@ type TractRecord = {
   first_60_month_oil?: number
   horizontal_well_count?: number
   vertical_well_count?: number
+  SHAPE_AREA?: number
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
@@ -198,6 +200,53 @@ const classifyOwner = (name: string): 'trust' | 'company' | 'individual' => {
 
 const ownerTypePriority = (name: string): number =>
   classifyOwner(name) === 'individual' ? 0 : 1
+
+const SQM_PER_ACRE = 4046.86
+
+const getTractGrossAcres = (tractProperties?: TractSelection | null): number => {
+  const shapeArea = Number(tractProperties?.SHAPE_AREA ?? 0)
+  if (shapeArea > 0) return shapeArea / SQM_PER_ACRE
+  return 0
+}
+
+const getNRA = (owner: TractOwner, tractProperties?: TractSelection | null): number | null => {
+  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
+    (Number(owner.ownership_pct ?? 0) / 100)
+  if (!decimalInterest || decimalInterest <= 0) return null
+
+  let grossAcres = Number(owner.acreage ?? 0)
+  if (!grossAcres && tractProperties) {
+    grossAcres = getTractGrossAcres(tractProperties)
+  }
+  if (!grossAcres) return null
+
+  return grossAcres * decimalInterest
+}
+
+const estimateMonthlyRoyalty = (
+  owner: TractOwner,
+  selectedTract: TractSelection | null
+): string | null => {
+  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
+    (Number(owner.ownership_pct ?? 0) / 100)
+  if (!decimalInterest || decimalInterest <= 0) return null
+
+  let grossAcres = Number(owner.acreage ?? 0)
+  if (!grossAcres && selectedTract) {
+    grossAcres = getTractGrossAcres(selectedTract)
+  }
+  if (!grossAcres) return null
+
+  const ownerCount = Number(selectedTract?.owner_count ?? 1)
+  const estimatedWells = Math.max(1, Math.round(ownerCount / 150))
+  const cumOil = Number(selectedTract?.prod_cumulative_sum_oil ?? 0)
+  const perWellMonthly = Math.min(cumOil / estimatedWells / 60, 3000)
+  const monthlyRoyalty = perWellMonthly * decimalInterest * 70 * 0.25
+
+  if (monthlyRoyalty < 0.5) return null
+  if (monthlyRoyalty < 1000) return `~$${Math.round(monthlyRoyalty)}/mo`
+  return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
+}
 
 const getTrend = (series: Array<{ month: string; oil: number }>) => {
   if (series.length < 2) return 'stable'
@@ -651,6 +700,7 @@ export default function Home() {
               first_60_month_oil: toNumber(props.first_60_month_oil),
               horizontal_well_count: toNumber(props.horizontal_well_count),
               vertical_well_count: toNumber(props.vertical_well_count),
+              SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
@@ -690,6 +740,7 @@ export default function Home() {
     first_60_month_oil: tract.first_60_month_oil,
     horizontal_well_count: tract.horizontal_well_count,
     vertical_well_count: tract.vertical_well_count,
+    SHAPE_AREA: tract.SHAPE_AREA,
   })
 
   const handleSearchSelect = async (result: OwnerSearchResult) => {
@@ -793,15 +844,10 @@ export default function Home() {
     } else if (ownerSort === 'interest') {
       owners.sort((a, b) => Number(b.ownership_pct ?? 0) - Number(a.ownership_pct ?? 0))
     } else if (ownerSort === 'nra') {
-      const getNRA = (owner: TractOwner): number => {
-        const gross = Number(owner.acreage ?? 0)
-        const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
-        return gross * interest
-      }
-      owners.sort((a, b) => getNRA(b) - getNRA(a))
+      owners.sort((a, b) => (getNRA(b, selected) ?? 0) - (getNRA(a, selected) ?? 0))
     }
     return owners
-  }, [deduplicatedOwners, ownerSort])
+  }, [deduplicatedOwners, ownerSort, selected])
 
   const filteredOwnersList = useMemo(() => {
     return sortedOwners.filter((owner) => {
@@ -815,14 +861,12 @@ export default function Home() {
         if (pct < 1) return false
       }
       if (minNRA > 0) {
-        const grossAcres = Number(owner.acreage ?? 0)
-        const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
-        const nra = grossAcres * interest
+        const nra = getNRA(owner, selected) ?? 0
         if (nra < minNRA) return false
       }
       return true
     })
-  }, [sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA])
+  }, [sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA, selected])
 
   const cleanOwnersList = useMemo(() => {
     return filteredOwnersList.filter((owner: TractOwner) => {
@@ -1425,12 +1469,8 @@ export default function Home() {
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
                   const typeLabel = ownerType === 'trust' ? 'TRUST' : ownerType === 'company' ? 'CO' : 'IND'
-                  const grossAcres = Number(owner.acreage ?? 0)
-                  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
-                    (Number(owner.ownership_pct ?? 0) / 100)
-                  const nra = grossAcres > 0 && decimalInterest > 0
-                    ? grossAcres * decimalInterest
-                    : null
+                  const nra = getNRA(owner, selected)
+                  const royaltyEstimate = estimateMonthlyRoyalty(owner, selected)
 
                   return (
                     <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
@@ -1464,12 +1504,18 @@ export default function Home() {
                                 : 'Address unknown'}
                             </div>
                             {nra !== null && nra > 0 && (
-                              <div style={{ fontSize: 11, color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
+                              <div
+                                style={{ fontSize: 10, color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}
+                                title={royaltyEstimate ? `Est. royalty: ${royaltyEstimate}` : undefined}
+                              >
                                 {nra < 0.01
                                   ? `${nra.toFixed(4)} NRA`
                                   : nra < 1
                                     ? `${nra.toFixed(3)} NRA`
                                     : `${nra.toFixed(2)} NRA`}
+                                {!Number(owner.acreage) && (
+                                  <span style={{ fontSize: 9, color: '#9CA3AF', marginLeft: 3 }}>est.</span>
+                                )}
                               </div>
                             )}
                             <div style={{ fontSize: 10, color: '#6B7280' }}>
