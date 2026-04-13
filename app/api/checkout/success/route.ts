@@ -13,7 +13,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL('/pricing', req.url))
   }
 
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2024-06-20' })
+  const stripeKey = process.env.STRIPE_SECRET_KEY
+  if (!stripeKey) {
+    return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 })
+  }
+
+  const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' })
   const stripeSession = await stripe.checkout.sessions.retrieve(sessionId)
   console.log('Stripe session status:', stripeSession.status)
   console.log('Stripe session metadata:', stripeSession.metadata)
