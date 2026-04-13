@@ -196,6 +196,9 @@ const classifyOwner = (name: string): 'trust' | 'company' | 'individual' => {
   return 'individual'
 }
 
+const ownerTypePriority = (name: string): number =>
+  classifyOwner(name) === 'individual' ? 0 : 1
+
 const getTrend = (series: Array<{ month: string; oil: number }>) => {
   if (series.length < 2) return 'stable'
   const recent = series[series.length - 1].oil
@@ -213,6 +216,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
+  const [largeInterestOnly, setLargeInterestOnly] = useState(false)
+  const [minNRA, setMinNRA] = useState<number>(0)
   const [minScore, setMinScore] = useState(0)
   const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
@@ -380,6 +385,9 @@ export default function Home() {
     const nri = Number(owner.ownership_pct ?? 0) / 100
     const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
 
+    if (ownerTypePriority(owner.owner_name) === 0) {
+      signals.push('Individual owner (priority contact)')
+    }
     if (state && state !== 'TX' && state !== 'TEXAS' && state.length > 0)
       signals.push('Out of state owner')
     if (name.includes('LIFE ESTATE'))
@@ -764,19 +772,33 @@ export default function Home() {
         seen.set(name, owner)
       }
     }
-    return Array.from(seen.values()).sort(
-      (a, b) => Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
-    )
+    return Array.from(seen.values()).sort((a, b) => {
+      const scoreDiff = Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
+      if (scoreDiff !== 0) return scoreDiff
+      return ownerTypePriority(a.owner_name) - ownerTypePriority(b.owner_name)
+    })
   }, [selectedOwners])
 
   const filteredOwnersList = useMemo(() => {
     return deduplicatedOwners.filter((owner) => {
       const score = toNumber(owner.propensity_score)
       if (tierFilter !== 'all' && tierByScore(score) !== tierFilter) return false
-      if (ownerTypeFilter === 'all') return true
-      return classifyOwner(String(owner.owner_name ?? '')) === ownerTypeFilter
+      if (ownerTypeFilter !== 'all' && classifyOwner(String(owner.owner_name ?? '')) !== ownerTypeFilter) {
+        return false
+      }
+      if (largeInterestOnly) {
+        const pct = Number(owner.ownership_pct ?? 0)
+        if (pct < 1) return false
+      }
+      if (minNRA > 0) {
+        const grossAcres = Number(owner.acreage ?? 0)
+        const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
+        const nra = grossAcres * interest
+        if (nra < minNRA) return false
+      }
+      return true
     })
-  }, [deduplicatedOwners, ownerTypeFilter, tierFilter])
+  }, [deduplicatedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA])
 
   const cleanOwnersList = useMemo(() => {
     return filteredOwnersList.filter((owner: TractOwner) => {
@@ -1342,7 +1364,7 @@ export default function Home() {
                   const grossAcres = Number(owner.acreage ?? 0)
                   const decimalInterest = Number(owner.decimal_interest ?? 0) ||
                     (Number(owner.ownership_pct ?? 0) / 100)
-                  const netAcres = grossAcres > 0 && decimalInterest > 0
+                  const nra = grossAcres > 0 && decimalInterest > 0
                     ? grossAcres * decimalInterest
                     : null
 
@@ -1377,19 +1399,18 @@ export default function Home() {
                                 ? `${owner.mailing_city}, ${owner.mailing_state}`
                                 : 'Address unknown'}
                             </div>
+                            {nra !== null && nra > 0 && (
+                              <div style={{ fontSize: 11, color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
+                                {nra < 0.01
+                                  ? `${nra.toFixed(4)} NRA`
+                                  : nra < 1
+                                    ? `${nra.toFixed(3)} NRA`
+                                    : `${nra.toFixed(2)} NRA`}
+                              </div>
+                            )}
                             <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {netAcres !== null && netAcres > 0 && (
-                                <span style={{ fontSize: 10, color: '#6B7280' }}>
-                                  {netAcres < 0.01
-                                    ? `${netAcres.toFixed(4)} NMA`
-                                    : netAcres < 1
-                                      ? `${netAcres.toFixed(3)} NMA`
-                                      : `${netAcres.toFixed(2)} NMA`}
-                                </span>
-                              )}
                               {Number(owner.ownership_pct ?? 0) > 0 && (
                                 <>
-                                  {netAcres !== null && netAcres > 0 ? ' · ' : ''}
                                   {`${Number(owner.ownership_pct).toFixed(4)}% ownership`}
                                 </>
                               )}
@@ -1703,6 +1724,26 @@ export default function Home() {
           />
         </button>
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#6B7280' }}>1%+ interest</span>
+          <div
+            onClick={() => setLargeInterestOnly(!largeInterestOnly)}
+            style={{
+              width: 32, height: 18, borderRadius: 9,
+              background: largeInterestOnly ? '#EF9F27' : '#E5E7EB',
+              cursor: 'pointer', position: 'relative', transition: 'background 0.2s'
+            }}
+          >
+            <div style={{
+              position: 'absolute', top: 2,
+              left: largeInterestOnly ? 16 : 2,
+              width: 14, height: 14, borderRadius: '50%',
+              background: '#fff', transition: 'left 0.2s',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+            }} />
+          </div>
+        </div>
+
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
           <span style={{ fontSize: 12, color: '#374151', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif' }}>Type:</span>
           {(['all', 'individual', 'trust', 'company'] as const).map(type => (
@@ -1759,6 +1800,24 @@ export default function Home() {
           style={{ width: 160, accentColor: '#EF9F27' }}
         />
         <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#6B7280' }}>Min NRA:</span>
+          <select
+            value={minNRA}
+            onChange={(e) => setMinNRA(Number(e.target.value))}
+            style={{ fontSize: 11, border: '1px solid #E5E7EB', borderRadius: 6, padding: '2px 6px', background: '#fff', color: '#374151' }}
+          >
+            <option value={0}>Any</option>
+            <option value={0.1}>0.1+</option>
+            <option value={0.5}>0.5+</option>
+            <option value={1}>1+</option>
+            <option value={5}>5+</option>
+            <option value={10}>10+</option>
+            <option value={25}>25+</option>
+            <option value={50}>50+</option>
+          </select>
+        </div>
 
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
         <button

@@ -88,6 +88,8 @@ export default function CRM() {
   const [activeTag, setActiveTag] = useState('all')
   const [search, setSearch] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
+  const [logModal, setLogModal] = useState<{ method: string } | null>(null)
+  const [logNote, setLogNote] = useState('')
 
   useEffect(() => {
     supabase.from('deals').select('*').order('updated_at', { ascending: false }).then(({ data }) => {
@@ -184,13 +186,6 @@ export default function CRM() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [editingDeal, handleDeleteLead])
-
-  const handleLogContact = async (method: string) => {
-    if (!editingDeal) return
-    const loggedAt = new Date().toISOString()
-    await supabase.from('contact_log').insert({ deal_id: editingDeal.id, method, logged_at: loggedAt })
-    setContactLog((prev) => [{ id: Date.now().toString(), deal_id: editingDeal.id, logged_at: loggedAt, method }, ...prev])
-  }
 
   const handleRunSkipTraceFromCRM = useCallback(async () => {
     if (!editingDeal) return
@@ -593,25 +588,19 @@ export default function CRM() {
               <>
                 <div className="p-4 border-b border-gray-100">
                   <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Quick Actions</div>
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => handleLogContact('Called — spoke')}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
-                    >
-                      <Phone size={14} />Log a call
-                    </button>
-                    <button
-                      onClick={() => handleLogContact('Sent letter')}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
-                    >
-                      <Mail size={14} />Log mail sent
-                    </button>
-                    <button
-                      onClick={() => handleLogContact('Left voicemail')}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-gray-50 hover:bg-amber-50 hover:text-amber-700 border border-gray-200 hover:border-amber-200 rounded-lg transition-colors font-medium"
-                    >
-                      <Phone size={14} />Left voicemail
-                    </button>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {['Called — no answer', 'Called — spoke', 'Left voicemail', 'Sent letter', 'Sent email', 'Met in person'].map(method => (
+                      <button
+                        key={method}
+                        onClick={() => {
+                          setLogModal({ method })
+                          setLogNote('')
+                        }}
+                        className="px-3 py-1.5 text-xs border border-gray-200 rounded-md text-gray-600 hover:border-amber-300 hover:text-amber-700 hover:bg-amber-50 transition-colors font-medium bg-white shadow-sm"
+                      >
+                        + {method}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -720,6 +709,56 @@ export default function CRM() {
           </aside>
         </main>
       </div>
+
+      {logModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-96 shadow-2xl">
+            <h3 className="font-serif text-lg font-bold text-gray-900 mb-1">{logModal.method}</h3>
+            <p className="text-sm text-gray-400 mb-4">Add notes about this contact attempt</p>
+            <textarea
+              value={logNote}
+              onChange={(e) => setLogNote(e.target.value)}
+              placeholder="e.g. Spoke with owner for 10 min, interested but wants to think about it. Call back next week."
+              rows={4}
+              className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 resize-none mb-4"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setLogModal(null)}
+                className="px-4 py-2 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!editingDeal) return
+                  const entry = logNote.trim()
+                    ? `${logModal.method} — ${logNote.trim()}`
+                    : logModal.method
+                  const loggedAt = new Date().toISOString()
+                  await supabase.from('contact_log').insert({
+                    deal_id: editingDeal.id,
+                    method: entry,
+                    logged_at: loggedAt,
+                  })
+                  setContactLog((prev) => [{
+                    id: Date.now().toString(),
+                    deal_id: editingDeal.id,
+                    logged_at: loggedAt,
+                    method: entry,
+                  }, ...prev])
+                  setLogModal(null)
+                  setLogNote('')
+                }}
+                className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+              >
+                Save log
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
