@@ -218,6 +218,7 @@ export default function Home() {
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [largeInterestOnly, setLargeInterestOnly] = useState(false)
   const [minNRA, setMinNRA] = useState<number>(0)
+  const [ownerSort, setOwnerSort] = useState<'score' | 'interest' | 'nra'>('score')
   const [minScore, setMinScore] = useState(0)
   const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
@@ -721,6 +722,8 @@ export default function Home() {
     }
 
     setSelected(toTractSelection(tract))
+    setOwnerSort('score')
+    setExpandedOwner(null)
     setHighlightedOwner(normalizedOwner)
 
     setTimeout(() => {
@@ -776,15 +779,32 @@ export default function Home() {
         seen.set(name, owner)
       }
     }
-    return Array.from(seen.values()).sort((a, b) => {
-      const scoreDiff = Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
-      if (scoreDiff !== 0) return scoreDiff
-      return ownerTypePriority(a.owner_name) - ownerTypePriority(b.owner_name)
-    })
+    return Array.from(seen.values())
   }, [selectedOwners])
 
+  const sortedOwners = useMemo(() => {
+    const owners = [...deduplicatedOwners]
+    if (ownerSort === 'score') {
+      owners.sort((a, b) => {
+        const scoreDiff = Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
+        if (scoreDiff !== 0) return scoreDiff
+        return ownerTypePriority(a.owner_name) - ownerTypePriority(b.owner_name)
+      })
+    } else if (ownerSort === 'interest') {
+      owners.sort((a, b) => Number(b.ownership_pct ?? 0) - Number(a.ownership_pct ?? 0))
+    } else if (ownerSort === 'nra') {
+      const getNRA = (owner: TractOwner): number => {
+        const gross = Number(owner.acreage ?? 0)
+        const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
+        return gross * interest
+      }
+      owners.sort((a, b) => getNRA(b) - getNRA(a))
+    }
+    return owners
+  }, [deduplicatedOwners, ownerSort])
+
   const filteredOwnersList = useMemo(() => {
-    return deduplicatedOwners.filter((owner) => {
+    return sortedOwners.filter((owner) => {
       const score = toNumber(owner.propensity_score)
       if (tierFilter !== 'all' && tierByScore(score) !== tierFilter) return false
       if (ownerTypeFilter !== 'all' && classifyOwner(String(owner.owner_name ?? '')) !== ownerTypeFilter) {
@@ -802,7 +822,7 @@ export default function Home() {
       }
       return true
     })
-  }, [deduplicatedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA])
+  }, [sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA])
 
   const cleanOwnersList = useMemo(() => {
     return filteredOwnersList.filter((owner: TractOwner) => {
@@ -1345,13 +1365,53 @@ export default function Home() {
                 </div>
               </div>
 
-              <div style={{ padding: '10px 16px 6px', fontSize: 9, color: '#6B7280', letterSpacing: '0.08em', fontWeight: 600 }}>
-                ALL OWNERS IN TRACT ({ownerCount})
-                {ownerTypeFilter !== 'all' && (
-                  <span style={{ color: '#EF9F27', marginLeft: 6 }}>
-                    · showing {filteredOwnersList.length} {ownerTypeFilter}s
-                  </span>
-                )}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '10px 16px',
+                  borderBottom: '1px solid #F3F4F6',
+                  background: '#F9FAFB',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#6B7280',
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  All owners in tract ({filteredOwnersList.length})
+                </div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[
+                    { key: 'score', label: 'Score' },
+                    { key: 'interest', label: '% Ownership' },
+                    { key: 'nra', label: 'NRA' },
+                  ].map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setOwnerSort(s.key as 'score' | 'interest' | 'nra')}
+                      style={{
+                        fontSize: 10,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontFamily: 'Inter, sans-serif',
+                        fontWeight: ownerSort === s.key ? 600 : 400,
+                        background: ownerSort === s.key ? '#EF9F27' : 'transparent',
+                        border: ownerSort === s.key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
+                        color: ownerSort === s.key ? '#fff' : '#6B7280',
+                        transition: 'all 0.15s',
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {cleanOwnersList.map((owner: TractOwner, i: number) => {
@@ -1561,7 +1621,11 @@ export default function Home() {
                 {topTracts.map((tract, index) => (
                   <div
                     key={`${tract.abstract_label}-${tract.level1_sur}-${index}`}
-                    onClick={() => setSelected(toTractSelection(tract))}
+                    onClick={() => {
+                      setSelected(toTractSelection(tract))
+                      setOwnerSort('score')
+                      setExpandedOwner(null)
+                    }}
                     style={{
                       background: '#FFFFFF',
                       border: '1px solid #E5E7EB',
@@ -1652,7 +1716,11 @@ export default function Home() {
             <MineralMap
               showPermits={showPermits}
               focusTarget={selected}
-              onOwnerClick={(tract) => setSelected(tract)}
+              onOwnerClick={(tract) => {
+                setSelected(tract)
+                setOwnerSort('score')
+                setExpandedOwner(null)
+              }}
             />
           )}
         </div>
