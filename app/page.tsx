@@ -384,11 +384,15 @@ export default function Home() {
     const acreage = grossAc > 0 && interest > 0 ? grossAc * interest : grossAc
     const nri = Number(owner.ownership_pct ?? 0) / 100
     const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
+    const isIndividual = ownerTypePriority(owner.owner_name) === 0
 
-    if (ownerTypePriority(owner.owner_name) === 0) {
-      signals.push('Individual owner (priority contact)')
+    if (isIndividual) {
+      signals.push('Individual owner — highest priority')
+      if (state && state !== 'TX' && state !== 'TEXAS') {
+        signals.push('Out of state individual — top target')
+      }
     }
-    if (state && state !== 'TX' && state !== 'TEXAS' && state.length > 0)
+    if (!isIndividual && state && state !== 'TX' && state !== 'TEXAS' && state.length > 0)
       signals.push('Out of state owner')
     if (name.includes('LIFE ESTATE'))
       signals.push('Life estate')

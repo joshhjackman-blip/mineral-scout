@@ -205,6 +205,71 @@ def is_missing(value: Any) -> bool:
         return False
 
 
+def owner_is_company(name: str) -> bool:
+    return any(
+        marker in name
+        for marker in (
+            "LLC",
+            "L.L.C",
+            "LP",
+            "L.P",
+            "INC",
+            "CORP",
+            "LTD",
+            "COMPANY",
+            " CO ",
+            " CO.",
+            "PARTNERS",
+            "HOLDINGS",
+            "MINERALS",
+            "RESOURCES",
+            "VENTURES",
+        )
+    )
+
+
+def owner_is_individual(name: str, is_company: bool) -> bool:
+    if is_company:
+        return False
+    return "TRUST" not in name and "ESTATE" not in name
+
+
+def reprioritize_owner_score(owner: dict[str, Any]) -> int:
+    """Apply latest customer-priority scoring weights."""
+    score = to_int(owner.get("propensity_score"))
+    name = norm_text(owner.get("owner_name"))
+    state = norm_text(owner.get("mailing_state"))
+    is_company = owner_is_company(name)
+    is_individual = owner_is_individual(name, is_company)
+
+    # Individual bonus — highest priority
+    if is_individual:
+        score += 3
+
+    # Out of state individual — extra boost
+    if is_individual and state and state not in ("TX", "TEXAS"):
+        score += 1
+
+    # Estate/trust signals — reduced significantly
+    if not is_company:
+        if "LIFE ESTATE" in name:
+            score += 2
+        elif "ESTATE" in name:
+            score += 2
+        if "IRREVOCABLE" in name:
+            score += 1
+        elif "LIVING TRUST" in name or "LIV TR" in name:
+            score += 1
+        elif "TRUST" in name:
+            pass
+
+    # Company cap — very low
+    if is_company:
+        score = min(score, 2)
+
+    return max(0, min(score, 10))
+
+
 def main() -> None:
     supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
     supabase_key = require_env(
@@ -215,6 +280,8 @@ def main() -> None:
 
     # 1) Fetch all motivated owners with pagination
     all_owners = paginate_motivated_owners(client)
+    for owner in all_owners:
+        owner["propensity_score"] = reprioritize_owner_score(owner)
 
     # 2) Load parcels and print join-key diagnostics
     if not INPUT_PARCELS.exists():
