@@ -143,7 +143,7 @@ export default function Account() {
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <div className="font-serif text-base font-bold text-gray-900 mb-1">Mineral Map · $399/mo</div>
+                  <div className="font-serif text-base font-bold text-gray-900 mb-1">Mineral Map · $300/mo</div>
                   <div className="text-sm text-gray-400">Eagle Ford Basin · Gonzales County</div>
                 </div>
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${statusColor}`}>
@@ -184,7 +184,7 @@ export default function Account() {
               <div className="text-sm text-gray-500 mb-4">No active subscription.</div>
               <Link href="/pricing" className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
                 <CreditCard size={14} />
-                Subscribe — $399/mo
+                Subscribe — $300/mo
               </Link>
             </div>
           )}
