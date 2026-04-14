@@ -11,6 +11,7 @@ This script:
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -25,15 +26,31 @@ from supabase import Client, create_client
 
 PAGE_SIZE = 1000
 INPUT_PARCELS = Path("data/gonzales_parcels.geojson")
+FALLBACK_INPUT_PARCELS = Path("public/gonzales_parcels_enriched.geojson")
 OUTPUT_PARCELS = Path("data/gonzales_parcels_enriched.geojson")
 PUBLIC_PARCELS = Path("public/gonzales_parcels_enriched.geojson")
 
 
-def require_env(name: str) -> str:
+def require_env(name: str, aliases: tuple[str, ...] = ()) -> str:
     value = os.getenv(name)
-    if not value:
-        raise ValueError(f"Missing required environment variable: {name}")
-    return value
+    if value:
+        return value
+    for alias in aliases:
+        alias_value = os.getenv(alias)
+        if alias_value:
+            return alias_value
+    alias_text = f" (or one of: {', '.join(aliases)})" if aliases else ""
+    raise ValueError(f"Missing required environment variable: {name}{alias_text}")
+
+
+def resolve_input_parcels_path() -> Path:
+    if INPUT_PARCELS.exists():
+        return INPUT_PARCELS
+    if FALLBACK_INPUT_PARCELS.exists():
+        return FALLBACK_INPUT_PARCELS
+    raise FileNotFoundError(
+        f"Missing input GeoJSON: {INPUT_PARCELS} (fallback: {FALLBACK_INPUT_PARCELS})"
+    )
 
 
 def normalize_lease_id(value: Any) -> str:
@@ -52,6 +69,12 @@ def canonical_lease_name(value: Any) -> str:
     text = re.sub(r"\bW\s*#?\s*\d+[A-Z]*\b", " ", text)
     text = re.sub(r"\b\d+[A-Z]*\b", " ", text)
     text = re.sub(r"[^A-Z ]+", " ", text)
+    return " ".join(text.split())
+
+
+def normalize_lease_text(value: Any) -> str:
+    text = str(value or "").upper()
+    text = re.sub(r"[^A-Z0-9 ]+", " ", text)
     return " ".join(text.split())
 
 
@@ -153,7 +176,7 @@ def paginate_wells(client: Client) -> list[dict[str, Any]]:
     while True:
         result = (
             client.table("gonzales_wells")
-            .select("api_number, rrc_lease_id, latitude, longitude")
+            .select("api_number, rrc_lease_id, lease_name, latitude, longitude")
             .order("api_number", desc=False)
             .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
             .execute()
@@ -170,6 +193,32 @@ def paginate_wells(client: Client) -> list[dict[str, Any]]:
     return wells
 
 
+def paginate_permits_with_coords(client: Client) -> list[dict[str, Any]]:
+    permits: list[dict[str, Any]] = []
+    page = 0
+
+    while True:
+        result = (
+            client.table("gonzales_permits")
+            .select("id, lease_name, latitude, longitude")
+            .not_.is_("latitude", "null")
+            .not_.is_("longitude", "null")
+            .order("id", desc=False)
+            .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+            .execute()
+        )
+        batch = result.data or []
+        if not batch:
+            break
+
+        permits.extend(batch)
+        page += 1
+        if len(batch) < PAGE_SIZE:
+            break
+
+    return permits
+
+
 def to_int(value: Any) -> int:
     try:
         return int(value)
@@ -178,17 +227,20 @@ def to_int(value: Any) -> int:
 
 
 def main() -> None:
-    supabase_url = require_env("SUPABASE_URL")
-    supabase_key = require_env("SUPABASE_KEY")
+    supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
+    supabase_key = require_env(
+        "SUPABASE_KEY",
+        ("SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    )
     client = create_client(supabase_url, supabase_key)
 
     # 1) Fetch all motivated owners with pagination
     all_owners = paginate_motivated_owners(client)
 
     # 2) Load parcels and print join-key diagnostics
-    if not INPUT_PARCELS.exists():
-        raise FileNotFoundError(f"Missing input GeoJSON: {INPUT_PARCELS}")
-    parcels_gdf = gpd.read_file(INPUT_PARCELS)
+    input_parcels_path = resolve_input_parcels_path()
+    print(f"Using input parcels from: {input_parcels_path}")
+    parcels_gdf = gpd.read_file(input_parcels_path)
     if parcels_gdf.crs is None:
         parcels_gdf = parcels_gdf.set_crs("EPSG:4326")
     else:
@@ -223,7 +275,82 @@ def main() -> None:
     print(f"Unique abstracts with owners: {len(owners_by_abstract)}")
     print("Sample keys:", list(owners_by_abstract.keys())[:10])
 
-    # Real mapping to parcel abstracts using lease -> well coords -> polygon join
+    # PRIMARY MATCH: Extract abstract directly from Legal Description in raw_record
+    # This covers the vast majority of owners before spatial fallbacks.
+    print("Building lease->abstract mapping from Legal Descriptions...")
+    owner_id_to_abstract: dict[str, str] = {}
+    lease_to_abstract_direct: dict[str, str] = {}
+    mapping_path = os.path.join(
+        os.path.dirname(__file__), "../data/lease_abstract_mapping.csv"
+    )
+
+    if os.path.exists(mapping_path):
+        with open(mapping_path, encoding="utf-8") as mapping_file:
+            reader = csv.DictReader(mapping_file)
+            for row in reader:
+                lease_id = str(row.get("rrc_lease_id") or "").strip()
+                abstract_label = str(row.get("abstract_label") or "").strip().upper()
+                if not lease_id or not abstract_label:
+                    continue
+                lease_to_abstract_direct[lease_id] = abstract_label
+                lease_to_abstract_direct[normalize_lease_id(lease_id)] = abstract_label
+        print(
+            f"Loaded {len(lease_to_abstract_direct)} lease->abstract mappings"
+        )
+    else:
+        all_owners_raw: list[dict[str, Any]] = []
+        last_id: str | None = None
+        while True:
+            query = (
+                client.table("gonzales_mineral_ownership")
+                .select("id, rrc_lease_id, raw_record")
+                .order("id", desc=False)
+                .limit(PAGE_SIZE)
+            )
+            if last_id:
+                query = query.gt("id", last_id)
+            result = query.execute()
+            page_rows = result.data or []
+            if not page_rows:
+                break
+            all_owners_raw.extend(page_rows)
+            last_id = str(page_rows[-1]["id"])
+            if len(page_rows) < PAGE_SIZE:
+                break
+
+        for owner in all_owners_raw:
+            raw_record = owner.get("raw_record", {}) or {}
+            legal = (
+                str(raw_record.get("Legal Description", "") or "")
+                if isinstance(raw_record, dict)
+                else ""
+            )
+            match = re.search(r"AB\s+(\d+)", legal, re.IGNORECASE)
+            if not match:
+                continue
+            abstract_label = f"A-{match.group(1)}"
+            lease_id = str(owner.get("rrc_lease_id") or "").strip()
+            if lease_id:
+                lease_to_abstract_direct[lease_id] = abstract_label
+                lease_to_abstract_direct[normalize_lease_id(lease_id)] = abstract_label
+        print(
+            f"Built {len(lease_to_abstract_direct)} lease->abstract mappings from raw_record"
+        )
+
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        lease_id = str(owner.get("rrc_lease_id") or "").strip()
+        lease_key = normalize_lease_id(owner.get("rrc_lease_id"))
+        if lease_id and lease_id in lease_to_abstract_direct:
+            owner_id_to_abstract[owner_id] = lease_to_abstract_direct[lease_id]
+        elif lease_key in lease_to_abstract_direct:
+            owner_id_to_abstract[owner_id] = lease_to_abstract_direct[lease_key]
+
+    print(
+        f"After Legal Description matching: {len(owner_id_to_abstract)} owners mapped to abstracts"
+    )
+
+    # Spatial match next: fill any gaps left by the direct Legal Description mapping.
     wells = paginate_wells(client)
     wells_by_lease: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for well in wells:
@@ -237,12 +364,15 @@ def main() -> None:
     owner_points: list[dict[str, Any]] = []
     well_points: list[dict[str, Any]] = []
     for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if owner_id in owner_id_to_abstract:
+            continue
         lease_key = normalize_lease_id(owner.get("rrc_lease_id"))
         coords = wells_by_lease.get(lease_key)
         if not coords:
             continue
         lng, lat = coords[0]
-        owner_points.append({"owner_id": owner["id"], "geometry": Point(lng, lat)})
+        owner_points.append({"owner_id": owner_id, "geometry": Point(lng, lat)})
     for well in wells:
         lat = well.get("latitude")
         lng = well.get("longitude")
@@ -264,9 +394,11 @@ def main() -> None:
     )
     point_to_abstract = point_to_abstract[point_to_abstract["ABSTRACT_L"].notna()]
 
-    owner_id_to_abstract: dict[str, str] = {}
     for _, row in point_to_abstract.iterrows():
-        owner_id_to_abstract[str(row["owner_id"])] = str(row["ABSTRACT_L"]).strip()
+        owner_id = str(row["owner_id"])
+        if owner_id in owner_id_to_abstract:
+            continue
+        owner_id_to_abstract[owner_id] = str(row["ABSTRACT_L"]).strip()
 
     # Build lease_id -> abstract mapping from well-point spatial join.
     wells_gdf = gpd.GeoDataFrame(well_points, geometry="geometry", crs="EPSG:4326")
@@ -315,6 +447,224 @@ def main() -> None:
         if by_name:
             owner_id_to_abstract[owner_id] = by_name
             fallback_name_hits += 1
+
+    # Fallback: abstract number matching from lease/field names.
+    print("Running abstract number fallback matching...")
+    abstract_numbers: dict[str, str] = {}
+    for _, row in parcels_gdf.iterrows():
+        abstract_l = str(row.get("ABSTRACT_L", "") or "").strip()
+        abstract_n = str(row.get("ABSTRACT_N", "") or "").strip()
+        if abstract_l:
+            num = abstract_l.replace("A-", "").strip().lstrip("0")
+            if num:
+                abstract_numbers[num] = abstract_l
+            abstract_numbers[abstract_l] = abstract_l
+        if abstract_n and abstract_l:
+            short = abstract_n[-4:].lstrip("0")
+            if short:
+                abstract_numbers[short] = abstract_l
+            abstract_numbers[abstract_n] = abstract_l
+
+    fallback_matched = 0
+    patterns = [
+        re.compile(r"A-(\d+)"),
+        re.compile(r"A\.(\d+)"),
+        re.compile(r"AB\s*(\d+)"),
+        re.compile(r"ABST\s*(\d+)"),
+    ]
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if owner_id in owner_id_to_abstract:
+            continue
+
+        lease_name = str(owner.get("county_lease_name", "") or "").upper()
+        field_name = str(owner.get("field_name", "") or "").upper()
+
+        found_abstract = None
+        for text in (lease_name, field_name):
+            for pattern in patterns:
+                match = pattern.search(text)
+                if not match:
+                    continue
+                num = match.group(1).lstrip("0")
+                if num in abstract_numbers:
+                    found_abstract = abstract_numbers[num]
+                    break
+            if found_abstract:
+                break
+
+        if found_abstract:
+            owner_id_to_abstract[owner_id] = found_abstract
+            fallback_matched += 1
+
+    print(f"Fallback abstract matching added {fallback_matched} owner-to-tract mappings")
+
+    # Second fallback: survey name matching against LEVEL1_SUR values.
+    survey_to_abstract: dict[str, str] = {}
+    for _, row in parcels_gdf.iterrows():
+        survey = str(row.get("LEVEL1_SUR", "") or "").upper().strip()
+        abstract_l = str(row.get("ABSTRACT_L", "") or "").strip()
+        if survey and abstract_l:
+            normalized = re.sub(r"[,.]", "", survey).strip()
+            survey_to_abstract[normalized] = abstract_l
+
+    second_fallback = 0
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if owner_id in owner_id_to_abstract:
+            continue
+
+        lease_name = re.sub(
+            r"[,.]", "", str(owner.get("county_lease_name", "") or "").upper()
+        ).strip()
+        field_name = re.sub(
+            r"[,.]", "", str(owner.get("field_name", "") or "").upper()
+        ).strip()
+
+        for text in (lease_name, field_name):
+            for survey, abstract in survey_to_abstract.items():
+                if survey and survey in text:
+                    owner_id_to_abstract[owner_id] = abstract
+                    second_fallback += 1
+                    break
+            if owner_id in owner_id_to_abstract:
+                break
+
+    print(f"Survey name fallback added {second_fallback} additional mappings")
+
+    # Fallback 3: lease-name text matching via permits with GPS.
+    print("Running permit-based lease name matching...")
+    permits_data = paginate_permits_with_coords(client)
+    print(f"Permits with GPS: {len(permits_data)}")
+
+    permit_exact: dict[str, tuple[float, float]] = {}
+    permit_prefix: dict[str, tuple[float, float]] = {}
+    for permit in permits_data:
+        name = normalize_lease_text(permit.get("lease_name"))
+        lat = permit.get("latitude")
+        lng = permit.get("longitude")
+        if not name or lat is None or lng is None:
+            continue
+        coords = (float(lng), float(lat))
+        permit_exact.setdefault(name, coords)
+        if len(name) >= 15:
+            permit_prefix.setdefault(name[:15], coords)
+
+    permit_owner_points: list[dict[str, Any]] = []
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if owner_id in owner_id_to_abstract:
+            continue
+
+        coords: tuple[float, float] | None = None
+        for text in (
+            normalize_lease_text(owner.get("county_lease_name")),
+            normalize_lease_text(owner.get("field_name")),
+        ):
+            if not text:
+                continue
+            coords = permit_exact.get(text)
+            if coords:
+                break
+            if len(text) > 8:
+                coords = permit_prefix.get(text[:15])
+                if coords:
+                    break
+
+        if coords:
+            permit_owner_points.append(
+                {"owner_id": owner_id, "geometry": Point(coords[0], coords[1])}
+            )
+
+    permit_matched = 0
+    if permit_owner_points:
+        permit_points_gdf = gpd.GeoDataFrame(
+            permit_owner_points, geometry="geometry", crs="EPSG:4326"
+        )
+        permit_to_abstract = gpd.sjoin(
+            permit_points_gdf,
+            parcels_gdf[["ABSTRACT_L", "geometry"]],
+            how="left",
+            predicate="within",
+        )
+        permit_to_abstract = permit_to_abstract[
+            permit_to_abstract["ABSTRACT_L"].notna()
+        ]
+        for _, row in permit_to_abstract.iterrows():
+            owner_id = str(row["owner_id"])
+            if owner_id in owner_id_to_abstract:
+                continue
+            owner_id_to_abstract[owner_id] = str(row["ABSTRACT_L"]).strip()
+            permit_matched += 1
+
+    print(f"Permit lease name matching added {permit_matched} mappings")
+
+    # Fallback 4: lease-name text matching via wells with GPS.
+    print("Running well lease name text matching...")
+    well_exact: dict[str, tuple[float, float]] = {}
+    well_prefix: dict[str, tuple[float, float]] = {}
+    for well in wells:
+        name = normalize_lease_text(well.get("lease_name"))
+        lat = well.get("latitude")
+        lng = well.get("longitude")
+        if not name or lat is None or lng is None:
+            continue
+        coords = (float(lng), float(lat))
+        well_exact.setdefault(name, coords)
+        if len(name) >= 12:
+            well_prefix.setdefault(name[:12], coords)
+
+    print(f"Wells with GPS and lease names: {len(well_exact)}")
+
+    well_owner_points: list[dict[str, Any]] = []
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if owner_id in owner_id_to_abstract:
+            continue
+
+        coords: tuple[float, float] | None = None
+        for text in (
+            normalize_lease_text(owner.get("county_lease_name")),
+            normalize_lease_text(owner.get("field_name")),
+        ):
+            if not text:
+                continue
+            coords = well_exact.get(text)
+            if coords:
+                break
+            if len(text) > 8:
+                coords = well_prefix.get(text[:12])
+                if coords:
+                    break
+
+        if coords:
+            well_owner_points.append(
+                {"owner_id": owner_id, "geometry": Point(coords[0], coords[1])}
+            )
+
+    well_name_matched = 0
+    if well_owner_points:
+        well_points_match_gdf = gpd.GeoDataFrame(
+            well_owner_points, geometry="geometry", crs="EPSG:4326"
+        )
+        well_name_to_abstract = gpd.sjoin(
+            well_points_match_gdf,
+            parcels_gdf[["ABSTRACT_L", "geometry"]],
+            how="left",
+            predicate="within",
+        )
+        well_name_to_abstract = well_name_to_abstract[
+            well_name_to_abstract["ABSTRACT_L"].notna()
+        ]
+        for _, row in well_name_to_abstract.iterrows():
+            owner_id = str(row["owner_id"])
+            if owner_id in owner_id_to_abstract:
+                continue
+            owner_id_to_abstract[owner_id] = str(row["ABSTRACT_L"]).strip()
+            well_name_matched += 1
+
+    print(f"Well name matching added {well_name_matched} mappings")
+    print(f"Total owner-to-tract mappings now: {len(owner_id_to_abstract)}")
 
     # Final dictionary: abstract identifier -> list[owners]
     owners_by_abstract_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
