@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { Users, CreditCard, TrendingUp, Phone, ArrowLeft } from 'lucide-react'
@@ -40,25 +40,23 @@ export default function AdminDashboard() {
   )
   const [users, setUsers] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
+  const [refreshing, setRefreshing] = useState(false)
   const [stats, setStats] = useState<StatsRow>({
     totalUsers: 0,
     activeSubscribers: 0,
     trialUsers: 0,
     totalSkipTraces: 0,
   })
+  const currentMonth = useMemo(
+    () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
+    []
+  )
 
-  useEffect(() => {
-    const load = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!session?.user?.user_metadata?.is_admin) {
-        window.location.href = '/'
-        return
-      }
-
-      const res = await fetch('/api/admin/users')
+  const refresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      const res = await fetch('/api/admin/users', { cache: 'no-store' })
       if (!res.ok) {
         window.location.href = '/'
         return
@@ -77,11 +75,35 @@ export default function AdminDashboard() {
           totalSkipTraces: 0,
         }
       )
+      setLastUpdated(new Date())
+    } finally {
+      setRefreshing(false)
       setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const load = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session?.user?.user_metadata?.is_admin) {
+        window.location.href = '/'
+        return
+      }
+      await refresh()
     }
 
     void load()
-  }, [supabase])
+  }, [refresh, supabase])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void refresh()
+    }, 60000)
+    return () => clearInterval(interval)
+  }, [refresh])
 
   const statusColor = (status: string) => {
     if (status === 'active') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -154,7 +176,31 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="font-serif text-lg font-bold text-gray-900">All Users</h2>
-            <span className="text-xs text-gray-400">{users.length} total</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 11, color: '#6B7280' }}>
+                Updated {lastUpdated.toLocaleTimeString()}
+              </span>
+              <button
+                onClick={() => {
+                  void refresh()
+                }}
+                disabled={refreshing}
+                style={{
+                  fontSize: 12,
+                  padding: '6px 14px',
+                  borderRadius: 7,
+                  background: refreshing ? '#F3F4F6' : '#111827',
+                  color: refreshing ? '#9CA3AF' : '#fff',
+                  border: 'none',
+                  cursor: refreshing ? 'default' : 'pointer',
+                  fontFamily: 'Inter, sans-serif',
+                  fontWeight: 500,
+                }}
+              >
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </button>
+              <span className="text-xs text-gray-400">{users.length} total</span>
+            </div>
           </div>
           {loading ? (
             <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
@@ -163,7 +209,7 @@ export default function AdminDashboard() {
               <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    {['Email', 'Signed up', 'Subscription', 'Skip traces (mo)', 'Admin'].map((h) => (
+                    {['Email', 'Signed up', 'Subscription', `Skip traces (${currentMonth})`, 'Admin'].map((h) => (
                       <th
                         key={h}
                         className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
