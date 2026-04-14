@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import PostHogProvider from "@/app/components/PostHogProvider"
 
 import "./globals.css"
 
@@ -29,7 +30,9 @@ export default function RootLayout({
         />
       </head>
       <body style={{ margin: 0, padding: 0 }}>
-        <TooltipProvider>{children}</TooltipProvider>
+        <PostHogProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </PostHogProvider>
         <Toaster richColors position="top-right" />
       </body>
     </html>

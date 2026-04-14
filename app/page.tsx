@@ -13,6 +13,7 @@ import {
 
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
+import { identifyUser, trackEvent } from '@/lib/posthog'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -341,6 +342,23 @@ export default function Home() {
   }, [refreshSkipTraceUsage])
 
   useEffect(() => {
+    let mounted = true
+
+    const identifyCurrentUser = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!mounted || !session?.user?.id) return
+      identifyUser(session.user.id, session.user.email ?? '')
+    }
+
+    void identifyCurrentUser()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
     const seen = window.localStorage.getItem('mineral_map_onboarded')
     if (!seen) setShowOnboarding(true)
   }, [])
@@ -513,6 +531,10 @@ export default function Home() {
     setPipelineSaving(false)
     setPipelineCandidate(null)
     showToast(`${owner.owner_name} added to pipeline (${pipelineTag.replace('_', ' ')})`)
+    trackEvent('lead_added_to_pipeline', {
+      owner_name: owner.owner_name,
+      score: owner.propensity_score,
+    })
   }
 
   const handleSkipTraceConfirm = async () => {
@@ -641,6 +663,10 @@ export default function Home() {
           phone,
           email,
           dealId: savedDeal?.id ?? null,
+          cached: Boolean(result.cached),
+        })
+        trackEvent('skip_trace_run', {
+          owner_name: skipTracing.owner_name,
           cached: Boolean(result.cached),
         })
       } else {
@@ -795,6 +821,19 @@ export default function Home() {
     setSearchQuery('')
     setSearchResults([])
     setSearchOpen(false)
+  }
+
+  const handleExportCsv = () => {
+    const params = new URLSearchParams({
+      minScore: String(minScore),
+      motivatedOnly: String(motivatedOnly),
+      outOfStateOnly: String(outOfStateOnly),
+      ownerType: ownerTypeFilter,
+    })
+    window.open(`/api/export?${params.toString()}`, '_blank')
+    trackEvent('csv_exported', {
+      row_count: filteredOwnersList.length,
+    })
   }
 
   const topTracts = useMemo(
@@ -1267,6 +1306,23 @@ export default function Home() {
           >
             Comps
           </a>
+          <button
+            onClick={handleExportCsv}
+            style={{
+              fontSize: 12,
+              color: '#6B7280',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #E5E7EB',
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
+              background: '#FFFFFF',
+              cursor: 'pointer',
+            }}
+          >
+            Export CSV
+          </button>
           <a
             href="/account"
             style={{
@@ -1476,7 +1532,17 @@ export default function Home() {
                     <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
                       <div
                         id={ownerElementId}
-                        onClick={() => setExpandedOwner(isExpanded ? null : i)}
+                        onClick={() => {
+                          const nextExpanded = isExpanded ? null : i
+                          setExpandedOwner(nextExpanded)
+                          if (nextExpanded !== null) {
+                            trackEvent('owner_expanded', {
+                              owner_name: owner.owner_name,
+                              score: owner.propensity_score,
+                              abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
+                            })
+                          }
+                        }}
                         style={{
                           padding: '10px 16px',
                           cursor: 'pointer',
@@ -1671,6 +1737,11 @@ export default function Home() {
                       setSelected(toTractSelection(tract))
                       setOwnerSort('score')
                       setExpandedOwner(null)
+                      trackEvent('tract_clicked', {
+                        abstract: tract.abstract_label,
+                        owner_count: tract.owner_count,
+                        max_score: tract.max_propensity_score,
+                      })
                     }}
                     style={{
                       background: '#FFFFFF',
@@ -1766,6 +1837,11 @@ export default function Home() {
                 setSelected(tract)
                 setOwnerSort('score')
                 setExpandedOwner(null)
+                trackEvent('tract_clicked', {
+                  abstract: tract.ABSTRACT_L ?? tract.abstract_label ?? '',
+                  owner_count: tract.owner_count ?? 0,
+                  max_score: tract.max_propensity_score ?? 0,
+                })
               }}
             />
           )}
