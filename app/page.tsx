@@ -349,7 +349,11 @@ export default function Home() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!mounted || !session?.user?.id) return
-      identifyUser(session.user.id, session.user.email ?? '')
+      identifyUser(
+        session.user.id,
+        session.user.email ?? '',
+        session.user.user_metadata?.is_admin ?? false
+      )
     }
 
     void identifyCurrentUser()

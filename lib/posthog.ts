@@ -14,8 +14,13 @@ export const initPostHog = () => {
   }
 }
 
-export const identifyUser = (userId: string, email: string) => {
+export const identifyUser = (userId: string, email: string, isAdmin?: boolean) => {
+  if (isAdmin) {
+    posthog.opt_out_capturing()
+    return
+  }
   if (!userId) return
+  posthog.opt_in_capturing()
   posthog.identify(userId, { email })
 }
 
