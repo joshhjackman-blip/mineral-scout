@@ -115,7 +115,7 @@ const COUNTY_STATS = [
   { val: '3,950', lbl: 'Hot (8-10)' },
   { val: '19,047', lbl: 'Motivated (5-7)' },
   { val: '46,401', lbl: 'Prospect (2-4)' },
-  { val: '553', lbl: 'Survey tracts' },
+  { val: '207', lbl: 'Survey abstracts' },
   { val: '4,512', lbl: 'Active wells' },
 ]
 
@@ -1096,7 +1096,7 @@ export default function Home() {
                   Gonzales County, TX
                 </div>
                 <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
-                  553 tracts · 73,430 owners
+                  207 survey abstracts · 73,000+ mineral owners
                 </div>
               </div>
             )}
