@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 
@@ -12,21 +12,64 @@ export default function Auth() {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [message, setMessage] = useState<string | null>(null)
+  const [inviteOwnerId, setInviteOwnerId] = useState<string | null>(null)
+  const [isInvite, setIsInvite] = useState(false)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const inviteOwnerParam = params.get('invite')
+    const inviteEmail = params.get('email')
+    if (inviteOwnerParam && inviteEmail) {
+      setEmail(decodeURIComponent(inviteEmail))
+      setInviteOwnerId(inviteOwnerParam)
+      setIsInvite(true)
+      setMode('signup')
+      setMessage(
+        'You were invited to join a team account. Sign in or create your account to accept.'
+      )
+    }
+  }, [])
 
   const handleSubmit = async () => {
     console.log('handleSubmit called', { email, password, mode })
     setLoading(true)
     setError(null)
+    setMessage(null)
 
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    const authResponse =
+      mode === 'signup'
+        ? await supabase.auth.signUp({ email, password })
+        : await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = authResponse
     console.log('Supabase response:', { data, error })
 
     if (error) {
       console.error('Auth error:', error.message, error.status)
       setError(error.message)
     } else {
+      if (inviteOwnerId && data.session) {
+        const acceptRes = await fetch('/api/team/accept', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ownerId: inviteOwnerId }),
+        })
+        if (!acceptRes.ok) {
+          const acceptData = (await acceptRes.json().catch(() => ({}))) as {
+            error?: string
+          }
+          setError(acceptData.error ?? 'Failed to accept invite')
+          setLoading(false)
+          return
+        }
+      }
+
+      if (mode === 'signup' && !data.session) {
+        setMessage('Check your email to confirm your account, then sign in to continue.')
+        setLoading(false)
+        return
+      }
+
       console.log('Login success, redirecting...')
       window.location.href = '/'
     }
@@ -55,6 +98,11 @@ export default function Auth() {
           <p className="text-sm text-gray-500 mb-6">
             {mode === 'login' ? 'Access your Mineral Map workspace.' : 'Request access to Mineral Map.'}
           </p>
+          {isInvite && (
+            <div className="mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+              Team invite detected for {email}. Complete login/signup to accept.
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">

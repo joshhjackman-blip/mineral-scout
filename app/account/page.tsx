@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { User, CreditCard, LogOut, MapPin, BarChart2 } from 'lucide-react'
@@ -10,6 +10,14 @@ export const dynamic = 'force-dynamic'
 
 type SubscriptionRow = {
   status?: string | null
+  seat_count?: number | null
+  team_owner_id?: string | null
+}
+
+type TeamMemberRow = {
+  id: string
+  invite_email: string
+  status: 'pending' | 'accepted' | 'revoked' | string
 }
 
 export default function Account() {
@@ -28,6 +36,23 @@ export default function Account() {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' })
   const [passwordMsg, setPasswordMsg] = useState<string | null>(null)
+  const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [inviteMessage, setInviteMessage] = useState('')
+
+  const fetchTeamMembers = useCallback(
+    async (ownerId: string) => {
+      const { data } = await supabase
+        .from('team_members')
+        .select('id, invite_email, status')
+        .eq('owner_id', ownerId)
+        .neq('status', 'revoked')
+        .order('created_at', { ascending: false })
+      setTeamMembers((data as TeamMemberRow[] | null) ?? [])
+    },
+    [supabase]
+  )
 
   useEffect(() => {
     const load = async () => {
@@ -36,6 +61,7 @@ export default function Account() {
       } = await supabase.auth.getSession()
       if (!session) {
         setSkipTraceCount(0)
+        setTeamMembers([])
         setLoading(false)
         return
       }
@@ -56,11 +82,12 @@ export default function Account() {
         .eq('month', currentMonth)
         .maybeSingle()
       setSkipTraceCount((usage as { count?: number } | null)?.count ?? 0)
+      await fetchTeamMembers(session.user.id)
 
       setLoading(false)
     }
     void load()
-  }, [supabase])
+  }, [fetchTeamMembers, supabase])
 
   const handleCancelSubscription = async () => {
     if (!confirm('Cancel your subscription? You will lose access at the end of your billing period.')) return
@@ -96,6 +123,41 @@ export default function Account() {
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     window.location.href = '/landing'
+  }
+
+  const handleInvite = async () => {
+    if (!inviteEmail || !user?.id) return
+    setInviting(true)
+    setInviteMessage('')
+    try {
+      const res = await fetch('/api/team/invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail }),
+      })
+      const data = (await res.json()) as { success?: boolean; error?: string }
+      if (data.success) {
+        setInviteMessage(`Invite sent to ${inviteEmail}`)
+        setInviteEmail('')
+        await fetchTeamMembers(user.id)
+      } else {
+        setInviteMessage(data.error ?? 'Failed to send invite')
+      }
+    } catch {
+      setInviteMessage('Failed to send invite')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const handleRevoke = async (email: string) => {
+    if (!user?.id) return
+    await supabase
+      .from('team_members')
+      .update({ status: 'revoked', updated_at: new Date().toISOString() })
+      .eq('owner_id', user.id)
+      .eq('invite_email', email)
+    await fetchTeamMembers(user.id)
   }
 
   const statusColor =
@@ -218,6 +280,60 @@ export default function Account() {
             </div>
             <div className="text-xs text-gray-400 mt-1">Resets on the 1st of each month</div>
           </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mt-6">
+          <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">Team Members</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            Invite up to 2 additional team members on the Team plan.
+          </p>
+
+          <div className="flex gap-2 mb-4">
+            <input
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="teammate@company.com"
+              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+            />
+            <button
+              onClick={() => {
+                void handleInvite()
+              }}
+              disabled={inviting || !inviteEmail}
+              className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+            >
+              {inviting ? 'Sending...' : 'Send invite'}
+            </button>
+          </div>
+
+          {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
+
+          {teamMembers.length > 0 ? (
+            <div className="space-y-2">
+              {teamMembers.map((member) => (
+                <div
+                  key={member.id}
+                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                >
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{member.invite_email}</div>
+                    <div className="text-xs text-gray-400 capitalize">{member.status}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      void handleRevoke(member.invite_email)
+                    }}
+                    className="text-xs text-red-400 hover:text-red-600"
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">No team members yet.</p>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">

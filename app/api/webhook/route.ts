@@ -61,9 +61,16 @@ export async function POST(req: NextRequest) {
     event.type === 'customer.subscription.created'
   ) {
     const sub = event.data.object as Stripe.Subscription
+    const priceId = sub.items.data[0]?.price?.id ?? ''
+    const teamPriceId = process.env.NEXT_PUBLIC_STRIPE_TEAM_PRICE_ID
+    const seatCount = priceId && teamPriceId && priceId === teamPriceId ? 3 : 1
     await supabase
       .from('subscriptions')
-      .update({ status: sub.status, updated_at: new Date().toISOString() })
+      .update({
+        status: sub.status,
+        seat_count: seatCount,
+        updated_at: new Date().toISOString(),
+      })
       .eq('stripe_subscription_id', sub.id)
 
     const { data: subRow } = await supabase
@@ -78,6 +85,7 @@ export async function POST(req: NextRequest) {
           subscription_status: sub.status === 'active' || sub.status === 'trialing'
             ? 'active'
             : sub.status,
+          stripe_price_id: priceId,
         },
       })
     }

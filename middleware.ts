@@ -65,6 +65,17 @@ export async function middleware(req: NextRequest) {
       return res
     }
 
+    // Team members inherit access from the owner's active subscription.
+    const { data: teamMembership } = await supabase
+      .from('team_members')
+      .select('status')
+      .eq('member_id', session.user.id)
+      .eq('status', 'accepted')
+      .maybeSingle()
+    if (teamMembership?.status === 'accepted') {
+      return res
+    }
+
     return NextResponse.redirect(new URL('/pricing', req.url))
   }
 

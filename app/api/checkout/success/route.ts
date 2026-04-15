@@ -24,6 +24,9 @@ export async function GET(req: NextRequest) {
   console.log('Stripe session metadata:', stripeSession.metadata)
   console.log('Stripe subscription:', stripeSession.subscription)
   const userId = stripeSession.metadata?.user_id
+  const stripePriceId = String(stripeSession.metadata?.stripe_price_id ?? '')
+  const teamPriceId = process.env.NEXT_PUBLIC_STRIPE_TEAM_PRICE_ID
+  const seatCount = stripePriceId && teamPriceId && stripePriceId === teamPriceId ? 3 : 1
   console.log('User ID:', userId)
 
   if (!userId) {
@@ -42,6 +45,7 @@ export async function GET(req: NextRequest) {
       stripe_customer_id: stripeSession.customer as string,
       stripe_subscription_id: stripeSession.subscription as string,
       status: 'active',
+      seat_count: seatCount,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
@@ -49,7 +53,10 @@ export async function GET(req: NextRequest) {
   console.log('Subscription upsert error:', subError)
 
   const { error: metaError } = await supabase.auth.admin.updateUserById(userId, {
-    user_metadata: { subscription_status: 'active' },
+    user_metadata: {
+      subscription_status: 'active',
+      stripe_price_id: stripePriceId,
+    },
   })
   console.log('Metadata update error:', metaError)
 

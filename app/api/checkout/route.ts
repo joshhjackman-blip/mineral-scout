@@ -75,9 +75,16 @@ export async function POST(req: NextRequest) {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: session.user.email ?? undefined,
-      metadata: { user_id: session.user.id ?? '' },
+      metadata: {
+        user_id: session.user.id ?? '',
+        stripe_price_id: priceId,
+      },
       subscription_data: {
         trial_period_days: 7,
+        metadata: {
+          user_id: session.user.id ?? '',
+          stripe_price_id: priceId,
+        },
       },
       success_url: `${appUrl}/api/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/pricing`,
