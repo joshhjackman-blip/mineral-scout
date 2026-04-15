@@ -36,6 +36,7 @@ export default function Account() {
   const [cancelLoading, setCancelLoading] = useState(false)
   const [passwordForm, setPasswordForm] = useState({ current: '', new: '', confirm: '' })
   const [passwordMsg, setPasswordMsg] = useState<string | null>(null)
+  const [seatCount, setSeatCount] = useState<number>(1)
   const [teamMembers, setTeamMembers] = useState<TeamMemberRow[]>([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
@@ -69,10 +70,11 @@ export default function Account() {
 
       const { data: sub } = await supabase
         .from('subscriptions')
-        .select('*')
+        .select('seat_count, status')
         .eq('user_id', session.user.id)
-        .maybeSingle()
+        .single()
       setSubscription((sub as SubscriptionRow | null) ?? null)
+      setSeatCount(Number((sub as SubscriptionRow | null)?.seat_count ?? 1))
 
       const currentMonth = new Date().toISOString().slice(0, 7)
       const { data: usage } = await supabase
@@ -282,59 +284,94 @@ export default function Account() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mt-6">
-          <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">Team Members</h2>
-          <p className="text-sm text-gray-400 mb-4">
-            Invite up to 2 additional team members on the Team plan.
-          </p>
-
-          <div className="flex gap-2 mb-4">
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="teammate@company.com"
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
-            />
-            <button
-              onClick={() => {
-                void handleInvite()
-              }}
-              disabled={inviting || !inviteEmail}
-              className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
-            >
-              {inviting ? 'Sending...' : 'Send invite'}
-            </button>
-          </div>
-
-          {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
-
-          {teamMembers.length > 0 ? (
-            <div className="space-y-2">
-              {teamMembers.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{member.invite_email}</div>
-                    <div className="text-xs text-gray-400 capitalize">{member.status}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      void handleRevoke(member.invite_email)
-                    }}
-                    className="text-xs text-red-400 hover:text-red-600"
-                  >
-                    Revoke
-                  </button>
+        {seatCount < 3 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-serif text-base font-bold text-gray-900 mb-1">
+                  Upgrade to Team
                 </div>
-              ))}
+                <div className="text-sm text-gray-500">
+                  Get 3 seats, shared CRM, and 600 skip traces/mo for $499/mo.
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  const res = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      priceId: process.env.NEXT_PUBLIC_STRIPE_TEAM_PRICE_ID,
+                    }),
+                  })
+                  const data = (await res.json()) as { url?: string; error?: string }
+                  if (data.url) {
+                    window.location.href = data.url
+                  } else if (data.error) {
+                    alert(data.error)
+                  }
+                }}
+                className="ml-6 shrink-0 px-5 py-2.5 bg-amber-500 text-white text-sm font-semibold rounded-lg hover:bg-amber-600 transition-colors"
+              >
+                Upgrade — $499/mo
+              </button>
             </div>
-          ) : (
-            <p className="text-sm text-gray-400">No team members yet.</p>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm mt-6">
+            <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">Team Members</h2>
+            <p className="text-sm text-gray-400 mb-4">
+              Invite up to {seatCount - 1} additional team members.
+            </p>
+
+            <div className="flex gap-2 mb-4">
+              <input
+                type="email"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="teammate@company.com"
+                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+              />
+              <button
+                onClick={() => {
+                  void handleInvite()
+                }}
+                disabled={inviting || !inviteEmail}
+                className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+              >
+                {inviting ? 'Sending...' : 'Send invite'}
+              </button>
+            </div>
+
+            {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
+
+            {teamMembers.length > 0 ? (
+              <div className="space-y-2">
+                {teamMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-gray-900">{member.invite_email}</div>
+                      <div className="text-xs text-gray-400 capitalize">{member.status}</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        void handleRevoke(member.invite_email)
+                      }}
+                      className="text-xs text-red-400 hover:text-red-600"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">No team members yet.</p>
+            )}
+          </div>
+        )}
 
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
