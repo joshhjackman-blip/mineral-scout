@@ -19,7 +19,7 @@ type Tier = {
 const tiers: Tier[] = [
   {
     name: 'Solo',
-    price: '$300',
+    price: '$299',
     period: '/mo',
     description: 'For individual landmen and acquisition professionals',
     seats: '1 seat',
@@ -38,7 +38,7 @@ const tiers: Tier[] = [
   },
   {
     name: 'Team',
-    price: '$500',
+    price: '$499',
     period: '/mo',
     description: 'For acquisition teams and small funds',
     seats: 'Up to 3 seats',
@@ -128,6 +128,7 @@ export default function Pricing() {
           <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.35)', maxWidth: 560, margin: '0 auto', lineHeight: 1.65 }}>Start with Solo, upgrade to Team when you need shared workflow, or talk to us for Enterprise coverage.</p>
         </div>
 
+        {/* Pricing refresh marker: updated Solo/Team display prices */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(290px, 1fr))', gap: 20, maxWidth: 1120, margin: '0 auto', padding: '20px 52px 64px' }}>
           {tiers.map((tier) => {
             const isEnterprise = tier.name === 'Enterprise'
