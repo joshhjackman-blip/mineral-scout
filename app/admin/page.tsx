@@ -177,6 +177,12 @@ export default function AdminDashboard() {
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 className="font-serif text-lg font-bold text-gray-900">All Users</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Link
+                href="/admin/review"
+                className="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-md border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+              >
+                Review flagged deeds
+              </Link>
               <span style={{ fontSize: 11, color: '#6B7280' }}>
                 Updated {lastUpdated.toLocaleTimeString()}
               </span>

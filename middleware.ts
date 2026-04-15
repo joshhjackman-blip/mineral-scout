@@ -43,6 +43,23 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
+  const isAdminPath =
+    req.nextUrl.pathname.startsWith('/admin') ||
+    req.nextUrl.pathname.startsWith('/api/admin')
+  const isAdmin = Boolean(
+    (session?.user?.user_metadata as Record<string, unknown> | undefined)?.is_admin
+  )
+
+  if (isAdminPath) {
+    if (!session || !isAdmin) {
+      if (req.nextUrl.pathname.startsWith('/api')) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      return NextResponse.redirect(new URL('/', req.url))
+    }
+    return res
+  }
+
   if (session && !isPublicPage && !isApiRoute) {
     const metaStatus = String(
       (session.user.user_metadata as Record<string, unknown> | undefined)?.subscription_status ?? ''
