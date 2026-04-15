@@ -7,12 +7,20 @@ export async function POST(req: NextRequest) {
 
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY
-    const priceId = process.env.STRIPE_PRICE_ID
+    const body = (await req.json().catch(() => ({}))) as { priceId?: string }
+    const requestedPriceId = body.priceId?.trim()
+    const soloPriceId = process.env.STRIPE_PRICE_ID
+    const teamPriceId = process.env.NEXT_PUBLIC_STRIPE_TEAM_PRICE_ID
+    const allowedPriceIds = [soloPriceId, teamPriceId].filter(
+      (value): value is string => Boolean(value)
+    )
+    const priceId = requestedPriceId || soloPriceId
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
     console.log('Env check:', {
       hasStripeKey: !!stripeKey,
       hasPriceId: !!priceId,
+      hasRequestedPriceId: !!requestedPriceId,
       appUrl,
     })
 
@@ -21,6 +29,9 @@ export async function POST(req: NextRequest) {
     }
     if (!priceId) {
       return NextResponse.json({ error: 'Missing STRIPE_PRICE_ID' }, { status: 500 })
+    }
+    if (!allowedPriceIds.includes(priceId)) {
+      return NextResponse.json({ error: 'Invalid price ID' }, { status: 400 })
     }
     if (!appUrl) {
       return NextResponse.json({ error: 'Missing NEXT_PUBLIC_APP_URL' }, { status: 500 })
