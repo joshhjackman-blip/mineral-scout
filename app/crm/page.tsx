@@ -216,8 +216,7 @@ export default function CRM() {
     let cancelled = false
 
     const fetchDealWells = async () => {
-      const leaseId = String(editingDeal?.rrc_lease_id ?? '').replace(/^0+/, '').trim()
-      if (!leaseId) {
+      if (!editingDeal?.rrc_lease_id) {
         setDealWells([])
         return
       }
@@ -225,7 +224,7 @@ export default function CRM() {
       const { data, error } = await supabase
         .from('gonzales_wells')
         .select('lease_name, operator_name, well_type')
-        .eq('rrc_lease_id', leaseId)
+        .eq('rrc_lease_id', String(editingDeal.rrc_lease_id))
         .limit(20)
 
       if (error) {

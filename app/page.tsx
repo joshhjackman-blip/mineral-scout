@@ -394,31 +394,28 @@ export default function Home() {
 
       setTractWellsLoaded(false)
       setOwnerWells({})
-      const abstractLabel = String(selected.ABSTRACT_L ?? selected.abstract_label ?? '').trim()
-      const abstractNum = abstractLabel.replace(/[^0-9]/g, '')
-      const surveyPrefix = String(selected.LEVEL1_SUR ?? selected.level1_sur ?? '')
-        .split(',')[0]
-        .replace(/[^A-Za-z0-9\s-]/g, '')
-        .trim()
+      const tractOwners = parseOwners(selected.owners_json ?? '')
+      const leaseIds = [
+        ...new Set(
+          tractOwners
+            .map((owner) => owner.rrc_lease_id)
+            .filter((leaseId): leaseId is string | number => leaseId !== null && leaseId !== undefined && String(leaseId).trim() !== '')
+            .map((leaseId) => String(leaseId).trim())
+        ),
+      ].slice(0, 20)
 
-      let query = supabase
-        .from('gonzales_wells')
-        .select('lease_name, operator_name, well_type, latitude, longitude, rrc_lease_id')
-        .limit(50)
-
-      if (abstractNum && surveyPrefix) {
-        query = query.or(`abstract_number.eq.${abstractNum},lease_name.ilike.%${surveyPrefix}%`)
-      } else if (abstractNum) {
-        query = query.eq('abstract_number', abstractNum)
-      } else if (surveyPrefix) {
-        query = query.ilike('lease_name', `%${surveyPrefix}%`)
-      } else {
+      if (leaseIds.length === 0) {
         setTractWells([])
         setTractWellsLoaded(true)
         return
       }
 
-      const { data, error } = await query
+      const { data, error } = await supabase
+        .from('gonzales_wells')
+        .select('lease_name, operator_name, well_type, rrc_lease_id')
+        .in('rrc_lease_id', leaseIds)
+        .limit(50)
+
       if (error) {
         console.error('Failed to load tract wells:', error.message)
         if (!cancelled) {
@@ -428,8 +425,17 @@ export default function Home() {
         return
       }
 
+      const seenLeaseNames = new Set<string>()
+      const unique = ((data as WellSummary[]) ?? []).filter((well) => {
+        const key = String(well.lease_name ?? '').trim().toUpperCase()
+        if (!key) return true
+        if (seenLeaseNames.has(key)) return false
+        seenLeaseNames.add(key)
+        return true
+      })
+
       if (!cancelled) {
-        setTractWells((data as WellSummary[]) ?? [])
+        setTractWells(unique)
         setTractWellsLoaded(true)
       }
     }
@@ -441,26 +447,23 @@ export default function Home() {
   }, [selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
-    const leaseId = normalizeLeaseId(owner.rrc_lease_id)
+    const leaseId = owner.rrc_lease_id
     if (!leaseId) return
-
-    setOwnerWells((prev) => {
-      if (prev[ownerKey]) return prev
-      return { ...prev, [ownerKey]: [] }
-    })
 
     const { data, error } = await supabase
       .from('gonzales_wells')
       .select('lease_name, operator_name, well_type, rrc_lease_id')
-      .eq('rrc_lease_id', leaseId)
-      .limit(20)
+      .eq('rrc_lease_id', String(leaseId))
+      .limit(10)
 
     if (error) {
       console.error(`Failed to load wells for owner ${owner.owner_name}:`, error.message)
       return
     }
 
-    setOwnerWells((prev) => ({ ...prev, [ownerKey]: (data as WellSummary[]) ?? [] }))
+    if (data && data.length > 0) {
+      setOwnerWells((prev) => ({ ...prev, [ownerKey]: data as WellSummary[] }))
+    }
   }, [])
 
   const completeOnboarding = () => {
