@@ -415,7 +415,7 @@ export default function Home() {
           )
           leaseIds = Array.from(new Set(
             (Array.isArray(owners) ? owners : [])
-              .map((o: any) => o.rrc_lease_id ?? o.county_lease_id)
+              .map((o: { rrc_lease_id?: string; county_lease_id?: string }) => o.rrc_lease_id ?? o.county_lease_id)
               .filter(Boolean)
               .map(String)
           )).slice(0, 20) as string[]
@@ -438,7 +438,7 @@ export default function Home() {
         }
 
         leaseIds = Array.from(new Set(
-          (owners ?? []).map((o: any) => String(o.rrc_lease_id)).filter(Boolean)
+          (owners ?? []).map((o: { rrc_lease_id?: string }) => String(o.rrc_lease_id ?? '')).filter(Boolean)
         )).slice(0, 20) as string[]
       }
 
