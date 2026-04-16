@@ -385,14 +385,18 @@ def main() -> None:
             }
         )
 
-    points_gdf = gpd.GeoDataFrame(owner_points, geometry="geometry", crs="EPSG:4326")
-    point_to_abstract = gpd.sjoin(
-        points_gdf,
-        parcels_gdf[["ABSTRACT_L", "geometry"]],
-        how="left",
-        predicate="within",
-    )
-    point_to_abstract = point_to_abstract[point_to_abstract["ABSTRACT_L"].notna()]
+    if not owner_points:
+        print("No owner points with coordinates — skipping spatial join")
+        point_to_abstract = gpd.GeoDataFrame()
+    else:
+        points_gdf = gpd.GeoDataFrame(owner_points, geometry="geometry", crs="EPSG:4326")
+        point_to_abstract = gpd.sjoin(
+            points_gdf,
+            parcels_gdf[["ABSTRACT_L", "geometry"]],
+            how="left",
+            predicate="within",
+        )
+        point_to_abstract = point_to_abstract[point_to_abstract["ABSTRACT_L"].notna()]
 
     for _, row in point_to_abstract.iterrows():
         owner_id = str(row["owner_id"])
