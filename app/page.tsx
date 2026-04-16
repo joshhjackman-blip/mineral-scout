@@ -395,14 +395,14 @@ export default function Home() {
       setTractWellsLoaded(false)
       setOwnerWells({})
       const tractOwners = parseOwners(selected.owners_json ?? '')
-      const leaseIds = [
-        ...new Set(
+      const leaseIds = Array.from(
+        new Set(
           tractOwners
             .map((owner) => owner.rrc_lease_id)
             .filter((leaseId): leaseId is string | number => leaseId !== null && leaseId !== undefined && String(leaseId).trim() !== '')
             .map((leaseId) => String(leaseId).trim())
-        ),
-      ].slice(0, 20)
+        )
+      ).slice(0, 20)
 
       if (leaseIds.length === 0) {
         setTractWells([])
