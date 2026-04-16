@@ -83,6 +83,9 @@ export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [selected, setSelected] = useState<Deal | null>(null)
   const [editingDeal, setEditingDeal] = useState<Deal | null>(null)
+  const [editingContact, setEditingContact] = useState(false)
+  const [editPhone, setEditPhone] = useState('')
+  const [editEmail, setEditEmail] = useState('')
   const [contactLog, setContactLog] = useState<ContactEntry[]>([])
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState('all')
@@ -186,6 +189,42 @@ export default function CRM() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [editingDeal, handleDeleteLead])
+
+  useEffect(() => {
+    if (!editingDeal) {
+      setEditingContact(false)
+      setEditPhone('')
+      setEditEmail('')
+      return
+    }
+
+    setEditPhone(editingDeal.phone ?? '')
+    setEditEmail(editingDeal.email ?? '')
+    setEditingContact(false)
+  }, [editingDeal])
+
+  const saveContactInfo = async () => {
+    if (!editingDeal) return
+
+    const phone = editPhone.trim() || null
+    const email = editEmail.trim() || null
+
+    const { error } = await supabase
+      .from('deals')
+      .update({
+        phone,
+        email,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', editingDeal.id)
+
+    if (error) return
+
+    setEditingDeal((prev) => (prev ? { ...prev, phone, email } : null))
+    setSelected((prev) => (prev?.id === editingDeal.id ? { ...prev, phone, email } : prev))
+    setDeals((prev) => prev.map((d) => (d.id === editingDeal.id ? { ...d, phone, email } : d)))
+    setEditingContact(false)
+  }
 
   const handleRunSkipTraceFromCRM = useCallback(async () => {
     if (!editingDeal) return
@@ -456,29 +495,86 @@ export default function CRM() {
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 mt-4 pt-4 border-t border-gray-100">
-                    <div>
-                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Phone size={13} />Phone</div>
-                      {editingDeal.phone ? (
-                        <a href={`tel:${editingDeal.phone}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.phone}</a>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
-                          Not skip traced yet
-                        </span>
-                      )}
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                        Contact
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (editingContact) {
+                            setEditPhone(editingDeal.phone ?? '')
+                            setEditEmail(editingDeal.email ?? '')
+                          }
+                          setEditingContact(!editingContact)
+                        }}
+                        className="text-xs text-amber-500 hover:text-amber-600 font-medium"
+                      >
+                        {editingContact ? 'Cancel' : 'Edit'}
+                      </button>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-1 text-xs font-medium text-gray-400 mb-1"><Mail size={13} />Email</div>
-                      {editingDeal.email ? (
-                        <a href={`mailto:${editingDeal.email}`} className="text-sm text-amber-600 font-medium hover:underline">{editingDeal.email}</a>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
-                          Not skip traced yet
-                        </span>
-                      )}
-                    </div>
+
+                    {editingContact ? (
+                      <div className="space-y-2">
+                        <input
+                          type="tel"
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          placeholder="Phone number"
+                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+                        />
+                        <input
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          placeholder="Email address"
+                          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          onClick={() => {
+                            void saveContactInfo()
+                          }}
+                          className="w-full py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {editingDeal.phone ? (
+                          <a
+                            href={`tel:${editingDeal.phone}`}
+                            className="flex items-center gap-2 text-sm text-gray-700 hover:text-amber-600"
+                          >
+                            <Phone size={13} />
+                            {editingDeal.phone}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => setEditingContact(true)}
+                            className="text-sm text-gray-400 hover:text-amber-500"
+                          >
+                            + Add phone
+                          </button>
+                        )}
+                        {editingDeal.email ? (
+                          <a
+                            href={`mailto:${editingDeal.email}`}
+                            className="flex items-center gap-2 text-sm text-gray-700 hover:text-amber-600"
+                          >
+                            <Mail size={13} />
+                            {editingDeal.email}
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => setEditingContact(true)}
+                            className="text-sm text-gray-400 hover:text-amber-500"
+                          >
+                            + Add email
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {!editingDeal.phone && !editingDeal.email && (
                     <button
