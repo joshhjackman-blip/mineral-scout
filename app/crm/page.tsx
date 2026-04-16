@@ -18,6 +18,7 @@ type Deal = {
   owner_name: string
   tract_abstract?: string | null
   tract_survey?: string | null
+  rrc_lease_id?: string | null
   operator_name?: string | null
   mailing_address?: string | null
   mailing_city?: string | null
@@ -47,6 +48,12 @@ type ContactEntry = {
 }
 
 type Task = { id: string; text: string; done: boolean; dealId: string }
+
+type DealWell = {
+  lease_name?: string | null
+  operator_name?: string | null
+  well_type?: string | null
+}
 
 const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
   hot:            { label: 'Hot',           color: 'text-red-700',     bg: 'bg-red-50 border-red-200',       icon: <Flame size={11} /> },
@@ -86,6 +93,7 @@ export default function CRM() {
   const [editingContact, setEditingContact] = useState(false)
   const [editPhone, setEditPhone] = useState('')
   const [editEmail, setEditEmail] = useState('')
+  const [dealWells, setDealWells] = useState<DealWell[]>([])
   const [contactLog, setContactLog] = useState<ContactEntry[]>([])
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState('all')
@@ -195,6 +203,7 @@ export default function CRM() {
       setEditingContact(false)
       setEditPhone('')
       setEditEmail('')
+      setDealWells([])
       return
     }
 
@@ -202,6 +211,39 @@ export default function CRM() {
     setEditEmail(editingDeal.email ?? '')
     setEditingContact(false)
   }, [editingDeal])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchDealWells = async () => {
+      const leaseId = String(editingDeal?.rrc_lease_id ?? '').replace(/^0+/, '').trim()
+      if (!leaseId) {
+        setDealWells([])
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('gonzales_wells')
+        .select('lease_name, operator_name, well_type')
+        .eq('rrc_lease_id', leaseId)
+        .limit(20)
+
+      if (error) {
+        console.error('Failed to load deal wells:', error)
+        if (!cancelled) setDealWells([])
+        return
+      }
+
+      if (!cancelled) {
+        setDealWells((data as DealWell[]) ?? [])
+      }
+    }
+
+    void fetchDealWells()
+    return () => {
+      cancelled = true
+    }
+  }, [editingDeal?.rrc_lease_id])
 
   const saveContactInfo = async () => {
     if (!editingDeal) return
@@ -586,6 +628,26 @@ export default function CRM() {
                       <Phone size={12} />
                       Run skip trace
                     </button>
+                  )}
+
+                  {dealWells.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                        Wells on this interest
+                      </div>
+                      {dealWells.map((well, i) => (
+                        <div key={`${well.lease_name ?? 'well'}-${i}`} className="flex items-center gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            well.well_type === 'HORIZONTAL' ? 'bg-amber-400' : 'bg-gray-300'
+                          }`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">{well.lease_name ?? 'Unknown lease'}</div>
+                            <div className="text-xs text-gray-400">{well.operator_name ?? 'Unknown operator'}</div>
+                          </div>
+                          <div className="text-xs text-gray-400 shrink-0">{well.well_type ?? 'VERTICAL'}</div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 

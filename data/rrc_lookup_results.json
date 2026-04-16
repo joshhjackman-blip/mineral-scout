@@ -1,0 +1,51 @@
+[
+  {
+    "lease": {
+      "id": "12563",
+      "name": "RED CREST 4H"
+    },
+    "response": "I found the data. The spatial query against the Original Texas Land Survey (OTLS) returned a clear match. Here is the structured result:\n\n```json\n{\n  \"lease_id\": \"12563\",\n  \"lease_name\": \"RED CREST 4H\",\n  \"abstract_number\": \"A-266\",\n  \"survey_name\": \"HUMPHREY, J\",\n  \"confidence\": 0.80,\n  \"source_url\": \"https://coastal.beg.utexas.edu/arcgis/rest/services/continuum/continuumpublic_mapservice2/MapServer/4/query?geometry=-97.574750,29.179245&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&f=json\",\n  \"notes\": \"Abstract and survey name resolved by spatially querying the UT Austin BEG Original Texas Land Survey (OTLS) ArcGIS REST service at the well's known coordinates (lat: 29.179245, lon: -97.574750). The OTLS returned ANUM='177266' \u2014 Gonzales County FIPS code 177 + abstract number 266 = A-266. The survey grantor field (L1SURNAM) returned 'HUMPHREY, J'. Well API 42-177-34559 (RED CREST 4H 4H) is operated by Tidal Petroleum, Inc. under RRC District 02, Oil Lease #02-12563. The RRC EWA web portal (webapps2.rrc.texas.gov) was inaccessible to automated queries; abstract/survey was derived from the OTLS spatial overlay. Confidence docked from 1.0 due to: (1) well surface coordinates sourced from a third-party aggregator (shalexp.com/texas-drilling.com), not directly from the RRC W-1 permit; (2) OTLS polygon boundaries carry documented geometric approximation from the RRC's own disclaimer.\"\n}\n```\n\n---\n\n**How the abstract was resolved \u2014 step by step:**\n\n| Step | Finding |\n|---|---|\n| Lease confirmed | RED CREST 4H = RRC Oil Lease **#02-12563**, District 2, Gonzales County \u2014 confirmed via texas-drilling.com and shalexp.com |\n| API number | **42-177-34559** (RED CREST 4H 4H well) |\n| Well coordinates | Lat **29.179245**, Lon **-97.574750** (from shalexp.com) |\n| OTLS spatial query | Queried UT/BEG OTLS ArcGIS REST service at those coordinates |\n| Result | `ANUM = 177266` \u2192 **Abstract A-266**, `L1SURNAM = HUMPHREY, J` \u2192 **J. Humphrey Survey** |\n\n> \u26a0\ufe0f **Caveat:** To achieve higher confidence (>0.90), verify directly on the RRC Public GIS Viewer at [gis.rrc.texas.gov/GISViewer](https://gis.rrc.texas.gov/GISViewer/) by entering Lease ID `12563` / District `02`, or by querying the RRC well mapping team at [RBAMapping@rrc.texas.gov](mailto:RBAMapping@rrc.texas.gov)."
+  },
+  {
+    "lease": {
+      "id": "20905",
+      "name": "STOBAUGH-ROSSOW A"
+    },
+    "response": "I found the information. The **Stobaugh-Rossow A** lease in **Gonzales County** is associated with **Survey Name: Gonzales CSL, Abstract A-230**. The well (API No. 42-177-34507, Well No. 1H) is operated by Auterra Operating, located in the Eagleville (Eagle Ford-1) field, approximately 10.5 miles SW of Gonzales, with 1,698.26 acres.\n\n> **Note on District:** The user specified District 2 (South Texas), but the RRC record for this lease lists it under **District 1**, not District 2. This is worth double-checking when querying the RRC EWA system directly.\n\n---\n\nHere is the requested JSON output:\n\n```json\n{\n  \"lease_id\": \"20905\",\n  \"lease_name\": \"STOBAUGH-ROSSOW A\",\n  \"abstract_number\": \"A-230\",\n  \"survey_name\": \"GONZALES CSL\",\n  \"confidence\": 0.92,\n  \"source_url\": \"https://www.victoriaadvocate.com/news/business/gushers-and-dusters-for-the-week-ending-may-27/article_6a82a524-e273-11ec-9f4c-f318a6a59d43.html\",\n  \"notes\": \"Survey name is 'Gonzales CSL, A-230' per RRC drilling permit data published in Victoria Advocate (week ending May 27). CSL likely refers to Commissioner's School Lands. API No. 42-177-34507, Well No. 1H, Operator: Auterra Operating, Field: Eagleville (Eagle Ford-1), 1698.26 acres, ~10.5 miles SW of Gonzales. CAUTION: RRC record shows District 1, not District 2 as specified in the query \u2014 verify district when searching EWA directly. The RRC EWA webapps2 URL was inaccessible for direct lookup; result sourced from published RRC drilling permit data.\"\n}\n```\n\n### Key Findings Summary\n\n| Field | Value |\n|---|---|\n| **Lease Name** | STOBAUGH-ROSSOW A |\n| **County** | Gonzales County, TX |\n| **Survey Name** | Gonzales CSL |\n| **Abstract Number** | A-230 |\n| **API No.** | 42-177-34507 |\n| **Operator** | Auterra Operating |\n| **Field** | Eagleville (Eagle Ford-1) |\n| **RRC District** | **1** (not 2 \u2014 verify) |\n| **Acres** | 1,698.26 |\n\n> \u26a0\ufe0f **District Discrepancy:** The user specified **District 2 (South Texas)**, but Gonzales County typically falls under **RRC District 1**. If you search the EWA system using District 2 + Lease 20905, you may get no results \u2014 try **District 1** instead."
+  },
+  {
+    "lease": {
+      "id": "20974",
+      "name": "RED CREST 3H"
+    },
+    "response": "I found this in the District 2 index on page 273, but the RED CREST 3H lease (01-20974) is in **District 1**. Let me fetch the District 1 Oil Lease Index and also search for the abstract information."
+  },
+  {
+    "lease": {
+      "id": "296751",
+      "name": "ZIRCON A"
+    },
+    "response": null
+  },
+  {
+    "lease": {
+      "id": "21064",
+      "name": "LASSEN A"
+    },
+    "response": null
+  },
+  {
+    "lease": {
+      "id": "21449",
+      "name": "DEMPSEY UNIT A"
+    },
+    "response": "I've now read through all 89 pages of the District 02 Oil Lease Name Index. The lease name **\"DEMPSEY UNIT A\"** does **not appear** in this index, and the lease numbers in District 02 only go up to ~13,200 \u2014 well below **21449**. This means lease number 21449 cannot belong to District 2 under the current active-lease naming structure.\n\nLet me do one final targeted search:"
+  },
+  {
+    "lease": {
+      "id": "19085",
+      "name": "ACADIA A 1H"
+    },
+    "response": null
+  }
+]

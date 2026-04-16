@@ -1,0 +1,22 @@
+[
+  {
+    "lease_id": "20974",
+    "response": "The Gonzales CAD's search has a \"Lease Name\" field. Let me query the Pritchard & Abbott API directly."
+  },
+  {
+    "lease_id": "296751",
+    "response": null
+  },
+  {
+    "lease_id": "21064",
+    "response": "Let me try accessing the RRC Statewide API Data file which contains survey names and lease IDs:"
+  },
+  {
+    "lease_id": "21449",
+    "response": "Found the correct endpoint: `/Home/SearchTableV2`. Let me examine the filter function and call it."
+  },
+  {
+    "lease_id": "19085",
+    "response": "Let me try to find the well records through RRC's oil/gas records system and through an API search."
+  }
+]

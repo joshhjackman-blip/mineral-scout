@@ -18,6 +18,7 @@ import { identifyUser, trackEvent } from '@/lib/posthog'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 type TractOwner = {
+  id?: string
   owner_name: string
   propensity_score: number
   operator_name?: string
@@ -35,6 +36,7 @@ type TractOwner = {
   prod_cumulative_sum_oil?: number
   phone?: string
   email?: string
+  rrc_lease_id?: string | number | null
 }
 
 type TractSelection = {
@@ -99,6 +101,15 @@ type OwnerSearchResult = {
   operator_name?: string | null
   acreage?: number | null
   leaseCount?: number
+}
+
+type WellSummary = {
+  lease_name?: string | null
+  operator_name?: string | null
+  well_type?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  rrc_lease_id?: string | null
 }
 
 type MapFocusTarget = {
@@ -285,6 +296,9 @@ export default function Home() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
+  const [tractWells, setTractWells] = useState<WellSummary[]>([])
+  const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
+  const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
   const [isMobile, setIsMobile] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
@@ -365,6 +379,88 @@ export default function Home() {
   useEffect(() => {
     const seen = window.localStorage.getItem('mineral_map_onboarded')
     if (!seen) setShowOnboarding(true)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetchTractWells = async () => {
+      if (!selected) {
+        setTractWells([])
+        setTractWellsLoaded(false)
+        setOwnerWells({})
+        return
+      }
+
+      setTractWellsLoaded(false)
+      setOwnerWells({})
+      const abstractLabel = String(selected.ABSTRACT_L ?? selected.abstract_label ?? '').trim()
+      const abstractNum = abstractLabel.replace(/[^0-9]/g, '')
+      const surveyPrefix = String(selected.LEVEL1_SUR ?? selected.level1_sur ?? '')
+        .split(',')[0]
+        .replace(/[^A-Za-z0-9\s-]/g, '')
+        .trim()
+
+      let query = supabase
+        .from('gonzales_wells')
+        .select('lease_name, operator_name, well_type, latitude, longitude, rrc_lease_id')
+        .limit(50)
+
+      if (abstractNum && surveyPrefix) {
+        query = query.or(`abstract_number.eq.${abstractNum},lease_name.ilike.%${surveyPrefix}%`)
+      } else if (abstractNum) {
+        query = query.eq('abstract_number', abstractNum)
+      } else if (surveyPrefix) {
+        query = query.ilike('lease_name', `%${surveyPrefix}%`)
+      } else {
+        setTractWells([])
+        setTractWellsLoaded(true)
+        return
+      }
+
+      const { data, error } = await query
+      if (error) {
+        console.error('Failed to load tract wells:', error.message)
+        if (!cancelled) {
+          setTractWells([])
+          setTractWellsLoaded(true)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setTractWells((data as WellSummary[]) ?? [])
+        setTractWellsLoaded(true)
+      }
+    }
+
+    void fetchTractWells()
+    return () => {
+      cancelled = true
+    }
+  }, [selected])
+
+  const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
+    const leaseId = normalizeLeaseId(owner.rrc_lease_id)
+    if (!leaseId) return
+
+    setOwnerWells((prev) => {
+      if (prev[ownerKey]) return prev
+      return { ...prev, [ownerKey]: [] }
+    })
+
+    const { data, error } = await supabase
+      .from('gonzales_wells')
+      .select('lease_name, operator_name, well_type, rrc_lease_id')
+      .eq('rrc_lease_id', leaseId)
+      .limit(20)
+
+    if (error) {
+      console.error(`Failed to load wells for owner ${owner.owner_name}:`, error.message)
+      return
+    }
+
+    setOwnerWells((prev) => ({ ...prev, [ownerKey]: (data as WellSummary[]) ?? [] }))
   }, [])
 
   const completeOnboarding = () => {
@@ -510,6 +606,7 @@ export default function Home() {
       tract_abstract: tractAbstract,
       tract_survey: tractSurvey,
       operator_name: owner.operator_name ?? '',
+      rrc_lease_id: owner.rrc_lease_id ?? null,
       mailing_city: owner.mailing_city ?? '',
       mailing_state: owner.mailing_state ?? '',
       mailing_zip: owner.mailing_zip ?? '',
@@ -597,6 +694,7 @@ export default function Home() {
           tract_abstract: (skipRecord.tract_abstract as string | undefined) ?? selected?.ABSTRACT_L ?? '',
           tract_survey: (skipRecord.tract_survey as string | undefined) ?? selected?.LEVEL1_SUR ?? '',
           operator_name: skipTracing.operator_name ?? '',
+          rrc_lease_id: skipTracing.rrc_lease_id ?? null,
           mailing_address: skipTracing.mailing_address ?? skipTracing.address_1 ?? '',
           mailing_city: skipTracing.mailing_city ?? '',
           mailing_state: skipTracing.mailing_state ?? '',
@@ -1524,6 +1622,8 @@ export default function Home() {
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
+                  const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
+                  const ownerWellMatches = ownerWells[ownerKey] ?? []
                   const signals = isExpanded ? getScoreBreakdown(owner) : []
                   const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
@@ -1540,6 +1640,7 @@ export default function Home() {
                           const nextExpanded = isExpanded ? null : i
                           setExpandedOwner(nextExpanded)
                           if (nextExpanded !== null) {
+                            void fetchOwnerWells(owner, ownerKey)
                             trackEvent('owner_expanded', {
                               owner_name: owner.owner_name,
                               score: owner.propensity_score,
@@ -1643,6 +1744,40 @@ export default function Home() {
                             </div>
                           )}
 
+                          {ownerWellMatches.length > 0 && (
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                                Wells on this interest
+                              </div>
+                              {ownerWellMatches.map((well, wi) => (
+                                <div
+                                  key={`${well.rrc_lease_id ?? 'well'}-${wi}`}
+                                  style={{
+                                    fontSize: 11,
+                                    color: '#374151',
+                                    marginBottom: 4,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      width: 6,
+                                      height: 6,
+                                      borderRadius: '50%',
+                                      background: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#9CA3AF',
+                                      flexShrink: 0,
+                                      display: 'inline-block',
+                                    }}
+                                  />
+                                  <span style={{ fontWeight: 500 }}>{well.lease_name ?? 'Unknown lease'}</span>
+                                  <span style={{ color: '#9CA3AF' }}>{well.operator_name ?? 'Unknown operator'}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
                           <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
                             <button
                               onClick={(e) => {
@@ -1679,6 +1814,64 @@ export default function Home() {
                   )
                 })}
               </div>
+
+              {tractWellsLoaded && (
+                <>
+                  {tractWells.length > 0 ? (
+                    <div style={{ borderTop: '1px solid #F3F4F6', marginTop: 8 }}>
+                      <div
+                        style={{
+                          padding: '10px 16px 6px',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          color: '#6B7280',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Wells in this tract ({tractWells.length})
+                      </div>
+                      {tractWells.map((well, i) => (
+                        <div
+                          key={`${well.rrc_lease_id ?? well.lease_name ?? 'well'}-${i}`}
+                          style={{
+                            padding: '8px 16px',
+                            borderBottom: '1px solid #F9FAFB',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
+                              {well.lease_name ?? 'Unknown lease'}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#6B7280' }}>
+                              {well.operator_name ?? 'Unknown operator'}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
+                              background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                            }}
+                          >
+                            {well.well_type ?? 'VERTICAL'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
+                      No wells recorded in this tract.
+                    </div>
+                  )}
+                </>
+              )}
 
               <div style={{ display: 'flex', marginTop: 14 }}>
                 <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
