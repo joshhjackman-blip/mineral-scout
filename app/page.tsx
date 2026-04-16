@@ -396,23 +396,67 @@ export default function Home() {
       return
     }
 
-    console.log('Selected tract:', selected?.ABSTRACT_L)
-    console.log('Tract owners count:', tractOwners?.length)
-    console.log('Sample owner rrc_lease_ids:', tractOwners?.slice(0, 3).map((o) => o.rrc_lease_id))
-
     const fetchTractWells = async () => {
       setTractWellsLoaded(false)
       setOwnerWells({})
-      const leaseIds = Array.from(new Set(
-        tractOwners
-          .map((o) => o.rrc_lease_id)
-          .filter(Boolean)
-      )).slice(0, 20)
 
-      console.log('Fetching wells for lease IDs:', leaseIds)
+      // Get lease IDs from owners_json in the tract properties
+      let leaseIds: string[] = []
+
+      // Try owners_json first
+      if (selected.owners_json) {
+        try {
+          const owners = typeof selected.owners_json === 'string'
+            ? JSON.parse(selected.owners_json)
+            : selected.owners_json
+          console.log(
+            'owners_json sample:',
+            Array.isArray(owners) ? owners.slice(0, 2) : owners
+          )
+          leaseIds = Array.from(new Set(
+            (Array.isArray(owners) ? owners : [])
+              .map((o: any) => o.rrc_lease_id ?? o.county_lease_id)
+              .filter(Boolean)
+              .map(String)
+          )).slice(0, 20) as string[]
+        } catch (e) {
+          console.log('owners_json parse error:', e)
+        }
+      }
+
+      // Fallback — fetch owners from Supabase using abstract
+      if (leaseIds.length === 0 && selected.ABSTRACT_L) {
+        const abstractNum = selected.ABSTRACT_L.replace('A-', '')
+        const { data: owners, error } = await supabase
+          .from('gonzales_mineral_ownership')
+          .select('rrc_lease_id')
+          .eq('abstract_number', abstractNum)
+          .limit(100)
+
+        if (error) {
+          console.log('Fallback owner lookup error:', error.message)
+        }
+
+        leaseIds = Array.from(new Set(
+          (owners ?? []).map((o: any) => String(o.rrc_lease_id)).filter(Boolean)
+        )).slice(0, 20) as string[]
+      }
+
+      // Also try top_operator to match wells directly
+      if (leaseIds.length === 0 && selected.field_name) {
+        const { data: wells } = await supabase
+          .from('gonzales_wells')
+          .select('lease_name, operator_name, well_type, rrc_lease_id')
+          .ilike('lease_name', `%${selected.field_name?.split(' ')[0]}%`)
+          .limit(20)
+        if (!cancelled) {
+          setTractWells((wells as WellSummary[]) ?? [])
+          setTractWellsLoaded(true)
+        }
+        return
+      }
 
       if (leaseIds.length === 0) {
-        console.log('No lease IDs found — checking selected properties:', Object.keys(selected))
         if (!cancelled) {
           setTractWells([])
           setTractWellsLoaded(true)
@@ -420,42 +464,31 @@ export default function Home() {
         return
       }
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('gonzales_wells')
         .select('lease_name, operator_name, well_type, rrc_lease_id')
-        .in('rrc_lease_id', leaseIds.map((leaseId) => String(leaseId)))
+        .in('rrc_lease_id', leaseIds)
         .limit(50)
 
-      console.log('Wells query result:', data?.length, 'error:', error)
-
-      if (error) {
-        if (!cancelled) {
-          setTractWells([])
-          setTractWellsLoaded(true)
-        }
-        return
-      }
-
-      const seenLeaseNames = new Set<string>()
-      const unique = ((data as WellSummary[]) ?? []).filter((well) => {
-        const key = String(well.lease_name ?? '').trim().toUpperCase()
-        if (!key) return true
-        if (seenLeaseNames.has(key)) return false
-        seenLeaseNames.add(key)
+      const seen = new Set<string>()
+      const unique = ((data as WellSummary[]) ?? []).filter((w: WellSummary) => {
+        const leaseName = String(w.lease_name ?? '').trim().toUpperCase()
+        if (!leaseName) return true
+        if (seen.has(leaseName)) return false
+        seen.add(leaseName)
         return true
       })
-      console.log('Unique wells:', unique.length)
-
       if (!cancelled) {
         setTractWells(unique)
         setTractWellsLoaded(true)
       }
     }
+
     void fetchTractWells()
     return () => {
       cancelled = true
     }
-  }, [selected, tractOwners])
+  }, [selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
     const leaseId = owner.rrc_lease_id
