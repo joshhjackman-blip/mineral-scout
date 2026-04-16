@@ -381,43 +381,54 @@ export default function Home() {
     if (!seen) setShowOnboarding(true)
   }, [])
 
+  const tractOwners = useMemo(
+    () => parseOwners(selected?.owners_json ?? ''),
+    [selected]
+  )
+
   useEffect(() => {
     let cancelled = false
 
-    const fetchTractWells = async () => {
-      if (!selected) {
-        setTractWells([])
-        setTractWellsLoaded(false)
-        setOwnerWells({})
-        return
-      }
-
+    if (!selected) {
+      setTractWells([])
       setTractWellsLoaded(false)
       setOwnerWells({})
-      const tractOwners = parseOwners(selected.owners_json ?? '')
-      const leaseIds = Array.from(
-        new Set(
-          tractOwners
-            .map((owner) => owner.rrc_lease_id)
-            .filter((leaseId): leaseId is string | number => leaseId !== null && leaseId !== undefined && String(leaseId).trim() !== '')
-            .map((leaseId) => String(leaseId).trim())
-        )
-      ).slice(0, 20)
+      return
+    }
+
+    console.log('Selected tract:', selected?.ABSTRACT_L)
+    console.log('Tract owners count:', tractOwners?.length)
+    console.log('Sample owner rrc_lease_ids:', tractOwners?.slice(0, 3).map((o) => o.rrc_lease_id))
+
+    const fetchTractWells = async () => {
+      setTractWellsLoaded(false)
+      setOwnerWells({})
+      const leaseIds = Array.from(new Set(
+        tractOwners
+          .map((o) => o.rrc_lease_id)
+          .filter(Boolean)
+      )).slice(0, 20)
+
+      console.log('Fetching wells for lease IDs:', leaseIds)
 
       if (leaseIds.length === 0) {
-        setTractWells([])
-        setTractWellsLoaded(true)
+        console.log('No lease IDs found — checking selected properties:', Object.keys(selected))
+        if (!cancelled) {
+          setTractWells([])
+          setTractWellsLoaded(true)
+        }
         return
       }
 
       const { data, error } = await supabase
         .from('gonzales_wells')
         .select('lease_name, operator_name, well_type, rrc_lease_id')
-        .in('rrc_lease_id', leaseIds)
+        .in('rrc_lease_id', leaseIds.map((leaseId) => String(leaseId)))
         .limit(50)
 
+      console.log('Wells query result:', data?.length, 'error:', error)
+
       if (error) {
-        console.error('Failed to load tract wells:', error.message)
         if (!cancelled) {
           setTractWells([])
           setTractWellsLoaded(true)
@@ -433,18 +444,18 @@ export default function Home() {
         seenLeaseNames.add(key)
         return true
       })
+      console.log('Unique wells:', unique.length)
 
       if (!cancelled) {
         setTractWells(unique)
         setTractWellsLoaded(true)
       }
     }
-
     void fetchTractWells()
     return () => {
       cancelled = true
     }
-  }, [selected])
+  }, [selected, tractOwners])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
     const leaseId = owner.rrc_lease_id
@@ -954,10 +965,7 @@ export default function Home() {
     [tracts]
   )
 
-  const selectedOwners = useMemo(
-    () => parseOwners(selected?.owners_json ?? ''),
-    [selected]
-  )
+  const selectedOwners = tractOwners
   const tierByScore = (score: number): 'hot' | 'motivated' | 'prospect' | 'low' => {
     if (score >= 8) return 'hot'
     if (score >= 5) return 'motivated'
