@@ -452,13 +452,20 @@ export default function Home() {
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
     const leaseId = owner.rrc_lease_id
-    if (!leaseId) return
+    console.log('fetchOwnerWells called:', owner.owner_name, 'leaseId:', leaseId, 'ownerKey:', ownerKey)
+
+    if (!leaseId) {
+      console.log('No leaseId — skipping wells fetch for', owner.owner_name)
+      return
+    }
 
     const { data, error } = await supabase
       .from('gonzales_wells')
       .select('lease_name, operator_name, well_type, rrc_lease_id')
       .eq('rrc_lease_id', String(leaseId))
       .limit(10)
+
+    console.log('Wells query result:', data?.length, 'error:', error?.message)
 
     if (error) {
       console.error(`Failed to load wells for owner ${owner.owner_name}:`, error.message)
