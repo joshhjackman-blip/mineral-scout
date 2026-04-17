@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import {
   LineChart,
@@ -305,6 +305,7 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
   const [searchOpen, setSearchOpen] = useState(false)
   const [searching, setSearching] = useState(false)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const [highlightedOwner, setHighlightedOwner] = useState<string | null>(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
@@ -380,6 +381,14 @@ export default function Home() {
   useEffect(() => {
     const seen = window.localStorage.getItem('mineral_map_onboarded')
     if (!seen) setShowOnboarding(true)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
   }, [])
 
   const tractOwners = useMemo(
@@ -523,59 +532,63 @@ export default function Home() {
     const trimmed = query.trim()
     setSearchQuery(trimmed)
 
-    if (trimmed.length < 2) {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+      searchTimeoutRef.current = null
+    }
+
+    if (trimmed.length < 3) {
       setSearchResults([])
       setSearchOpen(false)
       setSearching(false)
       return
     }
 
-    // Split into words for better matching.
-    const words = trimmed.toUpperCase().split(/\s+/).filter((word) => word.length > 1)
-    const primaryWord = words[0]
-
     setSearching(true)
-    const { data, error } = await supabase
-      .from('gonzales_mineral_ownership')
-      .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
-      .ilike('owner_name', `%${primaryWord}%`)
-      .order('propensity_score', { ascending: false })
-      .limit(100)
-
-    if (error) {
-      console.error('Search error:', error.message)
-      setSearchResults([])
-      setSearching(false)
-      setSearchOpen(true)
-      return
-    }
-
-    console.log('Search raw results:', data?.length, 'for query:', trimmed)
-
-    // Filter by additional words if multi-word search.
-    let filtered = (data ?? []) as OwnerSearchResult[]
-    if (words.length > 1) {
-      filtered = filtered.filter((owner) =>
-        words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
-      )
-    }
-
-    // Deduplicate by owner name and keep the highest-scoring row.
-    const seen = new Map<string, OwnerSearchResult>()
-    for (const owner of filtered) {
-      const key = String(owner.owner_name ?? '').trim().toUpperCase()
-      if (!key) continue
-      const existing = seen.get(key)
-      if (!existing || Number(owner.propensity_score ?? 0) > Number(existing.propensity_score ?? 0)) {
-        seen.set(key, owner)
+    // Debounce — wait 400ms after user stops typing.
+    searchTimeoutRef.current = setTimeout(async () => {
+      const words = trimmed.toUpperCase().split(/\s+/).filter((word) => word.length > 1)
+      const primaryWord = words[0]
+      if (!primaryWord) {
+        setSearchResults([])
+        setSearching(false)
+        return
       }
-    }
 
-    const results = Array.from(seen.values()).slice(0, 10)
-    console.log('Search results after dedup:', results.length)
-    setSearchResults(results)
-    setSearching(false)
-    setSearchOpen(true)
+      const { data, error } = await supabase
+        .from('gonzales_mineral_ownership')
+        .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
+        .ilike('owner_name', `%${primaryWord}%`)
+        .order('propensity_score', { ascending: false })
+        .limit(100)
+
+      if (error) {
+        console.error('Owner search failed:', error.message)
+        setSearching(false)
+        return
+      }
+
+      let filtered = (data ?? []) as OwnerSearchResult[]
+      if (words.length > 1) {
+        filtered = filtered.filter((owner) =>
+          words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
+        )
+      }
+
+      const seen = new Map<string, OwnerSearchResult>()
+      for (const owner of filtered) {
+        const key = String(owner.owner_name ?? '').toUpperCase().trim()
+        if (!seen.has(key) || Number(owner.propensity_score ?? 0) > Number(seen.get(key)?.propensity_score ?? 0)) {
+          seen.set(key, owner)
+        }
+      }
+
+      const results = Array.from(seen.values()).slice(0, 10)
+      setSearchResults(results)
+      setSearching(false)
+      searchTimeoutRef.current = null
+    }, 400)
   }
 
   const getScoreBreakdown = (owner: TractOwner): string[] => {
@@ -1322,7 +1335,7 @@ export default function Home() {
               </div>
             )}
 
-            {searchOpen && searchQuery.length >= 2 && searchResults.length === 0 && !searching && (
+            {searchOpen && searchQuery.length >= 3 && searchResults.length === 0 && !searching && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
                 background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
