@@ -1946,51 +1946,49 @@ export default function Home() {
                                 <div
                                   key={`${well.rrc_lease_id ?? 'well'}-${wi}`}
                                   style={{
-                                    fontSize: 11,
-                                    color: '#374151',
-                                    marginBottom: 4,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
+                                    marginBottom: 6,
+                                    padding: '6px 8px',
+                                    background: '#F9FAFB',
+                                    borderRadius: 6,
+                                    border: '1px solid #F3F4F6',
                                   }}
                                 >
-                                  <span
-                                    style={{
-                                      width: 6,
-                                      height: 6,
-                                      borderRadius: '50%',
-                                      background: well.oil_gas_code === 'G' ? '#3B82F6' : '#EF9F27',
-                                      flexShrink: 0,
-                                      display: 'inline-block',
-                                    }}
-                                  />
-                                  <span style={{ fontWeight: 500, flex: 1 }}>{well.lease_name ?? 'Unknown lease'}</span>
-                                  <span style={{ color: '#9CA3AF', fontSize: 10 }}>{well.operator_name ?? 'Unknown operator'}</span>
-                                  <span
-                                    style={{
-                                      fontSize: 9,
-                                      fontWeight: 700,
-                                      padding: '1px 5px',
-                                      borderRadius: 3,
-                                      background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
-                                      color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
-                                      border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
-                                    }}
-                                  >
-                                    {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 9,
-                                      color: '#9CA3AF',
-                                      background: '#F9FAFB',
-                                      padding: '1px 5px',
-                                      borderRadius: 3,
-                                      border: '1px solid #E5E7EB',
-                                    }}
-                                  >
-                                    {well.well_type === 'HORIZONTAL' ? 'H' : 'V'}
-                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#111827' }}>
+                                      {well.lease_name ?? 'Unknown lease'}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 3 }}>
+                                      <span
+                                        style={{
+                                          fontSize: 9,
+                                          fontWeight: 700,
+                                          padding: '1px 5px',
+                                          borderRadius: 3,
+                                          background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
+                                          color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
+                                          border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
+                                        }}
+                                      >
+                                        {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 9,
+                                          fontWeight: 600,
+                                          padding: '1px 5px',
+                                          borderRadius: 3,
+                                          background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
+                                          color: well.well_type === 'HORIZONTAL' ? '#D97706' : '#9CA3AF',
+                                          border: `1px solid ${well.well_type === 'HORIZONTAL' ? '#FDE68A' : '#E5E7EB'}`,
+                                        }}
+                                      >
+                                        {well.well_type === 'HORIZONTAL' ? 'HZ' : 'VT'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 10, color: '#6B7280' }}>
+                                    Operator: {well.operator_name ?? 'Unknown operator'}
+                                  </div>
                                 </div>
                               ))}
                             </div>
