@@ -110,6 +110,7 @@ type WellSummary = {
   latitude?: number | null
   longitude?: number | null
   rrc_lease_id?: string | null
+  oil_gas_code?: string | null
 }
 
 type MapFocusTarget = {
@@ -463,6 +464,44 @@ export default function Home() {
       })
 
       console.log('Wells found:', unique.length)
+      const wellLeaseIds = unique
+        .map((well) => String(well.rrc_lease_id ?? '').trim())
+        .filter(Boolean)
+
+      if (wellLeaseIds.length > 0) {
+        const normalizedLeaseIds = wellLeaseIds
+          .map((leaseId) => leaseId.replace(/^0+/, '') || '0')
+          .filter(Boolean)
+        const lookupLeaseIds = Array.from(new Set([...wellLeaseIds, ...normalizedLeaseIds]))
+        const { data: codes } = await supabase
+          .from('gonzales_mineral_ownership')
+          .select('rrc_lease_id, rrc_oil_and_gas_code')
+          .in('rrc_lease_id', lookupLeaseIds)
+          .limit(50)
+
+        const codeMap = new Map<string, string>(
+          (codes ?? []).map((codeRow) => [
+            String((codeRow as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? '').trim(),
+            String((codeRow as { rrc_oil_and_gas_code?: string | null }).rrc_oil_and_gas_code ?? 'O').toUpperCase(),
+          ])
+        )
+
+        const wellsWithCode = unique.map((well) => {
+          const leaseId = String(well.rrc_lease_id ?? '').trim()
+          const normalized = leaseId.replace(/^0+/, '') || '0'
+          return {
+            ...well,
+            oil_gas_code: codeMap.get(leaseId) ?? codeMap.get(normalized) ?? 'O',
+          }
+        })
+
+        if (!cancelled) {
+          setTractWells(wellsWithCode)
+          setTractWellsLoaded(true)
+        }
+        return
+      }
+
       if (!cancelled) {
         setTractWells(unique)
         setTractWellsLoaded(true)
@@ -484,21 +523,34 @@ export default function Home() {
       return
     }
 
-    const { data, error } = await supabase
-      .from('gonzales_wells')
-      .select('lease_name, operator_name, well_type, rrc_lease_id')
-      .eq('rrc_lease_id', String(leaseId))
-      .limit(10)
+    const [wellsRes, codeRes] = await Promise.all([
+      supabase
+        .from('gonzales_wells')
+        .select('lease_name, operator_name, well_type, rrc_lease_id')
+        .eq('rrc_lease_id', String(leaseId))
+        .limit(10),
+      supabase
+        .from('gonzales_mineral_ownership')
+        .select('rrc_oil_and_gas_code')
+        .eq('rrc_lease_id', String(leaseId))
+        .limit(1),
+    ])
 
-    console.log('Wells query result:', data?.length, 'error:', error?.message)
+    console.log('Wells query result:', wellsRes.data?.length, 'error:', wellsRes.error?.message)
 
-    if (error) {
-      console.error(`Failed to load wells for owner ${owner.owner_name}:`, error.message)
+    if (wellsRes.error) {
+      console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
       return
     }
 
-    if (data && data.length > 0) {
-      setOwnerWells((prev) => ({ ...prev, [ownerKey]: data as WellSummary[] }))
+    const oilGasCode = String(codeRes.data?.[0]?.rrc_oil_and_gas_code ?? 'O').toUpperCase()
+
+    if (wellsRes.data && wellsRes.data.length > 0) {
+      const wellsWithCode = wellsRes.data.map((well) => ({
+        ...(well as WellSummary),
+        oil_gas_code: oilGasCode,
+      }))
+      setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
     }
   }, [])
 
@@ -1661,26 +1713,44 @@ export default function Home() {
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
+                              gap: 8,
                             }}
                           >
-                            <div>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {well.lease_name}
                               </div>
                               <div style={{ fontSize: 11, color: '#6B7280' }}>
                                 {well.operator_name}
                               </div>
                             </div>
-                            <div style={{
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
-                              background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              flexShrink: 0,
-                            }}>
-                              {well.well_type ?? 'VERTICAL'}
+                            <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  padding: '1px 5px',
+                                  borderRadius: 3,
+                                  background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
+                                  color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
+                                  border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
+                                }}
+                              >
+                                {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  fontWeight: 600,
+                                  padding: '1px 5px',
+                                  borderRadius: 3,
+                                  background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
+                                  color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
+                                  border: `1px solid ${well.well_type === 'HORIZONTAL' ? '#FDE68A' : '#E5E7EB'}`,
+                                }}
+                              >
+                                {well.well_type === 'HORIZONTAL' ? 'H' : 'V'}
+                              </span>
                             </div>
                           </div>
                         ))}
@@ -1889,13 +1959,38 @@ export default function Home() {
                                       width: 6,
                                       height: 6,
                                       borderRadius: '50%',
-                                      background: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#9CA3AF',
+                                      background: well.oil_gas_code === 'G' ? '#3B82F6' : '#EF9F27',
                                       flexShrink: 0,
                                       display: 'inline-block',
                                     }}
                                   />
-                                  <span style={{ fontWeight: 500 }}>{well.lease_name ?? 'Unknown lease'}</span>
-                                  <span style={{ color: '#9CA3AF' }}>{well.operator_name ?? 'Unknown operator'}</span>
+                                  <span style={{ fontWeight: 500, flex: 1 }}>{well.lease_name ?? 'Unknown lease'}</span>
+                                  <span style={{ color: '#9CA3AF', fontSize: 10 }}>{well.operator_name ?? 'Unknown operator'}</span>
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      fontWeight: 700,
+                                      padding: '1px 5px',
+                                      borderRadius: 3,
+                                      background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
+                                      color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
+                                      border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
+                                    }}
+                                  >
+                                    {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      color: '#9CA3AF',
+                                      background: '#F9FAFB',
+                                      padding: '1px 5px',
+                                      borderRadius: 3,
+                                      border: '1px solid #E5E7EB',
+                                    }}
+                                  >
+                                    {well.well_type === 'HORIZONTAL' ? 'H' : 'V'}
+                                  </span>
                                 </div>
                               ))}
                             </div>
