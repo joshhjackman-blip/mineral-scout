@@ -841,6 +841,7 @@ def main() -> None:
                         "out_of_state": as_bool(owner.get("out_of_state", False)),
                         "motivated": as_bool(owner.get("motivated", False)),
                         "operator_name": owner.get("operator_name", "") or "",
+                        "rrc_lease_id": str(owner.get("rrc_lease_id", "") or ""),
                         "acreage": owner.get("acreage", 0),
                         "ownership_pct": (
                             ownership_pct
