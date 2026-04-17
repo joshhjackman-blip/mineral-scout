@@ -399,62 +399,45 @@ export default function Home() {
     const fetchTractWells = async () => {
       setTractWellsLoaded(false)
       setOwnerWells({})
-      let leaseIds: string[] = []
-      if (selected.owners_json) {
-        try {
-          const owners = typeof selected.owners_json === 'string'
-            ? JSON.parse(selected.owners_json)
-            : selected.owners_json
+      const operator = selected.top_operator
+      const fieldName = selected.field_name
+      const abstractL = selected.ABSTRACT_L
 
-          console.log('First owner keys:', Array.isArray(owners) ? Object.keys(owners[0] ?? {}) : [])
-          console.log('First owner:', Array.isArray(owners) ? owners[0] : owners)
+      console.log('Fetching wells for operator:', operator, 'field:', fieldName, 'abstract:', abstractL)
 
-          leaseIds = Array.from(new Set(
-            (Array.isArray(owners) ? owners : [])
-              .map((o: { rrc_lease_id?: string | number; county_lease_id?: string | number }) =>
-                String(o.rrc_lease_id ?? o.county_lease_id ?? '').trim()
-              )
-              .filter((id: string) => id && id !== 'undefined' && id !== 'null')
-          )) as string[]
+      let data: WellSummary[] = []
 
-          console.log('Extracted lease IDs from owners_json:', leaseIds.slice(0, 5))
-        } catch (e) {
-          console.log('owners_json parse error:', e)
-        }
+      // Try operator match first
+      if (operator) {
+        const { data: opWells } = await supabase
+          .from('gonzales_wells')
+          .select('lease_name, operator_name, well_type, rrc_lease_id')
+          .ilike('operator_name', `%${operator.split(' ')[0]}%`)
+          .limit(50)
+        data = (opWells as WellSummary[]) ?? []
       }
 
-      if (leaseIds.length === 0) {
-        console.log('No lease IDs found in owners_json')
-        if (!cancelled) {
-          setTractWells([])
-          setTractWellsLoaded(true)
-        }
-        return
+      // Fallback to field/lease-name match if operator had no hits.
+      if (data.length === 0 && fieldName) {
+        const { data: fieldWells } = await supabase
+          .from('gonzales_wells')
+          .select('lease_name, operator_name, well_type, rrc_lease_id')
+          .ilike('lease_name', `%${fieldName.split(' ')[0]}%`)
+          .limit(20)
+        data = (fieldWells as WellSummary[]) ?? []
       }
 
-      const { data, error } = await supabase
-        .from('gonzales_wells')
-        .select('lease_name, operator_name, well_type, rrc_lease_id')
-        .in('rrc_lease_id', leaseIds)
-        .limit(50)
-
-      console.log('Wells found:', data?.length, 'error:', error?.message)
-
-      if (error) {
-        if (!cancelled) {
-          setTractWells([])
-          setTractWellsLoaded(true)
-        }
-        return
-      }
-
+      // Deduplicate by lease_name
       const seen = new Set<string>()
-      const unique = ((data as WellSummary[]) ?? []).filter((w: { lease_name?: string | null; operator_name?: string | null; well_type?: string | null; rrc_lease_id?: string | null }) => {
+      const unique = data.filter((w) => {
         const leaseName = String(w.lease_name ?? '').trim()
+        if (!leaseName) return true
         if (seen.has(leaseName)) return false
         seen.add(leaseName)
         return true
       })
+
+      console.log('Wells found:', unique.length)
       if (!cancelled) {
         setTractWells(unique)
         setTractWellsLoaded(true)
