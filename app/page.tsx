@@ -520,8 +520,9 @@ export default function Home() {
   }
 
   const handleSearch = async (query: string) => {
-    setSearchQuery(query)
     const trimmed = query.trim()
+    setSearchQuery(trimmed)
+
     if (trimmed.length < 2) {
       setSearchResults([])
       setSearchOpen(false)
@@ -529,45 +530,50 @@ export default function Home() {
       return
     }
 
+    // Split into words for better matching.
+    const words = trimmed.toUpperCase().split(/\s+/).filter((word) => word.length > 1)
+    const primaryWord = words[0]
+
     setSearching(true)
     const { data, error } = await supabase
       .from('gonzales_mineral_ownership')
-      .select('owner_name, mailing_city, mailing_state, propensity_score, rrc_lease_id, operator_name, acreage')
-      .ilike('owner_name', `%${trimmed}%`)
+      .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
+      .ilike('owner_name', `%${primaryWord}%`)
       .order('propensity_score', { ascending: false })
-      .limit(50)
+      .limit(100)
 
     if (error) {
-      console.error('Owner search failed:', error.message)
+      console.error('Search error:', error.message)
       setSearchResults([])
       setSearching(false)
       setSearchOpen(true)
       return
     }
 
+    console.log('Search raw results:', data?.length, 'for query:', trimmed)
+
+    // Filter by additional words if multi-word search.
+    let filtered = (data ?? []) as OwnerSearchResult[]
+    if (words.length > 1) {
+      filtered = filtered.filter((owner) =>
+        words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
+      )
+    }
+
+    // Deduplicate by owner name and keep the highest-scoring row.
     const seen = new Map<string, OwnerSearchResult>()
-    for (const row of (data ?? []) as OwnerSearchResult[]) {
-      const key = String(row.owner_name ?? '').trim().toUpperCase()
+    for (const owner of filtered) {
+      const key = String(owner.owner_name ?? '').trim().toUpperCase()
       if (!key) continue
-      if (!seen.has(key)) {
-        seen.set(key, { ...row, leaseCount: 1 })
-        continue
-      }
-
-      const existing = seen.get(key)!
-      const nextLeaseCount = Number(existing.leaseCount ?? 1) + 1
-      const existingScore = Number(existing.propensity_score ?? 0)
-      const rowScore = Number(row.propensity_score ?? 0)
-
-      // Keep the highest-scoring row while aggregating total lease matches.
-      if (rowScore > existingScore) {
-        seen.set(key, { ...row, leaseCount: nextLeaseCount })
-      } else {
-        existing.leaseCount = nextLeaseCount
+      const existing = seen.get(key)
+      if (!existing || Number(owner.propensity_score ?? 0) > Number(existing.propensity_score ?? 0)) {
+        seen.set(key, owner)
       }
     }
 
-    setSearchResults(Array.from(seen.values()).slice(0, 10))
+    const results = Array.from(seen.values()).slice(0, 10)
+    console.log('Search results after dedup:', results.length)
+    setSearchResults(results)
     setSearching(false)
     setSearchOpen(true)
   }
