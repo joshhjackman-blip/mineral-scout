@@ -296,6 +296,7 @@ export default function Home() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
+  const [wellsExpanded, setWellsExpanded] = useState(false)
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
@@ -393,12 +394,14 @@ export default function Home() {
       setTractWells([])
       setTractWellsLoaded(false)
       setOwnerWells({})
+      setWellsExpanded(false)
       return
     }
 
     const fetchTractWells = async () => {
       setTractWellsLoaded(false)
       setOwnerWells({})
+      setWellsExpanded(false)
       const operator = selected.top_operator
       const fieldName = selected.field_name
       const abstractL = selected.ABSTRACT_L
@@ -1584,12 +1587,81 @@ export default function Home() {
                 <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>COMPARABLE SALES</div>
-                <div style={{ fontSize: 11, color: '#6B7280' }}>
-                  No comp data available yet — comps unlock after first closed deal
+              {tractWellsLoaded && tractWells.length > 0 && (
+                <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+                  <div style={{ borderTop: '1px solid #F3F4F6' }}>
+                    <button
+                      onClick={() => setWellsExpanded(!wellsExpanded)}
+                      style={{
+                        width: '100%',
+                        padding: '10px 16px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      <div style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#6B7280',
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                      }}>
+                        Wells in this tract ({tractWells.length})
+                      </div>
+                      <div style={{
+                        fontSize: 10,
+                        color: '#9CA3AF',
+                        transform: wellsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        transition: 'transform 0.2s',
+                      }}>
+                        ▼
+                      </div>
+                    </button>
+
+                    {wellsExpanded && (
+                      <div style={{ paddingBottom: 8 }}>
+                        {tractWells.map((well, i) => (
+                          <div
+                            key={`${well.rrc_lease_id ?? well.lease_name ?? 'well'}-${i}`}
+                            style={{
+                              padding: '6px 16px',
+                              borderBottom: '1px solid #F9FAFB',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
+                                {well.lease_name}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#6B7280' }}>
+                                {well.operator_name}
+                              </div>
+                            </div>
+                            <div style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
+                              background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
+                              padding: '2px 8px',
+                              borderRadius: 4,
+                              flexShrink: 0,
+                            }}>
+                              {well.well_type ?? 'VERTICAL'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div
                 style={{
@@ -1838,64 +1910,6 @@ export default function Home() {
                   )
                 })}
               </div>
-
-              {tractWellsLoaded && (
-                <>
-                  {tractWells.length > 0 ? (
-                    <div style={{ borderTop: '1px solid #F3F4F6', marginTop: 8 }}>
-                      <div
-                        style={{
-                          padding: '10px 16px 6px',
-                          fontSize: 10,
-                          fontWeight: 700,
-                          color: '#6B7280',
-                          letterSpacing: '0.08em',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        Wells in this tract ({tractWells.length})
-                      </div>
-                      {tractWells.map((well, i) => (
-                        <div
-                          key={`${well.rrc_lease_id ?? well.lease_name ?? 'well'}-${i}`}
-                          style={{
-                            padding: '8px 16px',
-                            borderBottom: '1px solid #F9FAFB',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
-                              {well.lease_name ?? 'Unknown lease'}
-                            </div>
-                            <div style={{ fontSize: 11, color: '#6B7280' }}>
-                              {well.operator_name ?? 'Unknown operator'}
-                            </div>
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
-                              background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                            }}
-                          >
-                            {well.well_type ?? 'VERTICAL'}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', borderTop: '1px solid #F3F4F6' }}>
-                      No wells recorded in this tract.
-                    </div>
-                  )}
-                </>
-              )}
 
               <div style={{ display: 'flex', marginTop: 14 }}>
                 <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
