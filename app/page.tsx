@@ -549,33 +549,41 @@ export default function Home() {
     // Debounce — wait 400ms after user stops typing.
     searchTimeoutRef.current = setTimeout(async () => {
       const words = trimmed.toUpperCase().split(/\s+/).filter((word) => word.length > 1)
-      const primaryWord = words[0]
-      if (!primaryWord) {
+      if (words.length === 0) {
         setSearchResults([])
         setSearching(false)
+        searchTimeoutRef.current = null
         return
       }
 
-      const { data, error } = await supabase
-        .from('gonzales_mineral_ownership')
-        .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
-        .ilike('owner_name', `%${primaryWord}%`)
-        .order('propensity_score', { ascending: false })
-        .limit(100)
+      // Run parallel searches for each word as primary.
+      // This handles both "Kent Plaster" and "Plaster Kent".
+      const searchPromises = words.map((word) =>
+        supabase
+          .from('gonzales_mineral_ownership')
+          .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
+          .ilike('owner_name', `%${word}%`)
+          .order('propensity_score', { ascending: false })
+          .limit(100)
+      )
 
-      if (error) {
-        console.error('Owner search failed:', error.message)
+      const queryResults = await Promise.all(searchPromises)
+      const firstError = queryResults.find((result) => result.error)?.error
+      if (firstError) {
+        console.error('Owner search failed:', firstError.message)
         setSearching(false)
+        searchTimeoutRef.current = null
         return
       }
 
-      let filtered = (data ?? []) as OwnerSearchResult[]
-      if (words.length > 1) {
-        filtered = filtered.filter((owner) =>
-          words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
-        )
-      }
+      const allData = queryResults.flatMap((result) => (result.data ?? []) as OwnerSearchResult[])
 
+      // Filter to rows that contain ALL words (in any order).
+      const filtered = allData.filter((owner) =>
+        words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
+      )
+
+      // Deduplicate by owner name keeping highest score.
       const seen = new Map<string, OwnerSearchResult>()
       for (const owner of filtered) {
         const key = String(owner.owner_name ?? '').toUpperCase().trim()
@@ -584,8 +592,8 @@ export default function Home() {
         }
       }
 
-      const results = Array.from(seen.values()).slice(0, 10)
-      setSearchResults(results)
+      const topResults = Array.from(seen.values()).slice(0, 10)
+      setSearchResults(topResults)
       setSearching(false)
       searchTimeoutRef.current = null
     }, 400)
