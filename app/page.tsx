@@ -404,6 +404,19 @@ export default function Home() {
       const abstractL = selected.ABSTRACT_L
 
       console.log('Fetching wells for operator:', operator, 'field:', fieldName, 'abstract:', abstractL)
+      if (selected.owners_json) {
+        try {
+          const owners = typeof selected.owners_json === 'string'
+            ? JSON.parse(selected.owners_json)
+            : selected.owners_json
+          if (Array.isArray(owners) && owners.length > 0) {
+            console.log('owners_json first owner full:', owners[0])
+            console.log('rrc_lease_id present:', owners.map((o: any) => o.rrc_lease_id).slice(0, 5))
+          }
+        } catch (e) {
+          console.log('owners_json parse error:', e)
+        }
+      }
 
       let data: WellSummary[] = []
 
