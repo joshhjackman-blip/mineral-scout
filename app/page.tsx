@@ -432,7 +432,7 @@ export default function Home() {
         return
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('gonzales_wells')
         .select('lease_name, operator_name, well_type, rrc_lease_id')
         .in('rrc_lease_id', leaseIds)
