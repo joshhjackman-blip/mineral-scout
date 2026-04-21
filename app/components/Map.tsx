@@ -40,6 +40,15 @@ export default function Map({
   const onOwnerClickRef = useRef(onOwnerClick)
   const layersReady = useRef(false)
 
+  type WellLayerRecord = {
+    latitude: number | string | null
+    longitude: number | string | null
+    operator_name?: string | null
+    lease_name?: string | null
+    completion_date?: string | null
+    well_type?: string | null
+  }
+
   useEffect(() => {
     onOwnerClickRef.current = onOwnerClick
   }, [onOwnerClick])
@@ -65,20 +74,29 @@ export default function Map({
         return
       }
 
-      console.log('Style ready, fetching parcels/permits...')
+      console.log('Style ready, fetching parcels/wells...')
 
       try {
-        const [parcelsResponse, permitsResult] = await Promise.all([
+        const wellsPromise =
+          selectedCounty === 'howard'
+            ? supabase
+              .from('howard_wells')
+              .select('api_number,latitude,longitude,well_type,oil_gas_code,well_status')
+              .not('latitude', 'is', null)
+              .not('longitude', 'is', null)
+            : supabase
+              .from('gonzales_wells')
+              .select('api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type')
+              .not('latitude', 'is', null)
+              .not('longitude', 'is', null)
+
+        const [parcelsResponse, wellsResult] = await Promise.all([
           fetch(
             selectedCounty === 'howard'
               ? '/howard_parcels_enriched.geojson'
               : '/api/parcels'
           ),
-          supabase
-            .from('gonzales_permits')
-            .select('latitude, longitude, operator_name, lease_name, filed_date, permit_type')
-            .not('latitude', 'is', null)
-            .not('longitude', 'is', null),
+          wellsPromise,
         ])
 
         if (!parcelsResponse.ok) {
@@ -86,7 +104,17 @@ export default function Map({
         }
 
         const parcelsData = await parcelsResponse.json()
-        const permits = permitsResult.data ?? []
+        const wells: WellLayerRecord[] =
+          selectedCounty === 'howard'
+            ? ((wellsResult.data ?? []) as Array<Record<string, unknown>>).map((well) => ({
+              latitude: (well.latitude as number | string | null) ?? null,
+              longitude: (well.longitude as number | string | null) ?? null,
+              well_type: (well.well_type as string | null) ?? '',
+              operator_name: '',
+              lease_name: '',
+              completion_date: '',
+            }))
+            : ((wellsResult.data ?? []) as WellLayerRecord[])
 
         if (!map.current) return
         console.log('GeoJSON received, features:', parcelsData.features?.length)
@@ -183,7 +211,7 @@ export default function Map({
 
         const permitsGeoJSON: GeoJSON.FeatureCollection = {
           type: 'FeatureCollection',
-          features: permits
+          features: wells
             .filter((p) => Number.isFinite(Number(p.longitude)) && Number.isFinite(Number(p.latitude)))
             .map((p) => ({
               type: 'Feature' as const,
@@ -192,10 +220,10 @@ export default function Map({
                 coordinates: [Number(p.longitude), Number(p.latitude)],
               },
               properties: {
-                operator: p.operator_name,
-                lease: p.lease_name,
-                date: p.filed_date,
-                type: p.permit_type,
+                operator: p.operator_name ?? '',
+                lease: p.lease_name ?? '',
+                date: p.completion_date ?? '',
+                type: p.well_type ?? '',
               },
             })),
         }
