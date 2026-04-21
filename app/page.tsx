@@ -14,6 +14,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
+import { TractStatsBar, useTractStats } from '@/components/TractStatsBar'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -958,6 +959,16 @@ export default function Home() {
   const maxScore = toNumber(selected?.max_propensity_score)
   const fieldName = selected?.field_name ?? 'Unknown'
   const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
+  const selectedProps = (selected ?? null) as Record<string, unknown> | null
+  const rrcLeaseId = selectedProps?.rrc_lease_id == null ? null : String(selectedProps.rrc_lease_id)
+  const grossAcresRaw = selectedProps?.gross_acres
+  const grossAcres =
+    grossAcresRaw == null || grossAcresRaw === ''
+      ? null
+      : Number.isFinite(Number(grossAcresRaw))
+        ? Number(grossAcresRaw)
+        : null
+  const { pdpCount, pudCount, lastCompletion } = useTractStats(rrcLeaseId)
 
   return (
     <div
@@ -1431,6 +1442,15 @@ export default function Home() {
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
                   {topOperator}
                 </span>
+              </div>
+
+              <div style={{ marginBottom: 14 }}>
+                <TractStatsBar
+                  grossAcres={grossAcres}
+                  pdpCount={pdpCount}
+                  pudCount={pudCount}
+                  lastCompletionDate={lastCompletion}
+                />
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
