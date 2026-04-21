@@ -147,7 +147,7 @@ export default function Landing() {
               src="/demo"
               style={{
                 width: '100%',
-                height: 600,
+                height: 580,
                 border: 'none',
                 borderRadius: 12,
                 display: 'block',

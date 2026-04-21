@@ -281,8 +281,8 @@ export default function DemoPage() {
     <div
       style={{
         background: '#0D1117',
-        minHeight: '100dvh',
-        height: '100dvh',
+        minHeight: '100%',
+        height: '100%',
         color: '#fff',
         fontFamily: "'DM Sans', sans-serif",
         display: 'flex',
