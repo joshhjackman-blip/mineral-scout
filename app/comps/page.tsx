@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
@@ -220,7 +220,7 @@ const SEEDED_REFERENCE_COMPS: Omit<Comp, 'id'>[] = [
   },
 ]
 
-export default function Comps() {
+function CompsPageInner() {
   const searchParams = useSearchParams()
   const [comps, setComps] = useState<Comp[]>([])
   const [showForm, setShowForm] = useState(false)
@@ -567,5 +567,13 @@ export default function Comps() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function CompsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen text-zinc-500">Loading...</div>}>
+      <CompsPageInner />
+    </Suspense>
   )
 }
