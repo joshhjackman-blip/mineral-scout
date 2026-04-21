@@ -457,11 +457,12 @@ export default function DemoPage() {
           borderBottom: '1px solid rgba(239,159,39,0.25)',
           color: 'rgba(239,159,39,0.9)',
           fontSize: 11,
+          fontWeight: 600,
           textAlign: 'center',
           padding: '0 10px',
         }}
       >
-        Interactive demo — owner names anonymized. Sign up at getmineralmap.com to access real data.
+        Interactive demo — owner names anonymized; some features are intentionally omitted. Sign up at getmineralmap.com to access real data.
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
