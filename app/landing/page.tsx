@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import AppLogo from '@/app/components/AppLogo'
-import InteractiveDemo from './InteractiveDemo'
 
 export default function Landing() {
   return (
@@ -144,7 +143,16 @@ export default function Landing() {
             </p>
           </div>
           <div style={{ maxWidth: 900, margin: '0 auto', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <InteractiveDemo />
+            <iframe
+              src="/demo"
+              style={{
+                width: '100%',
+                height: 600,
+                border: 'none',
+                borderRadius: 12,
+                display: 'block',
+              }}
+            />
           </div>
         </div>
 
