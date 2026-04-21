@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import AppLogo from '@/app/components/AppLogo'
+import InteractiveDemo from './InteractiveDemo'
 
 export default function Landing() {
   return (
@@ -127,6 +128,23 @@ export default function Landing() {
             >
               View pricing
             </Link>
+          </div>
+        </div>
+
+        <div style={{ padding: 'clamp(48px, 10vh, 80px) clamp(16px, 6vw, 52px) clamp(32px, 8vh, 60px)' }}>
+          <div style={{ textAlign: 'center', marginBottom: 36 }}>
+            <div style={{ fontSize: 'clamp(11px, 2.8vw, 13px)', color: 'rgba(239,159,39,0.7)', fontWeight: 500, letterSpacing: '0.1em', marginBottom: 12 }}>
+              INTERACTIVE DEMO
+            </div>
+            <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(28px, 7vw, 48px)', color: '#fff', lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+              See it in action
+            </div>
+            <p style={{ fontSize: 'clamp(14px, 3.8vw, 18px)', color: 'rgba(255,255,255,0.36)', marginTop: 12 }}>
+              No signup required — click through the full workflow below.
+            </p>
+          </div>
+          <div style={{ maxWidth: 860, margin: '0 auto' }}>
+            <InteractiveDemo />
           </div>
         </div>
 

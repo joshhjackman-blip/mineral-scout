@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
+import { useTractStats } from '@/components/TractStatsBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -218,7 +220,8 @@ const SEEDED_REFERENCE_COMPS: Omit<Comp, 'id'>[] = [
   },
 ]
 
-export default function Comps() {
+function CompsPageInner() {
+  const searchParams = useSearchParams()
   const [comps, setComps] = useState<Comp[]>([])
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({
@@ -234,6 +237,11 @@ export default function Comps() {
   const [calcMonthly, setCalcMonthly] = useState('')
   const [calcAcreage, setCalcAcreage] = useState('')
   const [calcNRI, setCalcNRI] = useState('')
+  const [calcPdpWells, setCalcPdpWells] = useState(0)
+  const [calcPudPermits, setCalcPudPermits] = useState(0)
+
+  const rrcLeaseId = searchParams.get('rrc_lease_id') ?? searchParams.get('rrcLeaseId')
+  const { pdpCount: contextPdpCount, pudCount: contextPudCount } = useTractStats(rrcLeaseId)
 
   useEffect(() => {
     supabase
@@ -260,6 +268,38 @@ export default function Comps() {
   const aggressive = annual * 5
   const pricePerNRIAcre =
     calcNRI && calcAcreage ? market / (Number(calcNRI) * Number(calcAcreage)) : 0
+  const pdpMultiplier =
+    calcPdpWells <= 0 ? 0.4 : calcPdpWells === 1 ? 1.0 : calcPdpWells <= 3 ? 1.35 : 1.65
+  const pudAdjustment =
+    calcPudPermits <= 0 ? 0 : calcPudPermits === 1 ? 0.08 : calcPudPermits === 2 ? 0.14 : 0.2
+  const adjustedRatePerNma = pricePerNRIAcre * pdpMultiplier * (1 + pudAdjustment)
+  const pdpTierLabel =
+    calcPdpWells <= 0
+      ? 'no production ×0.4'
+      : calcPdpWells === 1
+        ? '1 well ×1.0'
+        : calcPdpWells <= 3
+          ? '2-3 wells ×1.35'
+          : '4+ wells ×1.65'
+  const pudBonusLabel =
+    calcPudPermits <= 0
+      ? '0 permits = no bonus'
+      : calcPudPermits === 1
+        ? '1 permit = +8%'
+        : calcPudPermits === 2
+          ? '2 permits = +14%'
+          : '3+ permits = +20%'
+
+  useEffect(() => {
+    if (!rrcLeaseId) {
+      setCalcPdpWells(0)
+      setCalcPudPermits(0)
+      return
+    }
+
+    setCalcPdpWells(contextPdpCount)
+    setCalcPudPermits(contextPudCount)
+  }, [rrcLeaseId, contextPdpCount, contextPudCount])
 
   const handleSubmit = async () => {
     if (!form.monthly_royalty || !form.sale_price) return
@@ -355,6 +395,34 @@ export default function Comps() {
                 className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
               />
             </div>
+            <div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PDP Wells</div>
+              <input
+                type="number"
+                min={0}
+                value={calcPdpWells}
+                onChange={(e) => {
+                  const value = Number(e.target.value)
+                  setCalcPdpWells(Number.isFinite(value) && value > 0 ? Math.floor(value) : 0)
+                }}
+                className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
+              />
+              <div className="mt-1 text-[11px] text-gray-500">{pdpTierLabel}</div>
+            </div>
+            <div>
+              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">PUD Permits</div>
+              <input
+                type="number"
+                min={0}
+                value={calcPudPermits}
+                onChange={(e) => {
+                  const value = Number(e.target.value)
+                  setCalcPudPermits(Number.isFinite(value) && value > 0 ? Math.floor(value) : 0)
+                }}
+                className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
+              />
+              <div className="mt-1 text-[11px] text-gray-500">{pudBonusLabel}</div>
+            </div>
           </div>
 
           {calcMonthly && Number(calcMonthly) > 0 && (
@@ -378,6 +446,11 @@ export default function Comps() {
                   <div className="text-xs text-emerald-700">
                     Price per NRI acre (4x): <span className="font-bold">${Math.round(pricePerNRIAcre).toLocaleString()}</span>
                   </div>
+                </div>
+              )}
+              {pricePerNRIAcre > 0 && (
+                <div className="font-mono text-xs text-zinc-500 px-1">
+                  Base ${Math.round(pricePerNRIAcre).toLocaleString()}/NMA {'\u2192'} PDP ×{pdpMultiplier.toFixed(2)} {'\u2192'} PUD +{Math.round(pudAdjustment * 100)}% {'\u2192'} ${Math.round(adjustedRatePerNma).toLocaleString()}/NMA
                 </div>
               )}
             </div>
@@ -494,5 +567,13 @@ export default function Comps() {
         </main>
       </div>
     </div>
+  )
+}
+
+export default function CompsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen text-zinc-500">Loading...</div>}>
+      <CompsPageInner />
+    </Suspense>
   )
 }
