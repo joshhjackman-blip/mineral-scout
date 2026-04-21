@@ -32,6 +32,7 @@ type TractOwner = {
   acreage?: number
   ownership_pct?: number
   decimal_interest?: number
+  sptb_code?: string
   interest_type?: string
   prod_cumulative_sum_oil?: number
   phone?: string
@@ -212,6 +213,7 @@ const getTractGrossAcres = (tractProperties?: TractSelection | null): number => 
 }
 
 const getNRA = (owner: TractOwner, tractProperties?: TractSelection | null): number | null => {
+  if (owner.sptb_code === 'XV') return null
   const decimalInterest = Number(owner.decimal_interest ?? 0) ||
     (Number(owner.ownership_pct ?? 0) / 100)
   if (!decimalInterest || decimalInterest <= 0) return null
