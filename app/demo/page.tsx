@@ -467,8 +467,8 @@ export default function DemoPage() {
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <div
           style={{
-            width: 420,
-            minWidth: 420,
+            width: 360,
+            minWidth: 360,
             background: '#F8F8F8',
             borderRight: '1px solid #E5E7EB',
             overflowY: 'auto',
