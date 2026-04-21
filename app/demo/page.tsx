@@ -144,6 +144,7 @@ export default function DemoPage() {
   const layersReady = useRef(false)
   const [selectedTract, setSelectedTract] = useState<SelectedTract | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  const [skipTraceState, setSkipTraceState] = useState<'idle' | 'loading' | 'result'>('idle')
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768)
@@ -158,7 +159,7 @@ export default function DemoPage() {
 
     const m = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/dark-v11',
+      style: 'mapbox://styles/mapbox/streets-v12',
       center: [-97.45, 29.45],
       zoom: 10,
     })
@@ -202,17 +203,19 @@ export default function DemoPage() {
           paint: {
             'fill-color': [
               'step', scoreExpr,
-              '#9CA3AF',
-              2, '#FFC107',
+              '#9E9E9E',
+              2, '#81C784',
               5, '#FF9800',
               8, '#F44336',
+              10, '#B71C1C',
             ],
             'fill-opacity': [
               'step', scoreExpr,
               0.3,
-              2, 0.5,
-              5, 0.72,
-              8, 0.9,
+              2, 0.45,
+              5, 0.7,
+              8, 0.88,
+              10, 1.0,
             ],
           },
         })
@@ -226,9 +229,9 @@ export default function DemoPage() {
             'line-cap': 'round',
           },
           paint: {
-            'line-color': ['step', scoreExpr, '#7C8594', 5, '#FFB74D', 8, '#F44336'],
-            'line-width': ['step', scoreExpr, 0.8, 5, 1.4, 8, 2.0],
-            'line-opacity': 0.88,
+            'line-color': ['step', scoreExpr, '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
+            'line-width': ['step', scoreExpr, 1.1, 6, 1.6, 8, 2.2],
+            'line-opacity': 0.92,
           },
         })
 
@@ -248,6 +251,26 @@ export default function DemoPage() {
             score: tractScore,
             owners,
           })
+
+          if (e.features?.[0]?.geometry) {
+            const geometry = e.features[0].geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon
+            const bounds = new mapboxgl.LngLatBounds()
+            const addCoords = (coords: number[][]) => {
+              coords.forEach((c) => bounds.extend([c[0], c[1]] as [number, number]))
+            }
+            if (geometry.type === 'Polygon') {
+              addCoords(geometry.coordinates[0] as number[][])
+            } else if (geometry.type === 'MultiPolygon') {
+              geometry.coordinates.forEach((poly) => addCoords(poly[0] as number[][]))
+            }
+            if (!bounds.isEmpty()) {
+              map.current?.fitBounds(bounds, {
+                padding: 120,
+                duration: 800,
+                maxZoom: 14
+              })
+            }
+          }
         })
 
         map.current.on('mouseenter', 'demo-fill', () => {
@@ -274,6 +297,18 @@ export default function DemoPage() {
       layersReady.current = false
     }
   }, [])
+
+  useEffect(() => {
+    setSkipTraceState('idle')
+  }, [selectedTract?.abstractLabel])
+
+  useEffect(() => {
+    if (skipTraceState !== 'loading') return
+    const timeout = window.setTimeout(() => {
+      setSkipTraceState('result')
+    }, 2000)
+    return () => window.clearTimeout(timeout)
+  }, [skipTraceState])
 
   const panelWidth = useMemo(() => (isMobile ? '100%' : 280), [isMobile])
 
@@ -371,8 +406,8 @@ export default function DemoPage() {
           >
             <div style={{ padding: '12px 12px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <div style={{ fontSize: 10, letterSpacing: '0.09em', color: 'rgba(239,159,39,0.75)', fontWeight: 700 }}>
-                  SELECTED TRACT
+                <div style={{ fontSize: 10, letterSpacing: '0.09em', color: '#EF9F27', fontWeight: 700, textTransform: 'uppercase' }}>
+                  {selectedTract.abstractLabel}
                 </div>
                 <button
                   onClick={() => setSelectedTract(null)}
@@ -389,9 +424,6 @@ export default function DemoPage() {
                   ✕
                 </button>
               </div>
-              <div style={{ fontSize: 18, fontFamily: "'DM Serif Display', serif", lineHeight: 1.1 }}>
-                {selectedTract.abstractLabel}
-              </div>
               <div style={{ marginTop: 6, fontSize: 11, color: 'rgba(255,255,255,0.62)' }}>
                 {selectedTract.fakeAcreage.toLocaleString()} ac · {selectedTract.operator}
               </div>
@@ -402,47 +434,137 @@ export default function DemoPage() {
                 <div
                   key={`${owner.name}-${index}`}
                   style={{
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: 8,
-                    padding: '8px 9px',
-                    marginBottom: 8,
+                    borderLeft: index === 0 ? '3px solid #EF9F27' : '3px solid transparent',
+                    borderBottom: '1px solid rgba(255,255,255,0.08)',
+                    padding: '10px 8px 10px 10px',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                     <div>
-                      <div style={{ fontSize: 11, color: '#fff', fontWeight: 600 }}>{owner.name}</div>
+                      <div style={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>
+                        {index + 1}. {owner.name}
+                      </div>
                       <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)' }}>
                         {owner.city}, {owner.state}
                       </div>
+                      <div
+                        style={{
+                          marginTop: 5,
+                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                          fontSize: 10,
+                          color: '#EF9F27',
+                        }}
+                      >
+                        {owner.nra.toFixed(3)} NRA
+                      </div>
+
+                      {index === 0 && (
+                        <div style={{ marginTop: 7 }}>
+                          {skipTraceState === 'idle' && (
+                            <button
+                              type="button"
+                              onClick={() => setSkipTraceState('loading')}
+                              style={{
+                                border: '1px solid #1E2D3D',
+                                background: '#131D2B',
+                                color: 'rgba(255,255,255,0.62)',
+                                borderRadius: 6,
+                                padding: '6px 8px',
+                                fontSize: 10,
+                                fontWeight: 500,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <span
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  border: '1px solid rgba(255,255,255,0.45)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 6,
+                                  lineHeight: 1,
+                                }}
+                              >
+                                •
+                              </span>
+                              Skip Trace · 1 credit
+                            </button>
+                          )}
+                          {skipTraceState === 'loading' && (
+                            <div
+                              style={{
+                                color: 'rgba(255,255,255,0.48)',
+                                fontSize: 10,
+                                textAlign: 'center',
+                                padding: '6px 0',
+                              }}
+                            >
+                              Searching records...
+                            </div>
+                          )}
+                          {skipTraceState === 'result' && (
+                            <div
+                              style={{
+                                background: '#0D2014',
+                                border: '1px solid #1A3B1B',
+                                borderRadius: 5,
+                                padding: '7px 8px',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color: '#3FB950',
+                                  fontSize: 9,
+                                  fontWeight: 700,
+                                  letterSpacing: '0.08em',
+                                  marginBottom: 4,
+                                }}
+                              >
+                                CONTACT FOUND
+                              </div>
+                              <div style={{ color: '#fff', fontSize: 11, fontWeight: 700 }}>(720) 555-0182</div>
+                              <div style={{ color: '#79C0FF', fontSize: 10, marginTop: 2 }}>jhar●●●●@gmail.com</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span
                       style={{
                         fontSize: 10,
                         fontWeight: 700,
-                        color: scoreColor(owner.score),
-                        border: `1px solid ${scoreColor(owner.score)}66`,
-                        borderRadius: 999,
+                        color:
+                          owner.score >= 8
+                            ? '#FCA5A5'
+                            : owner.score >= 5
+                              ? '#FCD34D'
+                              : owner.score >= 2
+                                ? '#7EE787'
+                                : '#9CA3AF',
+                        background:
+                          owner.score >= 8
+                            ? '#B91C1C'
+                            : owner.score >= 5
+                              ? '#92400E'
+                              : owner.score >= 2
+                                ? '#2A3E1A'
+                                : '#374151',
+                        borderRadius: 4,
                         padding: '2px 7px',
-                        whiteSpace: 'nowrap',
+                        whiteSpace: 'nowrap'
                       }}
                     >
                       {owner.score}/10
                     </span>
                   </div>
-
-                  <div
-                    style={{
-                      marginTop: 7,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                      fontSize: 10,
-                    }}
-                  >
-                    <span style={{ color: '#EF9F27' }}>{owner.nra.toFixed(3)} NRA</span>
-                    <span style={{ color: 'rgba(255,255,255,0.45)' }}>{owner.label}</span>
+                  <div style={{ marginTop: 5, textAlign: 'right', color: 'rgba(255,255,255,0.45)', fontSize: 10 }}>
+                    {owner.label}
                   </div>
                 </div>
               ))}
