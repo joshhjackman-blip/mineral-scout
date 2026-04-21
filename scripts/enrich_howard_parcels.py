@@ -70,12 +70,9 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
 
     while True:
         # Use keyset pagination to avoid deep OFFSET scan timeouts.
-        query = client.table("howard_mineral_ownership").select(
-            "id, owner_name, mailing_city, mailing_state, mailing_zip, mailing_address, "
-            "operator_name, propensity_score, motivated, out_of_state, acreage, rrc_lease_id, "
-            "county_lease_name, field_name, first_date, first_6_month_oil, first_12_month_oil, "
-            "first_24_month_oil, first_60_month_oil, prod_cumulative_sum_oil, abstract"
-        )
+        # Howard schema can differ from Gonzales; pull full rows to avoid hard-failing
+        # on optional/missing columns while keeping downstream logic unchanged.
+        query = client.table("howard_mineral_ownership").select("*")
         if server_side_motivated_filter:
             query = query.eq("motivated", True)
         query = query.order("id", desc=False).limit(page_size)
@@ -127,7 +124,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
 
     print(f"Total motivated owners fetched: {len(all_owners)}")
 
-    # Fetch raw_record separately in manageable chunks and merge by id.
+    # Fetch raw_record separately in manageable chunks and merge by id when available.
     owners_by_id: dict[str, dict[str, Any]] = {
         str(owner["id"]): owner for owner in all_owners
     }
@@ -135,12 +132,16 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     chunk_size = 500
     for start in range(0, len(owner_ids), chunk_size):
         chunk_ids = owner_ids[start : start + chunk_size]
-        result = (
-            client.table("howard_mineral_ownership")
-            .select("id, raw_record")
-            .in_("id", chunk_ids)
-            .execute()
-        )
+        try:
+            result = (
+                client.table("howard_mineral_ownership")
+                .select("id, raw_record")
+                .in_("id", chunk_ids)
+                .execute()
+            )
+        except Exception:
+            # If raw_record does not exist in Howard, continue without it.
+            break
         for row in result.data or []:
             owner = owners_by_id.get(str(row.get("id")))
             if owner is not None:
