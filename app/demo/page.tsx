@@ -307,21 +307,6 @@ export default function DemoPage() {
           <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>·</span>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)' }}>Gonzales County, TX</span>
         </div>
-        <Link
-          href="/auth"
-          style={{
-            border: '1px solid rgba(239,159,39,0.5)',
-            background: 'rgba(239,159,39,0.14)',
-            color: '#EF9F27',
-            borderRadius: 6,
-            padding: '4px 9px',
-            fontSize: 11,
-            fontWeight: 600,
-            textDecoration: 'none',
-          }}
-        >
-          Sign up free →
-        </Link>
       </div>
 
       <div
