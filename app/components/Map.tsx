@@ -28,10 +28,12 @@ export default function Map({
   showPermits,
   onOwnerClick,
   focusTarget,
+  selectedCounty,
 }: {
   showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
+  selectedCounty: 'gonzales' | 'howard'
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
@@ -49,7 +51,7 @@ export default function Map({
     const m = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [-97.45, 29.45],
+      center: selectedCounty === 'howard' ? [-101.45, 32.3] : [-97.45, 29.45],
       zoom: 10
     })
     map.current = m
@@ -67,7 +69,11 @@ export default function Map({
 
       try {
         const [parcelsResponse, permitsResult] = await Promise.all([
-          fetch('/api/parcels'),
+          fetch(
+            selectedCounty === 'howard'
+              ? '/howard_parcels_enriched.geojson'
+              : '/api/parcels'
+          ),
           supabase
             .from('gonzales_permits')
             .select('latitude, longitude, operator_name, lease_name, filed_date, permit_type')
@@ -243,7 +249,7 @@ export default function Map({
 
     return () => { map.current?.remove(); map.current = null; layersReady.current = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedCounty])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return

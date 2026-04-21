@@ -119,6 +119,8 @@ type MapFocusTarget = {
   nonce: number
 }
 
+type CountyKey = 'gonzales' | 'howard'
+
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
@@ -273,6 +275,7 @@ const getTrend = (series: Array<{ month: string; oil: number }>) => {
 }
 
 export default function Home() {
+  const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -313,6 +316,14 @@ export default function Home() {
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
+  const ownershipTable =
+    selectedCounty === 'howard'
+      ? 'howard_mineral_ownership'
+      : 'gonzales_mineral_ownership'
+  const countyLabel =
+    selectedCounty === 'howard'
+      ? 'Howard County, TX'
+      : 'Gonzales County, TX'
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -392,6 +403,18 @@ export default function Home() {
     }
   }, [])
 
+  useEffect(() => {
+    setSelected(null)
+    setExpandedOwner(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
+    setOwnerWells({})
+    setTractWells([])
+    setTractWellsLoaded(false)
+    setWellsExpanded(false)
+  }, [selectedCounty])
+
   const tractOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
@@ -412,6 +435,15 @@ export default function Home() {
       setTractWellsLoaded(false)
       setOwnerWells({})
       setWellsExpanded(false)
+
+      if (selectedCounty === 'howard') {
+        if (!cancelled) {
+          setTractWells([])
+          setTractWellsLoaded(true)
+        }
+        return
+      }
+
       const operator = selected.top_operator
       const fieldName = selected.field_name
       const abstractL = selected.ABSTRACT_L
@@ -474,7 +506,7 @@ export default function Home() {
           .filter(Boolean)
         const lookupLeaseIds = Array.from(new Set([...wellLeaseIds, ...normalizedLeaseIds]))
         const { data: codes } = await supabase
-          .from('gonzales_mineral_ownership')
+          .from(ownershipTable)
           .select('rrc_lease_id, rrc_oil_and_gas_code')
           .in('rrc_lease_id', lookupLeaseIds)
           .limit(50)
@@ -512,9 +544,14 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [selected])
+  }, [ownershipTable, selected, selectedCounty])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
+    if (selectedCounty === 'howard') {
+      setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
+      return
+    }
+
     const leaseId = owner.rrc_lease_id
     console.log('fetchOwnerWells called:', owner.owner_name, 'leaseId:', leaseId, 'ownerKey:', ownerKey)
 
@@ -530,7 +567,7 @@ export default function Home() {
         .eq('rrc_lease_id', String(leaseId))
         .limit(10),
       supabase
-        .from('gonzales_mineral_ownership')
+        .from(ownershipTable)
         .select('rrc_oil_and_gas_code')
         .eq('rrc_lease_id', String(leaseId))
         .limit(1),
@@ -552,7 +589,7 @@ export default function Home() {
       }))
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
     }
-  }, [])
+  }, [ownershipTable, selectedCounty])
 
   const completeOnboarding = () => {
     window.localStorage.setItem('mineral_map_onboarded', 'true')
@@ -612,7 +649,7 @@ export default function Home() {
       // This handles both "Kent Plaster" and "Plaster Kent".
       const searchPromises = words.map((word) =>
         supabase
-          .from('gonzales_mineral_ownership')
+          .from(ownershipTable)
           .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
           .ilike('owner_name', `%${word}%`)
           .order('propensity_score', { ascending: false })
@@ -900,14 +937,22 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
       try {
-        const response = await fetch('/api/parcels', { cache: 'no-store' })
+        const parcelSource =
+          selectedCounty === 'howard'
+            ? '/howard_parcels_enriched.geojson'
+            : '/api/parcels'
+        const response = await fetch(parcelSource, { cache: 'no-store' })
         let parcelsData: unknown
 
         if (response.ok) {
           parcelsData = await response.json()
         } else {
-          // Fallback to bundled static asset if storage fetch fails.
-          parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
+          if (selectedCounty === 'gonzales') {
+            // Fallback to bundled static asset if storage fetch fails.
+            parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
+          } else {
+            throw new Error(`Howard parcel source failed (${response.status})`)
+          }
         }
 
         if (!mounted) return
@@ -958,7 +1003,7 @@ export default function Home() {
     return () => {
       mounted = false
     }
-  }, [])
+  }, [selectedCounty])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,
@@ -1297,7 +1342,7 @@ export default function Home() {
                 </a>
                 <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
                 <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
-                  Gonzales County, TX
+                  {countyLabel}
                 </div>
                 <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
                   207 survey abstracts · 73,000+ mineral owners
@@ -1306,6 +1351,31 @@ export default function Home() {
             )}
           </div>
           <AppLogo width={150} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
+            {!isMobile && (
+              <span style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
+                {countyLabel}
+              </span>
+            )}
+            <select
+              value={selectedCounty}
+              onChange={(event) => setSelectedCounty(event.target.value as CountyKey)}
+              style={{
+                height: 26,
+                border: '1px solid #E5E7EB',
+                borderRadius: 6,
+                background: '#FFFFFF',
+                color: '#6B7280',
+                fontSize: 11,
+                fontFamily: 'Inter, sans-serif',
+                padding: '0 8px',
+                outline: 'none',
+              }}
+            >
+              <option value="gonzales">Gonzales County</option>
+              <option value="howard">Howard County</option>
+            </select>
+          </div>
         </div>
         {!isMobile && (
           <div style={{ position: 'relative', flex: 1, maxWidth: 360, margin: '0 16px' }}>
@@ -2186,6 +2256,8 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
+              key={selectedCounty}
+              selectedCounty={selectedCounty}
               showPermits={showPermits}
               focusTarget={selected}
               onOwnerClick={(tract) => {
