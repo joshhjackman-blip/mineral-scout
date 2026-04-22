@@ -336,6 +336,7 @@ export default function Home() {
   const [wellsExpanded, setWellsExpanded] = useState(false)
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
+  const [tractWellsLoading, setTractWellsLoading] = useState(false)
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
   const [ownerWellsLoading, setOwnerWellsLoading] = useState<Record<string, boolean>>({})
   const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
@@ -547,6 +548,7 @@ export default function Home() {
     setOwnerWellsLoading({})
     setTractWells([])
     setTractWellsLoaded(false)
+    setTractWellsLoading(false)
     setWellsExpanded(false)
   }, [selectedCounty])
 
@@ -561,6 +563,7 @@ export default function Home() {
     if (!selected) {
       setTractWells([])
       setTractWellsLoaded(false)
+      setTractWellsLoading(false)
       setOwnerWells({})
       setOwnerWellsLoading({})
       setWellsExpanded(false)
@@ -568,6 +571,7 @@ export default function Home() {
     }
 
     const fetchTractWells = async () => {
+      setTractWellsLoading(true)
       setTractWellsLoaded(false)
       setOwnerWells({})
       setOwnerWellsLoading({})
@@ -585,123 +589,36 @@ export default function Home() {
           if (!cancelled) {
             setTractWells([])
             setTractWellsLoaded(true)
+            setTractWellsLoading(false)
           }
           return
         }
-
-        const { data: howardWells } = await supabase
-          .from(countyRef.current.wellsTable)
-          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
-          .eq('abstract', tractAbstract)
-          .limit(50)
-
-        const seen = new Set<string>()
-        const unique = ((howardWells as WellSummary[]) ?? []).filter((well) => {
-          const leaseName = String(well.lease_name ?? '').trim()
-          if (!leaseName) return true
-          if (seen.has(leaseName)) return false
-          seen.add(leaseName)
-          return true
+      }
+      try {
+        const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
+        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+        const response = await fetch('/api/wells', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            countyId: countyRef.current.id,
+            mode: 'tract',
+            abstractLabel: tractAbstract,
+          }),
         })
-
-        const wellsWithCode = unique.map((well) => ({
-          ...well,
-          oil_gas_code: String(well.oil_gas_code ?? 'O').toUpperCase(),
-        }))
-
+        const payload = await response.json() as { wells?: WellSummary[]; error?: string }
         if (!cancelled) {
-          setTractWells(wellsWithCode)
+          setTractWells(Array.isArray(payload.wells) ? payload.wells : [])
           setTractWellsLoaded(true)
+          setTractWellsLoading(false)
         }
-        return
-      }
-
-      if (selected.owners_json) {
-        try {
-          const owners = typeof selected.owners_json === 'string'
-            ? JSON.parse(selected.owners_json)
-            : selected.owners_json
-          if (Array.isArray(owners) && owners.length > 0) {
-            void owners
-          }
-        } catch (e) {
-          void e
-        }
-      }
-
-      let data: WellSummary[] = []
-
-      // Try operator match first
-      if (operator) {
-        const { data: opWells } = await supabase
-          .from(countyRef.current.wellsTable)
-          .select('lease_name, operator_name, well_type, rrc_lease_id')
-          .ilike('operator_name', `%${operator.split(' ')[0]}%`)
-          .limit(50)
-        data = (opWells as WellSummary[]) ?? []
-      }
-
-      // Fallback to field/lease-name match if operator had no hits.
-      if (data.length === 0 && fieldName) {
-        const { data: fieldWells } = await supabase
-          .from(countyRef.current.wellsTable)
-          .select('lease_name, operator_name, well_type, rrc_lease_id')
-          .ilike('lease_name', `%${fieldName.split(' ')[0]}%`)
-          .limit(20)
-        data = (fieldWells as WellSummary[]) ?? []
-      }
-
-      // Deduplicate by lease_name
-      const seen = new Set<string>()
-      const unique = data.filter((w) => {
-        const leaseName = String(w.lease_name ?? '').trim()
-        if (!leaseName) return true
-        if (seen.has(leaseName)) return false
-        seen.add(leaseName)
-        return true
-      })
-
-      const wellLeaseIds = unique
-        .map((well) => String(well.rrc_lease_id ?? '').trim())
-        .filter(Boolean)
-
-      if (wellLeaseIds.length > 0) {
-        const normalizedLeaseIds = wellLeaseIds
-          .map((leaseId) => leaseId.replace(/^0+/, '') || '0')
-          .filter(Boolean)
-        const lookupLeaseIds = Array.from(new Set([...wellLeaseIds, ...normalizedLeaseIds]))
-        const { data: codes } = await supabase
-          .from(ownershipTable)
-          .select('rrc_lease_id, rrc_oil_and_gas_code')
-          .in('rrc_lease_id', lookupLeaseIds)
-          .limit(50)
-
-        const codeMap = new Map<string, string>(
-          (codes ?? []).map((codeRow) => [
-            String((codeRow as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? '').trim(),
-            String((codeRow as { rrc_oil_and_gas_code?: string | null }).rrc_oil_and_gas_code ?? 'O').toUpperCase(),
-          ])
-        )
-
-        const wellsWithCode = unique.map((well) => {
-          const leaseId = String(well.rrc_lease_id ?? '').trim()
-          const normalized = leaseId.replace(/^0+/, '') || '0'
-          return {
-            ...well,
-            oil_gas_code: codeMap.get(leaseId) ?? codeMap.get(normalized) ?? 'O',
-          }
-        })
-
+      } catch (error) {
+        console.error('Failed to fetch tract wells:', error)
         if (!cancelled) {
-          setTractWells(wellsWithCode)
+          setTractWells([])
           setTractWellsLoaded(true)
+          setTractWellsLoading(false)
         }
-        return
-      }
-
-      if (!cancelled) {
-        setTractWells(unique)
-        setTractWellsLoaded(true)
       }
     }
 
@@ -709,112 +626,31 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [county, ownershipTable, selected])
+  }, [selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
-    const leaseId = owner.rrc_lease_id
     setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: true }))
 
     try {
-      const leaseCandidateSet = new Set<string>(
-        [String(leaseId ?? '').trim(), normalizeLeaseId(leaseId)].filter(Boolean)
-      )
-
-      // Howard owner rows are sourced from GeoJSON; if lease id is missing/mismatched,
-      // re-resolve candidate lease IDs from the county ownership table by tract+owner.
-      if (countyRef.current.id === 'howard') {
-        const tractAbstractLabel = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').trim()
-        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
-        const ownerName = String(owner.owner_name ?? '').trim()
-        if (tractAbstract && ownerName) {
-          const { data: ownerLeaseRows } = await supabase
-            .from(ownershipTable)
-            .select('rrc_lease_id')
-            .eq('abstract', tractAbstract)
-            .eq('owner_name', ownerName)
-            .not('rrc_lease_id', 'is', null)
-            .limit(20)
-
-          ;(ownerLeaseRows ?? []).forEach((row) => {
-            const rowLease = String(
-              (row as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? ''
-            ).trim()
-            if (rowLease) {
-              leaseCandidateSet.add(rowLease)
-              leaseCandidateSet.add(normalizeLeaseId(rowLease))
-            }
-          })
-        }
-      }
-
-      const leaseCandidates = Array.from(leaseCandidateSet).filter(Boolean)
-      if (leaseCandidates.length === 0) {
-        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
-        return
-      }
-
-      const wellsRes = await supabase
-        .from(countyRef.current.wellsTable)
-        .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
-        .in('rrc_lease_id', leaseCandidates)
-        .limit(20)
-
-      if (wellsRes.error) {
-        console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
-        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
-        return
-      }
-
-      const dedupedWells = Array.from(
-        new Map(
-          ((wellsRes.data as WellSummary[] | null) ?? []).map((well) => [
-            `${String(well.rrc_lease_id ?? '').trim()}-${String(well.lease_name ?? '').trim()}`,
-            well,
-          ])
-        ).values()
-      )
-
-      if (dedupedWells.length === 0) {
-        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
-        return
-      }
-
-      let wellsWithCode = dedupedWells
-
-      if (countyRef.current.id !== 'howard') {
-        const codeRes = await supabase
-          .from(ownershipTable)
-          .select('rrc_lease_id, rrc_oil_and_gas_code')
-          .in('rrc_lease_id', leaseCandidates)
-          .limit(20)
-
-        const codeMap = new Map<string, string>(
-          (codeRes.data ?? []).map((codeRow) => [
-            String((codeRow as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? '').trim(),
-            String((codeRow as { rrc_oil_and_gas_code?: string | null }).rrc_oil_and_gas_code ?? 'O').toUpperCase(),
-          ])
-        )
-
-        wellsWithCode = wellsWithCode.map((well) => {
-          const wellLease = String(well.rrc_lease_id ?? '').trim()
-          const normalizedLease = normalizeLeaseId(wellLease)
-          return {
-            ...well,
-            oil_gas_code: codeMap.get(wellLease) ?? codeMap.get(normalizedLease) ?? 'O',
-          }
-        })
-      } else {
-        wellsWithCode = wellsWithCode.map((well) => ({
-          ...well,
-          oil_gas_code: String(well.oil_gas_code ?? 'O').toUpperCase(),
-        }))
-      }
-
-      setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
+      const tractAbstractLabel = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').trim()
+      const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+      const response = await fetch('/api/wells', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          countyId: countyRef.current.id,
+          mode: 'owner',
+          ownerName: String(owner.owner_name ?? '').trim(),
+          leaseId: String(owner.rrc_lease_id ?? '').trim(),
+          abstract: tractAbstract,
+        }),
+      })
+      const payload = await response.json() as { wells?: WellSummary[]; error?: string }
+      setOwnerWells((prev) => ({ ...prev, [ownerKey]: Array.isArray(payload.wells) ? payload.wells : [] }))
     } finally {
       setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: false }))
     }
-  }, [ownershipTable, selected])
+  }, [selected])
 
   const completeOnboarding = () => {
     window.localStorage.setItem('mineral_map_onboarded', 'true')
@@ -1998,7 +1834,7 @@ export default function Home() {
                 <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
-              {tractWellsLoaded && tractWells.length > 0 && (
+              {(tractWellsLoaded || tractWellsLoading) && (
                 <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
                   <div style={{ borderTop: '1px solid #F3F4F6' }}>
                     <button
@@ -2036,7 +1872,17 @@ export default function Home() {
 
                     {wellsExpanded && (
                       <div style={{ paddingBottom: 8 }}>
-                        {tractWells.map((well, i) => (
+                        {tractWellsLoading && (
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                            Loading tract wells...
+                          </div>
+                        )}
+                        {!tractWellsLoading && tractWells.length === 0 && (
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                            No wells matched this tract
+                          </div>
+                        )}
+                        {!tractWellsLoading && tractWells.map((well, i) => (
                           <div
                             key={`${well.rrc_lease_id ?? well.lease_name ?? 'well'}-${i}`}
                             style={{
