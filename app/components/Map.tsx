@@ -687,6 +687,11 @@ export default function Map({
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
     const countyChanged = prevSelectedCountyRef.current !== selectedCounty
+    console.log('County effect:', {
+      selectedCounty,
+      prev: prevSelectedCountyRef.current,
+      countyChanged: prevSelectedCountyRef.current !== selectedCounty,
+    })
     prevSelectedCountyRef.current = selectedCounty
     applyTractCountyStyles(countyChanged)
     void loadSelectedCountyPermits()
