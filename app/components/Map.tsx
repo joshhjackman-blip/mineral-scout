@@ -686,8 +686,8 @@ export default function Map({
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
-    const countyChanged = prevSelectedCountyRef.current !== selectedCountyRef.current
-    prevSelectedCountyRef.current = selectedCountyRef.current
+    const countyChanged = prevSelectedCountyRef.current !== selectedCounty
+    prevSelectedCountyRef.current = selectedCounty
     applyTractCountyStyles(countyChanged)
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
