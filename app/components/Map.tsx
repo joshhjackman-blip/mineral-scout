@@ -256,12 +256,12 @@ export default function Map({
 
     if (flyToSelected) {
       mapInstance.flyTo({
-        center: selectedConfig.mapCenter,
-        zoom: selectedConfig.mapZoom,
+        center: county.mapCenter,
+        zoom: county.mapZoom,
         duration: 800,
       })
     }
-  }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
+  }, [county, countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async () => {
     const mapInstance = map.current
@@ -685,7 +685,7 @@ export default function Map({
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
-    applyTractCountyStyles(true)
+    applyTractCountyStyles(false)
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
