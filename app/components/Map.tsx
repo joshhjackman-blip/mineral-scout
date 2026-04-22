@@ -680,7 +680,7 @@ export default function Map({
       return
     }
     void renderForCurrentLevelRef.current()
-  }, [mapLevel, selectedCounty])
+  }, [mapLevel])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
