@@ -168,7 +168,6 @@ export async function POST(req: NextRequest) {
   // 3) Call Tracerfy Instant Trace Lookup
   const apiKey = process.env.TRACERFY_API_KEY?.trim()
   const bstApiKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
-  const bstApiUrl = process.env.BATCHSKIPTRACING_API_URL?.trim()
   if (!apiKey && !bstApiKey) {
     return NextResponse.json(
       { error: 'Skip trace providers are not configured (TRACERFY_API_KEY / BATCHSKIPTRACING_API_KEY)' },
@@ -251,98 +250,56 @@ export async function POST(req: NextRequest) {
     }
 
     if (bstApiKey && phones.length === 0 && emails.length === 0) {
-      const bstBody: Record<string, unknown> = {
-        firstName,
-        lastName,
-        state,
-      }
-      if (address && String(address).trim()) {
-        bstBody.address = address
-        bstBody.city = city
-        bstBody.zip = zip
-      }
-      const bstBodySnake: Record<string, unknown> = {
-        first_name: firstName,
-        last_name: lastName,
-        state,
-      }
-      if (address && String(address).trim()) {
-        bstBodySnake.address = address
-        bstBodySnake.city = city
-        bstBodySnake.zip = zip
-      }
-
-      const endpoints: Array<{ url: string; body: Record<string, unknown>; label: string }> = []
-
-      if (bstApiUrl) {
-        endpoints.push({
-          url: bstApiUrl,
-          body: bstBodySnake,
-          label: 'custom',
-        })
-      }
-
-      endpoints.push(
-        {
-          url: 'https://api.realestateapi.com/v2/SkipTraceBatchAwait',
-          body: {
-            skips: [{
-              key: 1,
-              ...bstBodySnake,
-            }],
-          },
-          label: 'realestateapi-v2-await',
-        },
-        {
-          url: 'https://api.batchskiptracing.com/api/v2/search',
-          body: bstBody,
-          label: 'legacy-batchskiptracing',
+      try {
+        const bstBody: Record<string, unknown> = {
+          first_name: firstName,
+          last_name: lastName,
+          state: state,
         }
-      )
-
-      for (const endpoint of endpoints) {
-        try {
-          console.log(
-            `Trying BatchSkipTracing fallback (${endpoint.label}):`,
-            endpoint.url,
-            JSON.stringify(endpoint.body)
-          )
-          const bstResponse = await fetch(endpoint.url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': bstApiKey,
-              'X-API-KEY': bstApiKey,
-            },
-            body: JSON.stringify(endpoint.body),
-          })
-
-          const bstText = await bstResponse.text()
-          let bstData: unknown = null
-          try {
-            bstData = JSON.parse(bstText)
-          } catch {
-            bstData = { raw: bstText }
+        if (address && address.trim()) {
+          bstBody.address = address
+          bstBody.city = city
+          bstBody.zip = zip
+        }
+        console.log('BST request:', JSON.stringify(bstBody))
+        const bstResponse = await fetch('https://api.batchskiptracing.com/api/v2/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-key': bstApiKey,
+          },
+          body: JSON.stringify(bstBody),
+        })
+        const bstText = await bstResponse.text()
+        console.log('BST raw response:', bstText.substring(0, 1000))
+        if (bstResponse.ok) {
+          const bstData = JSON.parse(bstText) as Record<string, unknown>
+          const persons = (bstData.output as Array<Record<string, unknown>>) ??
+                          (bstData.results as Array<Record<string, unknown>>) ??
+                          (bstData.persons as Array<Record<string, unknown>>) ?? []
+          for (const person of persons) {
+            const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
+            for (const p of personPhones) {
+              const num = String(p?.number ?? p?.phone ?? p?.phoneNumber ?? '').trim()
+              if (num && !phones.includes(num)) phones.push(num)
+            }
+            const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
+            for (const e of personEmails) {
+              const addr = String(e?.email ?? e?.address ?? '').trim()
+              if (addr && !emails.includes(addr)) emails.push(addr)
+            }
           }
-          console.log('BST raw response:', JSON.stringify(bstData).substring(0, 1000))
-          console.log(
-            `BatchSkipTracing response (${endpoint.label}):`,
-            bstResponse.status,
-            bstText.substring(0, 500)
-          )
-
-          if (!bstResponse.ok) {
-            continue
-          }
-
-          extractContactsFromPayload(bstData, phones, emails)
+          // Also check flat structure
+          const flatPhone = String(bstData.phone ?? bstData.phoneNumber ?? '').trim()
+          if (flatPhone && !phones.includes(flatPhone)) phones.push(flatPhone)
+          const flatEmail = String(bstData.email ?? '').trim()
+          if (flatEmail && !emails.includes(flatEmail)) emails.push(flatEmail)
           if (phones.length > 0 || emails.length > 0) {
             cacheSource = 'batchskiptracing'
-            break
           }
-        } catch (bstErr) {
-          console.error(`BatchSkipTracing fallback error (${endpoint.label}):`, bstErr)
         }
+      } catch (bstErr) {
+        console.error('BST error:', bstErr)
       }
     }
 
