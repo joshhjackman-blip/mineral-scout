@@ -543,7 +543,6 @@ export default function Home() {
       if (countyRef.current.id === 'howard') {
         const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
         const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
-        console.log('Howard tract abstract lookup:', { tractAbstractLabel, tractAbstract, ABSTRACT_L: selected.ABSTRACT_L, abstract_label: selected.abstract_label })
 
         if (!tractAbstract) {
           if (!cancelled) {

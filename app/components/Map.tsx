@@ -28,7 +28,6 @@ export type OwnerRecord = {
 
 type TractLayerHandlers = {
   layerId: string
-  clickHandler: (event: mapboxgl.MapLayerMouseEvent) => void
   mouseEnterHandler: () => void
   mouseLeaveHandler: () => void
 }
@@ -75,6 +74,7 @@ export default function Map({
   const currentParcelsByCountyRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const countyMarkersRef = useRef<mapboxgl.Marker[]>([])
   const tractHandlersRef = useRef<TractLayerHandlers[]>([])
+  const tractMapClickHandlerRef = useRef<((event: mapboxgl.MapMouseEvent) => void) | null>(null)
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
@@ -156,11 +156,14 @@ export default function Map({
 
   const clearTractLayers = useCallback((mapInstance: mapboxgl.Map) => {
     tractHandlersRef.current.forEach((handlers) => {
-      mapInstance.off('click', handlers.layerId, handlers.clickHandler)
       mapInstance.off('mouseenter', handlers.layerId, handlers.mouseEnterHandler)
       mapInstance.off('mouseleave', handlers.layerId, handlers.mouseLeaveHandler)
     })
     tractHandlersRef.current = []
+    if (tractMapClickHandlerRef.current) {
+      mapInstance.off('click', tractMapClickHandlerRef.current)
+      tractMapClickHandlerRef.current = null
+    }
 
     if (permitHandlersRef.current.clickHandler) {
       mapInstance.off('click', 'permits-layer', permitHandlersRef.current.clickHandler)
@@ -536,49 +539,6 @@ export default function Map({
         },
       })
 
-      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
-        if (event.defaultPrevented) return
-        event.preventDefault()
-        const now = Date.now()
-        if (now - lastClickTimeRef.current < 300) return
-        lastClickTimeRef.current = now
-        if (!map.current) return
-        const isSelectedCountyLayer = countyKey === selectedCountyRef.current
-        if (!isSelectedCountyLayer) {
-          onCountySwitchRef.current(countyKey)
-          return
-        }
-
-        const props = event.features?.[0]?.properties
-        if (props) {
-          onOwnerClickRef.current(props as Record<string, unknown>)
-        }
-        const countyGeoJSON = currentParcelsByCountyRef.current[countyKey]
-        const clickedAbstract =
-          (props as Record<string, unknown> | undefined)?.ABSTRACT_L ??
-          (props as Record<string, unknown> | undefined)?.CODE ??
-          (props as Record<string, unknown> | undefined)?.abstract_label
-        const matchedFeature = countyGeoJSON?.features?.find(
-          (f: GeoJSON.Feature) => {
-            const fp = f.properties as Record<string, unknown>
-            return fp?.ABSTRACT_L === clickedAbstract ||
-              fp?.CODE === clickedAbstract ||
-              String(fp?.CODE) === String(clickedAbstract)
-          }
-        )
-        const geometry = matchedFeature?.geometry ?? event.features?.[0]?.geometry
-        if (geometry) {
-          setTimeout(() => {
-            if (map.current) {
-              try {
-                fitGeometry(map.current, geometry)
-              } catch (e) {
-                console.error('fitGeometry error:', e)
-              }
-            }
-          }, 50)
-        }
-      }
       const mouseEnterHandler = () => {
         map.current?.getCanvas().style.setProperty('cursor', 'pointer')
       }
@@ -588,16 +548,72 @@ export default function Map({
 
       tractHandlersRef.current.push({
         layerId: fillId,
-        clickHandler,
         mouseEnterHandler,
         mouseLeaveHandler,
       })
 
       if (!map.current) return
-      map.current.on('click', fillId, clickHandler)
       map.current.on('mouseenter', fillId, mouseEnterHandler)
       map.current.on('mouseleave', fillId, mouseLeaveHandler)
     })
+
+    const mapClickHandler = (event: mapboxgl.MapMouseEvent) => {
+      if (!map.current) return
+      const now = Date.now()
+      if (now - lastClickTimeRef.current < 500) return
+      lastClickTimeRef.current = now
+
+      const layerIds = countyEntries
+        .map(([, countyConfig]) => `parcels-fill-${countyConfig.id}`)
+        .filter((id) => !!map.current?.getLayer(id))
+      if (layerIds.length === 0) return
+
+      const features = map.current.queryRenderedFeatures(event.point, { layers: layerIds })
+      if (!features?.length) return
+
+      const selectedLayerId = `parcels-fill-${COUNTIES[selectedCountyRef.current].id}`
+      const topFeature = features.find((feature) => feature.layer?.id === selectedLayerId) ?? features[0]
+      const topLayerId = topFeature.layer?.id
+      if (!topLayerId) return
+      const topCountyId = topLayerId.replace('parcels-fill-', '')
+      const countyKey = countyEntries.find(([, countyConfig]) => countyConfig.id === topCountyId)?.[0]
+      if (!countyKey) return
+
+      const props = topFeature.properties as Record<string, unknown> | undefined
+      if (countyKey !== selectedCountyRef.current) {
+        onCountySwitchRef.current(countyKey)
+        return
+      }
+
+      if (props) {
+        onOwnerClickRef.current(props as Record<string, unknown>)
+      }
+
+      const clickedAbstract = props?.ABSTRACT_L ?? props?.CODE ?? props?.abstract_label
+      const countyGeoJSON = currentParcelsByCountyRef.current[countyKey]
+      const matchedFeature = countyGeoJSON?.features?.find((feature) => {
+        const featureProps = feature.properties as Record<string, unknown>
+        return featureProps?.ABSTRACT_L === clickedAbstract ||
+          featureProps?.CODE === clickedAbstract ||
+          String(featureProps?.CODE) === String(clickedAbstract)
+      })
+      const geometry = matchedFeature?.geometry ?? (topFeature.geometry as GeoJSON.Geometry | undefined)
+      if (geometry) {
+        setTimeout(() => {
+          if (map.current) {
+            try {
+              fitGeometry(map.current, geometry)
+            } catch (e) {
+              console.error('fitGeometry error:', e)
+            }
+          }
+        }, 50)
+      }
+    }
+
+    tractMapClickHandlerRef.current = mapClickHandler
+    if (!map.current) return
+    map.current.on('click', mapClickHandler)
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
