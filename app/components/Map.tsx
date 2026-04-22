@@ -69,6 +69,7 @@ export default function Map({
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
   const selectedCountyRef = useRef<CountyKey>(selectedCounty)
+  const renderForCurrentLevelRef = useRef<() => Promise<void>>(async () => {})
   const renderTokenRef = useRef(0)
   const currentParcelsByCountyRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const countyMarkersRef = useRef<mapboxgl.Marker[]>([])
@@ -551,6 +552,14 @@ export default function Map({
           (props as Record<string, unknown> | undefined)?.ABSTRACT_L ??
           (props as Record<string, unknown> | undefined)?.CODE ??
           (props as Record<string, unknown> | undefined)?.abstract_label
+        const featureId = event.features?.[0]?.id
+        console.log('Click debug:', {
+          countyKey,
+          hasGeoJSON: !!currentParcelsByCountyRef.current[countyKey],
+          featureId,
+          clickedAbstract,
+          featuresInGeoJSON: currentParcelsByCountyRef.current[countyKey]?.features?.length,
+        })
         const matchedFeature = countyGeoJSON?.features?.find(
           (f: GeoJSON.Feature) => {
             const fp = f.properties as Record<string, unknown>
@@ -603,18 +612,23 @@ export default function Map({
   }, [mapLevel, setupCountyOverview, setupTractLevel])
 
   useEffect(() => {
+    renderForCurrentLevelRef.current = renderForCurrentLevel
+  }, [renderForCurrentLevel])
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
     if (map.current || !mapContainer.current) return
 
     const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: mapLevel === 'county' ? TEXAS_OVERVIEW_CENTER : county.mapCenter,
-      zoom: mapLevel === 'county' ? TEXAS_OVERVIEW_ZOOM : county.mapZoom,
+      center: TEXAS_OVERVIEW_CENTER,
+      zoom: TEXAS_OVERVIEW_ZOOM,
     })
     map.current = mapInstance
 
     const onLoad = () => {
-      void renderForCurrentLevel()
+      void renderForCurrentLevelRef.current()
     }
     mapInstance.on('load', onLoad)
 
@@ -628,18 +642,18 @@ export default function Map({
       map.current = null
       renderTokenRef.current += 1
     }
-  }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, county.mapCenter, county.mapZoom, mapLevel, renderForCurrentLevel])
+  }, [])
 
   useEffect(() => {
     if (!map.current) return
     if (!map.current.isStyleLoaded()) {
       map.current.once('load', () => {
-        void renderForCurrentLevel()
+        void renderForCurrentLevelRef.current()
       })
       return
     }
-    void renderForCurrentLevel()
-  }, [renderForCurrentLevel, mapLevel])
+    void renderForCurrentLevelRef.current()
+  }, [mapLevel, selectedCounty])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
