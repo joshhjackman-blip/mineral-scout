@@ -476,6 +476,45 @@ export default function Home() {
       const fieldName = selected.field_name
       const abstractL = selected.ABSTRACT_L
 
+      if (county.id === 'howard') {
+        const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
+        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+
+        if (!tractAbstract) {
+          if (!cancelled) {
+            setTractWells([])
+            setTractWellsLoaded(true)
+          }
+          return
+        }
+
+        const { data: howardWells } = await supabase
+          .from(county.wellsTable)
+          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+          .eq('abstract', tractAbstract)
+          .limit(50)
+
+        const seen = new Set<string>()
+        const unique = ((howardWells as WellSummary[]) ?? []).filter((well) => {
+          const leaseName = String(well.lease_name ?? '').trim()
+          if (!leaseName) return true
+          if (seen.has(leaseName)) return false
+          seen.add(leaseName)
+          return true
+        })
+
+        const wellsWithCode = unique.map((well) => ({
+          ...well,
+          oil_gas_code: String(well.oil_gas_code ?? 'O').toUpperCase(),
+        }))
+
+        if (!cancelled) {
+          setTractWells(wellsWithCode)
+          setTractWellsLoaded(true)
+        }
+        return
+      }
+
       console.log('Fetching wells for operator:', operator, 'field:', fieldName, 'abstract:', abstractL)
       if (selected.owners_json) {
         try {
@@ -2068,7 +2107,7 @@ export default function Home() {
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                                     <div style={{ fontSize: 11, fontWeight: 600, color: '#111827' }}>
-                                      {well.lease_name ?? 'Unknown lease'}
+                                      {county.id === 'howard' ? well.lease_name : (well.lease_name ?? 'Unknown lease')}
                                     </div>
                                     <div style={{ display: 'flex', gap: 3 }}>
                                       <span
@@ -2100,7 +2139,7 @@ export default function Home() {
                                     </div>
                                   </div>
                                   <div style={{ fontSize: 10, color: '#6B7280' }}>
-                                    Operator: {well.operator_name ?? 'Unknown operator'}
+                                    Operator: {county.id === 'howard' ? well.operator_name : (well.operator_name ?? 'Unknown operator')}
                                   </div>
                                 </div>
                               ))}
