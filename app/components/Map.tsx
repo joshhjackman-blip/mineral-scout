@@ -538,8 +538,13 @@ export default function Map({
         if (props) {
           onOwnerClickRef.current(props as Record<string, unknown>)
         }
-        const geometry = event.features?.[0]?.geometry
-        if (geometry) {
+        const featureId = event.features?.[0]?.id
+        const countyGeoJSON = currentParcelsByCountyRef.current[countyKey]
+        const matchedFeature = countyGeoJSON?.features?.find(
+          (_: GeoJSON.Feature, idx: number) => idx === Number(featureId)
+        )
+        const geometry = matchedFeature?.geometry ?? event.features?.[0]?.geometry
+        if (geometry && map.current) {
           fitGeometry(map.current, geometry)
         }
       }
