@@ -5,6 +5,8 @@ export type County = {
   displayName: string
   mapCenter: [number, number]
   mapZoom: number
+  fips: string
+  totalLeads: number
   fipsCode: string
   ownershipTable: string
   wellsTable: string
@@ -26,6 +28,8 @@ export const COUNTIES: Record<string, County> = {
     displayName: 'Gonzales County, TX',
     mapCenter: [-97.45, 29.45],
     mapZoom: 10,
+    fips: '48177',
+    totalLeads: 73000,
     fipsCode: '177',
     ownershipTable: 'gonzales_mineral_ownership',
     wellsTable: 'gonzales_wells',
@@ -55,6 +59,8 @@ export const COUNTIES: Record<string, County> = {
     displayName: 'Howard County, TX',
     mapCenter: [-101.45, 32.30],
     mapZoom: 10,
+    fips: '48227',
+    totalLeads: 216000,
     fipsCode: '227',
     ownershipTable: 'howard_mineral_ownership',
     wellsTable: 'howard_wells',

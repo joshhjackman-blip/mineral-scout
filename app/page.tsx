@@ -104,6 +104,8 @@ type OwnerSearchResult = {
   operator_name?: string | null
   acreage?: number | null
   leaseCount?: number
+  countyId?: CountyKey
+  countyName?: string
 }
 
 type WellSummary = {
@@ -131,7 +133,9 @@ type MapFocusTarget = {
 
 type CountyKey = keyof typeof COUNTIES
 
-const COUNTY_ORDER: CountyKey[] = ['gonzales', 'howard']
+const COUNTY_ORDER: CountyKey[] = Object.keys(COUNTIES) as CountyKey[]
+const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
+const TEXAS_OVERVIEW_ZOOM = 5.5
 
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
@@ -300,6 +304,7 @@ const getTrend = (series: Array<{ month: string; oil: number }>) => {
 
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
+  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
@@ -348,12 +353,15 @@ export default function Home() {
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
   const county = COUNTIES[selectedCounty]
   const ownershipTable = county.ownershipTable
-  const countyLabel = county.displayName
+  const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyStats = county.stats
   const countyBreakdown = county.breakdown
   const countyStatsByLabel = Object.fromEntries(
     county.stats.map((entry) => [entry.lbl, entry.val])
   ) as Record<string, string>
+  const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
+  const showCountyArrows = mapLevel === 'tract'
+  const rightArrowOffset = selected && !isMobile ? 428 : 8
   const countySummaryText = `${countyStatsByLabel['Survey abstracts'] ?? '—'} survey abstracts · ${countyStatsByLabel['Total owners'] ?? '—'} mineral owners`
   const headerCountyStats = isMobile
     ? [
@@ -763,15 +771,22 @@ export default function Home() {
         return
       }
 
+      const searchCounties = mapLevel === 'county'
+        ? COUNTY_ORDER
+        : [selectedCounty]
+
       // Run parallel searches for each word as primary.
       // This handles both "Kent Plaster" and "Plaster Kent".
-      const searchPromises = words.map((word) =>
-        supabase
-          .from(ownershipTable)
-          .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
-          .ilike('owner_name', `%${word}%`)
-          .order('propensity_score', { ascending: false })
-          .limit(100)
+      const searchPromises = searchCounties.flatMap((countyKey) =>
+        words.map((word) =>
+          supabase
+            .from(COUNTIES[countyKey].ownershipTable)
+            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
+            .ilike('owner_name', `%${word}%`)
+            .order('propensity_score', { ascending: false })
+            .limit(100)
+            .then((result) => ({ ...result, countyId: countyKey }))
+        )
       )
 
       const queryResults = await Promise.all(searchPromises)
@@ -783,7 +798,13 @@ export default function Home() {
         return
       }
 
-      const allData = queryResults.flatMap((result) => (result.data ?? []) as OwnerSearchResult[])
+      const allData = queryResults.flatMap((result) =>
+        ((result.data ?? []) as OwnerSearchResult[]).map((owner) => ({
+          ...owner,
+          countyId: result.countyId,
+          countyName: COUNTIES[result.countyId].name,
+        }))
+      )
 
       // Filter to rows that contain ALL words (in any order).
       const filtered = allData.filter((owner) =>
@@ -793,7 +814,8 @@ export default function Home() {
       // Deduplicate by owner name keeping highest score.
       const seen = new Map<string, OwnerSearchResult>()
       for (const owner of filtered) {
-        const key = String(owner.owner_name ?? '').toUpperCase().trim()
+        const keyCounty = String(owner.countyId ?? selectedCounty)
+        const key = `${String(owner.owner_name ?? '').toUpperCase().trim()}::${keyCounty}`
         if (!seen.has(key) || Number(owner.propensity_score ?? 0) > Number(seen.get(key)?.propensity_score ?? 0)) {
           seen.set(key, owner)
         }
@@ -1145,6 +1167,20 @@ export default function Home() {
       return
     }
 
+    const resultCounty = result.countyId ?? selectedCounty
+    if (mapLevel === 'county') {
+      if (resultCounty !== selectedCounty) {
+        setSelectedCounty(resultCounty)
+      }
+      setMapLevel('tract')
+      setSelected(null)
+      setExpandedOwner(null)
+      setOwnerWells({})
+      setTractWells([])
+      setTractWellsLoaded(false)
+      setWellsExpanded(false)
+    }
+
     const leaseId = normalizeLeaseId(result.rrc_lease_id)
     const normalizedOwner = ownerName.toUpperCase()
 
@@ -1474,7 +1510,7 @@ export default function Home() {
                 </a>
                 <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
                 <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
-                  {countyLabel}
+                  {navCountyLabel}
                 </div>
                 <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
                   {countySummaryText}
@@ -1486,8 +1522,33 @@ export default function Home() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
             {!isMobile && (
               <span style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
-                {countyLabel}
+                {navCountyLabel}
               </span>
+            )}
+            {mapLevel === 'tract' && (
+              <button
+                onClick={() => {
+                  setMapLevel('county')
+                  setSelected(null)
+                  setExpandedOwner(null)
+                  setSearchQuery('')
+                  setSearchResults([])
+                  setSearchOpen(false)
+                }}
+                style={{
+                  height: 26,
+                  border: '1px solid #E5E7EB',
+                  borderRadius: 6,
+                  background: '#FFFFFF',
+                  color: '#6B7280',
+                  fontSize: 11,
+                  fontFamily: 'Inter, sans-serif',
+                  padding: '0 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                ← All Counties
+              </button>
             )}
             <select
               value={selectedCounty}
@@ -1570,6 +1631,7 @@ export default function Home() {
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{result.owner_name}</div>
                         <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
                           {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
+                          {result.countyName ? ` · ${result.countyName}` : ''}
                           {Number(result.leaseCount ?? 1) > 1 ? (
                             <span
                               style={{
@@ -2402,7 +2464,7 @@ export default function Home() {
               {countySwitchLabel}
             </div>
           )}
-          {previousCounty && (
+          {showCountyArrows && previousCounty && (
             <button
               onClick={() => switchCountyByOffset(-1)}
               aria-label={`Previous county: ${COUNTIES[previousCounty].name}`}
@@ -2418,7 +2480,7 @@ export default function Home() {
                 border: '1px solid #E5E7EB',
                 background: 'rgba(255,255,255,0.92)',
                 color: '#374151',
-                fontSize: 18,
+                fontSize: 16,
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                 display: 'flex',
@@ -2429,14 +2491,14 @@ export default function Home() {
               ‹
             </button>
           )}
-          {nextCounty && (
+          {showCountyArrows && nextCounty && (
             <button
               onClick={() => switchCountyByOffset(1)}
               aria-label={`Next county: ${COUNTIES[nextCounty].name}`}
               style={{
                 position: 'absolute',
                 top: '50%',
-                right: 8,
+                right: rightArrowOffset,
                 transform: 'translateY(-50%)',
                 zIndex: 10,
                 width: 36,
@@ -2445,7 +2507,7 @@ export default function Home() {
                 border: '1px solid #E5E7EB',
                 background: 'rgba(255,255,255,0.92)',
                 color: '#374151',
-                fontSize: 18,
+                fontSize: 16,
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
                 display: 'flex',
@@ -2464,8 +2526,22 @@ export default function Home() {
             <MineralMap
               key={selectedCounty}
               selectedCounty={selectedCounty}
+              mapLevel={mapLevel}
               showPermits={showPermits}
               focusTarget={selected}
+              onCountySelect={(countyKey) => {
+                setSelectedCounty(countyKey)
+                setMapLevel('tract')
+                setSelected(null)
+                setExpandedOwner(null)
+                setSearchQuery('')
+                setSearchResults([])
+                setSearchOpen(false)
+                setOwnerWells({})
+                setTractWells([])
+                setTractWellsLoaded(false)
+                setWellsExpanded(false)
+              }}
               onOwnerClick={(tract) => {
                 setSelected(tract)
                 setSelectedTractGeometry(
