@@ -250,21 +250,34 @@ export async function POST(req: NextRequest) {
       console.warn('Tracerfy key missing; skipping Tracerfy and trying BatchSkipTracing fallback')
     }
 
-    const shouldTryBatchFallback = !apiKey || !Boolean(data?.hit) || (phones.length === 0 && emails.length === 0)
-    if (bstApiKey && shouldTryBatchFallback) {
+    if (bstApiKey && phones.length === 0 && emails.length === 0) {
+      const bstBody: Record<string, unknown> = {
+        firstName,
+        lastName,
+        state,
+      }
+      if (address && String(address).trim()) {
+        bstBody.address = address
+        bstBody.city = city
+        bstBody.zip = zip
+      }
+      const bstBodySnake: Record<string, unknown> = {
+        first_name: firstName,
+        last_name: lastName,
+        state,
+      }
+      if (address && String(address).trim()) {
+        bstBodySnake.address = address
+        bstBodySnake.city = city
+        bstBodySnake.zip = zip
+      }
+
       const endpoints: Array<{ url: string; body: Record<string, unknown>; label: string }> = []
 
       if (bstApiUrl) {
         endpoints.push({
           url: bstApiUrl,
-          body: {
-            first_name: firstName,
-            last_name: lastName,
-            address,
-            city,
-            state,
-            zip,
-          },
+          body: bstBodySnake,
           label: 'custom',
         })
       }
@@ -275,26 +288,14 @@ export async function POST(req: NextRequest) {
           body: {
             skips: [{
               key: 1,
-              first_name: firstName,
-              last_name: lastName,
-              address,
-              city,
-              state,
-              zip,
+              ...bstBodySnake,
             }],
           },
           label: 'realestateapi-v2-await',
         },
         {
           url: 'https://api.batchskiptracing.com/api/v2/search',
-          body: {
-            firstName,
-            lastName,
-            address,
-            city,
-            state,
-            zip,
-          },
+          body: bstBody,
           label: 'legacy-batchskiptracing',
         }
       )
@@ -323,6 +324,7 @@ export async function POST(req: NextRequest) {
           } catch {
             bstData = { raw: bstText }
           }
+          console.log('BST raw response:', JSON.stringify(bstData).substring(0, 1000))
           console.log(
             `BatchSkipTracing response (${endpoint.label}):`,
             bstResponse.status,
