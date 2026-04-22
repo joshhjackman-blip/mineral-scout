@@ -50,7 +50,7 @@ export default function Map({
   onOwnerClick,
   focusTarget,
   selectedCounty,
-  prevSelectedCounty,
+  mapFlyToRef,
   mapLevel,
   onCountySelect,
   onCountySwitch,
@@ -59,7 +59,7 @@ export default function Map({
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
   selectedCounty: CountyKey
-  prevSelectedCounty: CountyKey
+  mapFlyToRef?: React.MutableRefObject<((center: [number, number], zoom: number) => void) | null>
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
@@ -80,7 +80,6 @@ export default function Map({
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
-  const county = COUNTIES[selectedCounty]
 
   const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
   const TEXAS_OVERVIEW_ZOOM = 5.5
@@ -225,7 +224,7 @@ export default function Map({
     8, 2.2,
   ]
 
-  const applyTractCountyStyles = useCallback((flyToSelected = true) => {
+  const applyTractCountyStyles = useCallback(() => {
     const mapInstance = map.current
     if (!mapInstance) return
 
@@ -255,15 +254,7 @@ export default function Map({
     const selectedOutlineId = `parcels-outline-${selectedConfig.id}`
     if (mapInstance.getLayer(selectedFillId)) mapInstance.moveLayer(selectedFillId)
     if (mapInstance.getLayer(selectedOutlineId)) mapInstance.moveLayer(selectedOutlineId)
-
-    if (flyToSelected) {
-      mapInstance.flyTo({
-        center: county.mapCenter,
-        zoom: county.mapZoom,
-        duration: 800,
-      })
-    }
-  }, [county, countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
+  }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async () => {
     const mapInstance = map.current
@@ -624,7 +615,7 @@ export default function Map({
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
-    applyTractCountyStyles(false)
+    applyTractCountyStyles()
   }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits])
 
   const renderForCurrentLevel = useCallback(async () => {
@@ -685,12 +676,21 @@ export default function Map({
   }, [mapLevel])
 
   useEffect(() => {
+    if (!mapFlyToRef) return
+    mapFlyToRef.current = (center, zoom) => {
+      map.current?.flyTo({ center, zoom, duration: 800 })
+    }
+    return () => {
+      mapFlyToRef.current = null
+    }
+  }, [mapFlyToRef])
+
+  useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
-    const countyChanged = prevSelectedCounty !== selectedCounty
-    applyTractCountyStyles(countyChanged)
+    applyTractCountyStyles()
     void loadSelectedCountyPermits()
-  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, prevSelectedCounty, selectedCounty])
+  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return

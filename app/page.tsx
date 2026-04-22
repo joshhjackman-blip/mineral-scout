@@ -304,7 +304,7 @@ const getTrend = (series: Array<{ month: string; oil: number }>) => {
 
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
-  const prevCountyRef = useRef<CountyKey>('gonzales')
+  const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
   const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
@@ -402,8 +402,13 @@ export default function Home() {
   }, [county])
 
   useEffect(() => {
-    prevCountyRef.current = selectedCounty
-  }, [selectedCounty])
+    if (mapLevel !== 'tract') return
+    const county = COUNTIES[selectedCounty]
+    const timer = setTimeout(() => {
+      mapFlyToRef.current?.(county.mapCenter, county.mapZoom)
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [mapLevel, selectedCounty])
 
   const refreshSkipTraceUsage = useCallback(async () => {
     const {
@@ -2499,7 +2504,7 @@ export default function Home() {
             <MineralMap
               key={selectedCounty}
               selectedCounty={selectedCounty}
-              prevSelectedCounty={prevCountyRef.current}
+              mapFlyToRef={mapFlyToRef}
               mapLevel={mapLevel}
               showPermits={showPermits}
               focusTarget={selected}
