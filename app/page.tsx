@@ -708,39 +708,57 @@ export default function Home() {
   }, [county, ownershipTable, selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
-    if (countyRef.current.id === 'howard') {
-      setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
-      return
-    }
-
     const leaseId = owner.rrc_lease_id
     if (!leaseId) return
 
-    const [wellsRes, codeRes] = await Promise.all([
-      supabase
-        .from(countyRef.current.wellsTable)
-        .select('lease_name, operator_name, well_type, rrc_lease_id')
-        .eq('rrc_lease_id', String(leaseId))
-        .limit(10),
-      supabase
-        .from(ownershipTable)
-        .select('rrc_oil_and_gas_code')
-        .eq('rrc_lease_id', String(leaseId))
-        .limit(1),
-    ])
+    const leaseCandidates = Array.from(
+      new Set([String(leaseId).trim(), normalizeLeaseId(leaseId)].filter(Boolean))
+    )
+    if (leaseCandidates.length === 0) return
+
+    const wellsRes = await supabase
+      .from(countyRef.current.wellsTable)
+      .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+      .in('rrc_lease_id', leaseCandidates)
+      .limit(10)
 
     if (wellsRes.error) {
       console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
       return
     }
 
-    const oilGasCode = String(codeRes.data?.[0]?.rrc_oil_and_gas_code ?? 'O').toUpperCase()
-
     if (wellsRes.data && wellsRes.data.length > 0) {
-      const wellsWithCode = wellsRes.data.map((well) => ({
-        ...(well as WellSummary),
-        oil_gas_code: oilGasCode,
-      }))
+      let wellsWithCode = wellsRes.data as WellSummary[]
+
+      if (countyRef.current.id !== 'howard') {
+        const codeRes = await supabase
+          .from(ownershipTable)
+          .select('rrc_lease_id, rrc_oil_and_gas_code')
+          .in('rrc_lease_id', leaseCandidates)
+          .limit(10)
+
+        const codeMap = new Map<string, string>(
+          (codeRes.data ?? []).map((codeRow) => [
+            String((codeRow as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? '').trim(),
+            String((codeRow as { rrc_oil_and_gas_code?: string | null }).rrc_oil_and_gas_code ?? 'O').toUpperCase(),
+          ])
+        )
+
+        wellsWithCode = wellsWithCode.map((well) => {
+          const wellLease = String(well.rrc_lease_id ?? '').trim()
+          const normalizedLease = normalizeLeaseId(wellLease)
+          return {
+            ...well,
+            oil_gas_code: codeMap.get(wellLease) ?? codeMap.get(normalizedLease) ?? 'O',
+          }
+        })
+      } else {
+        wellsWithCode = wellsWithCode.map((well) => ({
+          ...well,
+          oil_gas_code: String(well.oil_gas_code ?? 'O').toUpperCase(),
+        }))
+      }
+
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
     }
   }, [county, ownershipTable])
