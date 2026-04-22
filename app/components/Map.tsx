@@ -74,7 +74,7 @@ export default function Map({
   const currentParcelsByCountyRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const countyMarkersRef = useRef<mapboxgl.Marker[]>([])
   const tractHandlersRef = useRef<TractLayerHandlers[]>([])
-  const tractMapClickHandlerRef = useRef<((event: mapboxgl.MapMouseEvent) => void) | null>(null)
+  const tractClickHandlerRef = useRef<((event: mapboxgl.MapMouseEvent) => void) | null>(null)
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
@@ -160,9 +160,9 @@ export default function Map({
       mapInstance.off('mouseleave', handlers.layerId, handlers.mouseLeaveHandler)
     })
     tractHandlersRef.current = []
-    if (tractMapClickHandlerRef.current) {
-      mapInstance.off('click', tractMapClickHandlerRef.current)
-      tractMapClickHandlerRef.current = null
+    if (tractClickHandlerRef.current) {
+      mapInstance.off('click', tractClickHandlerRef.current)
+      tractClickHandlerRef.current = null
     }
 
     if (permitHandlersRef.current.clickHandler) {
@@ -611,7 +611,7 @@ export default function Map({
       }
     }
 
-    tractMapClickHandlerRef.current = mapClickHandler
+    tractClickHandlerRef.current = mapClickHandler
     if (!map.current) return
     map.current.on('click', mapClickHandler)
 
