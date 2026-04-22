@@ -337,6 +337,7 @@ export default function Home() {
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
+  const [ownerWellsLoading, setOwnerWellsLoading] = useState<Record<string, boolean>>({})
   const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -543,6 +544,7 @@ export default function Home() {
     setSearchResults([])
     setSearchOpen(false)
     setOwnerWells({})
+    setOwnerWellsLoading({})
     setTractWells([])
     setTractWellsLoaded(false)
     setWellsExpanded(false)
@@ -560,6 +562,7 @@ export default function Home() {
       setTractWells([])
       setTractWellsLoaded(false)
       setOwnerWells({})
+      setOwnerWellsLoading({})
       setWellsExpanded(false)
       return
     }
@@ -567,6 +570,7 @@ export default function Home() {
     const fetchTractWells = async () => {
       setTractWellsLoaded(false)
       setOwnerWells({})
+      setOwnerWellsLoading({})
       setWellsExpanded(false)
 
       const operator = selected.top_operator
@@ -709,33 +713,80 @@ export default function Home() {
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
     const leaseId = owner.rrc_lease_id
-    if (!leaseId) return
+    setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: true }))
 
-    const leaseCandidates = Array.from(
-      new Set([String(leaseId).trim(), normalizeLeaseId(leaseId)].filter(Boolean))
-    )
-    if (leaseCandidates.length === 0) return
+    try {
+      const leaseCandidateSet = new Set<string>(
+        [String(leaseId ?? '').trim(), normalizeLeaseId(leaseId)].filter(Boolean)
+      )
 
-    const wellsRes = await supabase
-      .from(countyRef.current.wellsTable)
-      .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
-      .in('rrc_lease_id', leaseCandidates)
-      .limit(10)
+      // Howard owner rows are sourced from GeoJSON; if lease id is missing/mismatched,
+      // re-resolve candidate lease IDs from the county ownership table by tract+owner.
+      if (countyRef.current.id === 'howard') {
+        const tractAbstractLabel = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').trim()
+        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+        const ownerName = String(owner.owner_name ?? '').trim()
+        if (tractAbstract && ownerName) {
+          const { data: ownerLeaseRows } = await supabase
+            .from(ownershipTable)
+            .select('rrc_lease_id')
+            .eq('abstract', tractAbstract)
+            .eq('owner_name', ownerName)
+            .not('rrc_lease_id', 'is', null)
+            .limit(20)
 
-    if (wellsRes.error) {
-      console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
-      return
-    }
+          ;(ownerLeaseRows ?? []).forEach((row) => {
+            const rowLease = String(
+              (row as { rrc_lease_id?: string | number | null }).rrc_lease_id ?? ''
+            ).trim()
+            if (rowLease) {
+              leaseCandidateSet.add(rowLease)
+              leaseCandidateSet.add(normalizeLeaseId(rowLease))
+            }
+          })
+        }
+      }
 
-    if (wellsRes.data && wellsRes.data.length > 0) {
-      let wellsWithCode = wellsRes.data as WellSummary[]
+      const leaseCandidates = Array.from(leaseCandidateSet).filter(Boolean)
+      if (leaseCandidates.length === 0) {
+        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
+        return
+      }
+
+      const wellsRes = await supabase
+        .from(countyRef.current.wellsTable)
+        .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+        .in('rrc_lease_id', leaseCandidates)
+        .limit(20)
+
+      if (wellsRes.error) {
+        console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
+        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
+        return
+      }
+
+      const dedupedWells = Array.from(
+        new Map(
+          ((wellsRes.data as WellSummary[] | null) ?? []).map((well) => [
+            `${String(well.rrc_lease_id ?? '').trim()}-${String(well.lease_name ?? '').trim()}`,
+            well,
+          ])
+        ).values()
+      )
+
+      if (dedupedWells.length === 0) {
+        setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
+        return
+      }
+
+      let wellsWithCode = dedupedWells
 
       if (countyRef.current.id !== 'howard') {
         const codeRes = await supabase
           .from(ownershipTable)
           .select('rrc_lease_id, rrc_oil_and_gas_code')
           .in('rrc_lease_id', leaseCandidates)
-          .limit(10)
+          .limit(20)
 
         const codeMap = new Map<string, string>(
           (codeRes.data ?? []).map((codeRow) => [
@@ -760,8 +811,10 @@ export default function Home() {
       }
 
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
+    } finally {
+      setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: false }))
     }
-  }, [county, ownershipTable])
+  }, [ownershipTable, selected])
 
   const completeOnboarding = () => {
     window.localStorage.setItem('mineral_map_onboarded', 'true')
@@ -2096,6 +2149,8 @@ export default function Home() {
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
                   const ownerWellMatches = ownerWells[ownerKey] ?? []
+                  const ownerWellLoading = Boolean(ownerWellsLoading[ownerKey])
+                  const hasLoadedOwnerWells = Object.prototype.hasOwnProperty.call(ownerWells, ownerKey)
                   const signals = isExpanded ? getScoreBreakdown(owner) : []
                   const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
@@ -2222,6 +2277,22 @@ export default function Home() {
                                   <span style={{ fontSize: 11, color: '#374151' }}>{signal}</span>
                                 </div>
                               ))}
+                            </div>
+                          )}
+
+                          {ownerWellLoading && (
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
+                              <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                                Looking up wells on this interest...
+                              </div>
+                            </div>
+                          )}
+
+                          {!ownerWellLoading && hasLoadedOwnerWells && ownerWellMatches.length === 0 && (
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
+                              <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                                No matched wells on this interest
+                              </div>
                             </div>
                           )}
 
