@@ -2529,8 +2529,8 @@ export default function Home() {
               mapLevel={mapLevel}
               showPermits={showPermits}
               focusTarget={selected}
-              onCountySelect={(countyKey) => {
-                setSelectedCounty(countyKey)
+              onCountySwitch={(countyId) => {
+                setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
                 setSelected(null)
                 setExpandedOwner(null)

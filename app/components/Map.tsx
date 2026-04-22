@@ -26,6 +26,26 @@ export type OwnerRecord = {
   [key: string]: unknown
 }
 
+type TractLayerHandlers = {
+  layerId: string
+  clickHandler: (event: mapboxgl.MapLayerMouseEvent) => void
+  mouseEnterHandler: () => void
+  mouseLeaveHandler: () => void
+}
+
+type PermitLayerHandlers = {
+  clickHandler?: (event: mapboxgl.MapLayerMouseEvent) => void
+  mouseEnterHandler?: () => void
+  mouseLeaveHandler?: () => void
+}
+
+type CountyOverviewHandlers = {
+  moveHandler?: (event: mapboxgl.MapLayerMouseEvent) => void
+  leaveHandler?: () => void
+  clickHandler?: (event: mapboxgl.MapLayerMouseEvent) => void
+  hoveredFips: string | null
+}
+
 export default function Map({
   showPermits,
   onOwnerClick,
@@ -33,67 +53,58 @@ export default function Map({
   selectedCounty,
   mapLevel,
   onCountySelect,
+  onCountySwitch,
 }: {
   showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
   selectedCounty: CountyKey
   mapLevel: 'county' | 'tract'
-  onCountySelect: (countyKey: CountyKey) => void
+  onCountySelect?: (countyKey: CountyKey) => void
+  onCountySwitch: (countyId: string) => void
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const onOwnerClickRef = useRef(onOwnerClick)
+  const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
+  const selectedCountyRef = useRef<CountyKey>(selectedCounty)
   const renderTokenRef = useRef(0)
-  const currentParcelsDataRef = useRef<GeoJSON.FeatureCollection | null>(null)
+  const currentParcelsByCountyRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const countyMarkersRef = useRef<mapboxgl.Marker[]>([])
-  const tractHandlersRef = useRef<{
-    parcelClick?: (e: mapboxgl.MapLayerMouseEvent) => void
-    parcelMouseEnter?: () => void
-    parcelMouseLeave?: () => void
-    permitsClick?: (e: mapboxgl.MapLayerMouseEvent) => void
-    permitsMouseEnter?: () => void
-    permitsMouseLeave?: () => void
-  }>({})
-  const countyHandlersRef = useRef<{
-    activeMove?: (e: mapboxgl.MapLayerMouseEvent) => void
-    activeLeave?: () => void
-    activeClick?: (e: mapboxgl.MapLayerMouseEvent) => void
-    hoveredFips: string | null
-  }>({ hoveredFips: null })
+  const tractHandlersRef = useRef<TractLayerHandlers[]>([])
+  const permitHandlersRef = useRef<PermitLayerHandlers>({})
+  const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
   const county = COUNTIES[selectedCounty]
+
   const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
   const TEXAS_OVERVIEW_ZOOM = 5.5
 
-  type WellLayerRecord = {
-    latitude: number | string | null
-    longitude: number | string | null
-    operator_name?: string | null
-    lease_name?: string | null
-    completion_date?: string | null
-    well_type?: string | null
-  }
+  const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
 
   useEffect(() => {
     onOwnerClickRef.current = onOwnerClick
   }, [onOwnerClick])
 
   useEffect(() => {
+    onCountySwitchRef.current = onCountySwitch
+  }, [onCountySwitch])
+
+  useEffect(() => {
     onCountySelectRef.current = onCountySelect
   }, [onCountySelect])
 
+  useEffect(() => {
+    selectedCountyRef.current = selectedCounty
+  }, [selectedCounty])
+
   const removeLayerIfExists = (mapInstance: mapboxgl.Map, layerId: string) => {
-    if (mapInstance.getLayer(layerId)) {
-      mapInstance.removeLayer(layerId)
-    }
+    if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId)
   }
 
   const removeSourceIfExists = (mapInstance: mapboxgl.Map, sourceId: string) => {
-    if (mapInstance.getSource(sourceId)) {
-      mapInstance.removeSource(sourceId)
-    }
+    if (mapInstance.getSource(sourceId)) mapInstance.removeSource(sourceId)
   }
 
   const clearCountyMarkers = useCallback(() => {
@@ -101,30 +112,37 @@ export default function Map({
     countyMarkersRef.current = []
   }, [])
 
-  const clearTractLayers = useCallback((mapInstance: mapboxgl.Map) => {
-    const handlers = tractHandlersRef.current
-    if (handlers.parcelClick) mapInstance.off('click', 'parcels-fill', handlers.parcelClick)
-    if (handlers.parcelMouseEnter) mapInstance.off('mouseenter', 'parcels-fill', handlers.parcelMouseEnter)
-    if (handlers.parcelMouseLeave) mapInstance.off('mouseleave', 'parcels-fill', handlers.parcelMouseLeave)
-    if (handlers.permitsClick) mapInstance.off('click', 'permits-layer', handlers.permitsClick)
-    if (handlers.permitsMouseEnter) mapInstance.off('mouseenter', 'permits-layer', handlers.permitsMouseEnter)
-    if (handlers.permitsMouseLeave) mapInstance.off('mouseleave', 'permits-layer', handlers.permitsMouseLeave)
-    tractHandlersRef.current = {}
+  const fitGeometry = (
+    mapInstance: mapboxgl.Map,
+    geometry: GeoJSON.Geometry,
+    options?: { padding?: number; duration?: number; maxZoom?: number }
+  ) => {
+    const bounds = new mapboxgl.LngLatBounds()
+    const addCoords = (coords: number[][]) => {
+      coords.forEach((coord) => bounds.extend([coord[0], coord[1]] as [number, number]))
+    }
 
-    removeLayerIfExists(mapInstance, 'permits-layer')
-    removeLayerIfExists(mapInstance, 'parcels-outline')
-    removeLayerIfExists(mapInstance, 'parcels-fill')
-    removeSourceIfExists(mapInstance, 'permits')
-    removeSourceIfExists(mapInstance, 'parcels')
-    currentParcelsDataRef.current = null
-  }, [])
+    if (geometry.type === 'Polygon') {
+      addCoords(geometry.coordinates[0] as number[][])
+    } else if (geometry.type === 'MultiPolygon') {
+      geometry.coordinates.forEach((polygon) => addCoords(polygon[0] as number[][]))
+    }
 
-  const clearCountyLayers = useCallback((mapInstance: mapboxgl.Map) => {
-    const handlers = countyHandlersRef.current
-    if (handlers.activeMove) mapInstance.off('mousemove', 'tx-counties-active-fill', handlers.activeMove)
-    if (handlers.activeLeave) mapInstance.off('mouseleave', 'tx-counties-active-fill', handlers.activeLeave)
-    if (handlers.activeClick) mapInstance.off('click', 'tx-counties-active-fill', handlers.activeClick)
-    countyHandlersRef.current = { hoveredFips: null }
+    if (!bounds.isEmpty()) {
+      mapInstance.fitBounds(bounds, {
+        padding: options?.padding ?? 120,
+        duration: options?.duration ?? 800,
+        maxZoom: options?.maxZoom ?? 14,
+      })
+    }
+  }
+
+  const clearCountyOverviewLayers = useCallback((mapInstance: mapboxgl.Map) => {
+    const handlers = countyOverviewHandlersRef.current
+    if (handlers.moveHandler) mapInstance.off('mousemove', 'tx-counties-active-fill', handlers.moveHandler)
+    if (handlers.leaveHandler) mapInstance.off('mouseleave', 'tx-counties-active-fill', handlers.leaveHandler)
+    if (handlers.clickHandler) mapInstance.off('click', 'tx-counties-active-fill', handlers.clickHandler)
+    countyOverviewHandlersRef.current = { hoveredFips: null }
     activeCountyByFipsRef.current = {}
 
     removeLayerIfExists(mapInstance, 'tx-counties-active-outline')
@@ -134,150 +152,303 @@ export default function Map({
     removeSourceIfExists(mapInstance, 'tx-counties')
   }, [])
 
+  const clearTractLayers = useCallback((mapInstance: mapboxgl.Map) => {
+    tractHandlersRef.current.forEach((handlers) => {
+      mapInstance.off('click', handlers.layerId, handlers.clickHandler)
+      mapInstance.off('mouseenter', handlers.layerId, handlers.mouseEnterHandler)
+      mapInstance.off('mouseleave', handlers.layerId, handlers.mouseLeaveHandler)
+    })
+    tractHandlersRef.current = []
+
+    if (permitHandlersRef.current.clickHandler) {
+      mapInstance.off('click', 'permits-layer', permitHandlersRef.current.clickHandler)
+    }
+    if (permitHandlersRef.current.mouseEnterHandler) {
+      mapInstance.off('mouseenter', 'permits-layer', permitHandlersRef.current.mouseEnterHandler)
+    }
+    if (permitHandlersRef.current.mouseLeaveHandler) {
+      mapInstance.off('mouseleave', 'permits-layer', permitHandlersRef.current.mouseLeaveHandler)
+    }
+    permitHandlersRef.current = {}
+
+    removeLayerIfExists(mapInstance, 'permits-layer')
+    removeSourceIfExists(mapInstance, 'permits')
+
+    countyEntries.forEach(([, countyConfig]) => {
+      removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-fill-${countyConfig.id}`)
+      removeSourceIfExists(mapInstance, `parcels-${countyConfig.id}`)
+    })
+    currentParcelsByCountyRef.current = {}
+  }, [countyEntries])
+
+  const selectedFillColorExpr: mapboxgl.Expression = [
+    'step',
+    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+    '#9E9E9E',
+    2, '#81C784',
+    5, '#FF9800',
+    8, '#F44336',
+    10, '#B71C1C',
+  ]
+
+  const selectedFillOpacityExpr: mapboxgl.Expression = [
+    'step',
+    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+    0.3,
+    2, 0.45,
+    5, 0.7,
+    8, 0.88,
+    10, 1.0,
+  ]
+
+  const selectedOutlineColorExpr: mapboxgl.Expression = [
+    'step',
+    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+    '#2d6a2d',
+    5, '#FFC107',
+    8, '#F44336',
+  ]
+
+  const selectedOutlineWidthExpr: mapboxgl.Expression = [
+    'step',
+    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+    1.1,
+    6, 1.6,
+    8, 2.2,
+  ]
+
+  const applyTractCountyStyles = useCallback((flyToSelected = true) => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+
+    countyEntries.forEach(([countyKey, countyConfig]) => {
+      const fillId = `parcels-fill-${countyConfig.id}`
+      const outlineId = `parcels-outline-${countyConfig.id}`
+
+      if (!mapInstance.getLayer(fillId) || !mapInstance.getLayer(outlineId)) return
+
+      if (countyKey === selectedCountyRef.current) {
+        mapInstance.setPaintProperty(fillId, 'fill-color', selectedFillColorExpr)
+        mapInstance.setPaintProperty(fillId, 'fill-opacity', selectedFillOpacityExpr)
+        mapInstance.setPaintProperty(outlineId, 'line-color', selectedOutlineColorExpr)
+        mapInstance.setPaintProperty(outlineId, 'line-width', selectedOutlineWidthExpr)
+        mapInstance.setPaintProperty(outlineId, 'line-opacity', 0.92)
+      } else {
+        mapInstance.setPaintProperty(fillId, 'fill-color', '#9E9E9E')
+        mapInstance.setPaintProperty(fillId, 'fill-opacity', 0.25)
+        mapInstance.setPaintProperty(outlineId, 'line-color', '#CBD5E1')
+        mapInstance.setPaintProperty(outlineId, 'line-width', 0.8)
+        mapInstance.setPaintProperty(outlineId, 'line-opacity', 1)
+      }
+    })
+
+    const selectedConfig = COUNTIES[selectedCountyRef.current]
+    const selectedFillId = `parcels-fill-${selectedConfig.id}`
+    const selectedOutlineId = `parcels-outline-${selectedConfig.id}`
+    if (mapInstance.getLayer(selectedFillId)) mapInstance.moveLayer(selectedFillId)
+    if (mapInstance.getLayer(selectedOutlineId)) mapInstance.moveLayer(selectedOutlineId)
+
+    if (flyToSelected) {
+      mapInstance.flyTo({
+        center: selectedConfig.mapCenter,
+        zoom: selectedConfig.mapZoom,
+        duration: 800,
+      })
+    }
+  }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
+
+  const loadSelectedCountyPermits = useCallback(async () => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+
+    const countyConfig = COUNTIES[selectedCountyRef.current]
+    const wellsResult = await supabase
+      .from(countyConfig.wellsTable)
+      .select(
+        'api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type,oil_gas_code'
+      )
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+
+    const wells = ((wellsResult.data ?? []) as Array<Record<string, unknown>>)
+      .filter((well) => Number.isFinite(Number(well.longitude)) && Number.isFinite(Number(well.latitude)))
+
+    const permitsGeoJSON: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: wells.map((well) => ({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [Number(well.longitude), Number(well.latitude)],
+        },
+        properties: {
+          operator: String(well.operator_name ?? ''),
+          lease: String(well.lease_name ?? ''),
+          date: String(well.completion_date ?? ''),
+          type: String(well.well_type ?? ''),
+        },
+      })),
+    }
+
+    if (!mapInstance.getSource('permits')) {
+      mapInstance.addSource('permits', { type: 'geojson', data: permitsGeoJSON })
+      mapInstance.addLayer({
+        id: 'permits-layer',
+        type: 'circle',
+        source: 'permits',
+        layout: { visibility: showPermits ? 'visible' : 'none' },
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#2563eb',
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 2.5,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-opacity': 1,
+        },
+      })
+
+      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+        const props = event.features?.[0]?.properties
+        if (!props || !map.current) return
+        new mapboxgl.Popup({ closeButton: false, offset: 10 })
+          .setLngLat((event.features?.[0]?.geometry as GeoJSON.Point).coordinates as [number, number])
+          .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+            <div style="font-weight:600;color:#1d4ed8">New Permit Filed</div>
+            <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
+            <div style="color:#6b7280">${props.operator ?? ''}</div>
+            <div style="color:#6b7280;font-size:11px">Filed: ${props.date ?? ''}</div>
+          </div>`)
+          .addTo(map.current)
+      }
+      const mouseEnterHandler = () => {
+        map.current?.getCanvas().style.setProperty('cursor', 'pointer')
+      }
+      const mouseLeaveHandler = () => {
+        if (map.current) map.current.getCanvas().style.cursor = ''
+      }
+
+      permitHandlersRef.current = { clickHandler, mouseEnterHandler, mouseLeaveHandler }
+      mapInstance.on('click', 'permits-layer', clickHandler)
+      mapInstance.on('mouseenter', 'permits-layer', mouseEnterHandler)
+      mapInstance.on('mouseleave', 'permits-layer', mouseLeaveHandler)
+    } else {
+      const source = mapInstance.getSource('permits') as mapboxgl.GeoJSONSource
+      source.setData(permitsGeoJSON)
+    }
+
+    if (mapInstance.getLayer('permits-layer')) {
+      mapInstance.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
+    }
+  }, [showPermits])
+
   const setupCountyOverview = useCallback(async () => {
     const mapInstance = map.current
     if (!mapInstance) return
 
     const renderToken = ++renderTokenRef.current
-
     clearTractLayers(mapInstance)
-    clearCountyLayers(mapInstance)
+    clearCountyOverviewLayers(mapInstance)
     clearCountyMarkers()
 
     const response = await fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
     if (!response.ok || renderToken !== renderTokenRef.current || !map.current) return
 
-    const countyGeoJson = await response.json() as GeoJSON.FeatureCollection
+    const geojson = await response.json() as GeoJSON.FeatureCollection
     if (renderToken !== renderTokenRef.current || !map.current) return
 
-    const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
     const activeFipsSet = new Set<string>()
     const activeCountyByFips: Record<string, CountyKey> = {}
-
     countyEntries.forEach(([countyKey, countyConfig]) => {
       activeFipsSet.add(countyConfig.fips)
       activeCountyByFips[countyConfig.fips] = countyKey
     })
     activeCountyByFipsRef.current = activeCountyByFips
 
-    const texasFeatures = (countyGeoJson.features ?? [])
+    const texasFeatures = (geojson.features ?? [])
       .map((feature) => {
         const properties = (feature.properties ?? {}) as Record<string, unknown>
-        const rawFips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? '').trim()
-        if (!rawFips.startsWith('48')) return null
+        const fips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? '').trim()
+        if (!fips.startsWith('48')) return null
         return {
           ...feature,
-          id: rawFips,
-          properties: {
-            ...properties,
-            __fips: rawFips,
-          },
+          id: fips,
+          properties: { ...properties, __fips: fips },
         } as GeoJSON.Feature
       })
       .filter(Boolean) as GeoJSON.Feature[]
 
-    const texasCountyCollection: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: texasFeatures,
-    }
-
-    map.current.addSource('tx-counties', { type: 'geojson', data: texasCountyCollection })
+    map.current.addSource('tx-counties', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: texasFeatures },
+    })
 
     map.current.addLayer({
       id: 'tx-counties-fill',
       type: 'fill',
       source: 'tx-counties',
-      paint: {
-        'fill-color': '#E5E7EB',
-        'fill-opacity': 0.35,
-      },
+      paint: { 'fill-color': '#E5E7EB', 'fill-opacity': 0.35 },
     })
-
     map.current.addLayer({
       id: 'tx-counties-outline',
       type: 'line',
       source: 'tx-counties',
-      paint: {
-        'line-color': '#D1D5DB',
-        'line-width': 0.5,
-      },
+      paint: { 'line-color': '#D1D5DB', 'line-width': 0.5 },
     })
-
     map.current.addLayer({
       id: 'tx-counties-active-fill',
       type: 'fill',
       source: 'tx-counties',
       filter: ['in', ['get', '__fips'], ['literal', Array.from(activeFipsSet)]],
       paint: {
-        'fill-color': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          '#D97706',
-          '#EF9F27',
-        ],
+        'fill-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#D97706', '#EF9F27'],
         'fill-opacity': 0.75,
       },
     })
-
     map.current.addLayer({
       id: 'tx-counties-active-outline',
       type: 'line',
       source: 'tx-counties',
       filter: ['in', ['get', '__fips'], ['literal', Array.from(activeFipsSet)]],
-      paint: {
-        'line-color': '#D97706',
-        'line-width': 1.5,
-      },
+      paint: { 'line-color': '#D97706', 'line-width': 1.5 },
     })
 
-    const onActiveMove = (event: mapboxgl.MapLayerMouseEvent) => {
+    const moveHandler = (event: mapboxgl.MapLayerMouseEvent) => {
       if (!map.current) return
       map.current.getCanvas().style.cursor = 'pointer'
-      const hoveredFeature = event.features?.[0]
-      const hoveredFips = String(
-        hoveredFeature?.id ??
-        (hoveredFeature?.properties as Record<string, unknown> | undefined)?.__fips ??
-        ''
-      )
-      if (!hoveredFips) return
-
-      const previousHovered = countyHandlersRef.current.hoveredFips
-      if (previousHovered && previousHovered !== hoveredFips) {
-        map.current.setFeatureState({ source: 'tx-counties', id: previousHovered }, { hover: false })
+      const feature = event.features?.[0]
+      const fips = String(feature?.id ?? ((feature?.properties ?? {}) as Record<string, unknown>).__fips ?? '').trim()
+      if (!fips) return
+      const previous = countyOverviewHandlersRef.current.hoveredFips
+      if (previous && previous !== fips) {
+        map.current.setFeatureState({ source: 'tx-counties', id: previous }, { hover: false })
       }
-      countyHandlersRef.current.hoveredFips = hoveredFips
-      map.current.setFeatureState({ source: 'tx-counties', id: hoveredFips }, { hover: true })
+      countyOverviewHandlersRef.current.hoveredFips = fips
+      map.current.setFeatureState({ source: 'tx-counties', id: fips }, { hover: true })
     }
-
-    const onActiveLeave = () => {
+    const leaveHandler = () => {
       if (!map.current) return
       map.current.getCanvas().style.cursor = ''
-      const previousHovered = countyHandlersRef.current.hoveredFips
-      if (previousHovered) {
-        map.current.setFeatureState({ source: 'tx-counties', id: previousHovered }, { hover: false })
-      }
-      countyHandlersRef.current.hoveredFips = null
+      const previous = countyOverviewHandlersRef.current.hoveredFips
+      if (previous) map.current.setFeatureState({ source: 'tx-counties', id: previous }, { hover: false })
+      countyOverviewHandlersRef.current.hoveredFips = null
     }
-
-    const onActiveClick = (event: mapboxgl.MapLayerMouseEvent) => {
-      const activeFeature = event.features?.[0]
-      const fips = String(
-        activeFeature?.id ??
-        (activeFeature?.properties as Record<string, unknown> | undefined)?.__fips ??
-        ''
-      ).trim()
+    const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0]
+      const fips = String(feature?.id ?? ((feature?.properties ?? {}) as Record<string, unknown>).__fips ?? '').trim()
       const countyKey = activeCountyByFipsRef.current[fips]
       if (!countyKey) return
-      onCountySelectRef.current(countyKey)
+      if (onCountySelectRef.current) {
+        onCountySelectRef.current(countyKey)
+      } else {
+        onCountySwitchRef.current(countyKey)
+      }
     }
 
-    countyHandlersRef.current.activeMove = onActiveMove
-    countyHandlersRef.current.activeLeave = onActiveLeave
-    countyHandlersRef.current.activeClick = onActiveClick
-
-    map.current.on('mousemove', 'tx-counties-active-fill', onActiveMove)
-    map.current.on('mouseleave', 'tx-counties-active-fill', onActiveLeave)
-    map.current.on('click', 'tx-counties-active-fill', onActiveClick)
+    countyOverviewHandlersRef.current = { moveHandler, leaveHandler, clickHandler, hoveredFips: null }
+    map.current.on('mousemove', 'tx-counties-active-fill', moveHandler)
+    map.current.on('mouseleave', 'tx-counties-active-fill', leaveHandler)
+    map.current.on('click', 'tx-counties-active-fill', clickHandler)
 
     countyEntries.forEach(([, countyConfig]) => {
       const markerElement = document.createElement('div')
@@ -292,9 +463,7 @@ export default function Map({
       markerElement.style.color = '#111827'
       markerElement.style.whiteSpace = 'nowrap'
       markerElement.style.lineHeight = '1.2'
-
-      const leadsK = (countyConfig.totalLeads / 1000).toFixed(0)
-      markerElement.innerHTML = `<div style="font-weight:700">${countyConfig.name} County</div><div style="color:#6B7280">~${leadsK},000 leads</div>`
+      markerElement.innerHTML = `<div style="font-weight:700">${countyConfig.name} County</div><div style="color:#6B7280">~${(countyConfig.totalLeads / 1000).toFixed(0)},000 leads</div>`
 
       const marker = new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
         .setLngLat(countyConfig.mapCenter)
@@ -302,213 +471,103 @@ export default function Map({
       countyMarkersRef.current.push(marker)
     })
 
-    map.current.flyTo({
-      center: TEXAS_OVERVIEW_CENTER,
-      zoom: TEXAS_OVERVIEW_ZOOM,
-      duration: 800,
-    })
-  }, [clearCountyLayers, clearCountyMarkers, clearTractLayers])
+    map.current.flyTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, duration: 800 })
+  }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries])
 
   const setupTractLevel = useCallback(async () => {
     const mapInstance = map.current
     if (!mapInstance) return
 
     const renderToken = ++renderTokenRef.current
-
-    clearCountyLayers(mapInstance)
+    clearCountyOverviewLayers(mapInstance)
     clearCountyMarkers()
     clearTractLayers(mapInstance)
 
-    const wellsPromise = supabase
-      .from(county.wellsTable)
-      .select(
-        'api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type,oil_gas_code'
-      )
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null)
+    const parcelsByCounty = await Promise.all(
+      countyEntries.map(async ([countyKey, countyConfig]) => {
+        const response = await fetch(countyConfig.geoJsonPath)
+        if (!response.ok) {
+          throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
+        }
+        const geojson = await response.json() as GeoJSON.FeatureCollection
+        return [countyKey, geojson] as const
+      })
+    )
 
-    const [parcelsResponse, wellsResult] = await Promise.all([
-      fetch(county.geoJsonPath),
-      wellsPromise,
-    ])
-
-    if (!parcelsResponse.ok) {
-      throw new Error(`Parcels API failed (${parcelsResponse.status})`)
-    }
     if (renderToken !== renderTokenRef.current || !map.current) return
 
-    const parcelsData = await parcelsResponse.json() as GeoJSON.FeatureCollection
-    if (renderToken !== renderTokenRef.current || !map.current) return
+    currentParcelsByCountyRef.current = {}
+    parcelsByCounty.forEach(([countyKey, geojson]) => {
+      currentParcelsByCountyRef.current[countyKey] = geojson
+      const countyConfig = COUNTIES[countyKey]
+      const sourceId = `parcels-${countyConfig.id}`
+      const fillId = `parcels-fill-${countyConfig.id}`
+      const outlineId = `parcels-outline-${countyConfig.id}`
 
-    currentParcelsDataRef.current = parcelsData
-    const wells: WellLayerRecord[] = ((wellsResult.data ?? []) as Array<Record<string, unknown>>).map((well) => ({
-      latitude: (well.latitude as number | string | null) ?? null,
-      longitude: (well.longitude as number | string | null) ?? null,
-      well_type: (well.well_type as string | null) ?? '',
-      operator_name: (well.operator_name as string | null) ?? '',
-      lease_name: (well.lease_name as string | null) ?? '',
-      completion_date: (well.completion_date as string | null) ?? '',
-    }))
+      map.current?.addSource(sourceId, { type: 'geojson', data: geojson, generateId: true })
+      map.current?.addLayer({
+        id: fillId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': '#9E9E9E',
+          'fill-opacity': 0.25,
+        },
+      })
+      map.current?.addLayer({
+        id: outlineId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#CBD5E1',
+          'line-width': 0.8,
+          'line-opacity': 1,
+        },
+      })
 
-    const scoreExpr = [
-      'to-number',
-      ['coalesce', ['get', 'max_propensity_score'], 0],
-    ] as const
+      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+        if (!map.current) return
+        const isSelectedCountyLayer = countyKey === selectedCountyRef.current
+        if (!isSelectedCountyLayer) {
+          onCountySwitchRef.current(countyKey)
+          return
+        }
 
-    map.current.addSource('parcels', { type: 'geojson', data: parcelsData, generateId: true })
-    map.current.addLayer({
-      id: 'parcels-fill',
-      type: 'fill',
-      source: 'parcels',
-      paint: {
-        'fill-color': [
-          'step', scoreExpr,
-          '#9E9E9E',
-          2, '#81C784',
-          5, '#FF9800',
-          8, '#F44336',
-          10, '#B71C1C'
-        ],
-        'fill-opacity': [
-          'step', scoreExpr,
-          0.3,
-          2, 0.45,
-          5, 0.7,
-          8, 0.88,
-          10, 1.0
-        ]
-      }
-    })
-
-    map.current.addLayer({
-      id: 'parcels-outline',
-      type: 'line',
-      source: 'parcels',
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': ['step', scoreExpr, '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
-        'line-width': ['step', scoreExpr, 1.1, 6, 1.6, 8, 2.2],
-        'line-opacity': 0.92
-      }
-    })
-
-    const parcelClick = (event: mapboxgl.MapLayerMouseEvent) => {
-      const props = event.features?.[0]?.properties
-      if (props) {
-        onOwnerClickRef.current(props as Record<string, unknown>)
-
-        if (event.features?.[0]?.geometry) {
-          const geometry = event.features[0].geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon
-          const bounds = new mapboxgl.LngLatBounds()
-
-          const addCoords = (coords: number[][]) => {
-            coords.forEach((coord) => bounds.extend([coord[0], coord[1]] as [number, number]))
-          }
-
-          if (geometry.type === 'Polygon') {
-            addCoords(geometry.coordinates[0] as number[][])
-          } else if (geometry.type === 'MultiPolygon') {
-            geometry.coordinates.forEach((polygon) => addCoords(polygon[0] as number[][]))
-          }
-
-          if (!bounds.isEmpty()) {
-            map.current?.fitBounds(bounds, {
-              padding: 120,
-              duration: 800,
-              maxZoom: 14
-            })
-          }
+        const props = event.features?.[0]?.properties
+        if (props) {
+          onOwnerClickRef.current(props as Record<string, unknown>)
+        }
+        const geometry = event.features?.[0]?.geometry
+        if (geometry) {
+          fitGeometry(map.current, geometry)
         }
       }
-    }
-    const parcelMouseEnter = () => {
-      map.current?.getCanvas().style.setProperty('cursor', 'pointer')
-    }
-    const parcelMouseLeave = () => {
-      if (map.current) map.current.getCanvas().style.cursor = ''
-    }
+      const mouseEnterHandler = () => {
+        map.current?.getCanvas().style.setProperty('cursor', 'pointer')
+      }
+      const mouseLeaveHandler = () => {
+        if (map.current) map.current.getCanvas().style.cursor = ''
+      }
 
-    tractHandlersRef.current.parcelClick = parcelClick
-    tractHandlersRef.current.parcelMouseEnter = parcelMouseEnter
-    tractHandlersRef.current.parcelMouseLeave = parcelMouseLeave
+      tractHandlersRef.current.push({
+        layerId: fillId,
+        clickHandler,
+        mouseEnterHandler,
+        mouseLeaveHandler,
+      })
 
-    map.current.on('click', 'parcels-fill', parcelClick)
-    map.current.on('mouseenter', 'parcels-fill', parcelMouseEnter)
-    map.current.on('mouseleave', 'parcels-fill', parcelMouseLeave)
-
-    const permitsGeoJSON: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: wells
-        .filter((well) => Number.isFinite(Number(well.longitude)) && Number.isFinite(Number(well.latitude)))
-        .map((well) => ({
-          type: 'Feature' as const,
-          geometry: {
-            type: 'Point' as const,
-            coordinates: [Number(well.longitude), Number(well.latitude)],
-          },
-          properties: {
-            operator: well.operator_name ?? '',
-            lease: well.lease_name ?? '',
-            date: well.completion_date ?? '',
-            type: well.well_type ?? '',
-          },
-        })),
-    }
-
-    map.current.addSource('permits', { type: 'geojson', data: permitsGeoJSON })
-    map.current.addLayer({
-      id: 'permits-layer',
-      type: 'circle',
-      source: 'permits',
-      layout: { visibility: showPermits ? 'visible' : 'none' },
-      paint: {
-        'circle-radius': 7,
-        'circle-color': '#2563eb',
-        'circle-opacity': 0.85,
-        'circle-stroke-width': 2.5,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-opacity': 1,
-      },
+      map.current?.on('click', fillId, clickHandler)
+      map.current?.on('mouseenter', fillId, mouseEnterHandler)
+      map.current?.on('mouseleave', fillId, mouseLeaveHandler)
     })
 
-    const permitsClick = (event: mapboxgl.MapLayerMouseEvent) => {
-      const props = event.features?.[0]?.properties
-      if (!props || !map.current) return
-      new mapboxgl.Popup({ closeButton: false, offset: 10 })
-        .setLngLat((event.features?.[0]?.geometry as GeoJSON.Point).coordinates as [number, number])
-        .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
-          <div style="font-weight:600;color:#1d4ed8">New Permit Filed</div>
-          <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
-          <div style="color:#6b7280">${props.operator ?? ''}</div>
-          <div style="color:#6b7280;font-size:11px">Filed: ${props.date ?? ''}</div>
-        </div>`)
-        .addTo(map.current)
-    }
-    const permitsMouseEnter = () => {
-      map.current?.getCanvas().style.setProperty('cursor', 'pointer')
-    }
-    const permitsMouseLeave = () => {
-      if (map.current) map.current.getCanvas().style.cursor = ''
-    }
+    await loadSelectedCountyPermits()
+    if (renderToken !== renderTokenRef.current || !map.current) return
+    applyTractCountyStyles(true)
+  }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits])
 
-    tractHandlersRef.current.permitsClick = permitsClick
-    tractHandlersRef.current.permitsMouseEnter = permitsMouseEnter
-    tractHandlersRef.current.permitsMouseLeave = permitsMouseLeave
-    map.current.on('click', 'permits-layer', permitsClick)
-    map.current.on('mouseenter', 'permits-layer', permitsMouseEnter)
-    map.current.on('mouseleave', 'permits-layer', permitsMouseLeave)
-
-    map.current.flyTo({
-      center: county.mapCenter,
-      zoom: county.mapZoom,
-      duration: 800,
-    })
-  }, [clearCountyLayers, clearCountyMarkers, clearTractLayers, county.geoJsonPath, county.mapCenter, county.mapZoom, county.wellsTable, showPermits])
-
-  const renderMapByLevel = useCallback(async () => {
+  const renderForCurrentLevel = useCallback(async () => {
     if (!map.current) return
     if (mapLevel === 'county') {
       await setupCountyOverview()
@@ -520,47 +579,53 @@ export default function Map({
   useEffect(() => {
     if (map.current || !mapContainer.current) return
 
-    const m = new mapboxgl.Map({
+    const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: mapLevel === 'county' ? TEXAS_OVERVIEW_CENTER : county.mapCenter,
-      zoom: mapLevel === 'county' ? TEXAS_OVERVIEW_ZOOM : county.mapZoom
+      zoom: mapLevel === 'county' ? TEXAS_OVERVIEW_ZOOM : county.mapZoom,
     })
-    map.current = m
+    map.current = mapInstance
 
-    const handleLoad = () => {
-      void renderMapByLevel()
+    const onLoad = () => {
+      void renderForCurrentLevel()
     }
-    m.on('load', handleLoad)
+    mapInstance.on('load', onLoad)
 
     return () => {
       clearCountyMarkers()
       if (map.current) {
-        clearCountyLayers(map.current)
+        clearCountyOverviewLayers(map.current)
         clearTractLayers(map.current)
       }
       map.current?.remove()
       map.current = null
       renderTokenRef.current += 1
     }
-  }, [clearCountyLayers, clearCountyMarkers, clearTractLayers, county.mapCenter, county.mapZoom, mapLevel, renderMapByLevel])
+  }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, county.mapCenter, county.mapZoom, mapLevel, renderForCurrentLevel])
 
   useEffect(() => {
     if (!map.current) return
     if (!map.current.isStyleLoaded()) {
       map.current.once('load', () => {
-        void renderMapByLevel()
+        void renderForCurrentLevel()
       })
       return
     }
-    void renderMapByLevel()
-  }, [renderMapByLevel, selectedCounty, mapLevel])
+    void renderForCurrentLevel()
+  }, [renderForCurrentLevel, mapLevel])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
+    applyTractCountyStyles(true)
+    void loadSelectedCountyPermits()
+  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
+
+  useEffect(() => {
+    if (!map.current?.isStyleLoaded()) return
     if (map.current.getLayer('permits-layer')) {
-      map.current.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
+      map.current.setLayoutProperty('permits-layer', 'visibility', mapLevel === 'tract' && showPermits ? 'visible' : 'none')
     }
   }, [mapLevel, showPermits])
 
@@ -568,15 +633,9 @@ export default function Map({
     if (mapLevel !== 'tract') return
     if (!focusTarget || !map.current?.isStyleLoaded()) return
 
-    const features = currentParcelsDataRef.current?.features ?? []
-
-    const selectedAbstract = String(
-      focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? ''
-    ).trim()
-    const selectedSurvey = String(
-      focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? ''
-    ).trim()
-
+    const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
+    const selectedAbstract = String(focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? '').trim()
+    const selectedSurvey = String(focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '').trim()
     if (!selectedAbstract || !selectedSurvey) return
 
     const matched = features.find((feature) => {
@@ -586,23 +645,10 @@ export default function Map({
       return featureAbstract === selectedAbstract && featureSurvey === selectedSurvey
     })
 
-    if (!matched?.geometry) return
-
-    const bounds = new mapboxgl.LngLatBounds()
-    const addCoords = (coords: number[][]) => {
-      coords.forEach((c) => bounds.extend([c[0], c[1]] as [number, number]))
+    if (matched?.geometry) {
+      fitGeometry(map.current, matched.geometry)
     }
-
-    if (matched.geometry.type === 'Polygon') {
-      addCoords((matched.geometry.coordinates[0] as number[][]) ?? [])
-    } else if (matched.geometry.type === 'MultiPolygon') {
-      matched.geometry.coordinates.forEach((poly) => addCoords((poly[0] as number[][]) ?? []))
-    }
-
-    if (!bounds.isEmpty()) {
-      map.current.fitBounds(bounds, { padding: 120, duration: 800, maxZoom: 14 })
-    }
-  }, [focusTarget, mapLevel])
+  }, [focusTarget, mapLevel, selectedCounty])
 
   return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 }
