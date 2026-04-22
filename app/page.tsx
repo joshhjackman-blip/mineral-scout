@@ -305,6 +305,9 @@ const getTrend = (series: Array<{ month: string; oil: number }>) => {
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
+  const [windowWidth, setWindowWidth] = useState(
+    typeof window !== 'undefined' ? window.innerWidth : 1200
+  )
   const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   const [selected, setSelected] = useState<TractSelection | null>(null)
@@ -363,13 +366,22 @@ export default function Home() {
   ) as Record<string, string>
   const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
   const showCountyArrows = mapLevel === 'tract'
-  const rightArrowOffset = selected && !isMobile ? 428 : 8
+  const desktopPanelWidth = Math.min(420, Math.max(300, windowWidth * 0.3))
+  const rightArrowOffset = selected && !isMobile ? desktopPanelWidth + 8 : 8
+  const hideSecondaryNavActions = !isMobile && windowWidth < 1100
+  const backToAllLabel = !isMobile && windowWidth < 1100 ? '← All' : '← All Counties'
   const countySummaryText = `${countyStatsByLabel['Survey abstracts'] ?? '—'} survey abstracts · ${countyStatsByLabel['Total owners'] ?? '—'} mineral owners`
   const headerCountyStats = isMobile
     ? [
       { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
       { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
     ]
+    : windowWidth < 1200
+      ? [
+        { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
+        { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
+        { val: countyStatsByLabel['Motivated (5-7)'] ?? '—', lbl: 'motivated' },
+      ]
     : [
       { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
       { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
@@ -447,6 +459,12 @@ export default function Home() {
     updateMobile()
     window.addEventListener('resize', updateMobile)
     return () => window.removeEventListener('resize', updateMobile)
+  }, [])
+
+  useEffect(() => {
+    const handler = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
   }, [])
 
   useEffect(() => {
@@ -1547,7 +1565,7 @@ export default function Home() {
                   cursor: 'pointer',
                 }}
               >
-                ← All Counties
+                {backToAllLabel}
               </button>
             )}
             <select
@@ -1724,21 +1742,23 @@ export default function Home() {
               <span style={{ fontSize: 11, color: '#B45309', marginLeft: 4 }}>{s.lbl}</span>
             </div>
           ))}
-          <a
-            href="/methodology"
-            style={{
-              fontSize: 12,
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #E5E7EB',
-              fontFamily: 'Inter, sans-serif',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Methodology
-          </a>
+          {!hideSecondaryNavActions && (
+            <a
+              href="/methodology"
+              style={{
+                fontSize: 12,
+                color: '#6B7280',
+                textDecoration: 'none',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid #E5E7EB',
+                fontFamily: 'Inter, sans-serif',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Methodology
+            </a>
+          )}
           <a
             href="/crm"
             style={{
@@ -1770,21 +1790,23 @@ export default function Home() {
           >
             Comps
           </a>
-          <a
-            href="/account"
-            style={{
-              fontSize: 12,
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #E5E7EB',
-              fontFamily: 'Inter, sans-serif',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Account
-          </a>
+          {!hideSecondaryNavActions && (
+            <a
+              href="/account"
+              style={{
+                fontSize: 12,
+                color: '#6B7280',
+                textDecoration: 'none',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid #E5E7EB',
+                fontFamily: 'Inter, sans-serif',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Account
+            </a>
+          )}
           <button
             onClick={() => {
               setOnboardingStep(0)
@@ -1829,8 +1851,8 @@ export default function Home() {
         {/* Left panel */}
         <div
           style={{
-            width: isMobile ? '100%' : 420,
-            minWidth: isMobile ? 0 : 420,
+            width: isMobile ? '100%' : 'clamp(300px, 30vw, 420px)',
+            minWidth: isMobile ? 0 : 'clamp(300px, 30vw, 420px)',
             background: '#F8F8F8',
             borderRight: isMobile ? 'none' : '1px solid #E5E7EB',
             borderTop: isMobile ? '1px solid #E5E7EB' : 'none',
