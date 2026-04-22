@@ -418,14 +418,18 @@ export default function Home() {
   useEffect(() => {
     if (mapLevel !== 'tract') return
     const county = COUNTIES[selectedCounty]
-    const timer = setTimeout(() => {
-      console.log('FlyTo attempt:', {
-        county: selectedCounty,
-        hasRef: !!mapFlyToRef.current,
-        center: county.mapCenter,
-      })
-      mapFlyToRef.current?.(county.mapCenter, county.mapZoom)
-    }, 500)
+  let attempts = 0
+  const tryFlyTo = () => {
+    attempts += 1
+    if (mapFlyToRef.current) {
+      mapFlyToRef.current(county.mapCenter, county.mapZoom)
+      return
+    }
+    if (attempts < 10) {
+      setTimeout(tryFlyTo, 200)
+    }
+  }
+  const timer = setTimeout(tryFlyTo, 200)
     return () => clearTimeout(timer)
   }, [mapLevel, selectedCounty])
 
