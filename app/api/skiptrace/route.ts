@@ -252,21 +252,23 @@ export async function POST(req: NextRequest) {
     if (bstApiKey && phones.length === 0 && emails.length === 0) {
       try {
         const bstBody: Record<string, unknown> = {
-          first_name: firstName,
-          last_name: lastName,
-          state: state,
-        }
-        if (address && address.trim()) {
-          bstBody.address = address
-          bstBody.city = city
-          bstBody.zip = zip
+          requests: [
+            {
+              firstName: firstName,
+              lastName: lastName,
+              address: address || '',
+              city: city || '',
+              state: state || '',
+              zip: zip || '',
+            },
+          ],
         }
         console.log('BST request:', JSON.stringify(bstBody))
-        const bstResponse = await fetch('https://api.batchskiptracing.com/api/v2/search', {
+        const bstResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-user-key': bstApiKey,
+            'Authorization': `Bearer ${bstApiKey}`,
           },
           body: JSON.stringify(bstBody),
         })
@@ -274,26 +276,19 @@ export async function POST(req: NextRequest) {
         console.log('BST raw response:', bstText.substring(0, 1000))
         if (bstResponse.ok) {
           const bstData = JSON.parse(bstText) as Record<string, unknown>
-          const persons = (bstData.output as Array<Record<string, unknown>>) ??
-                          (bstData.results as Array<Record<string, unknown>>) ??
-                          (bstData.persons as Array<Record<string, unknown>>) ?? []
-          for (const person of persons) {
-            const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
-            for (const p of personPhones) {
-              const num = String(p?.number ?? p?.phone ?? p?.phoneNumber ?? '').trim()
+          const results = (((bstData.data as Record<string, unknown> | undefined)?.results) as Array<Record<string, unknown>>) ?? []
+          for (const result of results) {
+            const phoneNumbers = (result?.phoneNumbers as Array<Record<string, unknown>>) ?? []
+            for (const p of phoneNumbers) {
+              const num = String(p?.phoneNumber ?? p?.number ?? '').trim()
               if (num && !phones.includes(num)) phones.push(num)
             }
-            const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
-            for (const e of personEmails) {
+            const emailList = (result?.emails as Array<Record<string, unknown>>) ?? []
+            for (const e of emailList) {
               const addr = String(e?.email ?? e?.address ?? '').trim()
               if (addr && !emails.includes(addr)) emails.push(addr)
             }
           }
-          // Also check flat structure
-          const flatPhone = String(bstData.phone ?? bstData.phoneNumber ?? '').trim()
-          if (flatPhone && !phones.includes(flatPhone)) phones.push(flatPhone)
-          const flatEmail = String(bstData.email ?? '').trim()
-          if (flatEmail && !emails.includes(flatEmail)) emails.push(flatEmail)
           if (phones.length > 0 || emails.length > 0) {
             cacheSource = 'batchskiptracing'
           }
