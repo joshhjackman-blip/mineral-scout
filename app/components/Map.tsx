@@ -378,23 +378,27 @@ export default function Map({
       })
       .filter(Boolean) as GeoJSON.Feature[]
 
+    if (!map.current) return
     map.current.addSource('tx-counties', {
       type: 'geojson',
       data: { type: 'FeatureCollection', features: texasFeatures },
     })
 
+    if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-fill',
       type: 'fill',
       source: 'tx-counties',
       paint: { 'fill-color': '#E5E7EB', 'fill-opacity': 0.35 },
     })
+    if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-outline',
       type: 'line',
       source: 'tx-counties',
       paint: { 'line-color': '#D1D5DB', 'line-width': 0.5 },
     })
+    if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-active-fill',
       type: 'fill',
@@ -405,6 +409,7 @@ export default function Map({
         'fill-opacity': 0.75,
       },
     })
+    if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-active-outline',
       type: 'line',
@@ -483,18 +488,18 @@ export default function Map({
     clearCountyMarkers()
     clearTractLayers(mapInstance)
 
-    const parcelsByCounty = await Promise.all(
-      countyEntries.map(async ([countyKey, countyConfig]) => {
-        const response = await fetch(countyConfig.geoJsonPath)
-        if (!response.ok) {
-          throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
-        }
-        const geojson = await response.json() as GeoJSON.FeatureCollection
-        return [countyKey, geojson] as const
-      })
-    )
+    const parcelsByCounty: Array<readonly [CountyKey, GeoJSON.FeatureCollection]> = []
+    for (const [countyKey, countyConfig] of countyEntries) {
+      const response = await fetch(countyConfig.geoJsonPath)
+      if (renderToken !== renderTokenRef.current || !map.current) return
+      if (!response.ok) {
+        throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
+      }
 
-    if (renderToken !== renderTokenRef.current || !map.current) return
+      const geojson = await response.json() as GeoJSON.FeatureCollection
+      if (renderToken !== renderTokenRef.current || !map.current) return
+      parcelsByCounty.push([countyKey, geojson] as const)
+    }
 
     currentParcelsByCountyRef.current = {}
     parcelsByCounty.forEach(([countyKey, geojson]) => {
@@ -504,8 +509,10 @@ export default function Map({
       const fillId = `parcels-fill-${countyConfig.id}`
       const outlineId = `parcels-outline-${countyConfig.id}`
 
-      map.current?.addSource(sourceId, { type: 'geojson', data: geojson, generateId: true })
-      map.current?.addLayer({
+      if (!map.current) return
+      map.current.addSource(sourceId, { type: 'geojson', data: geojson, generateId: true })
+      if (!map.current) return
+      map.current.addLayer({
         id: fillId,
         type: 'fill',
         source: sourceId,
@@ -514,7 +521,8 @@ export default function Map({
           'fill-opacity': 0.25,
         },
       })
-      map.current?.addLayer({
+      if (!map.current) return
+      map.current.addLayer({
         id: outlineId,
         type: 'line',
         source: sourceId,
@@ -562,9 +570,10 @@ export default function Map({
         mouseLeaveHandler,
       })
 
-      map.current?.on('click', fillId, clickHandler)
-      map.current?.on('mouseenter', fillId, mouseEnterHandler)
-      map.current?.on('mouseleave', fillId, mouseLeaveHandler)
+      if (!map.current) return
+      map.current.on('click', fillId, clickHandler)
+      map.current.on('mouseenter', fillId, mouseEnterHandler)
+      map.current.on('mouseleave', fillId, mouseLeaveHandler)
     })
 
     await loadSelectedCountyPermits()
@@ -629,6 +638,7 @@ export default function Map({
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
+    if (!map.current) return
     if (map.current.getLayer('permits-layer')) {
       map.current.setLayoutProperty('permits-layer', 'visibility', mapLevel === 'tract' && showPermits ? 'visible' : 'none')
     }
