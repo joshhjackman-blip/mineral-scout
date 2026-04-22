@@ -4,6 +4,74 @@ import { createServerClient } from '@supabase/auth-helpers-nextjs'
 
 const MONTHLY_LIMIT = 200
 
+const pushUniquePhone = (phones: string[], value: unknown) => {
+  if (typeof value !== 'string') return
+  const normalized = value.trim()
+  if (!normalized) return
+  if (!phones.includes(normalized)) phones.push(normalized)
+}
+
+const pushUniqueEmail = (emails: string[], value: unknown) => {
+  if (typeof value !== 'string') return
+  const normalized = value.trim()
+  if (!normalized) return
+  if (!emails.includes(normalized)) emails.push(normalized)
+}
+
+const extractContactsFromPayload = (
+  payload: unknown,
+  phones: string[],
+  emails: string[]
+) => {
+  if (!payload || typeof payload !== 'object') return
+
+  const root = payload as Record<string, unknown>
+
+  const addPhonesFromArray = (items: unknown) => {
+    if (!Array.isArray(items)) return
+    for (const item of items) {
+      if (typeof item === 'string') {
+        pushUniquePhone(phones, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      pushUniquePhone(phones, obj.number ?? obj.phone ?? obj.phoneNumber ?? obj.mobile)
+    }
+  }
+
+  const addEmailsFromArray = (items: unknown) => {
+    if (!Array.isArray(items)) return
+    for (const item of items) {
+      if (typeof item === 'string') {
+        pushUniqueEmail(emails, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      pushUniqueEmail(emails, obj.email ?? obj.address ?? obj.emailAddress)
+    }
+  }
+
+  addPhonesFromArray(root.phones)
+  addPhonesFromArray(root.phone_numbers)
+  addPhonesFromArray(root.phoneNumbers)
+  addEmailsFromArray(root.emails)
+  addEmailsFromArray(root.email_addresses)
+  addEmailsFromArray(root.emailAddresses)
+
+  pushUniquePhone(phones, root.phone ?? root.phoneNumber ?? root.mobile)
+  pushUniqueEmail(emails, root.email ?? root.emailAddress)
+
+  const nestedCollections = [root.persons, root.results, root.data, root.skips]
+  for (const collection of nestedCollections) {
+    if (!Array.isArray(collection)) continue
+    for (const item of collection) {
+      extractContactsFromPayload(item, phones, emails)
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
 
@@ -98,126 +166,181 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Call Tracerfy Instant Trace Lookup
-  const apiKey = process.env.TRACERFY_API_KEY
-  const bstApiKey = process.env.BATCHSKIPTRACING_API_KEY
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Tracerfy API key not configured' }, { status: 500 })
+  const apiKey = process.env.TRACERFY_API_KEY?.trim()
+  const bstApiKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
+  const bstApiUrl = process.env.BATCHSKIPTRACING_API_URL?.trim()
+  if (!apiKey && !bstApiKey) {
+    return NextResponse.json(
+      { error: 'Skip trace providers are not configured (TRACERFY_API_KEY / BATCHSKIPTRACING_API_KEY)' },
+      { status: 500 }
+    )
   }
 
   try {
-    // Use find_owner: false since we know the name but only have mailing address not property address
-    const body: Record<string, unknown> = {
-      address,
-      city,
-      state,
-      zip,
-      find_owner: false,
-      first_name: firstName,
-      last_name: lastName,
-    }
-
-    console.log('Tracerfy request:', JSON.stringify(body))
-
-    const response = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(body),
-    })
-
-    const responseText = await response.text()
-    console.log('Tracerfy status:', response.status)
-    console.log('Tracerfy raw response:', responseText.substring(0, 1000))
-
-    let data: Record<string, unknown>
-    try {
-      data = JSON.parse(responseText) as Record<string, unknown>
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid API response', raw: responseText.substring(0, 300) },
-        { status: 500 }
-      )
-    }
-
+    let data: Record<string, unknown> = {}
     const phones: string[] = []
     const emails: string[] = []
+    let cacheSource = 'tracerfy'
 
-    // Extract from persons array
-    const persons = (data.persons as Array<Record<string, unknown>>) ?? []
-    for (const person of persons) {
-      const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
-      for (const p of personPhones) {
-        const num = p?.number
-        const isDnc = Boolean(p?.dnc)
-        if (typeof num === 'string' && num && !isDnc) phones.push(num)
-      }
-      // Also include DNC numbers but mark them — for now include all
-      for (const p of personPhones) {
-        const num = p?.number
-        const isDnc = Boolean(p?.dnc)
-        if (typeof num === 'string' && num && isDnc && !phones.includes(num)) phones.push(num)
+    if (apiKey) {
+      // Use find_owner: false since we know the name but only have mailing address not property address
+      const body: Record<string, unknown> = {
+        address,
+        city,
+        state,
+        zip,
+        find_owner: false,
+        first_name: firstName,
+        last_name: lastName,
       }
 
-      const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
-      for (const e of personEmails) {
-        const addr = e?.email
-        if (typeof addr === 'string' && addr) emails.push(addr)
+      console.log('Tracerfy request:', JSON.stringify(body))
+
+      const response = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+
+      const responseText = await response.text()
+      console.log('Tracerfy status:', response.status)
+      console.log('Tracerfy raw response:', responseText.substring(0, 1000))
+
+      try {
+        data = JSON.parse(responseText) as Record<string, unknown>
+      } catch {
+        console.error('Tracerfy response parse failed')
+        if (!bstApiKey) {
+          return NextResponse.json(
+            { error: 'Invalid API response', raw: responseText.substring(0, 300) },
+            { status: 500 }
+          )
+        }
       }
+
+      // Extract from persons array
+      const persons = (data.persons as Array<Record<string, unknown>>) ?? []
+      for (const person of persons) {
+        const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
+        for (const p of personPhones) {
+          const num = p?.number
+          const isDnc = Boolean(p?.dnc)
+          if (typeof num === 'string' && num && !isDnc) phones.push(num)
+        }
+        // Also include DNC numbers but mark them — for now include all
+        for (const p of personPhones) {
+          const num = p?.number
+          const isDnc = Boolean(p?.dnc)
+          if (typeof num === 'string' && num && isDnc && !phones.includes(num)) phones.push(num)
+        }
+
+        const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
+        for (const e of personEmails) {
+          const addr = e?.email
+          if (typeof addr === 'string' && addr) emails.push(addr)
+        }
+      }
+
+      // Parse additional shapes defensively in case provider schema varies.
+      extractContactsFromPayload(data, phones, emails)
+    } else {
+      console.warn('Tracerfy key missing; skipping Tracerfy and trying BatchSkipTracing fallback')
     }
 
-    if (bstApiKey && phones.length === 0 && emails.length === 0) {
-      try {
-        const bstBody = {
-          firstName,
-          lastName,
-          address,
-          city,
-          state,
-          zip,
-        }
-        console.log('Trying BatchSkipTracing fallback:', JSON.stringify(bstBody))
-        const bstResponse = await fetch('https://api.batchskiptracing.com/api/v2/search', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-KEY': bstApiKey,
+    const shouldTryBatchFallback = !apiKey || !Boolean(data?.hit) || (phones.length === 0 && emails.length === 0)
+    if (bstApiKey && shouldTryBatchFallback) {
+      const endpoints: Array<{ url: string; body: Record<string, unknown>; label: string }> = []
+
+      if (bstApiUrl) {
+        endpoints.push({
+          url: bstApiUrl,
+          body: {
+            first_name: firstName,
+            last_name: lastName,
+            address,
+            city,
+            state,
+            zip,
           },
-          body: JSON.stringify(bstBody),
+          label: 'custom',
         })
-        const bstData = await bstResponse.json() as Record<string, unknown>
-        console.log('BatchSkipTracing response:', JSON.stringify(bstData).substring(0, 500))
+      }
 
-        // Extract phones from BST response
-        const bstPhones = (bstData.phones as Array<Record<string, unknown>>) ?? []
-        for (const p of bstPhones) {
-          const num = p?.number ?? p?.phone ?? p?.phoneNumber
-          if (typeof num === 'string' && num && !phones.includes(num)) {
-            phones.push(num)
+      endpoints.push(
+        {
+          url: 'https://api.realestateapi.com/v2/SkipTraceBatchAwait',
+          body: {
+            skips: [{
+              key: 1,
+              first_name: firstName,
+              last_name: lastName,
+              address,
+              city,
+              state,
+              zip,
+            }],
+          },
+          label: 'realestateapi-v2-await',
+        },
+        {
+          url: 'https://api.batchskiptracing.com/api/v2/search',
+          body: {
+            firstName,
+            lastName,
+            address,
+            city,
+            state,
+            zip,
+          },
+          label: 'legacy-batchskiptracing',
+        }
+      )
+
+      for (const endpoint of endpoints) {
+        try {
+          console.log(
+            `Trying BatchSkipTracing fallback (${endpoint.label}):`,
+            endpoint.url,
+            JSON.stringify(endpoint.body)
+          )
+          const bstResponse = await fetch(endpoint.url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': bstApiKey,
+              'X-API-KEY': bstApiKey,
+            },
+            body: JSON.stringify(endpoint.body),
+          })
+
+          const bstText = await bstResponse.text()
+          let bstData: unknown = null
+          try {
+            bstData = JSON.parse(bstText)
+          } catch {
+            bstData = { raw: bstText }
           }
-        }
+          console.log(
+            `BatchSkipTracing response (${endpoint.label}):`,
+            bstResponse.status,
+            bstText.substring(0, 500)
+          )
 
-        // Extract emails from BST response
-        const bstEmails = (bstData.emails as Array<Record<string, unknown>>) ?? []
-        for (const e of bstEmails) {
-          const addr = e?.email ?? e?.address
-          if (typeof addr === 'string' && addr && !emails.includes(addr)) {
-            emails.push(addr)
+          if (!bstResponse.ok) {
+            continue
           }
-        }
 
-        // Also check top-level fields in case BST returns flat structure
-        if (phones.length === 0) {
-          const flatPhone = bstData.phone ?? bstData.phoneNumber ?? bstData.mobile
-          if (typeof flatPhone === 'string' && flatPhone) phones.push(flatPhone)
+          extractContactsFromPayload(bstData, phones, emails)
+          if (phones.length > 0 || emails.length > 0) {
+            cacheSource = 'batchskiptracing'
+            break
+          }
+        } catch (bstErr) {
+          console.error(`BatchSkipTracing fallback error (${endpoint.label}):`, bstErr)
         }
-        if (emails.length === 0) {
-          const flatEmail = bstData.email ?? bstData.emailAddress
-          if (typeof flatEmail === 'string' && flatEmail) emails.push(flatEmail)
-        }
-      } catch (bstErr) {
-        console.error('BatchSkipTracing fallback error:', bstErr)
       }
     }
 
@@ -250,7 +373,7 @@ export async function POST(req: NextRequest) {
           mailing_address: address ?? '',
           phones,
           emails,
-          source: 'tracerfy',
+          source: cacheSource,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'owner_name' }
