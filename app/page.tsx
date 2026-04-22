@@ -62,6 +62,7 @@ type TractSelection = {
   horizontal_well_count?: number
   vertical_well_count?: number
   SHAPE_AREA?: number
+  geometry?: GeoJSON.Geometry
 }
 
 type TractRecord = {
@@ -112,6 +113,13 @@ type WellSummary = {
   latitude?: number | null
   longitude?: number | null
   rrc_lease_id?: string | null
+  oil_gas_code?: string | null
+}
+
+type HowardWellPoint = {
+  latitude: number
+  longitude: number
+  well_type?: string | null
   oil_gas_code?: string | null
 }
 
@@ -318,6 +326,7 @@ export default function Home() {
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
+  const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
@@ -2291,6 +2300,9 @@ export default function Home() {
               focusTarget={selected}
               onOwnerClick={(tract) => {
                 setSelected(tract)
+                setSelectedTractGeometry(
+                  (tract.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined) ?? null
+                )
                 setOwnerSort('score')
                 setExpandedOwner(null)
                 trackEvent('tract_clicked', {
