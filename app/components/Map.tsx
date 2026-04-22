@@ -69,6 +69,7 @@ export default function Map({
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
   const selectedCountyRef = useRef<CountyKey>(selectedCounty)
+  const lastClickTimeRef = useRef(0)
   const renderForCurrentLevelRef = useRef<() => Promise<void>>(async () => {})
   const renderTokenRef = useRef(0)
   const currentParcelsByCountyRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
@@ -536,6 +537,11 @@ export default function Map({
       })
 
       const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+        if (event.defaultPrevented) return
+        event.preventDefault()
+        const now = Date.now()
+        if (now - lastClickTimeRef.current < 300) return
+        lastClickTimeRef.current = now
         if (!map.current) return
         const isSelectedCountyLayer = countyKey === selectedCountyRef.current
         if (!isSelectedCountyLayer) {
@@ -568,12 +574,18 @@ export default function Map({
               String(fp?.CODE) === String(clickedAbstract)
           }
         )
+        console.log('Geometry debug:', {
+          clickedAbstract,
+          matchedFeature: !!matchedFeature,
+          geometryType: matchedFeature?.geometry?.type ?? 'none',
+          fallbackGeometry: !!event.features?.[0]?.geometry,
+        })
         const geometry = matchedFeature?.geometry ?? event.features?.[0]?.geometry
         if (geometry && map.current) {
           try {
             fitGeometry(map.current, geometry)
           } catch (e) {
-            console.warn('fitGeometry skipped:', e)
+            console.error('fitGeometry error:', e)
           }
         }
       }
