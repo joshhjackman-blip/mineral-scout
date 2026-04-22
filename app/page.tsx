@@ -1775,23 +1775,6 @@ export default function Home() {
           >
             Comps
           </a>
-          <button
-            onClick={handleExportCsv}
-            style={{
-              fontSize: 12,
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #E5E7EB',
-              fontFamily: 'Inter, sans-serif',
-              whiteSpace: 'nowrap',
-              background: '#FFFFFF',
-              cursor: 'pointer',
-            }}
-          >
-            Export CSV
-          </button>
           <a
             href="/account"
             style={{
