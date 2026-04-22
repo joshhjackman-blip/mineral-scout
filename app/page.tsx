@@ -131,6 +131,8 @@ type MapFocusTarget = {
 
 type CountyKey = keyof typeof COUNTIES
 
+const COUNTY_ORDER: CountyKey[] = ['gonzales', 'howard']
+
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
@@ -333,7 +335,12 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searching, setSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const countySwitchHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const countySwitchClearTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasInitializedCountySwitchRef = useRef(false)
   const [highlightedOwner, setHighlightedOwner] = useState<string | null>(null)
+  const [countySwitchLabel, setCountySwitchLabel] = useState<string | null>(null)
+  const [countySwitchLabelVisible, setCountySwitchLabelVisible] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [onboardingStep, setOnboardingStep] = useState(0)
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
@@ -366,6 +373,19 @@ export default function Home() {
     setToast(message)
     setTimeout(() => setToast(null), 3500)
   }
+  const countyOrderIndex = COUNTY_ORDER.indexOf(selectedCounty)
+  const previousCounty = countyOrderIndex > 0 ? COUNTY_ORDER[countyOrderIndex - 1] : null
+  const nextCounty = countyOrderIndex >= 0 && countyOrderIndex < COUNTY_ORDER.length - 1
+    ? COUNTY_ORDER[countyOrderIndex + 1]
+    : null
+
+  const switchCountyByOffset = useCallback((offset: -1 | 1) => {
+    const currentIndex = COUNTY_ORDER.indexOf(selectedCounty)
+    if (currentIndex === -1) return
+    const nextIndex = currentIndex + offset
+    if (nextIndex < 0 || nextIndex >= COUNTY_ORDER.length) return
+    setSelectedCounty(COUNTY_ORDER[nextIndex])
+  }, [selectedCounty])
 
   const refreshSkipTraceUsage = useCallback(async () => {
     const {
@@ -436,8 +456,39 @@ export default function Home() {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current)
       }
+      if (countySwitchHideTimeoutRef.current) {
+        clearTimeout(countySwitchHideTimeoutRef.current)
+      }
+      if (countySwitchClearTimeoutRef.current) {
+        clearTimeout(countySwitchClearTimeoutRef.current)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (!hasInitializedCountySwitchRef.current) {
+      hasInitializedCountySwitchRef.current = true
+      return
+    }
+
+    if (countySwitchHideTimeoutRef.current) {
+      clearTimeout(countySwitchHideTimeoutRef.current)
+    }
+    if (countySwitchClearTimeoutRef.current) {
+      clearTimeout(countySwitchClearTimeoutRef.current)
+    }
+
+    setCountySwitchLabel(county.displayName)
+    setCountySwitchLabelVisible(true)
+
+    countySwitchHideTimeoutRef.current = setTimeout(() => {
+      setCountySwitchLabelVisible(false)
+    }, 1700)
+
+    countySwitchClearTimeoutRef.current = setTimeout(() => {
+      setCountySwitchLabel(null)
+    }, 2000)
+  }, [county.displayName, selectedCounty])
 
   useEffect(() => {
     setSelected(null)
@@ -2327,6 +2378,84 @@ export default function Home() {
             order: isMobile ? 1 : 2,
           }}
         >
+          {countySwitchLabel && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 12,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 10,
+                padding: '5px 12px',
+                borderRadius: 999,
+                background: 'rgba(239,159,39,0.14)',
+                border: '1px solid rgba(239,159,39,0.45)',
+                color: '#B45309',
+                fontSize: 11,
+                fontWeight: 600,
+                fontFamily: 'Inter, sans-serif',
+                opacity: countySwitchLabelVisible ? 1 : 0,
+                transition: 'opacity 0.25s ease',
+                pointerEvents: 'none',
+              }}
+            >
+              {countySwitchLabel}
+            </div>
+          )}
+          {previousCounty && (
+            <button
+              onClick={() => switchCountyByOffset(-1)}
+              aria-label={`Previous county: ${COUNTIES[previousCounty].name}`}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: 8,
+                transform: 'translateY(-50%)',
+                zIndex: 10,
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '1px solid #E5E7EB',
+                background: 'rgba(255,255,255,0.92)',
+                color: '#374151',
+                fontSize: 18,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ‹
+            </button>
+          )}
+          {nextCounty && (
+            <button
+              onClick={() => switchCountyByOffset(1)}
+              aria-label={`Next county: ${COUNTIES[nextCounty].name}`}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                right: 8,
+                transform: 'translateY(-50%)',
+                zIndex: 10,
+                width: 36,
+                height: 36,
+                borderRadius: '50%',
+                border: '1px solid #E5E7EB',
+                background: 'rgba(255,255,255,0.92)',
+                color: '#374151',
+                fontSize: 18,
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              ›
+            </button>
+          )}
           {loading ? (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Inter, sans-serif' }}>
               Loading...
