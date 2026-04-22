@@ -565,7 +565,7 @@ export default function Map({
     const handler = (event: mapboxgl.MapMouseEvent) => {
       if (!map.current) return
       const now = Date.now()
-      if (now - lastClickTimeRef.current < 500) return
+      if (now - lastClickTimeRef.current < 800) return
       lastClickTimeRef.current = now
 
       const layerIds = countyEntries
@@ -612,7 +612,7 @@ export default function Map({
               console.error('fitGeometry error:', e)
             }
           }
-        }, 50)
+        }, 200)
       }
     }
 
