@@ -124,13 +124,21 @@ type CountyKey = 'gonzales' | 'howard'
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
 
-const COUNTY_STATS = [
+const GONZALES_COUNTY_STATS = [
   { val: '73,430', lbl: 'Total owners' },
   { val: '3,950', lbl: 'Hot (8-10)' },
   { val: '19,047', lbl: 'Motivated (5-7)' },
   { val: '46,401', lbl: 'Prospect (2-4)' },
   { val: '207', lbl: 'Survey abstracts' },
   { val: '4,512', lbl: 'Active wells' },
+]
+
+const HOWARD_COUNTY_STATS = [
+  { val: '215,592', lbl: 'Total owners' },
+  { val: '18,825', lbl: 'Hot (8-10)' },
+  { val: '21,089', lbl: 'Motivated (5-7)' },
+  { val: '987', lbl: 'Survey abstracts' },
+  { val: '17,483', lbl: 'Active wells' },
 ]
 
 const SKIP_TRACE_LIMIT = 200
@@ -324,6 +332,24 @@ export default function Home() {
     selectedCounty === 'howard'
       ? 'Howard County, TX'
       : 'Gonzales County, TX'
+  const countyStats =
+    selectedCounty === 'howard'
+      ? HOWARD_COUNTY_STATS
+      : GONZALES_COUNTY_STATS
+  const countyBreakdown =
+    selectedCounty === 'howard'
+      ? [
+        { label: 'Apache Corporation', pct: 31 },
+        { label: 'Diamondback E&P', pct: 28 },
+        { label: 'SM Energy', pct: 18 },
+        { label: 'Other', pct: 23 },
+      ]
+      : [
+        { label: 'EOG Resources', pct: 68 },
+        { label: 'Baytex Energy', pct: 21 },
+        { label: 'Marathon Oil', pct: 7 },
+        { label: 'Other', pct: 4 },
+      ]
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -2114,7 +2140,7 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {COUNTY_STATS.map((card) => (
+                {countyStats.map((card) => (
                   <div
                     key={card.lbl}
                     style={{
@@ -2219,12 +2245,7 @@ export default function Home() {
                 COUNTY BREAKDOWN
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                {[
-                  { label: 'EOG Resources', pct: 68 },
-                  { label: 'Baytex Energy', pct: 21 },
-                  { label: 'Marathon Oil', pct: 7 },
-                  { label: 'Other', pct: 4 },
-                ].map((row) => (
+                {countyBreakdown.map((row) => (
                   <div key={row.label} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
                       <span style={{ color: '#111827' }}>{row.label}</span>
