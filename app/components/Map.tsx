@@ -161,7 +161,7 @@ export default function Map({
     })
     tractHandlersRef.current = []
     if (tractClickHandlerRef.current) {
-      mapInstance.off('click', tractClickHandlerRef.current)
+      map.current?.off('click', tractClickHandlerRef.current)
       tractClickHandlerRef.current = null
     }
 
@@ -557,7 +557,12 @@ export default function Map({
       map.current.on('mouseleave', fillId, mouseLeaveHandler)
     })
 
-    const mapClickHandler = (event: mapboxgl.MapMouseEvent) => {
+    if (tractClickHandlerRef.current) {
+      map.current?.off('click', tractClickHandlerRef.current)
+      tractClickHandlerRef.current = null
+    }
+
+    const handler = (event: mapboxgl.MapMouseEvent) => {
       if (!map.current) return
       const now = Date.now()
       if (now - lastClickTimeRef.current < 500) return
@@ -611,9 +616,9 @@ export default function Map({
       }
     }
 
-    tractClickHandlerRef.current = mapClickHandler
+    tractClickHandlerRef.current = handler
     if (!map.current) return
-    map.current.on('click', mapClickHandler)
+    map.current.on('click', handler)
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
@@ -653,6 +658,10 @@ export default function Map({
     return () => {
       clearCountyMarkers()
       if (map.current) {
+        if (tractClickHandlerRef.current) {
+          map.current.off('click', tractClickHandlerRef.current)
+          tractClickHandlerRef.current = null
+        }
         clearCountyOverviewLayers(map.current)
         clearTractLayers(map.current)
       }
