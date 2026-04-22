@@ -180,7 +180,6 @@ export async function POST(req: NextRequest) {
     const phones: string[] = []
     const emails: string[] = []
     let cacheSource = 'tracerfy'
-    let bstRawForDebug: unknown = null
 
     if (apiKey) {
       // Use find_owner: false since we know the name but only have mailing address not property address
@@ -276,16 +275,15 @@ export async function POST(req: NextRequest) {
         const bstText = await bstResponse.text()
         console.log('BST raw response:', bstText.substring(0, 1000))
         if (bstResponse.ok) {
-          bstRawForDebug = JSON.parse(bstText)
-          const bstData = bstRawForDebug as Record<string, unknown>
-          const results = (((bstData.data as Record<string, unknown> | undefined)?.results) as Array<Record<string, unknown>>) ?? []
-          for (const result of results) {
-            const phoneNumbers = (result?.phoneNumbers as Array<Record<string, unknown>>) ?? []
+          const bstData = JSON.parse(bstText) as Record<string, unknown>
+          const persons = ((bstData?.results as Record<string, unknown> | undefined)?.persons as Array<Record<string, unknown>>) ?? []
+          for (const person of persons) {
+            const phoneNumbers = (person?.phoneNumbers as Array<Record<string, unknown>>) ?? []
             for (const p of phoneNumbers) {
               const num = String(p?.phoneNumber ?? p?.number ?? '').trim()
               if (num && !phones.includes(num)) phones.push(num)
             }
-            const emailList = (result?.emails as Array<Record<string, unknown>>) ?? []
+            const emailList = (person?.emails as Array<Record<string, unknown>>) ?? []
             for (const e of emailList) {
               const addr = String(e?.email ?? e?.address ?? '').trim()
               if (addr && !emails.includes(addr)) emails.push(addr)
@@ -346,7 +344,6 @@ export async function POST(req: NextRequest) {
       credits_deducted: Number(data?.credits_deducted ?? 0),
       count: nextCount,
       limit: MONTHLY_LIMIT,
-      bstRaw: bstRawForDebug ?? null,
     })
   } catch (err) {
     console.error('Tracerfy error:', err)

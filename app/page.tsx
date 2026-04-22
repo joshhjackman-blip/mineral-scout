@@ -868,9 +868,9 @@ export default function Home() {
     setSkipTraceLoading(true)
 
     try {
-      const nameParts = (skipTracing.owner_name ?? '').trim().split(/\s+/)
-      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : (nameParts[0] ?? '')
+      const nameParts = (skipTracing?.owner_name ?? '').trim().split(/\s+/)
       const lastName = nameParts.length > 1 ? nameParts[0] : ''
+      const firstName = nameParts.length > 1 ? nameParts[1] : (nameParts[0] ?? '')
 
       const response = await fetch('/api/skiptrace', {
         method: 'POST',
