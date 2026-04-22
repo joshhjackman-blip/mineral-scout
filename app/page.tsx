@@ -352,6 +352,7 @@ export default function Home() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
   const county = COUNTIES[selectedCounty]
+  const countyRef = useRef(county)
   const ownershipTable = county.ownershipTable
   const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyStats = county.stats
@@ -394,6 +395,10 @@ export default function Home() {
     if (nextIndex < 0 || nextIndex >= COUNTY_ORDER.length) return
     setSelectedCounty(COUNTY_ORDER[nextIndex])
   }, [selectedCounty])
+
+  useEffect(() => {
+    countyRef.current = county
+  }, [county])
 
   const refreshSkipTraceUsage = useCallback(async () => {
     const {
@@ -535,9 +540,10 @@ export default function Home() {
       const fieldName = selected.field_name
       const abstractL = selected.ABSTRACT_L
 
-      if (county.id === 'howard') {
+      if (countyRef.current.id === 'howard') {
         const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
         const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+        console.log('Howard tract abstract lookup:', { tractAbstractLabel, tractAbstract, ABSTRACT_L: selected.ABSTRACT_L, abstract_label: selected.abstract_label })
 
         if (!tractAbstract) {
           if (!cancelled) {
@@ -548,7 +554,7 @@ export default function Home() {
         }
 
         const { data: howardWells } = await supabase
-          .from(county.wellsTable)
+          .from(countyRef.current.wellsTable)
           .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
           .eq('abstract', tractAbstract)
           .limit(50)
@@ -594,7 +600,7 @@ export default function Home() {
       // Try operator match first
       if (operator) {
         const { data: opWells } = await supabase
-          .from(county.wellsTable)
+          .from(countyRef.current.wellsTable)
           .select('lease_name, operator_name, well_type, rrc_lease_id')
           .ilike('operator_name', `%${operator.split(' ')[0]}%`)
           .limit(50)
@@ -604,7 +610,7 @@ export default function Home() {
       // Fallback to field/lease-name match if operator had no hits.
       if (data.length === 0 && fieldName) {
         const { data: fieldWells } = await supabase
-          .from(county.wellsTable)
+          .from(countyRef.current.wellsTable)
           .select('lease_name, operator_name, well_type, rrc_lease_id')
           .ilike('lease_name', `%${fieldName.split(' ')[0]}%`)
           .limit(20)
@@ -670,10 +676,10 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [county.id, county.wellsTable, ownershipTable, selected])
+  }, [county, ownershipTable, selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
-    if (county.id === 'howard') {
+    if (countyRef.current.id === 'howard') {
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
       return
     }
@@ -688,7 +694,7 @@ export default function Home() {
 
     const [wellsRes, codeRes] = await Promise.all([
       supabase
-        .from(county.wellsTable)
+        .from(countyRef.current.wellsTable)
         .select('lease_name, operator_name, well_type, rrc_lease_id')
         .eq('rrc_lease_id', String(leaseId))
         .limit(10),
@@ -715,7 +721,7 @@ export default function Home() {
       }))
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
     }
-  }, [county.id, county.wellsTable, ownershipTable])
+  }, [county, ownershipTable])
 
   const completeOnboarding = () => {
     window.localStorage.setItem('mineral_map_onboarded', 'true')
