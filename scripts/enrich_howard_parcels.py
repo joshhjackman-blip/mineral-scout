@@ -64,7 +64,7 @@ def to_abstract_code(value: Any) -> str:
 def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
     all_owners: list[dict[str, Any]] = []
     last_id: str | None = None
-    server_side_motivated_filter = True
+    server_side_motivated_filter = False
     page_num = 0
     page_size = PAGE_SIZE
 
@@ -73,8 +73,6 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
         # Howard schema can differ from Gonzales; pull full rows to avoid hard-failing
         # on optional/missing columns while keeping downstream logic unchanged.
         query = client.table("howard_mineral_ownership").select("*")
-        if server_side_motivated_filter:
-            query = query.eq("motivated", True)
         query = query.order("id", desc=False).limit(page_size)
         if last_id:
             query = query.gt("id", last_id)
@@ -108,10 +106,7 @@ def paginate_motivated_owners(client: Client) -> list[dict[str, Any]]:
             break
 
         page_num += 1
-        if server_side_motivated_filter:
-            batch = page_rows
-        else:
-            batch = [row for row in page_rows if bool(row.get("motivated"))]
+        batch = page_rows
 
         all_owners.extend(batch)
         last_id = str(page_rows[-1]["id"])
