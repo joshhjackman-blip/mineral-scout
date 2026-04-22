@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
     const emails: string[] = []
     let cacheSource = 'tracerfy'
 
-    if (apiKey) {
+    if (apiKey && address && address.trim() && city && city.trim() && state && state.trim()) {
       // Use find_owner: false since we know the name but only have mailing address not property address
       const body: Record<string, unknown> = {
         find_owner: false,
@@ -246,7 +246,7 @@ export async function POST(req: NextRequest) {
       // Parse additional shapes defensively in case provider schema varies.
       extractContactsFromPayload(data, phones, emails)
     } else {
-      console.warn('Tracerfy key missing; skipping Tracerfy and trying BatchSkipTracing fallback')
+      console.warn('Skipping Tracerfy (missing key or address/city/state); falling back to BatchSkipTracing')
     }
 
     if (bstApiKey && phones.length === 0 && emails.length === 0) {
