@@ -72,6 +72,7 @@ export const COUNTIES: Record<string, County> = {
       { val: '215,592', lbl: 'Total owners' },
       { val: '18,825', lbl: 'Hot (8-10)' },
       { val: '21,089', lbl: 'Motivated (5-7)' },
+      { val: '81,480', lbl: 'Prospect (2-4)' },
       { val: '987', lbl: 'Survey abstracts' },
       { val: '17,483', lbl: 'Active wells' },
     ],
