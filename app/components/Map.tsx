@@ -546,14 +546,26 @@ export default function Map({
         if (props) {
           onOwnerClickRef.current(props as Record<string, unknown>)
         }
-        const featureId = event.features?.[0]?.id
         const countyGeoJSON = currentParcelsByCountyRef.current[countyKey]
+        const clickedAbstract =
+          (props as Record<string, unknown> | undefined)?.ABSTRACT_L ??
+          (props as Record<string, unknown> | undefined)?.CODE ??
+          (props as Record<string, unknown> | undefined)?.abstract_label
         const matchedFeature = countyGeoJSON?.features?.find(
-          (_: GeoJSON.Feature, idx: number) => idx === Number(featureId)
+          (f: GeoJSON.Feature) => {
+            const fp = f.properties as Record<string, unknown>
+            return fp?.ABSTRACT_L === clickedAbstract ||
+              fp?.CODE === clickedAbstract ||
+              String(fp?.CODE) === String(clickedAbstract)
+          }
         )
         const geometry = matchedFeature?.geometry ?? event.features?.[0]?.geometry
         if (geometry && map.current) {
-          fitGeometry(map.current, geometry)
+          try {
+            fitGeometry(map.current, geometry)
+          } catch (e) {
+            console.warn('fitGeometry skipped:', e)
+          }
         }
       }
       const mouseEnterHandler = () => {
