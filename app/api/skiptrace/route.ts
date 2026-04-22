@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
 
   // 3) Call Tracerfy Instant Trace Lookup
   const apiKey = process.env.TRACERFY_API_KEY
+  const bstApiKey = process.env.BATCHSKIPTRACING_API_KEY
   if (!apiKey) {
     return NextResponse.json({ error: 'Tracerfy API key not configured' }, { status: 500 })
   }
@@ -163,6 +164,60 @@ export async function POST(req: NextRequest) {
       for (const e of personEmails) {
         const addr = e?.email
         if (typeof addr === 'string' && addr) emails.push(addr)
+      }
+    }
+
+    if (bstApiKey && phones.length === 0 && emails.length === 0) {
+      try {
+        const bstBody = {
+          firstName,
+          lastName,
+          address,
+          city,
+          state,
+          zip,
+        }
+        console.log('Trying BatchSkipTracing fallback:', JSON.stringify(bstBody))
+        const bstResponse = await fetch('https://api.batchskiptracing.com/api/v2/search', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': bstApiKey,
+          },
+          body: JSON.stringify(bstBody),
+        })
+        const bstData = await bstResponse.json() as Record<string, unknown>
+        console.log('BatchSkipTracing response:', JSON.stringify(bstData).substring(0, 500))
+
+        // Extract phones from BST response
+        const bstPhones = (bstData.phones as Array<Record<string, unknown>>) ?? []
+        for (const p of bstPhones) {
+          const num = p?.number ?? p?.phone ?? p?.phoneNumber
+          if (typeof num === 'string' && num && !phones.includes(num)) {
+            phones.push(num)
+          }
+        }
+
+        // Extract emails from BST response
+        const bstEmails = (bstData.emails as Array<Record<string, unknown>>) ?? []
+        for (const e of bstEmails) {
+          const addr = e?.email ?? e?.address
+          if (typeof addr === 'string' && addr && !emails.includes(addr)) {
+            emails.push(addr)
+          }
+        }
+
+        // Also check top-level fields in case BST returns flat structure
+        if (phones.length === 0) {
+          const flatPhone = bstData.phone ?? bstData.phoneNumber ?? bstData.mobile
+          if (typeof flatPhone === 'string' && flatPhone) phones.push(flatPhone)
+        }
+        if (emails.length === 0) {
+          const flatEmail = bstData.email ?? bstData.emailAddress
+          if (typeof flatEmail === 'string' && flatEmail) emails.push(flatEmail)
+        }
+      } catch (bstErr) {
+        console.error('BatchSkipTracing fallback error:', bstErr)
       }
     }
 
