@@ -405,8 +405,13 @@ export default function Home() {
     if (mapLevel !== 'tract') return
     const county = COUNTIES[selectedCounty]
     const timer = setTimeout(() => {
+      console.log('FlyTo attempt:', {
+        county: selectedCounty,
+        hasRef: !!mapFlyToRef.current,
+        center: county.mapCenter,
+      })
       mapFlyToRef.current?.(county.mapCenter, county.mapZoom)
-    }, 100)
+    }, 500)
     return () => clearTimeout(timer)
   }, [mapLevel, selectedCounty])
 
