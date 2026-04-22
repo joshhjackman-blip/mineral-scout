@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
+import { COUNTIES } from '@/lib/counties'
+import type { CountyKey } from '@/lib/counties'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -33,12 +35,13 @@ export default function Map({
   showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
-  selectedCounty: 'gonzales' | 'howard'
+  selectedCounty: CountyKey
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const onOwnerClickRef = useRef(onOwnerClick)
   const layersReady = useRef(false)
+  const county = COUNTIES[selectedCounty]
 
   type WellLayerRecord = {
     latitude: number | string | null
@@ -60,8 +63,8 @@ export default function Map({
     const m = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: selectedCounty === 'howard' ? [-101.45, 32.3] : [-97.45, 29.45],
-      zoom: 10
+      center: county.mapCenter,
+      zoom: county.mapZoom
     })
     map.current = m
 
@@ -77,25 +80,16 @@ export default function Map({
       console.log('Style ready, fetching parcels/wells...')
 
       try {
-        const wellsPromise =
-          selectedCounty === 'howard'
-            ? supabase
-              .from('howard_wells')
-              .select('api_number,latitude,longitude,well_type,oil_gas_code,well_status')
-              .not('latitude', 'is', null)
-              .not('longitude', 'is', null)
-            : supabase
-              .from('gonzales_wells')
-              .select('api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type')
-              .not('latitude', 'is', null)
-              .not('longitude', 'is', null)
+        const wellsPromise = supabase
+          .from(county.wellsTable)
+          .select(
+            'api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type,oil_gas_code'
+          )
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
 
         const [parcelsResponse, wellsResult] = await Promise.all([
-          fetch(
-            selectedCounty === 'howard'
-              ? '/howard_parcels_enriched.geojson'
-              : '/api/parcels'
-          ),
+          fetch(county.geoJsonPath),
           wellsPromise,
         ])
 
@@ -104,17 +98,14 @@ export default function Map({
         }
 
         const parcelsData = await parcelsResponse.json()
-        const wells: WellLayerRecord[] =
-          selectedCounty === 'howard'
-            ? ((wellsResult.data ?? []) as Array<Record<string, unknown>>).map((well) => ({
-              latitude: (well.latitude as number | string | null) ?? null,
-              longitude: (well.longitude as number | string | null) ?? null,
-              well_type: (well.well_type as string | null) ?? '',
-              operator_name: '',
-              lease_name: '',
-              completion_date: '',
-            }))
-            : ((wellsResult.data ?? []) as WellLayerRecord[])
+        const wells: WellLayerRecord[] = ((wellsResult.data ?? []) as Array<Record<string, unknown>>).map((well) => ({
+          latitude: (well.latitude as number | string | null) ?? null,
+          longitude: (well.longitude as number | string | null) ?? null,
+          well_type: (well.well_type as string | null) ?? '',
+          operator_name: (well.operator_name as string | null) ?? '',
+          lease_name: (well.lease_name as string | null) ?? '',
+          completion_date: (well.completion_date as string | null) ?? '',
+        }))
 
         if (!map.current) return
         console.log('GeoJSON received, features:', parcelsData.features?.length)
@@ -277,7 +268,7 @@ export default function Map({
 
     return () => { map.current?.remove(); map.current = null; layersReady.current = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCounty])
+  }, [county.geoJsonPath, county.mapCenter, county.mapZoom, county.wellsTable, selectedCounty])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return

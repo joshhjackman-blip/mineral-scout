@@ -14,6 +14,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
+import { COUNTIES } from '@/lib/counties'
 
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
@@ -37,6 +38,7 @@ type TractOwner = {
   phone?: string
   email?: string
   rrc_lease_id?: string | number | null
+  sptb_code?: string | null
 }
 
 type TractSelection = {
@@ -119,27 +121,10 @@ type MapFocusTarget = {
   nonce: number
 }
 
-type CountyKey = 'gonzales' | 'howard'
+type CountyKey = keyof typeof COUNTIES
 
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
-
-const GONZALES_COUNTY_STATS = [
-  { val: '73,430', lbl: 'Total owners' },
-  { val: '3,950', lbl: 'Hot (8-10)' },
-  { val: '19,047', lbl: 'Motivated (5-7)' },
-  { val: '46,401', lbl: 'Prospect (2-4)' },
-  { val: '207', lbl: 'Survey abstracts' },
-  { val: '4,512', lbl: 'Active wells' },
-]
-
-const HOWARD_COUNTY_STATS = [
-  { val: '215,592', lbl: 'Total owners' },
-  { val: '18,825', lbl: 'Hot (8-10)' },
-  { val: '21,089', lbl: 'Motivated (5-7)' },
-  { val: '987', lbl: 'Survey abstracts' },
-  { val: '17,483', lbl: 'Active wells' },
-]
 
 const SKIP_TRACE_LIMIT = 200
 
@@ -232,9 +217,30 @@ const getTractGrossAcres = (tractProperties?: TractSelection | null): number => 
   return 0
 }
 
-const getNRA = (owner: TractOwner, tractProperties?: TractSelection | null): number | null => {
-  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
-    (Number(owner.ownership_pct ?? 0) / 100)
+const getOwnershipPctValue = (
+  owner: TractOwner,
+  ownershipPctIsDecimal: boolean
+): number => {
+  const raw = Number(owner.ownership_pct ?? 0)
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  return ownershipPctIsDecimal ? raw * 100 : raw
+}
+
+const getOwnershipDecimalValue = (
+  owner: TractOwner,
+  ownershipPctIsDecimal: boolean
+): number => {
+  const pct = getOwnershipPctValue(owner, ownershipPctIsDecimal)
+  return Number(owner.decimal_interest ?? 0) || (pct / 100)
+}
+
+const getNRA = (
+  owner: TractOwner,
+  tractProperties: TractSelection | null | undefined,
+  countyConfig: { ownershipPctIsDecimal: boolean; nriCode: string }
+): number | null => {
+  if (owner.sptb_code === countyConfig.nriCode) return null
+  const decimalInterest = getOwnershipDecimalValue(owner, countyConfig.ownershipPctIsDecimal)
   if (!decimalInterest || decimalInterest <= 0) return null
 
   let grossAcres = Number(owner.acreage ?? 0)
@@ -248,10 +254,10 @@ const getNRA = (owner: TractOwner, tractProperties?: TractSelection | null): num
 
 const estimateMonthlyRoyalty = (
   owner: TractOwner,
-  selectedTract: TractSelection | null
+  selectedTract: TractSelection | null,
+  ownershipPctIsDecimal: boolean
 ): string | null => {
-  const decimalInterest = Number(owner.decimal_interest ?? 0) ||
-    (Number(owner.ownership_pct ?? 0) / 100)
+  const decimalInterest = getOwnershipDecimalValue(owner, ownershipPctIsDecimal)
   if (!decimalInterest || decimalInterest <= 0) return null
 
   let grossAcres = Number(owner.acreage ?? 0)
@@ -324,32 +330,27 @@ export default function Home() {
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
-  const ownershipTable =
-    selectedCounty === 'howard'
-      ? 'howard_mineral_ownership'
-      : 'gonzales_mineral_ownership'
-  const countyLabel =
-    selectedCounty === 'howard'
-      ? 'Howard County, TX'
-      : 'Gonzales County, TX'
-  const countyStats =
-    selectedCounty === 'howard'
-      ? HOWARD_COUNTY_STATS
-      : GONZALES_COUNTY_STATS
-  const countyBreakdown =
-    selectedCounty === 'howard'
-      ? [
-        { label: 'Apache Corporation', pct: 31 },
-        { label: 'Diamondback E&P', pct: 28 },
-        { label: 'SM Energy', pct: 18 },
-        { label: 'Other', pct: 23 },
-      ]
-      : [
-        { label: 'EOG Resources', pct: 68 },
-        { label: 'Baytex Energy', pct: 21 },
-        { label: 'Marathon Oil', pct: 7 },
-        { label: 'Other', pct: 4 },
-      ]
+  const county = COUNTIES[selectedCounty]
+  const ownershipTable = county.ownershipTable
+  const countyLabel = county.displayName
+  const countyStats = county.stats
+  const countyBreakdown = county.breakdown
+  const countyStatsByLabel = Object.fromEntries(
+    county.stats.map((entry) => [entry.lbl, entry.val])
+  ) as Record<string, string>
+  const countySummaryText = `${countyStatsByLabel['Survey abstracts'] ?? '—'} survey abstracts · ${countyStatsByLabel['Total owners'] ?? '—'} mineral owners`
+  const headerCountyStats = isMobile
+    ? [
+      { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
+      { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
+    ]
+    : [
+      { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
+      { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
+      { val: countyStatsByLabel['Motivated (5-7)'] ?? '—', lbl: 'motivated' },
+      { val: countyStatsByLabel['Prospect (2-4)'] ?? '—', lbl: 'prospect' },
+      { val: countyStatsByLabel['Active wells'] ?? '—', lbl: 'active wells' },
+    ]
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -462,14 +463,6 @@ export default function Home() {
       setOwnerWells({})
       setWellsExpanded(false)
 
-      if (selectedCounty === 'howard') {
-        if (!cancelled) {
-          setTractWells([])
-          setTractWellsLoaded(true)
-        }
-        return
-      }
-
       const operator = selected.top_operator
       const fieldName = selected.field_name
       const abstractL = selected.ABSTRACT_L
@@ -494,7 +487,7 @@ export default function Home() {
       // Try operator match first
       if (operator) {
         const { data: opWells } = await supabase
-          .from('gonzales_wells')
+          .from(county.wellsTable)
           .select('lease_name, operator_name, well_type, rrc_lease_id')
           .ilike('operator_name', `%${operator.split(' ')[0]}%`)
           .limit(50)
@@ -504,7 +497,7 @@ export default function Home() {
       // Fallback to field/lease-name match if operator had no hits.
       if (data.length === 0 && fieldName) {
         const { data: fieldWells } = await supabase
-          .from('gonzales_wells')
+          .from(county.wellsTable)
           .select('lease_name, operator_name, well_type, rrc_lease_id')
           .ilike('lease_name', `%${fieldName.split(' ')[0]}%`)
           .limit(20)
@@ -570,10 +563,10 @@ export default function Home() {
     return () => {
       cancelled = true
     }
-  }, [ownershipTable, selected, selectedCounty])
+  }, [county.id, county.wellsTable, ownershipTable, selected])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
-    if (selectedCounty === 'howard') {
+    if (county.id === 'howard') {
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: [] }))
       return
     }
@@ -588,7 +581,7 @@ export default function Home() {
 
     const [wellsRes, codeRes] = await Promise.all([
       supabase
-        .from('gonzales_wells')
+        .from(county.wellsTable)
         .select('lease_name, operator_name, well_type, rrc_lease_id')
         .eq('rrc_lease_id', String(leaseId))
         .limit(10),
@@ -615,7 +608,7 @@ export default function Home() {
       }))
       setOwnerWells((prev) => ({ ...prev, [ownerKey]: wellsWithCode as WellSummary[] }))
     }
-  }, [ownershipTable, selectedCounty])
+  }, [county.id, county.wellsTable, ownershipTable])
 
   const completeOnboarding = () => {
     window.localStorage.setItem('mineral_map_onboarded', 'true')
@@ -720,9 +713,9 @@ export default function Home() {
     const state = (owner.mailing_state ?? '').toUpperCase()
     const address = (owner.mailing_address ?? owner.address_1 ?? '').toUpperCase()
     const grossAc = Number(owner.acreage ?? 0)
-    const interest = Number(owner.decimal_interest ?? 0) || (Number(owner.ownership_pct ?? 0) / 100)
+    const interest = getOwnershipDecimalValue(owner, county.ownershipPctIsDecimal)
     const acreage = grossAc > 0 && interest > 0 ? grossAc * interest : grossAc
-    const nri = Number(owner.ownership_pct ?? 0) / 100
+    const nri = getOwnershipPctValue(owner, county.ownershipPctIsDecimal) / 100
     const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
     const isIndividual = ownerTypePriority(owner.owner_name) === 0
 
@@ -963,22 +956,14 @@ export default function Home() {
     const loadData = async () => {
       setLoading(true)
       try {
-        const parcelSource =
-          selectedCounty === 'howard'
-            ? '/howard_parcels_enriched.geojson'
-            : '/api/parcels'
+        const parcelSource = county.geoJsonPath
         const response = await fetch(parcelSource, { cache: 'no-store' })
         let parcelsData: unknown
 
         if (response.ok) {
           parcelsData = await response.json()
         } else {
-          if (selectedCounty === 'gonzales') {
-            // Fallback to bundled static asset if storage fetch fails.
-            parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
-          } else {
-            throw new Error(`Howard parcel source failed (${response.status})`)
-          }
+          throw new Error(`${county.displayName} parcel source failed (${response.status})`)
         }
 
         if (!mounted) return
@@ -987,8 +972,9 @@ export default function Home() {
           .map((feature) => {
             const props = feature.properties ?? {}
             const ownersJsonRaw = props.owners_json
+            const abstractFieldValue = props[county.abstractField]
             return {
-              abstract_label: String(props.ABSTRACT_L ?? ''),
+              abstract_label: String(abstractFieldValue ?? props.ABSTRACT_L ?? ''),
               level1_sur: String(props.LEVEL1_SUR ?? ''),
               owner_count: toNumber(props.owner_count),
               top_operator: String(props.top_operator ?? 'Unknown'),
@@ -1029,7 +1015,7 @@ export default function Home() {
     return () => {
       mounted = false
     }
-  }, [selectedCounty])
+  }, [county])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,
@@ -1160,12 +1146,20 @@ export default function Home() {
         return ownerTypePriority(a.owner_name) - ownerTypePriority(b.owner_name)
       })
     } else if (ownerSort === 'interest') {
-      owners.sort((a, b) => Number(b.ownership_pct ?? 0) - Number(a.ownership_pct ?? 0))
+      owners.sort(
+        (a, b) =>
+          getOwnershipPctValue(b, county.ownershipPctIsDecimal) -
+          getOwnershipPctValue(a, county.ownershipPctIsDecimal)
+      )
     } else if (ownerSort === 'nra') {
-      owners.sort((a, b) => (getNRA(b, selected) ?? 0) - (getNRA(a, selected) ?? 0))
+      owners.sort(
+        (a, b) =>
+          (getNRA(b, selected, county) ?? 0) -
+          (getNRA(a, selected, county) ?? 0)
+      )
     }
     return owners
-  }, [deduplicatedOwners, ownerSort, selected])
+  }, [county, deduplicatedOwners, ownerSort, selected])
 
   const filteredOwnersList = useMemo(() => {
     return sortedOwners.filter((owner) => {
@@ -1175,16 +1169,16 @@ export default function Home() {
         return false
       }
       if (largeInterestOnly) {
-        const pct = Number(owner.ownership_pct ?? 0)
+        const pct = getOwnershipPctValue(owner, county.ownershipPctIsDecimal)
         if (pct < 1) return false
       }
       if (minNRA > 0) {
-        const nra = getNRA(owner, selected) ?? 0
+        const nra = getNRA(owner, selected, county) ?? 0
         if (nra < minNRA) return false
       }
       return true
     })
-  }, [sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA, selected])
+  }, [county, sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA, selected])
 
   const cleanOwnersList = useMemo(() => {
     return filteredOwnersList.filter((owner: TractOwner) => {
@@ -1371,7 +1365,7 @@ export default function Home() {
                   {countyLabel}
                 </div>
                 <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
-                  207 survey abstracts · 73,000+ mineral owners
+                  {countySummaryText}
                 </div>
               </div>
             )}
@@ -1398,8 +1392,11 @@ export default function Home() {
                 outline: 'none',
               }}
             >
-              <option value="gonzales">Gonzales County</option>
-              <option value="howard">Howard County</option>
+              {Object.entries(COUNTIES).map(([countyId, countyConfig]) => (
+                <option key={countyId} value={countyId}>
+                  {countyConfig.name} County
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -1538,18 +1535,7 @@ export default function Home() {
             flexShrink: 1,
           }}
         >
-          {(isMobile
-            ? [
-              { val: '73,430', lbl: 'owners' },
-              { val: '3,950', lbl: 'hot' },
-            ]
-            : [
-              { val: '73,430', lbl: 'owners' },
-              { val: '3,950', lbl: 'hot' },
-              { val: '19,047', lbl: 'motivated' },
-              { val: '46,401', lbl: 'prospect' },
-              { val: '10,656', lbl: 'low' },
-            ]).map((s) => (
+          {headerCountyStats.map((s) => (
             <div
               key={s.lbl}
               style={{
@@ -1918,8 +1904,17 @@ export default function Home() {
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
                   const typeLabel = ownerType === 'trust' ? 'TRUST' : ownerType === 'company' ? 'CO' : 'IND'
-                  const nra = getNRA(owner, selected)
-                  const royaltyEstimate = estimateMonthlyRoyalty(owner, selected)
+                  const nra = getNRA(owner, selected, county)
+                  const royaltyEstimate = estimateMonthlyRoyalty(
+                    owner,
+                    selected,
+                    county.ownershipPctIsDecimal
+                  )
+                  const ownershipPctValue = getOwnershipPctValue(
+                    owner,
+                    county.ownershipPctIsDecimal
+                  )
+                  const ownershipDecimalValue = ownershipPctValue / 100
 
                   return (
                     <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
@@ -1979,20 +1974,20 @@ export default function Home() {
                               </div>
                             )}
                             <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {Number(owner.ownership_pct ?? 0) > 0 && (
+                              {ownershipPctValue > 0 && (
                                 <>
-                                  {`${Number(owner.ownership_pct).toFixed(4)}% ownership`}
+                                  {`${ownershipPctValue.toFixed(4)}% ownership`}
                                 </>
                               )}
                             </div>
-                            {Number(owner.ownership_pct ?? 0) > 0 && (
+                            {ownershipPctValue > 0 && (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
                                 <span style={{ color: '#9CA3AF' }}>DO Interest:</span>
                                 <span style={{ color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
-                                  {Number((owner.ownership_pct ?? 0) / 100).toFixed(6)}
+                                  {ownershipDecimalValue.toFixed(6)}
                                 </span>
                                 <span style={{ color: '#9CA3AF' }}>
-                                  ({Number(owner.ownership_pct).toFixed(4)}%)
+                                  ({ownershipPctValue.toFixed(4)}%)
                                 </span>
                               </div>
                             )}
@@ -2246,9 +2241,9 @@ export default function Home() {
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {countyBreakdown.map((row) => (
-                  <div key={row.label} style={{ marginBottom: 10 }}>
+                  <div key={row.operator} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                      <span style={{ color: '#111827' }}>{row.label}</span>
+                      <span style={{ color: '#111827' }}>{row.operator}</span>
                       <span style={{ color: '#6B7280' }}>{row.pct}%</span>
                     </div>
                     <div style={{ height: 7, borderRadius: 4, background: '#F3F4F6' }}>
