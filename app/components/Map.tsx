@@ -50,6 +50,7 @@ export default function Map({
   onOwnerClick,
   focusTarget,
   selectedCounty,
+  prevSelectedCounty,
   mapLevel,
   onCountySelect,
   onCountySwitch,
@@ -58,6 +59,7 @@ export default function Map({
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
   selectedCounty: CountyKey
+  prevSelectedCounty: CountyKey
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
@@ -68,7 +70,6 @@ export default function Map({
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
   const selectedCountyRef = useRef<CountyKey>(selectedCounty)
-  const prevSelectedCountyRef = useRef(selectedCountyRef.current)
   const lastClickTimeRef = useRef(0)
   const renderForCurrentLevelRef = useRef<() => Promise<void>>(async () => {})
   const renderTokenRef = useRef(0)
@@ -686,16 +687,10 @@ export default function Map({
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
-    const countyChanged = prevSelectedCountyRef.current !== selectedCounty
-    console.log('County effect:', {
-      selectedCounty,
-      prev: prevSelectedCountyRef.current,
-      countyChanged: prevSelectedCountyRef.current !== selectedCounty,
-    })
-    prevSelectedCountyRef.current = selectedCounty
+    const countyChanged = prevSelectedCounty !== selectedCounty
     applyTractCountyStyles(countyChanged)
     void loadSelectedCountyPermits()
-  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
+  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, prevSelectedCounty, selectedCounty])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
