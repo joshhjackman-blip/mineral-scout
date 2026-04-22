@@ -558,14 +558,6 @@ export default function Map({
           (props as Record<string, unknown> | undefined)?.ABSTRACT_L ??
           (props as Record<string, unknown> | undefined)?.CODE ??
           (props as Record<string, unknown> | undefined)?.abstract_label
-        const featureId = event.features?.[0]?.id
-        console.log('Click debug:', {
-          countyKey,
-          hasGeoJSON: !!currentParcelsByCountyRef.current[countyKey],
-          featureId,
-          clickedAbstract,
-          featuresInGeoJSON: currentParcelsByCountyRef.current[countyKey]?.features?.length,
-        })
         const matchedFeature = countyGeoJSON?.features?.find(
           (f: GeoJSON.Feature) => {
             const fp = f.properties as Record<string, unknown>
@@ -574,19 +566,17 @@ export default function Map({
               String(fp?.CODE) === String(clickedAbstract)
           }
         )
-        console.log('Geometry debug:', {
-          clickedAbstract,
-          matchedFeature: !!matchedFeature,
-          geometryType: matchedFeature?.geometry?.type ?? 'none',
-          fallbackGeometry: !!event.features?.[0]?.geometry,
-        })
         const geometry = matchedFeature?.geometry ?? event.features?.[0]?.geometry
-        if (geometry && map.current) {
-          try {
-            fitGeometry(map.current, geometry)
-          } catch (e) {
-            console.error('fitGeometry error:', e)
-          }
+        if (geometry) {
+          setTimeout(() => {
+            if (map.current) {
+              try {
+                fitGeometry(map.current, geometry)
+              } catch (e) {
+                console.error('fitGeometry error:', e)
+              }
+            }
+          }, 50)
         }
       }
       const mouseEnterHandler = () => {
