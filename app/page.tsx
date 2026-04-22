@@ -579,18 +579,16 @@ export default function Home() {
         return
       }
 
-      console.log('Fetching wells for operator:', operator, 'field:', fieldName, 'abstract:', abstractL)
       if (selected.owners_json) {
         try {
           const owners = typeof selected.owners_json === 'string'
             ? JSON.parse(selected.owners_json)
             : selected.owners_json
           if (Array.isArray(owners) && owners.length > 0) {
-            console.log('owners_json first owner full:', owners[0])
-            console.log('rrc_lease_id present:', owners.map((o: any) => o.rrc_lease_id).slice(0, 5))
+            void owners
           }
         } catch (e) {
-          console.log('owners_json parse error:', e)
+          void e
         }
       }
 
@@ -626,7 +624,6 @@ export default function Home() {
         return true
       })
 
-      console.log('Wells found:', unique.length)
       const wellLeaseIds = unique
         .map((well) => String(well.rrc_lease_id ?? '').trim())
         .filter(Boolean)
@@ -684,12 +681,7 @@ export default function Home() {
     }
 
     const leaseId = owner.rrc_lease_id
-    console.log('fetchOwnerWells called:', owner.owner_name, 'leaseId:', leaseId, 'ownerKey:', ownerKey)
-
-    if (!leaseId) {
-      console.log('No leaseId — skipping wells fetch for', owner.owner_name)
-      return
-    }
+    if (!leaseId) return
 
     const [wellsRes, codeRes] = await Promise.all([
       supabase
@@ -703,8 +695,6 @@ export default function Home() {
         .eq('rrc_lease_id', String(leaseId))
         .limit(1),
     ])
-
-    console.log('Wells query result:', wellsRes.data?.length, 'error:', wellsRes.error?.message)
 
     if (wellsRes.error) {
       console.error(`Failed to load wells for owner ${owner.owner_name}:`, wellsRes.error.message)
@@ -1354,16 +1344,6 @@ export default function Home() {
       { month: 'Mo 60', oil: Math.round(base * 6.8) },
     ]
   }, [county.id, selected])
-  useEffect(() => {
-    const selectedRecord = (selected ?? {}) as Record<string, unknown>
-    console.log('Selected tract properties:', Object.keys(selectedRecord))
-    console.log('Production values:', {
-      first_6: selectedRecord.first_6_month_oil,
-      first_12: selectedRecord.first_12_month_oil,
-      first_24: selectedRecord.first_24_month_oil,
-      first_60: selectedRecord.first_60_month_oil,
-    })
-  }, [selected])
   const productionPeak = useMemo(
     () => productionData.reduce((max, point) => Math.max(max, point.oil), 0),
     [productionData]

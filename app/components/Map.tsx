@@ -565,7 +565,7 @@ export default function Map({
     const handler = (event: mapboxgl.MapMouseEvent) => {
       if (!map.current) return
       const now = Date.now()
-      if (now - lastClickTimeRef.current < 800) return
+      if (now - lastClickTimeRef.current < 1000) return
       lastClickTimeRef.current = now
 
       const layerIds = countyEntries
@@ -622,7 +622,7 @@ export default function Map({
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
-    applyTractCountyStyles(true)
+    applyTractCountyStyles(false)
   }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits])
 
   const renderForCurrentLevel = useCallback(async () => {
