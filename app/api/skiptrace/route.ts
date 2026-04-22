@@ -184,14 +184,14 @@ export async function POST(req: NextRequest) {
     if (apiKey) {
       // Use find_owner: false since we know the name but only have mailing address not property address
       const body: Record<string, unknown> = {
-        address,
-        city,
-        state,
-        zip,
         find_owner: false,
         first_name: firstName,
         last_name: lastName,
       }
+      if (address && address.trim()) body.address = address
+      if (city && city.trim()) body.city = city
+      if (state && state.trim()) body.state = state
+      if (zip && zip.trim()) body.zip = zip
 
       console.log('Tracerfy request:', JSON.stringify(body))
 
