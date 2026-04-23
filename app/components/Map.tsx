@@ -261,30 +261,52 @@ export default function Map({
     if (!mapInstance) return
 
     const countyConfig = COUNTIES[selectedCountyRef.current]
-    const wellsResult = await supabase
-      .from(countyConfig.wellsTable)
+    const permitsTable = `${countyConfig.id}_permits`
+
+    let permitRows: Array<Record<string, unknown>> = []
+    const permitsResult = await supabase
+      .from(permitsTable)
       .select(
-        'api_number,latitude,longitude,operator_name,well_status,lease_name,rrc_lease_id,completion_date,well_type,oil_gas_code'
+        'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
       )
       .not('latitude', 'is', null)
       .not('longitude', 'is', null)
 
-    const wells = ((wellsResult.data ?? []) as Array<Record<string, unknown>>)
-      .filter((well) => Number.isFinite(Number(well.longitude)) && Number.isFinite(Number(well.latitude)))
+    if (permitsResult.error) {
+      // Table may not exist for this county (e.g. howard_permits).
+      // Fail soft: render an empty layer so nothing misleading shows up.
+      console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
+    } else {
+      permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
+    }
+
+    const permits = permitRows.filter((row) => {
+      const lon = Number(row.longitude)
+      const lat = Number(row.latitude)
+      // Guard against junk values (e.g. RRC fixed-width parser artifacts where
+      // lat/lon come through as multi-billion integers).
+      return (
+        Number.isFinite(lon) &&
+        Number.isFinite(lat) &&
+        lon >= -180 && lon <= 180 &&
+        lat >= -90 && lat <= 90
+      )
+    })
 
     const permitsGeoJSON: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
-      features: wells.map((well) => ({
+      features: permits.map((permit) => ({
         type: 'Feature' as const,
         geometry: {
           type: 'Point' as const,
-          coordinates: [Number(well.longitude), Number(well.latitude)],
+          coordinates: [Number(permit.longitude), Number(permit.latitude)],
         },
         properties: {
-          operator: String(well.operator_name ?? ''),
-          lease: String(well.lease_name ?? ''),
-          date: String(well.completion_date ?? ''),
-          type: String(well.well_type ?? ''),
+          operator: String(permit.operator_name ?? ''),
+          lease: String(permit.lease_name ?? ''),
+          date: String(permit.filed_date ?? permit.approved_date ?? ''),
+          type: String(permit.permit_type ?? ''),
+          status: String(permit.status ?? ''),
         },
       })),
     }
