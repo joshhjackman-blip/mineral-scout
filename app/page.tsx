@@ -62,6 +62,14 @@ type TractSelection = {
   horizontal_well_count?: number
   vertical_well_count?: number
   SHAPE_AREA?: number
+  surv_name?: string
+  block?: string
+  surv_sect?: string
+  Surv_Name?: string
+  Block?: string
+  Surv_Sect?: string
+  TEXTSTRING?: string
+  NAME?: string
   geometry?: GeoJSON.Geometry
 }
 
@@ -84,6 +92,9 @@ type TractRecord = {
   horizontal_well_count?: number
   vertical_well_count?: number
   SHAPE_AREA?: number
+  surv_name?: string
+  block?: string
+  surv_sect?: string
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
@@ -834,6 +845,10 @@ export default function Home() {
     const owner = pipelineCandidate
     const tractAbstract = selected?.ABSTRACT_L ?? selected?.abstract_label ?? ''
     const tractSurvey = selected?.LEVEL1_SUR ?? selected?.level1_sur ?? ''
+    const survName = (selected?.surv_name ?? selected?.Surv_Name ?? selected?.LEVEL1_SUR ?? '').trim() || null
+    const blockVal = (selected?.block ?? selected?.Block ?? '').trim() || null
+    const survSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
+    const survSect = survSectRaw && survSectRaw !== tractAbstract ? survSectRaw : null
 
     const { error } = await supabase.from('deals').insert({
       owner_name: owner.owner_name,
@@ -850,6 +865,9 @@ export default function Home() {
       source: 'map',
       tag: pipelineTag,
       county: selectedCounty,
+      surv_name: survName,
+      block: blockVal,
+      surv_sect: survSect,
     })
 
     if (error) {
@@ -1065,6 +1083,9 @@ export default function Home() {
               horizontal_well_count: toNumber(props.horizontal_well_count),
               vertical_well_count: toNumber(props.vertical_well_count),
               SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area ?? props.STArea__),
+              surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? ''),
+              block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
+              surv_sect: String(props.Surv_Sect ?? props.TEXTSTRING ?? ''),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
@@ -1105,6 +1126,9 @@ export default function Home() {
     horizontal_well_count: tract.horizontal_well_count,
     vertical_well_count: tract.vertical_well_count,
     SHAPE_AREA: tract.SHAPE_AREA,
+    surv_name: tract.surv_name,
+    block: tract.block,
+    surv_sect: tract.surv_sect,
   })
 
   const handleSearchSelect = async (result: OwnerSearchResult) => {
@@ -1389,6 +1413,20 @@ export default function Home() {
 
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const surveyName = selected?.level1_sur ?? selected?.LEVEL1_SUR ?? 'Unknown'
+  const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
+  const selectedBlock = (selected?.block ?? selected?.Block ?? '').trim()
+  const selectedSurvSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
+  // Gonzales TEXTSTRING is typically just the abstract label (e.g. "A-160"),
+  // which isn't useful as a section descriptor — drop it in that case.
+  const selectedSurvSect = selectedSurvSectRaw && selectedSurvSectRaw !== abstractLabel
+    ? selectedSurvSectRaw
+    : ''
+  const legalDescParts = [
+    selectedSurvName,
+    selectedBlock ? `Blk ${selectedBlock}` : '',
+    selectedSurvSect ? `Sec ${selectedSurvSect}` : '',
+  ].filter((s) => s.length > 0)
+  const legalDescLine = legalDescParts.join(' · ')
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
   const maxScore = toNumber(selected?.max_propensity_score)
@@ -1880,6 +1918,11 @@ export default function Home() {
                 {abstractLabel}
               </div>
               <div style={{ color: '#6B7280', marginTop: 4 }}>{surveyName} Survey</div>
+              {legalDescLine && (
+                <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
+                  {legalDescLine}
+                </div>
+              )}
               <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>

@@ -184,6 +184,9 @@ type Deal = {
   rrc_lease_id?: string | null
   operator_name?: string | null
   county?: string | null
+  surv_name?: string | null
+  block?: string | null
+  surv_sect?: string | null
   mailing_address?: string | null
   mailing_city?: string | null
   mailing_state?: string | null
@@ -360,6 +363,9 @@ export default function CRM() {
         const derived = getDealCounty(toSave as Deal)
         return derived === 'unknown' ? null : derived
       })(),
+      surv_name: toSave.surv_name ?? null,
+      block: toSave.block ?? null,
+      surv_sect: toSave.surv_sect ?? null,
       updated_at: new Date().toISOString(),
     }
 
@@ -536,6 +542,25 @@ export default function CRM() {
     const formatLong = (d: Date) =>
       d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
+    const countyNameResolved = (() => {
+      const c = getDealCounty(editingDeal)
+      return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+    })()
+    const survName = (editingDeal.surv_name ?? '').trim()
+    const blockVal = (editingDeal.block ?? '').trim()
+    const survSectRaw = (editingDeal.surv_sect ?? '').trim()
+    const tractAbstract = (editingDeal.tract_abstract ?? '').trim()
+    const survSect = survSectRaw && survSectRaw !== tractAbstract ? survSectRaw : ''
+    const builtLegalDesc = [
+      survSect ? `Section ${survSect}` : '',
+      blockVal ? `Block ${blockVal}` : '',
+      survName,
+      tractAbstract,
+      countyNameResolved ? `${countyNameResolved} County, Texas` : '',
+    ]
+      .filter(Boolean)
+      .join(', ')
+
     setPsaForm({
       agreementDate: formatLong(today),
       sellerName: editingDeal.owner_name ?? '',
@@ -550,11 +575,8 @@ export default function CRM() {
       buyerZip: buyerEntity.zip,
       effectiveDate: formatLong(effectiveDate),
       closingDate: formatLong(closingDate),
-      legalDescription: editingDeal.tract_abstract ?? '',
-      county: (() => {
-        const c = getDealCounty(editingDeal)
-        return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
-      })(),
+      legalDescription: builtLegalDesc || tractAbstract,
+      county: countyNameResolved,
       nra: editingDeal.acreage ? String(Number(editingDeal.acreage).toFixed(4)) : '',
       pricePerNRA: '',
       totalPrice: '',
@@ -573,6 +595,25 @@ export default function CRM() {
     const formatLong = (d: Date) =>
       d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
 
+    const countyNameResolved = (() => {
+      const c = getDealCounty(editingDeal)
+      return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+    })()
+    const survName = (editingDeal.surv_name ?? '').trim()
+    const blockVal = (editingDeal.block ?? '').trim()
+    const survSectRaw = (editingDeal.surv_sect ?? '').trim()
+    const tractAbstract = (editingDeal.tract_abstract ?? '').trim()
+    const survSect = survSectRaw && survSectRaw !== tractAbstract ? survSectRaw : ''
+    const builtLegalDesc = [
+      survSect ? `Section ${survSect}` : '',
+      blockVal ? `Block ${blockVal}` : '',
+      survName,
+      tractAbstract,
+      countyNameResolved ? `${countyNameResolved} County, Texas` : '',
+    ]
+      .filter(Boolean)
+      .join(', ')
+
     setDeedForm({
       grantorName: editingDeal.owner_name ?? '',
       grantorAddress: editingDeal.mailing_address ?? '',
@@ -585,11 +626,8 @@ export default function CRM() {
       granteeState: buyerEntity.state,
       granteeZip: buyerEntity.zip,
       effectiveDate: formatLong(effectiveDate),
-      legalDescription: editingDeal.tract_abstract ?? '',
-      county: (() => {
-        const c = getDealCounty(editingDeal)
-        return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
-      })(),
+      legalDescription: builtLegalDesc || tractAbstract,
+      county: countyNameResolved,
     })
     setShowDeedModal(true)
   }, [editingDeal, buyerEntity])
