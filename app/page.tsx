@@ -357,6 +357,9 @@ export default function Home() {
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
+  const [ownerTracts, setOwnerTracts] = useState<TractSelection[]>([])
+  const [ownerTractsName, setOwnerTractsName] = useState<string>('')
+  const [ownerTractsLoading, setOwnerTractsLoading] = useState(false)
   const county = COUNTIES[selectedCounty]
   const countyRef = useRef(county)
   const ownershipTable = county.ownershipTable
@@ -552,6 +555,9 @@ export default function Home() {
     setTractWellsLoaded(false)
     setTractWellsLoading(false)
     setWellsExpanded(false)
+    setOwnerTracts([])
+    setOwnerTractsName('')
+    setOwnerTractsLoading(false)
   }, [selectedCounty])
 
   const tractOwners = useMemo(
@@ -1124,49 +1130,129 @@ export default function Home() {
       setWellsExpanded(false)
     }
 
-    const leaseId = normalizeLeaseId(result.rrc_lease_id)
     const normalizedOwner = ownerName.toUpperCase()
 
-    const tract = tracts.find((t) => {
-      const owners = parseOwners(t.owners_json) as Array<Record<string, unknown>>
-      return owners.some((owner) => {
-        const ownerLease = normalizeLeaseId(owner.rrc_lease_id)
-        if (leaseId && ownerLease) return ownerLease === leaseId
-        return String(owner.owner_name ?? '').trim().toUpperCase() === normalizedOwner
-      })
-    })
-
-    if (!tract) {
-      showToast(`No mapped tract found for ${ownerName}`, 'error')
-      setSearchQuery('')
-      setSearchResults([])
-      setSearchOpen(false)
-      return
-    }
-
-    setSelected(toTractSelection(tract))
-    setOwnerSort('score')
-    setExpandedOwner(null)
-    setHighlightedOwner(normalizedOwner)
-
-    setTimeout(() => {
-      const el = document.getElementById(ownerRowDomId(ownerName))
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      }
-    }, 400)
-
-    setTimeout(() => setHighlightedOwner(null), 3000)
-
-    setMapFocusTarget({
-      leaseId: leaseId || null,
-      ownerName,
-      nonce: Date.now(),
-    })
-
+    // Close the search dropdown immediately; the tract list takes over.
     setSearchQuery('')
     setSearchResults([])
     setSearchOpen(false)
+
+    setOwnerTracts([])
+    setOwnerTractsName(ownerName)
+    setOwnerTractsLoading(true)
+
+    const ownershipTable = COUNTIES[resultCounty].ownershipTable
+    // Howard has an `abstract` column; Gonzales doesn't — join via rrc_lease_id there.
+    const selectCols = resultCounty === 'howard'
+      ? 'abstract, rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
+      : 'rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
+    const { data: ownerRows, error: ownerRowsError } = await supabase
+      .from(ownershipTable)
+      .select(selectCols)
+      .ilike('owner_name', ownerName)
+      .limit(50)
+
+    if (ownerRowsError) {
+      console.error('Owner tracts lookup failed:', ownerRowsError.message)
+    }
+
+    const matchedTracts = (ownerRows ?? [])
+      .map((row) => {
+        const record = row as {
+          abstract?: string | null
+          rrc_lease_id?: string | number | null
+          operator_name?: string | null
+          propensity_score?: number | null
+        }
+        const abstractNumeric = String(record.abstract ?? '').trim()
+        const leaseIdRaw = String(record.rrc_lease_id ?? '').trim()
+        const leaseIdNorm = normalizeLeaseId(record.rrc_lease_id)
+
+        const tract = tracts.find((t) => {
+          const tractAbstractRaw = String(t.abstract_label ?? '').trim()
+          const tractAbstractNumeric = tractAbstractRaw.replace(/^A-\s*/i, '').trim()
+          if (abstractNumeric && tractAbstractNumeric === abstractNumeric) return true
+          if (leaseIdRaw || leaseIdNorm) {
+            const owners = parseOwners(t.owners_json) as Array<Record<string, unknown>>
+            return owners.some((o) => {
+              const oLeaseRaw = String(o.rrc_lease_id ?? '').trim()
+              const oLeaseNorm = normalizeLeaseId(o.rrc_lease_id)
+              if (!oLeaseRaw && !oLeaseNorm) return false
+              if (leaseIdRaw && oLeaseRaw === leaseIdRaw) return true
+              if (leaseIdNorm && oLeaseNorm === leaseIdNorm) return true
+              return false
+            })
+          }
+          return false
+        })
+
+        return tract ? { tract, row: record } : null
+      })
+      .filter((item): item is { tract: TractRecord; row: Record<string, unknown> } => item !== null)
+
+    const seen = new Set<string>()
+    const uniqueTracts: TractSelection[] = []
+    for (const item of matchedTracts) {
+      const key = String(item.tract.abstract_label ?? '')
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      uniqueTracts.push(toTractSelection(item.tract))
+    }
+
+    // Fallback: if the abstract/lease join missed everything, try the old
+    // owner-name scan of the loaded tracts so we still show something for
+    // owners whose ownership row didn't have an abstract the tracts index
+    // recognizes.
+    if (uniqueTracts.length === 0) {
+      for (const t of tracts) {
+        const owners = parseOwners(t.owners_json) as Array<Record<string, unknown>>
+        const hasOwner = owners.some(
+          (o) => String(o.owner_name ?? '').trim().toUpperCase() === normalizedOwner
+        )
+        if (!hasOwner) continue
+        const key = String(t.abstract_label ?? '')
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        uniqueTracts.push(toTractSelection(t))
+      }
+    }
+
+    setOwnerTracts(uniqueTracts)
+    setOwnerTractsLoading(false)
+
+    const focusOnTract = (tractSelection: TractSelection) => {
+      setSelected(tractSelection)
+      setOwnerSort('score')
+      setExpandedOwner(null)
+      setHighlightedOwner(normalizedOwner)
+
+      setTimeout(() => {
+        const el = document.getElementById(ownerRowDomId(ownerName))
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 400)
+
+      setTimeout(() => setHighlightedOwner(null), 3000)
+
+      setMapFocusTarget({
+        leaseId: normalizeLeaseId(result.rrc_lease_id) || null,
+        ownerName,
+        nonce: Date.now(),
+      })
+    }
+
+    if (uniqueTracts.length === 0) {
+      showToast(`No mapped tract found for ${ownerName}`, 'error')
+      setOwnerTractsName('')
+      return
+    }
+
+    if (uniqueTracts.length === 1) {
+      focusOnTract(uniqueTracts[0])
+      setOwnerTracts([])
+      setOwnerTractsName('')
+    }
   }
 
   const handleExportCsv = () => {
@@ -1467,6 +1553,8 @@ export default function Home() {
                   setSearchQuery('')
                   setSearchResults([])
                   setSearchOpen(false)
+                  setOwnerTracts([])
+                  setOwnerTractsName('')
                 }}
                 style={{
                   height: 26,
@@ -1765,7 +1853,15 @@ export default function Home() {
           {selected ? (
             <div>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => {
+                  setSelected(null)
+                  // If we're in an owner-tracts session, keep the list so the
+                  // user can pick a different tract for the same owner.
+                  if (!ownerTractsName) {
+                    setOwnerTracts([])
+                    setOwnerTractsName('')
+                  }
+                }}
                 style={{
                   border: 'none',
                   background: 'none',
@@ -2235,6 +2331,99 @@ export default function Home() {
                 </button>
               </div>
             </div>
+          ) : ownerTractsName ? (
+            <div>
+              <button
+                onClick={() => {
+                  setOwnerTracts([])
+                  setOwnerTractsName('')
+                  setOwnerTractsLoading(false)
+                }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#6B7280',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  padding: '12px 16px',
+                  marginBottom: 4,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                ← Back
+              </button>
+
+              <div style={{ padding: '0 16px 12px' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                  {ownerTractsName}
+                </div>
+                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, fontFamily: 'Inter, sans-serif' }}>
+                  {ownerTractsLoading
+                    ? 'Looking up tracts…'
+                    : `${ownerTracts.length} tract${ownerTracts.length !== 1 ? 's' : ''} found`}
+                </div>
+              </div>
+
+              {ownerTracts.length > 0 && (
+                <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', margin: '0 14px' }}>
+                  {ownerTracts.map((tract, i) => {
+                    const abstractLabel = tract.ABSTRACT_L ?? tract.abstract_label ?? 'Unknown'
+                    const score = Number(tract.max_propensity_score ?? 0)
+                    const scoreColor = score >= 8 ? '#F44336' : score >= 5 ? '#FF9800' : score >= 2 ? '#8BC34A' : '#9E9E9E'
+                    const operator = tract.top_operator ?? ''
+                    return (
+                      <div
+                        key={`${abstractLabel}-${i}`}
+                        onClick={() => {
+                          setSelected(tract)
+                          setOwnerSort('score')
+                          setExpandedOwner(null)
+                          setHighlightedOwner(ownerTractsName.toUpperCase())
+                          setTimeout(() => {
+                            const el = document.getElementById(ownerRowDomId(ownerTractsName))
+                            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                          }, 400)
+                          setTimeout(() => setHighlightedOwner(null), 3000)
+                          setMapFocusTarget({
+                            leaseId: null,
+                            ownerName: ownerTractsName,
+                            nonce: Date.now(),
+                          })
+                        }}
+                        style={{
+                          padding: '10px 16px',
+                          cursor: 'pointer',
+                          borderBottom: i < ownerTracts.length - 1 ? '1px solid #F3F4F6' : 'none',
+                          transition: 'background 0.15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = '#F9FAFB' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div style={{ minWidth: 0, flex: 1, marginRight: 10 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', fontFamily: 'Inter, sans-serif' }}>
+                              {abstractLabel}
+                            </div>
+                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
+                              {operator}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
+                            {score}/10
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {!ownerTractsLoading && ownerTracts.length === 0 && (
+                <div style={{ padding: '16px', color: '#6B7280', fontSize: 12, fontFamily: 'Inter, sans-serif' }}>
+                  No mapped tracts found.
+                </div>
+              )}
+            </div>
           ) : (
             <div>
               <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
@@ -2559,6 +2748,8 @@ export default function Home() {
                 )
                 setOwnerSort('score')
                 setExpandedOwner(null)
+                setOwnerTracts([])
+                setOwnerTractsName('')
                 trackEvent('tract_clicked', {
                   abstract: tract.ABSTRACT_L ?? tract.abstract_label ?? '',
                   owner_count: tract.owner_count ?? 0,
