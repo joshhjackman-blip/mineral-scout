@@ -581,7 +581,6 @@ export default function Home() {
 
       const operator = selected.top_operator
       const fieldName = selected.field_name
-      const abstractL = selected.ABSTRACT_L
 
       if (countyRef.current.id === 'howard') {
         const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
@@ -606,6 +605,8 @@ export default function Home() {
             countyId: countyRef.current.id,
             mode: 'tract',
             abstractLabel: tractAbstract,
+            operator: operator ?? null,
+            fieldName: fieldName ?? null,
           }),
         })
         const payload = await response.json() as { wells?: WellSummary[]; error?: string }
