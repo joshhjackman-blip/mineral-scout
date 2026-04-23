@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
@@ -86,7 +86,10 @@ export default function Map({
   const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
   const TEXAS_OVERVIEW_ZOOM = 5.5
 
-  const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
+  const countyEntries = useMemo(
+    () => Object.entries(COUNTIES) as Array<[CountyKey, County]>,
+    []
+  )
 
   useEffect(() => {
     onOwnerClickRef.current = onOwnerClick
@@ -191,41 +194,53 @@ export default function Map({
     currentParcelsByCountyRef.current = {}
   }, [countyEntries])
 
-  const selectedFillColorExpr: mapboxgl.Expression = [
-    'step',
-    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-    '#9E9E9E',
-    2, '#81C784',
-    5, '#FF9800',
-    8, '#F44336',
-    10, '#B71C1C',
-  ]
+  const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
+    () => [
+      'step',
+      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+      '#9E9E9E',
+      2, '#81C784',
+      5, '#FF9800',
+      8, '#F44336',
+      10, '#B71C1C',
+    ],
+    []
+  )
 
-  const selectedFillOpacityExpr: mapboxgl.Expression = [
-    'step',
-    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-    0.3,
-    2, 0.45,
-    5, 0.7,
-    8, 0.88,
-    10, 1.0,
-  ]
+  const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
+    () => [
+      'step',
+      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+      0.3,
+      2, 0.45,
+      5, 0.7,
+      8, 0.88,
+      10, 1.0,
+    ],
+    []
+  )
 
-  const selectedOutlineColorExpr: mapboxgl.Expression = [
-    'step',
-    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-    '#2d6a2d',
-    5, '#FFC107',
-    8, '#F44336',
-  ]
+  const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
+    () => [
+      'step',
+      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+      '#2d6a2d',
+      5, '#FFC107',
+      8, '#F44336',
+    ],
+    []
+  )
 
-  const selectedOutlineWidthExpr: mapboxgl.Expression = [
-    'step',
-    ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-    1.1,
-    6, 1.6,
-    8, 2.2,
-  ]
+  const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
+    () => [
+      'step',
+      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
+      1.1,
+      6, 1.6,
+      8, 2.2,
+    ],
+    []
+  )
 
   const applyTractCountyStyles = useCallback(() => {
     const mapInstance = map.current
