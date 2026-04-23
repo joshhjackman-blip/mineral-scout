@@ -681,10 +681,11 @@ export default function Home() {
   }
 
   const handleSearch = async (query: string) => {
+    // Preserve the raw value in state so spaces between words aren't stripped while
+    // the user is still typing. Trim only for the search logic below.
+    setSearchQuery(query)
     const trimmed = query.trim()
-    setSearchQuery(trimmed)
 
-    // Clear previous timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current)
       searchTimeoutRef.current = null
