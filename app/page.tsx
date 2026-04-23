@@ -65,11 +65,13 @@ type TractSelection = {
   surv_name?: string
   block?: string
   surv_sect?: string
+  desc_?: string
   Surv_Name?: string
   Block?: string
   Surv_Sect?: string
   TEXTSTRING?: string
   NAME?: string
+  DESC_?: string
   geometry?: GeoJSON.Geometry
 }
 
@@ -95,6 +97,7 @@ type TractRecord = {
   surv_name?: string
   block?: string
   surv_sect?: string
+  desc_?: string
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
@@ -1086,6 +1089,7 @@ export default function Home() {
               surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? props.DESC_ ?? ''),
               block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
               surv_sect: String(props.Surv_Sect ?? props.TEXTSTRING ?? ''),
+              desc_: String(props.DESC_ ?? ''),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
@@ -1129,6 +1133,7 @@ export default function Home() {
     surv_name: tract.surv_name,
     block: tract.block,
     surv_sect: tract.surv_sect,
+    desc_: tract.desc_,
   })
 
   const handleSearchSelect = async (result: OwnerSearchResult) => {
@@ -1412,12 +1417,9 @@ export default function Home() {
   )
 
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
-  const surveyName = selected?.surv_name
-    || selected?.level1_sur
-    || selected?.LEVEL1_SUR
-    || String((selected as Record<string, unknown> | null | undefined)?.DESC_ ?? '')
-    || 'Survey'
+  const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
+  const selectedLevel1Sur = (selected?.level1_sur ?? selected?.LEVEL1_SUR ?? '').trim()
   const selectedBlock = (selected?.block ?? selected?.Block ?? '').trim()
   const selectedSurvSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
   // Gonzales TEXTSTRING is typically just the abstract label (e.g. "A-160"),
@@ -1425,12 +1427,31 @@ export default function Home() {
   const selectedSurvSect = selectedSurvSectRaw && selectedSurvSectRaw !== abstractLabel
     ? selectedSurvSectRaw
     : ''
-  const legalDescParts = [
-    selectedSurvName,
-    selectedBlock ? `Blk ${selectedBlock}` : '',
-    selectedSurvSect ? `Sec ${selectedSurvSect}` : '',
-  ].filter((s) => s.length > 0)
-  const legalDescLine = legalDescParts.join(' · ')
+  // Header layout has three slots: survey system, section+block, and the
+  // surveyor/grantee name. Howard data fills all three (e.g. "T&P RR CO",
+  // "Section 14 · Block 33 T1N", "SMITH, J H Survey"). Gonzales has no
+  // block/section and only a grantee name (LEVEL1_SUR), so we show it as
+  // "{LEVEL1_SUR} Survey" on the big bold line with "Abstract {N}" below.
+  const hasStructuredLegal = Boolean(selectedDescRaw || selectedBlock || selectedSurvSect)
+  const abstractNumber = abstractLabel.replace(/^A-\s*/i, '')
+
+  let legalSystemLine = ''
+  let legalSectionLine = ''
+  let legalGranteeLine = ''
+  if (hasStructuredLegal) {
+    legalSystemLine = selectedDescRaw
+    const sectionPart = selectedSurvSect ? `Section ${selectedSurvSect}` : ''
+    const blockPart = selectedBlock ? `Block ${selectedBlock}` : ''
+    legalSectionLine = [sectionPart, blockPart].filter(Boolean).join(' · ')
+    const granteeName = selectedSurvName && selectedSurvName !== selectedDescRaw
+      ? selectedSurvName
+      : ''
+    legalGranteeLine = granteeName ? `${granteeName} Survey` : ''
+  } else {
+    const granteeName = selectedSurvName || selectedLevel1Sur
+    legalSectionLine = granteeName ? `${granteeName} Survey` : ''
+    legalGranteeLine = abstractLabel ? `Abstract ${abstractNumber}` : ''
+  }
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
   const maxScore = toNumber(selected?.max_propensity_score)
@@ -1918,16 +1939,27 @@ export default function Home() {
                 ← Back
               </button>
 
-              <div style={{ fontSize: 18, fontFamily: 'Georgia, serif', color: '#111827', fontWeight: 700 }}>
+              <div style={{ fontSize: 22, fontFamily: 'Georgia, serif', color: '#111827', fontWeight: 700, lineHeight: 1.2 }}>
                 {abstractLabel}
               </div>
-              <div style={{ color: '#6B7280', marginTop: 4 }}>{surveyName} Survey</div>
-              {legalDescLine && (
-                <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
-                  {legalDescLine}
-                </div>
-              )}
-              <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 10, marginBottom: 10 }} />
+              <div style={{ marginTop: 8 }}>
+                {legalSystemLine && (
+                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 2, fontFamily: 'Inter, sans-serif' }}>
+                    {legalSystemLine}
+                  </div>
+                )}
+                {legalSectionLine && (
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 2, fontFamily: 'Georgia, serif', lineHeight: 1.3 }}>
+                    {legalSectionLine}
+                  </div>
+                )}
+                {legalGranteeLine && (
+                  <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+                    {legalGranteeLine}
+                  </div>
+                )}
+              </div>
+              <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 12, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
