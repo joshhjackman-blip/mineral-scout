@@ -764,6 +764,7 @@ export default function Home() {
 
       const topResults = Array.from(seen.values()).slice(0, 10)
       setSearchResults(topResults)
+      setSearchOpen(topResults.length > 0)
       setSearching(false)
       searchTimeoutRef.current = null
     }, 400)
