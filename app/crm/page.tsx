@@ -55,92 +55,6 @@ const numberToWords = (amount: number): string => {
   return result.trim() + ' AND ' + String(cents).padStart(2, '0') + '/100'
 }
 
-const psaTemplate = `PURCHASE AND SALE AGREEMENT
-
-This Purchase and Sale Agreement (the "Agreement") is entered into this [AGREEMENT_DATE] but is effective as of [EFFECTIVE_DATE], by and between [SELLER_NAME] whose address is [SELLER_ADDRESS], [SELLER_CITY], [SELLER_STATE] [SELLER_ZIP] (the "Seller"), and [BUYER_NAME], whose address is [BUYER_ADDRESS], [BUYER_CITY], [BUYER_STATE] [BUYER_ZIP] (the "Buyer").
-
-WHEREAS, Seller owns and desires to sell or assign to Buyer certain oil, gas, mineral and/or royalty interests (the "Interests") owned in [COUNTY] County, Texas.
-
-NOW THEREFORE, Seller and Buyer have reached an agreement with the following terms:
-
-Purchase Price: $[TOTAL_PRICE]
-Number of Net Royalty Acres: [NRA]
-Closing Date: On or before [CLOSING_DATE]
-Effective Date: [EFFECTIVE_DATE]
-
-Calculation of Purchase Price. The total purchase price for the Interests shall be [TOTAL_PRICE_WRITTEN] ($[TOTAL_PRICE]) (the "Purchase Price"), based upon the Parties' belief that Seller owns [NRA] Net Royalty Acres.
-
-Operator: [OPERATOR_NAME]
-RRC Lease ID: [RRC_LEASE_ID]
-
-SELLER: [SELLER_NAME]
-___________________________
-Date: _______________________
-
-BUYER: [BUYER_NAME]
-___________________________
-By: ________________________
-Title: Managing Member
-Date: _______________________
-
-EXHIBIT "A"
-[LEGAL_DESCRIPTION]
-[COUNTY] County, Texas
-`
-
-const deedTemplate = `MINERAL DEED
-
-THE STATE OF TEXAS
-COUNTY OF [COUNTY]
-
-KNOW ALL MEN BY THESE PRESENTS:
-
-That [GRANTOR_NAME], whose address is [GRANTOR_ADDRESS], [GRANTOR_CITY], [GRANTOR_STATE] [GRANTOR_ZIP] (hereinafter called "Grantor", whether one or more), for and in consideration of the sum of TEN AND NO/100 DOLLARS ($10.00) and other good and valuable consideration paid by [GRANTEE_NAME], whose address is [GRANTEE_ADDRESS], [GRANTEE_CITY], [GRANTEE_STATE] [GRANTEE_ZIP] (hereinafter called "Grantee"), the receipt and sufficiency of which are hereby acknowledged, has GRANTED, BARGAINED, SOLD, CONVEYED, ASSIGNED, TRANSFERRED, SET OVER and DELIVERED, and by these presents does GRANT, BARGAIN, SELL, CONVEY, ASSIGN, TRANSFER, SET OVER and DELIVER unto Grantee, all of Grantor's right, title and interest in and to all of the oil, gas and other minerals in, on, under and that may be produced from the lands described on Exhibit "A" attached hereto and made a part hereof for all purposes.
-
-This conveyance is made effective as of [EFFECTIVE_DATE] (the "Effective Date").
-
-TO HAVE AND TO HOLD the above-described property and rights, together with all and singular the rights and appurtenances thereto in anywise belonging, unto Grantee, Grantee's heirs, successors and assigns forever.
-
-EXECUTED this ______ day of __________________, ________, but effective as of the Effective Date.
-
-GRANTOR:
-
-_____________________________________
-[GRANTOR_NAME]
-
-STATE OF TEXAS
-COUNTY OF [COUNTY]
-
-This instrument was acknowledged before me on the _______ day of __________________, ________, by [GRANTOR_NAME].
-
-_____________________________________
-Notary Public, State of Texas
-
-EXHIBIT "A"
-[LEGAL_DESCRIPTION]
-[COUNTY] County, Texas
-`
-
-const fillTemplate = (template: string, data: Record<string, string>): string =>
-  template.replace(/\[([A-Z_]+)\]/g, (_, key: string) =>
-    data[key] !== undefined && data[key] !== '' ? data[key] : `[${key}]`
-  )
-
-const sanitizeFilename = (value: string) =>
-  value.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'document'
-
-const downloadDocFromText = (text: string, filename: string) => {
-  if (typeof window === 'undefined') return
-  const blob = new Blob([text], { type: 'application/msword' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
 
 export const dynamic = 'force-dynamic'
 
@@ -486,6 +400,7 @@ export default function CRM() {
       totalPriceWritten: '',
       operatorName: editingDeal.operator_name ?? '',
       rrcLeaseId: editingDeal.rrc_lease_id ?? '',
+      buyerSignatory: 'Jordan Spearman',
     })
     setShowPSAModal(true)
   }, [editingDeal, buyerEntity])
@@ -556,68 +471,55 @@ export default function CRM() {
     setDeedForm((prev) => ({ ...prev, [field]: value }))
   }, [])
 
-  const generatePSA = useCallback(() => {
-    if (!editingDeal) return
+  const generatePSA = useCallback(async () => {
     setGeneratingDoc(true)
     try {
-      const payload: Record<string, string> = {
-        AGREEMENT_DATE: psaForm.agreementDate ?? '',
-        EFFECTIVE_DATE: psaForm.effectiveDate ?? '',
-        CLOSING_DATE: psaForm.closingDate ?? '',
-        SELLER_NAME: psaForm.sellerName ?? '',
-        SELLER_ADDRESS: psaForm.sellerAddress ?? '',
-        SELLER_CITY: psaForm.sellerCity ?? '',
-        SELLER_STATE: psaForm.sellerState ?? '',
-        SELLER_ZIP: psaForm.sellerZip ?? '',
-        BUYER_NAME: psaForm.buyerName ?? '',
-        BUYER_ADDRESS: psaForm.buyerAddress ?? '',
-        BUYER_CITY: psaForm.buyerCity ?? '',
-        BUYER_STATE: psaForm.buyerState ?? '',
-        BUYER_ZIP: psaForm.buyerZip ?? '',
-        COUNTY: psaForm.county ?? '',
-        NRA: psaForm.nra ?? '',
-        TOTAL_PRICE: psaForm.totalPrice ?? '',
-        TOTAL_PRICE_WRITTEN: psaForm.totalPriceWritten ?? '',
-        OPERATOR_NAME: psaForm.operatorName ?? '',
-        RRC_LEASE_ID: psaForm.rrcLeaseId ?? '',
-        LEGAL_DESCRIPTION: psaForm.legalDescription ?? '',
-      }
-      const content = fillTemplate(psaTemplate, payload)
-      const datePart = new Date().toISOString().slice(0, 10)
-      const filename = `${sanitizeFilename(psaForm.sellerName ?? 'seller')}_PSA_${datePart}.doc`
-      downloadDocFromText(content, filename)
+      const response = await fetch('/api/generate-psa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(psaForm),
+      })
+      if (!response.ok) throw new Error('Failed to generate PSA')
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${psaForm.sellerName?.replace(/[^a-z0-9]/gi, '_') || 'PSA'}_PSA.docx`
+      a.click()
+      URL.revokeObjectURL(url)
+      setShowPSAModal(false)
+    } catch (err) {
+      console.error('PSA generation error:', err)
+      alert('Failed to generate PSA. Please try again.')
     } finally {
       setGeneratingDoc(false)
     }
-  }, [editingDeal, psaForm])
+  }, [psaForm])
 
-  const generateDeed = useCallback(() => {
-    if (!editingDeal) return
+  const generateDeed = useCallback(async () => {
     setGeneratingDoc(true)
     try {
-      const payload: Record<string, string> = {
-        GRANTOR_NAME: deedForm.grantorName ?? '',
-        GRANTOR_ADDRESS: deedForm.grantorAddress ?? '',
-        GRANTOR_CITY: deedForm.grantorCity ?? '',
-        GRANTOR_STATE: deedForm.grantorState ?? '',
-        GRANTOR_ZIP: deedForm.grantorZip ?? '',
-        GRANTEE_NAME: deedForm.granteeName ?? '',
-        GRANTEE_ADDRESS: deedForm.granteeAddress ?? '',
-        GRANTEE_CITY: deedForm.granteeCity ?? '',
-        GRANTEE_STATE: deedForm.granteeState ?? '',
-        GRANTEE_ZIP: deedForm.granteeZip ?? '',
-        EFFECTIVE_DATE: deedForm.effectiveDate ?? '',
-        COUNTY: deedForm.county ?? '',
-        LEGAL_DESCRIPTION: deedForm.legalDescription ?? '',
-      }
-      const content = fillTemplate(deedTemplate, payload)
-      const datePart = new Date().toISOString().slice(0, 10)
-      const filename = `${sanitizeFilename(deedForm.grantorName ?? 'grantor')}_MineralDeed_${datePart}.doc`
-      downloadDocFromText(content, filename)
+      const response = await fetch('/api/generate-deed', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deedForm),
+      })
+      if (!response.ok) throw new Error('Failed to generate Deed')
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${deedForm.grantorName?.replace(/[^a-z0-9]/gi, '_') || 'Deed'}_Mineral_Deed.docx`
+      a.click()
+      URL.revokeObjectURL(url)
+      setShowDeedModal(false)
+    } catch (err) {
+      console.error('Deed generation error:', err)
+      alert('Failed to generate Deed. Please try again.')
     } finally {
       setGeneratingDoc(false)
     }
-  }, [editingDeal, deedForm])
+  }, [deedForm])
 
   const annual = editingDeal?.monthly_royalty ? Number(editingDeal.monthly_royalty) * 12 : 0
 
