@@ -2834,7 +2834,6 @@ export default function Home() {
             </div>
           ) : (
             <MineralMap
-              key={selectedCounty}
               selectedCounty={selectedCounty}
               mapFlyToRef={mapFlyToRef}
               mapLevel={mapLevel}
