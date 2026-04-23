@@ -1083,7 +1083,7 @@ export default function Home() {
               horizontal_well_count: toNumber(props.horizontal_well_count),
               vertical_well_count: toNumber(props.vertical_well_count),
               SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area ?? props.STArea__),
-              surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? ''),
+              surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? props.DESC_ ?? ''),
               block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
               surv_sect: String(props.Surv_Sect ?? props.TEXTSTRING ?? ''),
             }
@@ -1412,7 +1412,11 @@ export default function Home() {
   )
 
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
-  const surveyName = selected?.level1_sur ?? selected?.LEVEL1_SUR ?? 'Unknown'
+  const surveyName = selected?.surv_name
+    || selected?.level1_sur
+    || selected?.LEVEL1_SUR
+    || String((selected as Record<string, unknown> | null | undefined)?.DESC_ ?? '')
+    || 'Survey'
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
   const selectedBlock = (selected?.block ?? selected?.Block ?? '').trim()
   const selectedSurvSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
