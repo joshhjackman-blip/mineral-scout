@@ -363,6 +363,22 @@ export default function Home() {
   const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyStats = county.stats
   const countyBreakdown = county.breakdown
+  const combinedStats = useMemo(() => {
+    const allCounties = Object.values(COUNTIES)
+    const sumStat = (label: string) =>
+      allCounties.reduce((sum, c) => {
+        const val = c.stats.find((s) => s.lbl === label)?.val ?? '0'
+        return sum + Number(val.replace(/,/g, ''))
+      }, 0)
+    return [
+      { val: sumStat('Total owners').toLocaleString(), lbl: 'Total owners' },
+      { val: sumStat('Hot (8-10)').toLocaleString(), lbl: 'Hot (8-10)' },
+      { val: sumStat('Motivated (5-7)').toLocaleString(), lbl: 'Motivated (5-7)' },
+      { val: sumStat('Prospect (2-4)').toLocaleString(), lbl: 'Prospect (2-4)' },
+      { val: sumStat('Survey abstracts').toLocaleString(), lbl: 'Survey abstracts' },
+      { val: sumStat('Active wells').toLocaleString(), lbl: 'Active wells' },
+    ]
+  }, [])
   const countyStatsByLabel = Object.fromEntries(
     county.stats.map((entry) => [entry.lbl, entry.val])
   ) as Record<string, string>
@@ -2248,12 +2264,17 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
-                County Overview
+              <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
+                {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
               </div>
+              {mapLevel === 'county' && (
+                <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 16, fontFamily: 'Inter, sans-serif' }}>
+                  Click any highlighted county to explore
+                </div>
+              )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {countyStats.map((card) => (
+                {(mapLevel === 'county' ? combinedStats : countyStats).map((card) => (
                   <div
                     key={card.lbl}
                     style={{
@@ -2282,6 +2303,75 @@ export default function Home() {
                 ))}
               </div>
 
+              {mapLevel === 'county' && (
+                <>
+                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
+                    ACTIVE COUNTIES
+                  </div>
+                  <div>
+                    {Object.values(COUNTIES).map((c) => {
+                      const hotVal = Number(
+                        (c.stats.find((s) => s.lbl === 'Hot (8-10)')?.val ?? '0').replace(/,/g, '')
+                      )
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => {
+                            setSelectedCounty(c.id as CountyKey)
+                            setMapLevel('tract')
+                          }}
+                          style={{
+                            background: '#FFFFFF',
+                            border: '1px solid #E5E7EB',
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 8,
+                            cursor: 'pointer',
+                            transition: 'border-color 0.15s',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 10,
+                          }}
+                          onMouseEnter={(event) => {
+                            event.currentTarget.style.borderColor = '#EF9F27'
+                          }}
+                          onMouseLeave={(event) => {
+                            event.currentTarget.style.borderColor = '#E5E7EB'
+                          }}
+                        >
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: 'Inter, sans-serif' }}>
+                              {c.displayName}
+                            </div>
+                            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
+                              ~{c.totalLeads.toLocaleString()} total leads
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              background: 'rgba(220,38,38,0.1)',
+                              border: '1px solid rgba(220,38,38,0.25)',
+                              borderRadius: 999,
+                              padding: '3px 10px',
+                              color: '#DC2626',
+                              fontFamily: 'Inter, sans-serif',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {hotVal.toLocaleString()} hot
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+
+              {mapLevel === 'tract' && (
+              <>
               <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
                 TOP 10 HOTTEST TRACTS
               </div>
@@ -2370,6 +2460,8 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              </>
+              )}
             </div>
           )}
         </div>
