@@ -1,10 +1,11 @@
 'use client'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
+import TractSearch from './TractSearch'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -66,6 +67,7 @@ export default function Map({
 }) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
+  const [mapReady, setMapReady] = useState(false)
   const onOwnerClickRef = useRef(onOwnerClick)
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
@@ -181,6 +183,7 @@ export default function Map({
     removeSourceIfExists(mapInstance, 'permits')
 
     countyEntries.forEach(([, countyConfig]) => {
+      removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-fill-${countyConfig.id}`)
       removeSourceIfExists(mapInstance, `parcels-${countyConfig.id}`)
@@ -252,8 +255,10 @@ export default function Map({
     const selectedConfig = COUNTIES[selectedCountyRef.current]
     const selectedFillId = `parcels-fill-${selectedConfig.id}`
     const selectedOutlineId = `parcels-outline-${selectedConfig.id}`
+    const selectedLabelsId = `parcels-labels-${selectedConfig.id}`
     if (mapInstance.getLayer(selectedFillId)) mapInstance.moveLayer(selectedFillId)
     if (mapInstance.getLayer(selectedOutlineId)) mapInstance.moveLayer(selectedOutlineId)
+    if (mapInstance.getLayer(selectedLabelsId)) mapInstance.moveLayer(selectedLabelsId)
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async () => {
@@ -528,6 +533,7 @@ export default function Map({
       const sourceId = `parcels-${countyConfig.id}`
       const fillId = `parcels-fill-${countyConfig.id}`
       const outlineId = `parcels-outline-${countyConfig.id}`
+      const labelsId = `parcels-labels-${countyConfig.id}`
 
       if (!map.current) return
       map.current.addSource(sourceId, { type: 'geojson', data: geojson, generateId: true })
@@ -551,6 +557,65 @@ export default function Map({
           'line-color': '#CBD5E1',
           'line-width': 0.8,
           'line-opacity': 1,
+        },
+      })
+
+      if (!map.current) return
+      // Parcel labels: survey/grantee name on line 1, abstract label on
+      // line 2, centered inside each tract. Fades in between zoom 9–10 and
+      // scales from 8px at z10 to 13px at z14.
+      map.current.addLayer({
+        id: labelsId,
+        type: 'symbol',
+        source: sourceId,
+        minzoom: 9,
+        layout: {
+          'text-field': [
+            'format',
+            [
+              'coalesce',
+              ['get', 'Surv_Name'],
+              ['get', 'LEVEL1_SUR'],
+              ['get', 'DESC_'],
+              '',
+            ],
+            {},
+            '\n',
+            {},
+            [
+              'coalesce',
+              ['get', 'ABSTRACT_L'],
+              ['concat', 'A-', ['to-string', ['get', 'ABSTRACT_N']]],
+              '',
+            ],
+            {},
+          ],
+          'text-size': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            10, 8,
+            14, 13,
+          ],
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-max-width': 8,
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': '#000000',
+          'text-halo-width': 1,
+          'text-halo-blur': 0.5,
+          'text-opacity': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            9, 0,
+            10, 1,
+          ],
         },
       })
 
@@ -666,6 +731,7 @@ export default function Map({
     map.current = mapInstance
 
     const onLoad = () => {
+      setMapReady(true)
       void renderForCurrentLevelRef.current()
     }
     mapInstance.on('load', onLoad)
@@ -682,6 +748,7 @@ export default function Map({
       }
       map.current?.remove()
       map.current = null
+      setMapReady(false)
       renderTokenRef.current += 1
     }
   }, [])
@@ -743,5 +810,15 @@ export default function Map({
     }
   }, [focusTarget, mapLevel, selectedCounty])
 
-  return <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
+      {mapReady && (
+        <TractSearch
+          map={map.current}
+          geojsonUrl={COUNTIES[selectedCounty].geoJsonPath}
+        />
+      )}
+    </div>
+  )
 }
