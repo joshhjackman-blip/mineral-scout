@@ -8,8 +8,139 @@ import {
   MapPin, BarChart2, BookOpen, Clock,
   DollarSign, User, Building2,
   CheckCircle2, Circle, XCircle, Flame,
-  TrendingUp, Save
+  TrendingUp, Save, FileText, Package, X,
 } from 'lucide-react'
+
+type BuyerEntity = { name: string; address: string; city: string; state: string; zip: string }
+
+const BUYER_ENTITY_STORAGE_KEY = 'mineral_map_buyer_entity'
+const DEFAULT_BUYER_ENTITY: BuyerEntity = { name: '', address: '', city: '', state: 'TX', zip: '' }
+
+const numberToWords = (amount: number): string => {
+  if (!amount || isNaN(amount)) return ''
+  const ones = [
+    '', 'ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN',
+    'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE', 'THIRTEEN', 'FOURTEEN',
+    'FIFTEEN', 'SIXTEEN', 'SEVENTEEN', 'EIGHTEEN', 'NINETEEN',
+  ]
+  const tens = [
+    '', '', 'TWENTY', 'THIRTY', 'FORTY', 'FIFTY',
+    'SIXTY', 'SEVENTY', 'EIGHTY', 'NINETY',
+  ]
+
+  const convertHundreds = (n: number): string => {
+    if (n === 0) return ''
+    if (n < 20) return ones[n] + ' '
+    if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 ? ' ' + ones[n % 10] : '') + ' '
+    return ones[Math.floor(n / 100)] + ' HUNDRED ' + convertHundreds(n % 100)
+  }
+
+  const dollars = Math.floor(amount)
+  const cents = Math.round((amount - dollars) * 100)
+
+  let result = ''
+  if (dollars >= 1000000) {
+    result += convertHundreds(Math.floor(dollars / 1000000)) + 'MILLION '
+    const thousands = Math.floor((dollars % 1000000) / 1000)
+    result += convertHundreds(thousands)
+    if (thousands > 0) result += 'THOUSAND '
+    result += convertHundreds(dollars % 1000)
+  } else if (dollars >= 1000) {
+    result += convertHundreds(Math.floor(dollars / 1000)) + 'THOUSAND '
+    result += convertHundreds(dollars % 1000)
+  } else {
+    result += convertHundreds(dollars)
+  }
+
+  return result.trim() + ' AND ' + String(cents).padStart(2, '0') + '/100'
+}
+
+const psaTemplate = `PURCHASE AND SALE AGREEMENT
+
+This Purchase and Sale Agreement (the "Agreement") is entered into this [AGREEMENT_DATE] but is effective as of [EFFECTIVE_DATE], by and between [SELLER_NAME] whose address is [SELLER_ADDRESS], [SELLER_CITY], [SELLER_STATE] [SELLER_ZIP] (the "Seller"), and [BUYER_NAME], whose address is [BUYER_ADDRESS], [BUYER_CITY], [BUYER_STATE] [BUYER_ZIP] (the "Buyer").
+
+WHEREAS, Seller owns and desires to sell or assign to Buyer certain oil, gas, mineral and/or royalty interests (the "Interests") owned in [COUNTY] County, Texas.
+
+NOW THEREFORE, Seller and Buyer have reached an agreement with the following terms:
+
+Purchase Price: $[TOTAL_PRICE]
+Number of Net Royalty Acres: [NRA]
+Closing Date: On or before [CLOSING_DATE]
+Effective Date: [EFFECTIVE_DATE]
+
+Calculation of Purchase Price. The total purchase price for the Interests shall be [TOTAL_PRICE_WRITTEN] ($[TOTAL_PRICE]) (the "Purchase Price"), based upon the Parties' belief that Seller owns [NRA] Net Royalty Acres.
+
+Operator: [OPERATOR_NAME]
+RRC Lease ID: [RRC_LEASE_ID]
+
+SELLER: [SELLER_NAME]
+___________________________
+Date: _______________________
+
+BUYER: [BUYER_NAME]
+___________________________
+By: ________________________
+Title: Managing Member
+Date: _______________________
+
+EXHIBIT "A"
+[LEGAL_DESCRIPTION]
+[COUNTY] County, Texas
+`
+
+const deedTemplate = `MINERAL DEED
+
+THE STATE OF TEXAS
+COUNTY OF [COUNTY]
+
+KNOW ALL MEN BY THESE PRESENTS:
+
+That [GRANTOR_NAME], whose address is [GRANTOR_ADDRESS], [GRANTOR_CITY], [GRANTOR_STATE] [GRANTOR_ZIP] (hereinafter called "Grantor", whether one or more), for and in consideration of the sum of TEN AND NO/100 DOLLARS ($10.00) and other good and valuable consideration paid by [GRANTEE_NAME], whose address is [GRANTEE_ADDRESS], [GRANTEE_CITY], [GRANTEE_STATE] [GRANTEE_ZIP] (hereinafter called "Grantee"), the receipt and sufficiency of which are hereby acknowledged, has GRANTED, BARGAINED, SOLD, CONVEYED, ASSIGNED, TRANSFERRED, SET OVER and DELIVERED, and by these presents does GRANT, BARGAIN, SELL, CONVEY, ASSIGN, TRANSFER, SET OVER and DELIVER unto Grantee, all of Grantor's right, title and interest in and to all of the oil, gas and other minerals in, on, under and that may be produced from the lands described on Exhibit "A" attached hereto and made a part hereof for all purposes.
+
+This conveyance is made effective as of [EFFECTIVE_DATE] (the "Effective Date").
+
+TO HAVE AND TO HOLD the above-described property and rights, together with all and singular the rights and appurtenances thereto in anywise belonging, unto Grantee, Grantee's heirs, successors and assigns forever.
+
+EXECUTED this ______ day of __________________, ________, but effective as of the Effective Date.
+
+GRANTOR:
+
+_____________________________________
+[GRANTOR_NAME]
+
+STATE OF TEXAS
+COUNTY OF [COUNTY]
+
+This instrument was acknowledged before me on the _______ day of __________________, ________, by [GRANTOR_NAME].
+
+_____________________________________
+Notary Public, State of Texas
+
+EXHIBIT "A"
+[LEGAL_DESCRIPTION]
+[COUNTY] County, Texas
+`
+
+const fillTemplate = (template: string, data: Record<string, string>): string =>
+  template.replace(/\[([A-Z_]+)\]/g, (_, key: string) =>
+    data[key] !== undefined && data[key] !== '' ? data[key] : `[${key}]`
+  )
+
+const sanitizeFilename = (value: string) =>
+  value.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'document'
+
+const downloadDocFromText = (text: string, filename: string) => {
+  if (typeof window === 'undefined') return
+  const blob = new Blob([text], { type: 'application/msword' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -101,6 +232,23 @@ export default function CRM() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [logModal, setLogModal] = useState<{ method: string } | null>(null)
   const [logNote, setLogNote] = useState('')
+  const [buyerEntity, setBuyerEntity] = useState<BuyerEntity>(() => {
+    if (typeof window === 'undefined') return { ...DEFAULT_BUYER_ENTITY }
+    try {
+      const saved = window.localStorage.getItem(BUYER_ENTITY_STORAGE_KEY)
+      if (!saved) return { ...DEFAULT_BUYER_ENTITY }
+      const parsed = JSON.parse(saved) as Partial<BuyerEntity>
+      return { ...DEFAULT_BUYER_ENTITY, ...parsed }
+    } catch {
+      return { ...DEFAULT_BUYER_ENTITY }
+    }
+  })
+  const [showPSAModal, setShowPSAModal] = useState(false)
+  const [showDeedModal, setShowDeedModal] = useState(false)
+  const [showFullPackageModal, setShowFullPackageModal] = useState(false)
+  const [psaForm, setPsaForm] = useState<Record<string, string>>({})
+  const [deedForm, setDeedForm] = useState<Record<string, string>>({})
+  const [generatingDoc, setGeneratingDoc] = useState(false)
 
   useEffect(() => {
     supabase.from('deals').select('*').order('updated_at', { ascending: false }).then(({ data }) => {
@@ -305,6 +453,171 @@ export default function CRM() {
       alert('No contact info found for this owner.')
     }
   }, [editingDeal])
+
+  const openPSAModal = useCallback(() => {
+    if (!editingDeal) return
+    const today = new Date()
+    const effectiveDate = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const closingDate = new Date(today)
+    closingDate.setDate(closingDate.getDate() + 44)
+
+    const formatLong = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+
+    setPsaForm({
+      agreementDate: formatLong(today),
+      sellerName: editingDeal.owner_name ?? '',
+      sellerAddress: editingDeal.mailing_address ?? '',
+      sellerCity: editingDeal.mailing_city ?? '',
+      sellerState: editingDeal.mailing_state ?? '',
+      sellerZip: editingDeal.mailing_zip ?? '',
+      buyerName: buyerEntity.name,
+      buyerAddress: buyerEntity.address,
+      buyerCity: buyerEntity.city,
+      buyerState: buyerEntity.state,
+      buyerZip: buyerEntity.zip,
+      effectiveDate: formatLong(effectiveDate),
+      closingDate: formatLong(closingDate),
+      legalDescription: editingDeal.tract_abstract ?? '',
+      county: editingDeal.tract_abstract?.includes('Howard') ? 'Howard' : 'Gonzales',
+      nra: editingDeal.acreage ? String(Number(editingDeal.acreage).toFixed(4)) : '',
+      pricePerNRA: '',
+      totalPrice: '',
+      totalPriceWritten: '',
+      operatorName: editingDeal.operator_name ?? '',
+      rrcLeaseId: editingDeal.rrc_lease_id ?? '',
+    })
+    setShowPSAModal(true)
+  }, [editingDeal, buyerEntity])
+
+  const openDeedModal = useCallback(() => {
+    if (!editingDeal) return
+    const today = new Date()
+    const effectiveDate = new Date(today.getFullYear(), today.getMonth() + 1, 1)
+    const formatLong = (d: Date) =>
+      d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+
+    setDeedForm({
+      grantorName: editingDeal.owner_name ?? '',
+      grantorAddress: editingDeal.mailing_address ?? '',
+      grantorCity: editingDeal.mailing_city ?? '',
+      grantorState: editingDeal.mailing_state ?? '',
+      grantorZip: editingDeal.mailing_zip ?? '',
+      granteeName: buyerEntity.name,
+      granteeAddress: buyerEntity.address,
+      granteeCity: buyerEntity.city,
+      granteeState: buyerEntity.state,
+      granteeZip: buyerEntity.zip,
+      effectiveDate: formatLong(effectiveDate),
+      legalDescription: editingDeal.tract_abstract ?? '',
+      county: editingDeal.tract_abstract?.includes('Howard') ? 'Howard' : 'Gonzales',
+    })
+    setShowDeedModal(true)
+  }, [editingDeal, buyerEntity])
+
+  const openFullPackageModal = useCallback(() => {
+    openPSAModal()
+    setShowFullPackageModal(true)
+  }, [openPSAModal])
+
+  const updatePSAField = useCallback((field: string, value: string) => {
+    setPsaForm((prev) => {
+      const next = { ...prev, [field]: value }
+      const nraNum = Number(next.nra)
+      if (field === 'pricePerNRA') {
+        const pricePerNra = Number(value.replace(/[,$]/g, ''))
+        if (nraNum > 0 && pricePerNra > 0) {
+          const total = nraNum * pricePerNra
+          next.totalPrice = total.toFixed(2)
+          next.totalPriceWritten = numberToWords(total)
+        }
+      }
+      if (field === 'totalPrice') {
+        const total = Number(value.replace(/[,$]/g, ''))
+        if (nraNum > 0 && total > 0) {
+          next.pricePerNRA = (total / nraNum).toFixed(2)
+        }
+        next.totalPriceWritten = total > 0 ? numberToWords(total) : ''
+      }
+      if (field === 'nra') {
+        const nraNext = Number(value)
+        const pricePerNra = Number((next.pricePerNRA ?? '').replace(/[,$]/g, ''))
+        if (nraNext > 0 && pricePerNra > 0) {
+          const total = nraNext * pricePerNra
+          next.totalPrice = total.toFixed(2)
+          next.totalPriceWritten = numberToWords(total)
+        }
+      }
+      return next
+    })
+  }, [])
+
+  const updateDeedField = useCallback((field: string, value: string) => {
+    setDeedForm((prev) => ({ ...prev, [field]: value }))
+  }, [])
+
+  const generatePSA = useCallback(() => {
+    if (!editingDeal) return
+    setGeneratingDoc(true)
+    try {
+      const payload: Record<string, string> = {
+        AGREEMENT_DATE: psaForm.agreementDate ?? '',
+        EFFECTIVE_DATE: psaForm.effectiveDate ?? '',
+        CLOSING_DATE: psaForm.closingDate ?? '',
+        SELLER_NAME: psaForm.sellerName ?? '',
+        SELLER_ADDRESS: psaForm.sellerAddress ?? '',
+        SELLER_CITY: psaForm.sellerCity ?? '',
+        SELLER_STATE: psaForm.sellerState ?? '',
+        SELLER_ZIP: psaForm.sellerZip ?? '',
+        BUYER_NAME: psaForm.buyerName ?? '',
+        BUYER_ADDRESS: psaForm.buyerAddress ?? '',
+        BUYER_CITY: psaForm.buyerCity ?? '',
+        BUYER_STATE: psaForm.buyerState ?? '',
+        BUYER_ZIP: psaForm.buyerZip ?? '',
+        COUNTY: psaForm.county ?? '',
+        NRA: psaForm.nra ?? '',
+        TOTAL_PRICE: psaForm.totalPrice ?? '',
+        TOTAL_PRICE_WRITTEN: psaForm.totalPriceWritten ?? '',
+        OPERATOR_NAME: psaForm.operatorName ?? '',
+        RRC_LEASE_ID: psaForm.rrcLeaseId ?? '',
+        LEGAL_DESCRIPTION: psaForm.legalDescription ?? '',
+      }
+      const content = fillTemplate(psaTemplate, payload)
+      const datePart = new Date().toISOString().slice(0, 10)
+      const filename = `${sanitizeFilename(psaForm.sellerName ?? 'seller')}_PSA_${datePart}.doc`
+      downloadDocFromText(content, filename)
+    } finally {
+      setGeneratingDoc(false)
+    }
+  }, [editingDeal, psaForm])
+
+  const generateDeed = useCallback(() => {
+    if (!editingDeal) return
+    setGeneratingDoc(true)
+    try {
+      const payload: Record<string, string> = {
+        GRANTOR_NAME: deedForm.grantorName ?? '',
+        GRANTOR_ADDRESS: deedForm.grantorAddress ?? '',
+        GRANTOR_CITY: deedForm.grantorCity ?? '',
+        GRANTOR_STATE: deedForm.grantorState ?? '',
+        GRANTOR_ZIP: deedForm.grantorZip ?? '',
+        GRANTEE_NAME: deedForm.granteeName ?? '',
+        GRANTEE_ADDRESS: deedForm.granteeAddress ?? '',
+        GRANTEE_CITY: deedForm.granteeCity ?? '',
+        GRANTEE_STATE: deedForm.granteeState ?? '',
+        GRANTEE_ZIP: deedForm.granteeZip ?? '',
+        EFFECTIVE_DATE: deedForm.effectiveDate ?? '',
+        COUNTY: deedForm.county ?? '',
+        LEGAL_DESCRIPTION: deedForm.legalDescription ?? '',
+      }
+      const content = fillTemplate(deedTemplate, payload)
+      const datePart = new Date().toISOString().slice(0, 10)
+      const filename = `${sanitizeFilename(deedForm.grantorName ?? 'grantor')}_MineralDeed_${datePart}.doc`
+      downloadDocFromText(content, filename)
+    } finally {
+      setGeneratingDoc(false)
+    }
+  }, [editingDeal, deedForm])
 
   const annual = editingDeal?.monthly_royalty ? Number(editingDeal.monthly_royalty) * 12 : 0
 
@@ -629,6 +942,35 @@ export default function CRM() {
                     </button>
                   )}
 
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Offer Documents
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => openPSAModal()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 transition-colors"
+                      >
+                        <FileText size={12} />
+                        Generate PSA
+                      </button>
+                      <button
+                        onClick={() => openDeedModal()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-md hover:bg-green-100 transition-colors"
+                      >
+                        <FileText size={12} />
+                        Generate Mineral Deed
+                      </button>
+                      <button
+                        onClick={() => openFullPackageModal()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-md hover:bg-amber-100 transition-colors"
+                      >
+                        <Package size={12} />
+                        Generate Full Package
+                      </button>
+                    </div>
+                  </div>
+
                   {dealWells.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-100">
                       <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
@@ -911,6 +1253,493 @@ export default function CRM() {
                 className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600"
               >
                 Save log
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showPSAModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto p-4">
+          <div className="max-w-2xl mx-auto mt-10 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="text-lg font-semibold text-gray-900">Purchase &amp; Sale Agreement</div>
+                {showFullPackageModal && (
+                  <div className="text-xs text-amber-700 mt-0.5">
+                    Full package: PSA + Mineral Deed will be generated.
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowPSAModal(false)
+                  setShowFullPackageModal(false)
+                }}
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">
+              Seller
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Seller Name</label>
+                <input
+                  value={psaForm.sellerName ?? ''}
+                  onChange={(e) => updatePSAField('sellerName', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Seller Address</label>
+                <input
+                  value={psaForm.sellerAddress ?? ''}
+                  onChange={(e) => updatePSAField('sellerAddress', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                  <input
+                    value={psaForm.sellerCity ?? ''}
+                    onChange={(e) => updatePSAField('sellerCity', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+                  <input
+                    value={psaForm.sellerState ?? ''}
+                    onChange={(e) => updatePSAField('sellerState', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
+                  <input
+                    value={psaForm.sellerZip ?? ''}
+                    onChange={(e) => updatePSAField('sellerZip', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4 mb-3">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Buyer</div>
+              <button
+                onClick={() => {
+                  setBuyerEntity({
+                    name: psaForm.buyerName ?? '',
+                    address: psaForm.buyerAddress ?? '',
+                    city: psaForm.buyerCity ?? '',
+                    state: psaForm.buyerState ?? '',
+                    zip: psaForm.buyerZip ?? '',
+                  })
+                  try {
+                    window.localStorage.setItem(
+                      BUYER_ENTITY_STORAGE_KEY,
+                      JSON.stringify({
+                        name: psaForm.buyerName ?? '',
+                        address: psaForm.buyerAddress ?? '',
+                        city: psaForm.buyerCity ?? '',
+                        state: psaForm.buyerState ?? '',
+                        zip: psaForm.buyerZip ?? '',
+                      })
+                    )
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="text-xs font-medium text-amber-700 hover:text-amber-800"
+              >
+                Save as default →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Buyer Entity Name</label>
+                <input
+                  value={psaForm.buyerName ?? ''}
+                  onChange={(e) => updatePSAField('buyerName', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Buyer Address</label>
+                <input
+                  value={psaForm.buyerAddress ?? ''}
+                  onChange={(e) => updatePSAField('buyerAddress', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                  <input
+                    value={psaForm.buyerCity ?? ''}
+                    onChange={(e) => updatePSAField('buyerCity', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+                  <input
+                    value={psaForm.buyerState ?? ''}
+                    onChange={(e) => updatePSAField('buyerState', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
+                  <input
+                    value={psaForm.buyerZip ?? ''}
+                    onChange={(e) => updatePSAField('buyerZip', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Deal Terms</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Agreement Date</label>
+                <input
+                  value={psaForm.agreementDate ?? ''}
+                  onChange={(e) => updatePSAField('agreementDate', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Effective Date</label>
+                <input
+                  value={psaForm.effectiveDate ?? ''}
+                  onChange={(e) => updatePSAField('effectiveDate', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Closing Date</label>
+                <input
+                  value={psaForm.closingDate ?? ''}
+                  onChange={(e) => updatePSAField('closingDate', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">NRA (Net Royalty Acres)</label>
+                <input
+                  value={psaForm.nra ?? ''}
+                  onChange={(e) => updatePSAField('nra', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Price Per NRA ($)</label>
+                <input
+                  value={psaForm.pricePerNRA ?? ''}
+                  onChange={(e) => updatePSAField('pricePerNRA', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Total Price ($)</label>
+                <input
+                  value={psaForm.totalPrice ?? ''}
+                  onChange={(e) => updatePSAField('totalPrice', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Total Price Written Out</label>
+                <input
+                  value={psaForm.totalPriceWritten ?? ''}
+                  onChange={(e) => updatePSAField('totalPriceWritten', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Property</div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Legal Description / Exhibit A</label>
+                <textarea
+                  value={psaForm.legalDescription ?? ''}
+                  onChange={(e) => updatePSAField('legalDescription', e.target.value)}
+                  rows={4}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">County</label>
+                  <input
+                    value={psaForm.county ?? ''}
+                    onChange={(e) => updatePSAField('county', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Operator</label>
+                  <input
+                    value={psaForm.operatorName ?? ''}
+                    onChange={(e) => updatePSAField('operatorName', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">RRC Lease ID</label>
+                  <input
+                    value={psaForm.rrcLeaseId ?? ''}
+                    onChange={(e) => updatePSAField('rrcLeaseId', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  setShowPSAModal(false)
+                  setShowFullPackageModal(false)
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  generatePSA()
+                  if (showFullPackageModal) {
+                    setDeedForm((prev) => ({
+                      ...prev,
+                      grantorName: psaForm.sellerName ?? prev.grantorName ?? '',
+                      grantorAddress: psaForm.sellerAddress ?? prev.grantorAddress ?? '',
+                      grantorCity: psaForm.sellerCity ?? prev.grantorCity ?? '',
+                      grantorState: psaForm.sellerState ?? prev.grantorState ?? '',
+                      grantorZip: psaForm.sellerZip ?? prev.grantorZip ?? '',
+                      granteeName: psaForm.buyerName ?? prev.granteeName ?? '',
+                      granteeAddress: psaForm.buyerAddress ?? prev.granteeAddress ?? '',
+                      granteeCity: psaForm.buyerCity ?? prev.granteeCity ?? '',
+                      granteeState: psaForm.buyerState ?? prev.granteeState ?? '',
+                      granteeZip: psaForm.buyerZip ?? prev.granteeZip ?? '',
+                      effectiveDate: psaForm.effectiveDate ?? prev.effectiveDate ?? '',
+                      legalDescription: psaForm.legalDescription ?? prev.legalDescription ?? '',
+                      county: psaForm.county ?? prev.county ?? '',
+                    }))
+                    setShowPSAModal(false)
+                    setShowDeedModal(true)
+                  } else {
+                    setShowPSAModal(false)
+                  }
+                }}
+                disabled={generatingDoc}
+                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
+              >
+                {generatingDoc ? 'Generating…' : showFullPackageModal ? 'Download PSA &amp; Continue' : 'Download PSA'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeedModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto p-4">
+          <div className="max-w-2xl mx-auto mt-10 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div className="text-lg font-semibold text-gray-900">Mineral Deed</div>
+              <button
+                onClick={() => {
+                  setShowDeedModal(false)
+                  setShowFullPackageModal(false)
+                }}
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Grantor</div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Grantor Name</label>
+                <input
+                  value={deedForm.grantorName ?? ''}
+                  onChange={(e) => updateDeedField('grantorName', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Grantor Address</label>
+                <input
+                  value={deedForm.grantorAddress ?? ''}
+                  onChange={(e) => updateDeedField('grantorAddress', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                  <input
+                    value={deedForm.grantorCity ?? ''}
+                    onChange={(e) => updateDeedField('grantorCity', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+                  <input
+                    value={deedForm.grantorState ?? ''}
+                    onChange={(e) => updateDeedField('grantorState', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
+                  <input
+                    value={deedForm.grantorZip ?? ''}
+                    onChange={(e) => updateDeedField('grantorZip', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-4 mb-3">
+              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Grantee</div>
+              <button
+                onClick={() => {
+                  setBuyerEntity({
+                    name: deedForm.granteeName ?? '',
+                    address: deedForm.granteeAddress ?? '',
+                    city: deedForm.granteeCity ?? '',
+                    state: deedForm.granteeState ?? '',
+                    zip: deedForm.granteeZip ?? '',
+                  })
+                  try {
+                    window.localStorage.setItem(
+                      BUYER_ENTITY_STORAGE_KEY,
+                      JSON.stringify({
+                        name: deedForm.granteeName ?? '',
+                        address: deedForm.granteeAddress ?? '',
+                        city: deedForm.granteeCity ?? '',
+                        state: deedForm.granteeState ?? '',
+                        zip: deedForm.granteeZip ?? '',
+                      })
+                    )
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="text-xs font-medium text-amber-700 hover:text-amber-800"
+              >
+                Save as default →
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Grantee Name</label>
+                <input
+                  value={deedForm.granteeName ?? ''}
+                  onChange={(e) => updateDeedField('granteeName', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Grantee Address</label>
+                <input
+                  value={deedForm.granteeAddress ?? ''}
+                  onChange={(e) => updateDeedField('granteeAddress', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                  <input
+                    value={deedForm.granteeCity ?? ''}
+                    onChange={(e) => updateDeedField('granteeCity', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
+                  <input
+                    value={deedForm.granteeState ?? ''}
+                    onChange={(e) => updateDeedField('granteeState', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
+                  <input
+                    value={deedForm.granteeZip ?? ''}
+                    onChange={(e) => updateDeedField('granteeZip', e.target.value)}
+                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Deed Terms</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Effective Date</label>
+                <input
+                  value={deedForm.effectiveDate ?? ''}
+                  onChange={(e) => updateDeedField('effectiveDate', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">County</label>
+                <input
+                  value={deedForm.county ?? ''}
+                  onChange={(e) => updateDeedField('county', e.target.value)}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Legal Description / Exhibit A</label>
+                <textarea
+                  value={deedForm.legalDescription ?? ''}
+                  onChange={(e) => updateDeedField('legalDescription', e.target.value)}
+                  rows={4}
+                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => {
+                  setShowDeedModal(false)
+                  setShowFullPackageModal(false)
+                }}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  generateDeed()
+                  setShowDeedModal(false)
+                  setShowFullPackageModal(false)
+                }}
+                disabled={generatingDoc}
+                className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-60"
+              >
+                {generatingDoc ? 'Generating…' : 'Download Deed'}
               </button>
             </div>
           </div>
