@@ -67,7 +67,7 @@ export const COUNTIES: Record<string, County> = {
     geoJsonPath: '/howard_parcels_enriched.geojson',
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
-    nriCode: 'OR',
+    nriCode: '',
     stats: [
       { val: '215,592', lbl: 'Total owners' },
       { val: '22,072', lbl: 'Hot (8-10)' },

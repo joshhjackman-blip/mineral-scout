@@ -253,7 +253,7 @@ const getNRA = (
   tractProperties: TractSelection | null | undefined,
   countyConfig: { ownershipPctIsDecimal: boolean; nriCode: string }
 ): number | null => {
-  if (owner.sptb_code === countyConfig.nriCode) return null
+  if (owner.sptb_code === countyConfig.nriCode && countyConfig.nriCode !== '') return null
   const decimalInterest = getOwnershipDecimalValue(owner, countyConfig.ownershipPctIsDecimal)
   if (!decimalInterest || decimalInterest <= 0) return null
 
@@ -1052,7 +1052,7 @@ export default function Home() {
               first_60_month_oil: toNumber(props.first_60_month_oil),
               horizontal_well_count: toNumber(props.horizontal_well_count),
               vertical_well_count: toNumber(props.vertical_well_count),
-              SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area),
+              SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area ?? props.STArea__),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
