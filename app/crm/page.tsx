@@ -8,13 +8,131 @@ import {
   MapPin, BarChart2, BookOpen, Clock,
   DollarSign, User, Building2,
   CheckCircle2, Circle, XCircle, Flame,
-  TrendingUp, Save, FileText, Package, X,
+  TrendingUp, Save, FileText, Package,
 } from 'lucide-react'
 
 type BuyerEntity = { name: string; address: string; city: string; state: string; zip: string }
 
 const BUYER_ENTITY_STORAGE_KEY = 'mineral_map_buyer_entity'
 const DEFAULT_BUYER_ENTITY: BuyerEntity = { name: '', address: '', city: '', state: 'TX', zip: '' }
+
+type DocFieldProps = {
+  value: string
+  onChange: (next: string) => void
+  placeholder?: string
+  minChars?: number
+  style?: React.CSSProperties
+}
+
+const DocField = ({ value, onChange, placeholder, minChars = 10, style }: DocFieldProps) => {
+  const chars = Math.max(
+    (value?.length ?? 0) + 2,
+    (placeholder?.length ?? 0) + 2,
+    minChars
+  )
+  return (
+    <input
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      size={chars}
+      style={{
+        borderBottom: '1px solid #3B82F6',
+        background: '#EFF6FF',
+        padding: '0 4px',
+        fontFamily: 'inherit',
+        fontSize: 'inherit',
+        color: '#1D4ED8',
+        outline: 'none',
+        minWidth: 120,
+        display: 'inline-block',
+        ...style,
+      }}
+    />
+  )
+}
+
+const DocTextarea = ({
+  value,
+  onChange,
+  placeholder,
+  rows = 4,
+}: {
+  value: string
+  onChange: (next: string) => void
+  placeholder?: string
+  rows?: number
+}) => (
+  <textarea
+    value={value ?? ''}
+    onChange={(e) => onChange(e.target.value)}
+    placeholder={placeholder}
+    rows={rows}
+    style={{
+      width: '100%',
+      border: '1px solid #3B82F6',
+      background: '#EFF6FF',
+      padding: '8px 10px',
+      fontFamily: 'inherit',
+      fontSize: 'inherit',
+      color: '#1D4ED8',
+      outline: 'none',
+      display: 'block',
+      marginTop: 8,
+      marginBottom: 8,
+      resize: 'vertical',
+      borderRadius: 2,
+    }}
+  />
+)
+
+const PSA_CLAUSES: { heading: string; body: string }[] = [
+  {
+    heading: 'Revenues Post-Effective Date',
+    body:
+      '.  In the event Seller receives revenues from the Interests attributable to production after the Effective Date, Seller agrees to notify Buyer within ten (10) business days and that said revenues shall be owed to Buyer.  Any revenue, costs, expenses, and taxes will be prorated as of the Effective Date.',
+  },
+  {
+    heading: 'Assignment/Conveyance',
+    body:
+      '.  Buyer shall prepare the assignment(s) on a form that is mutually agreeable to both Buyer and Seller.',
+  },
+  {
+    heading: 'Special Warranty',
+    body:
+      '.  Seller will warrant title by, through, and under Seller.  Title will be conveyed to Buyer free and clear of any security interests, liens, mortgages, or other encumbrances.',
+  },
+  {
+    heading: 'Restriction on Certain Actions',
+    body:
+      ".  Seller will not, without Buyer's prior written consent: (a) enter into or modify any oil and gas lease or other agreement with respect to any of the Interests; (b) sell, transfer, or abandon any portion of the Interests; or (c) release, modify or reduce its rights under, any oil, gas, and/or mineral lease forming a part of the Interests.",
+  },
+  {
+    heading: 'Due Diligence',
+    body:
+      ".  Closing shall be subject to Buyer's review and approval of title and shall be at the sole discretion of the Buyer.  Seller shall in good faith cooperate with Buyer to provide any documentation readily available to address curative matters, and the closing shall further be contingent on the delivery of a properly executed assignment(s).",
+  },
+  {
+    heading: 'Force Majeure',
+    body:
+      '.  In no event shall Buyer be held responsible or liable for any failure to or delay in Closing or in the performance of its obligations hereunder arising out of or caused by, directly or indirectly, forces beyond its control, including, without limitation, strikes, work stoppages, acts of war or terrorism, civil or military disturbances, natural catastrophes or acts of God, pandemic, or governmental action.',
+  },
+  {
+    heading: 'Confidentiality',
+    body:
+      '.  This Agreement and its contents are intended to be confidential and are not to be discussed with or disclosed to any third party, except as may be required by contract or law.',
+  },
+  {
+    heading: 'Choice of Law',
+    body:
+      '.  This Agreement shall be governed by the laws of the State of Texas without regard to conflict of law principles.',
+  },
+  {
+    heading: 'Successors and Assigns',
+    body:
+      ".  This Agreement shall be binding upon and inure to the benefit of the parties hereto, and their respective successors and assigns. Buyer's rights and obligations under this Agreement may be freely assigned in Buyer's sole discretion at any time prior to Closing.",
+  },
+]
 
 const numberToWords = (amount: number): string => {
   if (!amount || isNaN(amount)) return ''
@@ -1162,9 +1280,9 @@ export default function CRM() {
       )}
 
       {showPSAModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto p-4">
-          <div className="max-w-2xl mx-auto mt-10 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-start justify-between mb-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center overflow-y-auto py-8">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
               <div>
                 <div className="text-lg font-semibold text-gray-900">Purchase &amp; Sale Agreement</div>
                 {showFullPackageModal && (
@@ -1173,68 +1291,358 @@ export default function CRM() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={() => {
-                  setShowPSAModal(false)
-                  setShowFullPackageModal(false)
-                }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowPSAModal(false)
+                    setShowFullPackageModal(false)
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (showFullPackageModal) {
+                      setDeedForm((prev) => ({
+                        ...prev,
+                        grantorName: psaForm.sellerName ?? prev.grantorName ?? '',
+                        grantorAddress: psaForm.sellerAddress ?? prev.grantorAddress ?? '',
+                        grantorCity: psaForm.sellerCity ?? prev.grantorCity ?? '',
+                        grantorState: psaForm.sellerState ?? prev.grantorState ?? '',
+                        grantorZip: psaForm.sellerZip ?? prev.grantorZip ?? '',
+                        granteeName: psaForm.buyerName ?? prev.granteeName ?? '',
+                        granteeAddress: psaForm.buyerAddress ?? prev.granteeAddress ?? '',
+                        granteeCity: psaForm.buyerCity ?? prev.granteeCity ?? '',
+                        granteeState: psaForm.buyerState ?? prev.granteeState ?? '',
+                        granteeZip: psaForm.buyerZip ?? prev.granteeZip ?? '',
+                        effectiveDate: psaForm.effectiveDate ?? prev.effectiveDate ?? '',
+                        legalDescription: psaForm.legalDescription ?? prev.legalDescription ?? '',
+                        county: psaForm.county ?? prev.county ?? '',
+                      }))
+                      void generatePSA().then(() => {
+                        setShowDeedModal(true)
+                      })
+                    } else {
+                      void generatePSA()
+                    }
+                  }}
+                  disabled={generatingDoc}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {generatingDoc && (
+                    <span
+                      className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"
+                      aria-hidden
+                    />
+                  )}
+                  {generatingDoc
+                    ? 'Generating…'
+                    : showFullPackageModal
+                      ? 'Download PSA & Continue'
+                      : 'Download PSA'}
+                </button>
+              </div>
             </div>
 
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">
-              Seller
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Seller Name</label>
-                <input
+            <div
+              className="overflow-y-auto"
+              style={{
+                maxHeight: '85vh',
+                padding: '48px 64px',
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: 12,
+                lineHeight: 1.8,
+                color: '#111827',
+              }}
+            >
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14, marginBottom: 24 }}>
+                PURCHASE AND SALE AGREEMENT
+              </div>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                This Purchase and Sale Agreement (the &ldquo;Agreement&rdquo;) is entered into this{' '}
+                <DocField
+                  value={psaForm.agreementDate ?? ''}
+                  onChange={(v) => updatePSAField('agreementDate', v)}
+                  placeholder="Agreement date"
+                />{' '}
+                but is effective as of{' '}
+                <DocField
+                  value={psaForm.effectiveDate ?? ''}
+                  onChange={(v) => updatePSAField('effectiveDate', v)}
+                  placeholder="Effective date"
+                />
+                , by and between{' '}
+                <DocField
                   value={psaForm.sellerName ?? ''}
-                  onChange={(e) => updatePSAField('sellerName', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Seller Address</label>
-                <input
+                  onChange={(v) => updatePSAField('sellerName', v)}
+                  placeholder="Seller name"
+                  minChars={20}
+                  style={{ fontWeight: 700 }}
+                />{' '}
+                whose address is{' '}
+                <DocField
                   value={psaForm.sellerAddress ?? ''}
-                  onChange={(e) => updatePSAField('sellerAddress', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  onChange={(v) => updatePSAField('sellerAddress', v)}
+                  placeholder="Seller address"
+                  minChars={18}
                 />
+                ,{' '}
+                <DocField
+                  value={psaForm.sellerCity ?? ''}
+                  onChange={(v) => updatePSAField('sellerCity', v)}
+                  placeholder="City"
+                />
+                ,{' '}
+                <DocField
+                  value={psaForm.sellerState ?? ''}
+                  onChange={(v) => updatePSAField('sellerState', v)}
+                  placeholder="ST"
+                  minChars={4}
+                />{' '}
+                <DocField
+                  value={psaForm.sellerZip ?? ''}
+                  onChange={(v) => updatePSAField('sellerZip', v)}
+                  placeholder="Zip"
+                  minChars={7}
+                />{' '}
+                (the &ldquo;Seller&rdquo;), and{' '}
+                <DocField
+                  value={psaForm.buyerName ?? ''}
+                  onChange={(v) => updatePSAField('buyerName', v)}
+                  placeholder="Buyer entity name"
+                  minChars={20}
+                  style={{ fontWeight: 700 }}
+                />
+                , whose address is{' '}
+                <DocField
+                  value={psaForm.buyerAddress ?? ''}
+                  onChange={(v) => updatePSAField('buyerAddress', v)}
+                  placeholder="Buyer address"
+                  minChars={18}
+                />
+                ,{' '}
+                <DocField
+                  value={psaForm.buyerCity ?? ''}
+                  onChange={(v) => updatePSAField('buyerCity', v)}
+                  placeholder="City"
+                />
+                ,{' '}
+                <DocField
+                  value={psaForm.buyerState ?? ''}
+                  onChange={(v) => updatePSAField('buyerState', v)}
+                  placeholder="ST"
+                  minChars={4}
+                />{' '}
+                <DocField
+                  value={psaForm.buyerZip ?? ''}
+                  onChange={(v) => updatePSAField('buyerZip', v)}
+                  placeholder="Zip"
+                  minChars={7}
+                />{' '}
+                (the &ldquo;Buyer&rdquo;).
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                WHEREAS, Seller owns and desires to sell or assign to Buyer certain oil, gas, mineral
+                and/or royalty interests (the &ldquo;Interests&rdquo;) owned in{' '}
+                <DocField
+                  value={psaForm.county ?? ''}
+                  onChange={(v) => updatePSAField('county', v)}
+                  placeholder="County"
+                />{' '}
+                County, Texas, in the subject lands described on the attached Exhibit &ldquo;A.&rdquo;
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                WHEREAS, Buyer desires to purchase such Interests in the lands described in the attached
+                Exhibit &ldquo;A.&rdquo;
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                NOW THEREFORE, Seller and Buyer have reached an agreement regarding such purchase and
+                sale with the following terms and conditions:
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', rowGap: 6, marginBottom: 16 }}>
+                <div>Purchase Price:</div>
+                <div>
+                  $
+                  <DocField
+                    value={psaForm.totalPrice ?? ''}
+                    onChange={(v) => updatePSAField('totalPrice', v)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div>Number of Net Royalty Acres:</div>
+                <div>
+                  <DocField
+                    value={psaForm.nra ?? ''}
+                    onChange={(v) => updatePSAField('nra', v)}
+                    placeholder="0.0000"
+                  />
+                </div>
+                <div>Closing Date:</div>
+                <div>
+                  On or before{' '}
+                  <DocField
+                    value={psaForm.closingDate ?? ''}
+                    onChange={(v) => updatePSAField('closingDate', v)}
+                    placeholder="Closing date"
+                  />
+                  , or thirty (30) business days after the date which both Seller and Buyer have executed
+                  the Agreement, whichever is later.
+                </div>
+                <div>Effective Date:</div>
+                <div>
+                  <DocField
+                    value={psaForm.effectiveDate ?? ''}
+                    onChange={(v) => updatePSAField('effectiveDate', v)}
+                    placeholder="Effective date"
+                  />
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                  <input
-                    value={psaForm.sellerCity ?? ''}
-                    onChange={(e) => updatePSAField('sellerCity', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+
+              {PSA_CLAUSES.slice(0, 3).map((c) => (
+                <p key={c.heading} style={{ textAlign: 'justify', marginBottom: 14 }}>
+                  <span style={{ textDecoration: 'underline' }}>{c.heading}</span>
+                  {c.body}
+                </p>
+              ))}
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                <span style={{ textDecoration: 'underline' }}>Calculation of Purchase Price</span>. The
+                total purchase price for the Interests shall be{' '}
+                <DocField
+                  value={psaForm.totalPriceWritten ?? ''}
+                  onChange={(v) => updatePSAField('totalPriceWritten', v)}
+                  placeholder="WRITTEN OUT AMOUNT"
+                  minChars={40}
+                  style={{ fontWeight: 700 }}
+                />{' '}
+                ($
+                <DocField
+                  value={psaForm.totalPrice ?? ''}
+                  onChange={(v) => updatePSAField('totalPrice', v)}
+                  placeholder="0.00"
+                />
+                ) (the &ldquo;Purchase Price&rdquo;), subject to adjustment as set forth herein, based upon
+                the Parties&rsquo; belief that Seller owns{' '}
+                <DocField
+                  value={psaForm.nra ?? ''}
+                  onChange={(v) => updatePSAField('nra', v)}
+                  placeholder="0.0000"
+                />{' '}
+                Net Royalty Acres in the lands described on the attached Exhibit &ldquo;A.&rdquo; For
+                purposes of calculating the Purchase Price, &ldquo;Net Royalty Acres&rdquo; shall mean one
+                (1) net mineral acre of land subject to an oil and gas lease at a one-eighth (1/8)
+                royalty, free and clear of any and all burdens outstanding in third parties. In the event
+                Buyer establishes that Seller owns less Net Royalty Acres than set forth above, the
+                Purchase Price will accordingly be proportionately reduced.
+              </p>
+
+              {PSA_CLAUSES.slice(3).map((c) => (
+                <p key={c.heading} style={{ textAlign: 'justify', marginBottom: 14 }}>
+                  <span style={{ textDecoration: 'underline' }}>{c.heading}</span>
+                  {c.body}
+                </p>
+              ))}
+
+              <div style={{ marginTop: 40 }}>
+                <div style={{ fontWeight: 700 }}>SELLER:</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>
+                  <DocField
+                    value={psaForm.sellerName ?? ''}
+                    onChange={(v) => updatePSAField('sellerName', v)}
+                    placeholder="SELLER NAME"
+                    minChars={24}
+                    style={{ fontWeight: 700, textTransform: 'uppercase' }}
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
-                  <input
-                    value={psaForm.sellerState ?? ''}
-                    onChange={(e) => updatePSAField('sellerState', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                <div style={{ marginTop: 16 }}>___________________________</div>
+                <div>Date: _______________________</div>
+              </div>
+
+              <div style={{ marginTop: 32 }}>
+                <div style={{ fontWeight: 700 }}>BUYER:</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>
+                  <DocField
+                    value={psaForm.buyerName ?? ''}
+                    onChange={(v) => updatePSAField('buyerName', v)}
+                    placeholder="BUYER ENTITY"
+                    minChars={24}
+                    style={{ fontWeight: 700, textTransform: 'uppercase' }}
                   />
                 </div>
+                <div style={{ marginTop: 16 }}>___________________________</div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
-                  <input
-                    value={psaForm.sellerZip ?? ''}
-                    onChange={(e) => updatePSAField('sellerZip', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  By:&nbsp;&nbsp;&nbsp;&nbsp;
+                  <DocField
+                    value={psaForm.buyerSignatory ?? ''}
+                    onChange={(v) => updatePSAField('buyerSignatory', v)}
+                    placeholder="Signatory name"
+                    minChars={18}
                   />
+                </div>
+                <div>Title:&nbsp;&nbsp;&nbsp;&nbsp;Managing Member</div>
+                <div>Date:&nbsp;&nbsp;______________________</div>
+              </div>
+
+              <div style={{ marginTop: 48 }}>
+                <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 14 }}>
+                  EXHIBIT &ldquo;A&rdquo;
+                </div>
+                <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                  Attached to and made part of that certain Purchase and Sale Agreement dated{' '}
+                  <DocField
+                    value={psaForm.agreementDate ?? ''}
+                    onChange={(v) => updatePSAField('agreementDate', v)}
+                    placeholder="Agreement date"
+                  />
+                  , by and between{' '}
+                  <DocField
+                    value={psaForm.sellerName ?? ''}
+                    onChange={(v) => updatePSAField('sellerName', v)}
+                    placeholder="Seller"
+                    minChars={18}
+                  />{' '}
+                  (the &ldquo;Seller&rdquo;) and{' '}
+                  <DocField
+                    value={psaForm.buyerName ?? ''}
+                    onChange={(v) => updatePSAField('buyerName', v)}
+                    placeholder="Buyer"
+                    minChars={18}
+                  />{' '}
+                  (the &ldquo;Buyer&rdquo;).
+                </div>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>LANDS:</div>
+                <DocTextarea
+                  value={psaForm.legalDescription ?? ''}
+                  onChange={(v) => updatePSAField('legalDescription', v)}
+                  placeholder="Legal description / Exhibit A lands"
+                  rows={5}
+                />
+                <div style={{ textAlign: 'center', fontWeight: 700, marginTop: 14 }}>
+                  [END OF EXHIBIT &ldquo;A&rdquo;]
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between mt-4 mb-3">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Buyer</div>
+            <div className="sr-only">
+              <input
+                value={psaForm.operatorName ?? ''}
+                onChange={(e) => updatePSAField('operatorName', e.target.value)}
+                readOnly
+              />
+              <input
+                value={psaForm.rrcLeaseId ?? ''}
+                onChange={(e) => updatePSAField('rrcLeaseId', e.target.value)}
+                readOnly
+              />
+            </div>
+
+            <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50 rounded-b-xl">
               <button
                 onClick={() => {
                   setBuyerEntity({
@@ -1261,264 +1669,238 @@ export default function CRM() {
                 }}
                 className="text-xs font-medium text-amber-700 hover:text-amber-800"
               >
-                Save as default →
+                Save buyer as default →
               </button>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Buyer Entity Name</label>
-                <input
-                  value={psaForm.buyerName ?? ''}
-                  onChange={(e) => updatePSAField('buyerName', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Buyer Address</label>
-                <input
-                  value={psaForm.buyerAddress ?? ''}
-                  onChange={(e) => updatePSAField('buyerAddress', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                  <input
-                    value={psaForm.buyerCity ?? ''}
-                    onChange={(e) => updatePSAField('buyerCity', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
-                  <input
-                    value={psaForm.buyerState ?? ''}
-                    onChange={(e) => updatePSAField('buyerState', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
-                  <input
-                    value={psaForm.buyerZip ?? ''}
-                    onChange={(e) => updatePSAField('buyerZip', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Deal Terms</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Agreement Date</label>
-                <input
-                  value={psaForm.agreementDate ?? ''}
-                  onChange={(e) => updatePSAField('agreementDate', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Effective Date</label>
-                <input
-                  value={psaForm.effectiveDate ?? ''}
-                  onChange={(e) => updatePSAField('effectiveDate', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Closing Date</label>
-                <input
-                  value={psaForm.closingDate ?? ''}
-                  onChange={(e) => updatePSAField('closingDate', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">NRA (Net Royalty Acres)</label>
-                <input
-                  value={psaForm.nra ?? ''}
-                  onChange={(e) => updatePSAField('nra', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Price Per NRA ($)</label>
-                <input
-                  value={psaForm.pricePerNRA ?? ''}
-                  onChange={(e) => updatePSAField('pricePerNRA', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Total Price ($)</label>
-                <input
-                  value={psaForm.totalPrice ?? ''}
-                  onChange={(e) => updatePSAField('totalPrice', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Total Price Written Out</label>
-                <input
-                  value={psaForm.totalPriceWritten ?? ''}
-                  onChange={(e) => updatePSAField('totalPriceWritten', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Property</div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Legal Description / Exhibit A</label>
-                <textarea
-                  value={psaForm.legalDescription ?? ''}
-                  onChange={(e) => updatePSAField('legalDescription', e.target.value)}
-                  rows={4}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">County</label>
-                  <input
-                    value={psaForm.county ?? ''}
-                    onChange={(e) => updatePSAField('county', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Operator</label>
-                  <input
-                    value={psaForm.operatorName ?? ''}
-                    onChange={(e) => updatePSAField('operatorName', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">RRC Lease ID</label>
-                  <input
-                    value={psaForm.rrcLeaseId ?? ''}
-                    onChange={(e) => updatePSAField('rrcLeaseId', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
-              <button
-                onClick={() => {
-                  setShowPSAModal(false)
-                  setShowFullPackageModal(false)
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  generatePSA()
-                  if (showFullPackageModal) {
-                    setDeedForm((prev) => ({
-                      ...prev,
-                      grantorName: psaForm.sellerName ?? prev.grantorName ?? '',
-                      grantorAddress: psaForm.sellerAddress ?? prev.grantorAddress ?? '',
-                      grantorCity: psaForm.sellerCity ?? prev.grantorCity ?? '',
-                      grantorState: psaForm.sellerState ?? prev.grantorState ?? '',
-                      grantorZip: psaForm.sellerZip ?? prev.grantorZip ?? '',
-                      granteeName: psaForm.buyerName ?? prev.granteeName ?? '',
-                      granteeAddress: psaForm.buyerAddress ?? prev.granteeAddress ?? '',
-                      granteeCity: psaForm.buyerCity ?? prev.granteeCity ?? '',
-                      granteeState: psaForm.buyerState ?? prev.granteeState ?? '',
-                      granteeZip: psaForm.buyerZip ?? prev.granteeZip ?? '',
-                      effectiveDate: psaForm.effectiveDate ?? prev.effectiveDate ?? '',
-                      legalDescription: psaForm.legalDescription ?? prev.legalDescription ?? '',
-                      county: psaForm.county ?? prev.county ?? '',
-                    }))
-                    setShowPSAModal(false)
-                    setShowDeedModal(true)
-                  } else {
-                    setShowPSAModal(false)
-                  }
-                }}
-                disabled={generatingDoc}
-                className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-60"
-              >
-                {generatingDoc ? 'Generating…' : showFullPackageModal ? 'Download PSA &amp; Continue' : 'Download PSA'}
-              </button>
+              <div className="text-xs text-gray-400">Click any blue field to edit</div>
             </div>
           </div>
         </div>
       )}
 
       {showDeedModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 overflow-y-auto p-4">
-          <div className="max-w-2xl mx-auto mt-10 bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-start justify-between mb-4">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center overflow-y-auto py-8">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl mx-4 flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 shrink-0">
               <div className="text-lg font-semibold text-gray-900">Mineral Deed</div>
-              <button
-                onClick={() => {
-                  setShowDeedModal(false)
-                  setShowFullPackageModal(false)
-                }}
-                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setShowDeedModal(false)
+                    setShowFullPackageModal(false)
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    void generateDeed().then(() => {
+                      setShowFullPackageModal(false)
+                    })
+                  }}
+                  disabled={generatingDoc}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-60"
+                >
+                  {generatingDoc && (
+                    <span
+                      className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"
+                      aria-hidden
+                    />
+                  )}
+                  {generatingDoc ? 'Generating…' : 'Download Deed'}
+                </button>
+              </div>
             </div>
 
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Grantor</div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Grantor Name</label>
-                <input
+            <div
+              className="overflow-y-auto"
+              style={{
+                maxHeight: '85vh',
+                padding: '48px 64px',
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: 12,
+                lineHeight: 1.8,
+                color: '#111827',
+              }}
+            >
+              <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 14, marginBottom: 24 }}>
+                MINERAL DEED
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div>STATE OF TEXAS&nbsp;&nbsp;&nbsp;§</div>
+                <div>&nbsp;&nbsp;&nbsp;§</div>
+                <div>
+                  COUNTY OF{' '}
+                  <DocField
+                    value={(deedForm.county ?? '').toUpperCase()}
+                    onChange={(v) => updateDeedField('county', v)}
+                    placeholder="COUNTY"
+                    style={{ textTransform: 'uppercase' }}
+                  />
+                  &nbsp;&nbsp;&nbsp;§
+                </div>
+              </div>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                <DocField
                   value={deedForm.grantorName ?? ''}
-                  onChange={(e) => updateDeedField('grantorName', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  onChange={(v) => updateDeedField('grantorName', v)}
+                  placeholder="Grantor name"
+                  minChars={22}
+                  style={{ fontWeight: 700 }}
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Grantor Address</label>
-                <input
+                , whose address is{' '}
+                <DocField
                   value={deedForm.grantorAddress ?? ''}
-                  onChange={(e) => updateDeedField('grantorAddress', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  onChange={(v) => updateDeedField('grantorAddress', v)}
+                  placeholder="Grantor address"
+                  minChars={18}
                 />
+                ,{' '}
+                <DocField
+                  value={deedForm.grantorCity ?? ''}
+                  onChange={(v) => updateDeedField('grantorCity', v)}
+                  placeholder="City"
+                />
+                ,{' '}
+                <DocField
+                  value={deedForm.grantorState ?? ''}
+                  onChange={(v) => updateDeedField('grantorState', v)}
+                  placeholder="ST"
+                  minChars={4}
+                />{' '}
+                <DocField
+                  value={deedForm.grantorZip ?? ''}
+                  onChange={(v) => updateDeedField('grantorZip', v)}
+                  placeholder="Zip"
+                  minChars={7}
+                />{' '}
+                (&ldquo;Grantor&rdquo;), for the sum of Ten Dollars ($10.00) and other good and valuable
+                consideration, the receipt and sufficiency of which are hereby acknowledged, does hereby
+                grant, bargain, sell, transfer, convey, assign and deliver all of Grantor&rsquo;s
+                interest in and to the oil, gas, and minerals (the &ldquo;Mineral Interest&rdquo;) in and
+                under and that may be produced from the lands as set forth and identified in
+                &ldquo;Exhibit A,&rdquo; which is attached to and made a part of this Mineral Deed for
+                all purposes (the &ldquo;Lands&rdquo;), to{' '}
+                <DocField
+                  value={deedForm.granteeName ?? ''}
+                  onChange={(v) => updateDeedField('granteeName', v)}
+                  placeholder="Grantee name"
+                  minChars={22}
+                  style={{ fontWeight: 700 }}
+                />
+                , whose address is{' '}
+                <DocField
+                  value={deedForm.granteeAddress ?? ''}
+                  onChange={(v) => updateDeedField('granteeAddress', v)}
+                  placeholder="Grantee address"
+                  minChars={18}
+                />
+                ,{' '}
+                <DocField
+                  value={deedForm.granteeCity ?? ''}
+                  onChange={(v) => updateDeedField('granteeCity', v)}
+                  placeholder="City"
+                />
+                ,{' '}
+                <DocField
+                  value={deedForm.granteeState ?? ''}
+                  onChange={(v) => updateDeedField('granteeState', v)}
+                  placeholder="ST"
+                  minChars={4}
+                />{' '}
+                <DocField
+                  value={deedForm.granteeZip ?? ''}
+                  onChange={(v) => updateDeedField('granteeZip', v)}
+                  placeholder="Zip"
+                  minChars={7}
+                />{' '}
+                (&ldquo;Grantee&rdquo;).
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                This Mineral Deed is effective for all purposes, including runs of oil and deliveries of
+                gas and other hydrocarbons, as of{' '}
+                <DocField
+                  value={deedForm.effectiveDate ?? ''}
+                  onChange={(v) => updateDeedField('effectiveDate', v)}
+                  placeholder="Effective date"
+                />{' '}
+                (the &ldquo;Effective Date&rdquo;). Grantor also conveys to Grantee any and all revenues
+                attributable to the Mineral Interest that are held in suspense, unremitted, or otherwise
+                unpaid regardless of the Effective Date.
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                TO HAVE AND TO HOLD the above-described Lands and Mineral Interest, together with all and
+                singular the rights and appurtenances thereto and anywise belonging, unto Grantee and
+                Grantee&rsquo;s heirs, successors, and assigns forever; and Grantor, their heirs and
+                successors warrant and agree to forever defend title to the Lands unto Grantee and
+                Grantee&rsquo;s heirs, successors, and assigns against all claims of every person
+                claiming or to claim the same or any part thereof.
+              </p>
+
+              <p style={{ textAlign: 'justify', marginBottom: 14 }}>
+                <span style={{ fontWeight: 700 }}>IN WITNESS WHEREOF</span>, this Mineral Deed is
+                executed on the date of acknowledgement, but shall be effective as of the Effective Date
+                provided herein.
+              </p>
+
+              <div style={{ marginTop: 40 }}>
+                <div style={{ fontWeight: 700 }}>GRANTOR:</div>
+                <div style={{ fontWeight: 700, marginTop: 4 }}>
+                  <DocField
+                    value={deedForm.grantorName ?? ''}
+                    onChange={(v) => updateDeedField('grantorName', v)}
+                    placeholder="GRANTOR NAME"
+                    minChars={24}
+                    style={{ fontWeight: 700, textTransform: 'uppercase' }}
+                  />
+                </div>
+                <div style={{ marginTop: 16 }}>___________________________</div>
+                <div>Date: _______________________</div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                  <input
-                    value={deedForm.grantorCity ?? ''}
-                    onChange={(e) => updateDeedField('grantorCity', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+
+              <div style={{ marginTop: 48 }}>
+                <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: 14 }}>EXHIBIT A</div>
+                <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                  Attached and made a part of that Mineral Deed effective{' '}
+                  <DocField
+                    value={deedForm.effectiveDate ?? ''}
+                    onChange={(v) => updateDeedField('effectiveDate', v)}
+                    placeholder="Effective date"
+                  />{' '}
+                  between{' '}
+                  <DocField
+                    value={deedForm.grantorName ?? ''}
+                    onChange={(v) => updateDeedField('grantorName', v)}
+                    placeholder="Grantor"
+                    minChars={18}
+                  />{' '}
+                  (&ldquo;Grantor&rdquo;), and{' '}
+                  <DocField
+                    value={deedForm.granteeName ?? ''}
+                    onChange={(v) => updateDeedField('granteeName', v)}
+                    placeholder="Grantee"
+                    minChars={18}
+                  />{' '}
+                  (&ldquo;Grantee&rdquo;).
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
-                  <input
-                    value={deedForm.grantorState ?? ''}
-                    onChange={(e) => updateDeedField('grantorState', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
-                  <input
-                    value={deedForm.grantorZip ?? ''}
-                    onChange={(e) => updateDeedField('grantorZip', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>LANDS:</div>
+                <DocTextarea
+                  value={deedForm.legalDescription ?? ''}
+                  onChange={(v) => updateDeedField('legalDescription', v)}
+                  placeholder="Legal description / Exhibit A lands"
+                  rows={5}
+                />
+                <div style={{ textAlign: 'center', fontWeight: 700, marginTop: 14 }}>
+                  END OF EXHIBIT A
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between mt-4 mb-3">
-              <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Grantee</div>
+            <div className="px-6 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50 rounded-b-xl">
               <button
                 onClick={() => {
                   setBuyerEntity({
@@ -1545,104 +1927,9 @@ export default function CRM() {
                 }}
                 className="text-xs font-medium text-amber-700 hover:text-amber-800"
               >
-                Save as default →
+                Save grantee as default →
               </button>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Grantee Name</label>
-                <input
-                  value={deedForm.granteeName ?? ''}
-                  onChange={(e) => updateDeedField('granteeName', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Grantee Address</label>
-                <input
-                  value={deedForm.granteeAddress ?? ''}
-                  onChange={(e) => updateDeedField('granteeAddress', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                  <input
-                    value={deedForm.granteeCity ?? ''}
-                    onChange={(e) => updateDeedField('granteeCity', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">State</label>
-                  <input
-                    value={deedForm.granteeState ?? ''}
-                    onChange={(e) => updateDeedField('granteeState', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">Zip</label>
-                  <input
-                    value={deedForm.granteeZip ?? ''}
-                    onChange={(e) => updateDeedField('granteeZip', e.target.value)}
-                    className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 mt-4">Deed Terms</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">Effective Date</label>
-                <input
-                  value={deedForm.effectiveDate ?? ''}
-                  onChange={(e) => updateDeedField('effectiveDate', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-500 mb-1">County</label>
-                <input
-                  value={deedForm.county ?? ''}
-                  onChange={(e) => updateDeedField('county', e.target.value)}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-500 mb-1">Legal Description / Exhibit A</label>
-                <textarea
-                  value={deedForm.legalDescription ?? ''}
-                  onChange={(e) => updateDeedField('legalDescription', e.target.value)}
-                  rows={4}
-                  className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 mt-6 pt-4 border-t border-gray-100">
-              <button
-                onClick={() => {
-                  setShowDeedModal(false)
-                  setShowFullPackageModal(false)
-                }}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  generateDeed()
-                  setShowDeedModal(false)
-                  setShowFullPackageModal(false)
-                }}
-                disabled={generatingDoc}
-                className="px-4 py-2 text-sm font-semibold text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-60"
-              >
-                {generatingDoc ? 'Generating…' : 'Download Deed'}
-              </button>
+              <div className="text-xs text-gray-400">Click any blue field to edit</div>
             </div>
           </div>
         </div>
