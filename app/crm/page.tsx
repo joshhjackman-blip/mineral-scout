@@ -183,6 +183,7 @@ type Deal = {
   tract_survey?: string | null
   rrc_lease_id?: string | null
   operator_name?: string | null
+  county?: string | null
   mailing_address?: string | null
   mailing_city?: string | null
   mailing_state?: string | null
@@ -249,6 +250,27 @@ const formatDate = (date: string) => {
   return `in ${diff}d`
 }
 
+type DealCounty = 'gonzales' | 'howard' | 'unknown'
+
+const HOWARD_OPERATOR_PATTERNS = [
+  'apache', 'diamondback', 'sm energy', 'ovintiv',
+  'highpeak', 'scout energy', 'vital energy', 'birch operations',
+  'surge operating',
+]
+
+const GONZALES_OPERATOR_PATTERNS = [
+  'eog', 'baytex', 'marathon', 'auterra',
+]
+
+const getDealCounty = (deal: Deal): DealCounty => {
+  const stored = (deal.county ?? '').toLowerCase().trim()
+  if (stored === 'gonzales' || stored === 'howard') return stored
+  const op = (deal.operator_name ?? '').toLowerCase()
+  if (op && HOWARD_OPERATOR_PATTERNS.some((p) => op.includes(p))) return 'howard'
+  if (op && GONZALES_OPERATOR_PATTERNS.some((p) => op.includes(p))) return 'gonzales'
+  return 'unknown'
+}
+
 export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [selected, setSelected] = useState<Deal | null>(null)
@@ -260,6 +282,7 @@ export default function CRM() {
   const [contactLog, setContactLog] = useState<ContactEntry[]>([])
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState('all')
+  const [countyFilter, setCountyFilter] = useState<'all' | 'gonzales' | 'howard'>('all')
   const [search, setSearch] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const [logModal, setLogModal] = useState<{ method: string } | null>(null)
@@ -290,13 +313,14 @@ export default function CRM() {
 
   const filtered = useMemo(() => deals.filter((d) => {
     if (activeTag !== 'all' && (d.tag ?? 'prospect') !== activeTag) return false
+    if (countyFilter !== 'all' && getDealCounty(d) !== countyFilter) return false
     if (
       search &&
       !(d.owner_name ?? '').toLowerCase().includes(search.toLowerCase()) &&
       !(d.operator_name ?? '').toLowerCase().includes(search.toLowerCase())
     ) return false
     return true
-  }), [deals, activeTag, search])
+  }), [deals, activeTag, countyFilter, search])
 
   const handleSelectDeal = async (deal: Deal) => {
     setSelected(deal)
@@ -332,6 +356,10 @@ export default function CRM() {
       notes: toSave.notes ?? '',
       phone: toSave.phone ?? null,
       email: toSave.email ?? null,
+      county: toSave.county ?? (() => {
+        const derived = getDealCounty(toSave as Deal)
+        return derived === 'unknown' ? null : derived
+      })(),
       updated_at: new Date().toISOString(),
     }
 
@@ -473,14 +501,26 @@ export default function CRM() {
     const email = result.emails?.[0] ?? null
 
     if (phone || email) {
+      const derivedCounty = editingDeal.county ?? (() => {
+        const d = getDealCounty(editingDeal)
+        return d === 'unknown' ? null : d
+      })()
+      const updatePayload: Record<string, unknown> = {
+        phone,
+        email,
+        tag: 'skip_traced',
+        updated_at: new Date().toISOString(),
+      }
+      if (!editingDeal.county && derivedCounty) updatePayload.county = derivedCounty
+
       await supabase
         .from('deals')
-        .update({ phone, email, tag: 'skip_traced', updated_at: new Date().toISOString() })
+        .update(updatePayload)
         .eq('id', editingDeal.id)
 
-      setEditingDeal((prev) => (prev ? { ...prev, phone, email, tag: 'skip_traced' } : null))
-      setSelected((prev) => (prev?.id === editingDeal.id ? { ...prev, phone, email, tag: 'skip_traced' } : prev))
-      setDeals((prev) => prev.map((d) => (d.id === editingDeal.id ? { ...d, phone, email, tag: 'skip_traced' } : d)))
+      setEditingDeal((prev) => (prev ? { ...prev, phone, email, tag: 'skip_traced', county: prev.county ?? derivedCounty ?? null } : null))
+      setSelected((prev) => (prev?.id === editingDeal.id ? { ...prev, phone, email, tag: 'skip_traced', county: prev.county ?? derivedCounty ?? null } : prev))
+      setDeals((prev) => prev.map((d) => (d.id === editingDeal.id ? { ...d, phone, email, tag: 'skip_traced', county: d.county ?? derivedCounty ?? null } : d)))
     } else {
       alert('No contact info found for this owner.')
     }
@@ -511,7 +551,10 @@ export default function CRM() {
       effectiveDate: formatLong(effectiveDate),
       closingDate: formatLong(closingDate),
       legalDescription: editingDeal.tract_abstract ?? '',
-      county: editingDeal.tract_abstract?.includes('Howard') ? 'Howard' : 'Gonzales',
+      county: (() => {
+        const c = getDealCounty(editingDeal)
+        return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+      })(),
       nra: editingDeal.acreage ? String(Number(editingDeal.acreage).toFixed(4)) : '',
       pricePerNRA: '',
       totalPrice: '',
@@ -543,7 +586,10 @@ export default function CRM() {
       granteeZip: buyerEntity.zip,
       effectiveDate: formatLong(effectiveDate),
       legalDescription: editingDeal.tract_abstract ?? '',
-      county: editingDeal.tract_abstract?.includes('Howard') ? 'Howard' : 'Gonzales',
+      county: (() => {
+        const c = getDealCounty(editingDeal)
+        return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+      })(),
     })
     setShowDeedModal(true)
   }, [editingDeal, buyerEntity])
@@ -703,6 +749,24 @@ export default function CRM() {
                   {tag !== 'all' && (
                     <span className="ml-1 text-gray-400">{deals.filter((d) => (d.tag ?? 'prospect') === tag).length}</span>
                   )}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
+              {(['all', 'gonzales', 'howard'] as const).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCountyFilter(c)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                    countyFilter === c
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {c === 'all' ? 'All Counties' : c === 'gonzales' ? 'Gonzales' : 'Howard'}
+                  <span className="ml-1 opacity-70">
+                    {c === 'all' ? deals.length : deals.filter((d) => getDealCounty(d) === c).length}
+                  </span>
                 </button>
               ))}
             </div>

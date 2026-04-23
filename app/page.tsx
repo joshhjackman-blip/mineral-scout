@@ -838,6 +838,7 @@ export default function Home() {
       propensity_score: owner.propensity_score ?? 0,
       source: 'map',
       tag: pipelineTag,
+      county: selectedCounty,
     })
 
     if (error) {
