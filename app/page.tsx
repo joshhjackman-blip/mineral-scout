@@ -389,24 +389,6 @@ export default function Home() {
   const hideSecondaryNavActions = !isMobile && windowWidth < 1100
   const backToAllLabel = !isMobile && windowWidth < 1100 ? '← All' : '← All Counties'
   const countySummaryText = `${countyStatsByLabel['Survey abstracts'] ?? '—'} survey abstracts · ${countyStatsByLabel['Total owners'] ?? '—'} mineral owners`
-  const headerCountyStats = isMobile
-    ? [
-      { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
-      { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
-    ]
-    : windowWidth < 1200
-      ? [
-        { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
-        { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
-        { val: countyStatsByLabel['Motivated (5-7)'] ?? '—', lbl: 'motivated' },
-      ]
-    : [
-      { val: countyStatsByLabel['Total owners'] ?? '—', lbl: 'owners' },
-      { val: countyStatsByLabel['Hot (8-10)'] ?? '—', lbl: 'hot' },
-      { val: countyStatsByLabel['Motivated (5-7)'] ?? '—', lbl: 'motivated' },
-      { val: countyStatsByLabel['Prospect (2-4)'] ?? '—', lbl: 'prospect' },
-      { val: countyStatsByLabel['Active wells'] ?? '—', lbl: 'active wells' },
-    ]
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -1654,21 +1636,6 @@ export default function Home() {
             flexShrink: 1,
           }}
         >
-          {headerCountyStats.map((s) => (
-            <div
-              key={s.lbl}
-              style={{
-                padding: '4px 12px',
-                background: '#FEF3C7',
-                borderRadius: 20,
-                border: '1px solid #FDE68A',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E' }}>{s.val}</span>
-              <span style={{ fontSize: 11, color: '#B45309', marginLeft: 4 }}>{s.lbl}</span>
-            </div>
-          ))}
           {!hideSecondaryNavActions && (
             <a
               href="/methodology"
