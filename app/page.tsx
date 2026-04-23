@@ -646,6 +646,8 @@ export default function Home() {
           ownerName: String(owner.owner_name ?? '').trim(),
           leaseId: String(owner.rrc_lease_id ?? '').trim(),
           abstract: tractAbstract,
+          operator: owner.operator_name ?? selected?.top_operator ?? null,
+          fieldName: selected?.field_name ?? null,
         }),
       })
       const payload = await response.json() as { wells?: WellSummary[]; error?: string }

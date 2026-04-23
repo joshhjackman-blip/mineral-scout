@@ -215,23 +215,58 @@ export async function POST(req: NextRequest) {
     }
 
     const leaseList = Array.from(leaseCandidates).filter(Boolean)
-    if (leaseList.length === 0) {
-      return NextResponse.json({ success: true, wells: [] })
+
+    let primaryRows: WellRow[] = []
+    if (leaseList.length > 0) {
+      const { data, error } = await adminClient
+        .from(county.wellsTable)
+        .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+        .in('rrc_lease_id', leaseList)
+        .limit(20)
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+      }
+      primaryRows = (data as WellRow[] | null) ?? []
     }
 
-    const { data, error } = await adminClient
-      .from(county.wellsTable)
-      .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
-      .in('rrc_lease_id', leaseList)
-      .limit(20)
+    // Gonzales-specific fallback: ~20% of owner rrc_lease_id values have no
+    // matching rows in gonzales_wells because the wells feed doesn't cover
+    // every modern horizontal lease in the CAD minerals roll. When that
+    // happens, fall back to operator + field-name matching so the owner
+    // still sees the wells associated with their unit rather than an empty
+    // "No matched wells on this interest" message.
+    if (county.id !== 'howard' && primaryRows.length === 0) {
+      const operatorWord = String(operator ?? '').trim().split(/\s+/)[0]
+      const fieldPrimary = String(fieldName ?? '').trim().split(/\s+/)[0]
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      if (operatorWord && fieldPrimary) {
+        const { data: fallbackWells } = await adminClient
+          .from(county.wellsTable)
+          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+          .ilike('operator_name', `%${operatorWord}%`)
+          .ilike('lease_name', `%${fieldPrimary}%`)
+          .limit(10)
+        primaryRows = (fallbackWells as WellRow[] | null) ?? []
+      }
+
+      if (primaryRows.length === 0 && fieldPrimary) {
+        const { data: fieldOnlyWells } = await adminClient
+          .from(county.wellsTable)
+          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+          .ilike('lease_name', `%${fieldPrimary}%`)
+          .limit(10)
+        primaryRows = (fieldOnlyWells as WellRow[] | null) ?? []
+      }
+    }
+
+    if (primaryRows.length === 0) {
+      return NextResponse.json({ success: true, wells: [] })
     }
 
     let wells = Array.from(
       new Map(
-        ((data as WellRow[] | null) ?? []).map((well) => [
+        primaryRows.map((well) => [
           `${String(well.rrc_lease_id ?? '').trim()}-${String(well.lease_name ?? '').trim()}`,
           {
             ...well,
@@ -242,10 +277,20 @@ export async function POST(req: NextRequest) {
     )
 
     if (county.id !== 'howard' && wells.length > 0) {
+      const lookupIds = Array.from(
+        new Set(
+          wells.flatMap((well) => {
+            const raw = String(well.rrc_lease_id ?? '').trim()
+            const stripped = normalizeLeaseId(raw) || '0'
+            return [raw, stripped, ...leaseList].filter(Boolean)
+          })
+        )
+      )
+
       const { data: codes } = await adminClient
         .from(county.ownershipTable)
         .select('rrc_lease_id, rrc_oil_and_gas_code')
-        .in('rrc_lease_id', leaseList)
+        .in('rrc_lease_id', lookupIds)
         .limit(20)
 
       const codeMap = new Map<string, string>(
@@ -260,7 +305,7 @@ export async function POST(req: NextRequest) {
         const normalizedLeaseId = normalizeLeaseId(rowLeaseId) || '0'
         return {
           ...well,
-          oil_gas_code: codeMap.get(rowLeaseId) ?? codeMap.get(normalizedLeaseId) ?? 'O',
+          oil_gas_code: codeMap.get(rowLeaseId) ?? codeMap.get(normalizedLeaseId) ?? well.oil_gas_code ?? 'O',
         }
       })
     }
