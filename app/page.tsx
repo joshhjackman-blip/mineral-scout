@@ -1939,22 +1939,55 @@ export default function Home() {
                 ← Back
               </button>
 
-              <div style={{ fontSize: 22, fontFamily: 'Georgia, serif', color: '#111827', fontWeight: 700, lineHeight: 1.2 }}>
+              <div
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: '#6B7280',
+                  letterSpacing: '0.05em',
+                }}
+              >
                 {abstractLabel}
               </div>
               <div style={{ marginTop: 8 }}>
                 {legalSystemLine && (
-                  <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 2, fontFamily: 'Inter, sans-serif' }}>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 11,
+                      color: '#9CA3AF',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      marginBottom: 2,
+                    }}
+                  >
                     {legalSystemLine}
                   </div>
                 )}
                 {legalSectionLine && (
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 2, fontFamily: 'Georgia, serif', lineHeight: 1.3 }}>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: '#111827',
+                      letterSpacing: '-0.01em',
+                      marginBottom: 2,
+                      lineHeight: 1.3,
+                    }}
+                  >
                     {legalSectionLine}
                   </div>
                 )}
                 {legalGranteeLine && (
-                  <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+                  <div
+                    style={{
+                      fontFamily: 'Inter, sans-serif',
+                      fontSize: 11,
+                      color: '#6B7280',
+                    }}
+                  >
                     {legalGranteeLine}
                   </div>
                 )}
