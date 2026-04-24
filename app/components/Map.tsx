@@ -9,6 +9,86 @@ import TractSearch from './TractSearch'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
+// Flatten a GeoJSON polygon/multipolygon geometry into a flat array of [lng, lat]
+// coordinate pairs so we can compute a rough bbox-based centroid without adding
+// @turf as a dependency.
+const flattenPolygonCoords = (geometry: GeoJSON.Geometry | null | undefined): number[][] => {
+  if (!geometry) return []
+  if (geometry.type === 'Polygon') return (geometry.coordinates[0] ?? []) as number[][]
+  if (geometry.type === 'MultiPolygon') {
+    return (geometry.coordinates as unknown as number[][][][]).flatMap(
+      (poly) => (poly[0] ?? []) as number[][]
+    )
+  }
+  return []
+}
+
+const featureBboxCenter = (
+  feature: GeoJSON.Feature | undefined | null
+): [number, number] | null => {
+  if (!feature) return null
+  const coords = flattenPolygonCoords(feature.geometry)
+  if (coords.length === 0) return null
+  const lngs: number[] = []
+  const lats: number[] = []
+  for (const c of coords) {
+    const lng = Number(c[0])
+    const lat = Number(c[1])
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      lngs.push(lng)
+      lats.push(lat)
+    }
+  }
+  if (lngs.length === 0) return null
+  return [
+    (Math.min(...lngs) + Math.max(...lngs)) / 2,
+    (Math.min(...lats) + Math.max(...lats)) / 2,
+  ]
+}
+
+const buildBlockLabelFeatureCollection = (
+  featureCollection: GeoJSON.FeatureCollection
+): GeoJSON.FeatureCollection => {
+  // `Map` the identifier is the default-exported component in this file, so
+  // we use a plain object keyed by block name instead of the built-in Map.
+  const blockCentroids: Record<string, { lngSum: number; latSum: number; count: number }> = {}
+  for (const feature of featureCollection.features) {
+    const props = (feature.properties ?? {}) as Record<string, unknown>
+    const blockRaw = props.Block ?? props.block
+    const blockValue = typeof blockRaw === 'string'
+      ? blockRaw.trim()
+      : blockRaw != null
+        ? String(blockRaw).trim()
+        : ''
+    if (!blockValue) continue
+
+    const center = featureBboxCenter(feature)
+    if (!center) continue
+
+    const entry = blockCentroids[blockValue] ?? { lngSum: 0, latSum: 0, count: 0 }
+    entry.lngSum += center[0]
+    entry.latSum += center[1]
+    entry.count += 1
+    blockCentroids[blockValue] = entry
+  }
+
+  const features: GeoJSON.Feature[] = []
+  for (const block of Object.keys(blockCentroids)) {
+    const { lngSum, latSum, count } = blockCentroids[block]
+    if (count === 0) continue
+    features.push({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [lngSum / count, latSum / count],
+      },
+      properties: { block },
+    })
+  }
+
+  return { type: 'FeatureCollection', features }
+}
+
 export type OwnerRecord = {
   id?: number
   owner_name: string
@@ -186,6 +266,9 @@ export default function Map({
     removeSourceIfExists(mapInstance, 'permits')
 
     countyEntries.forEach(([, countyConfig]) => {
+      removeLayerIfExists(mapInstance, `block-labels-${countyConfig.id}`)
+      removeSourceIfExists(mapInstance, `block-labels-source-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-sections-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-fill-${countyConfig.id}`)
@@ -271,9 +354,13 @@ export default function Map({
     const selectedFillId = `parcels-fill-${selectedConfig.id}`
     const selectedOutlineId = `parcels-outline-${selectedConfig.id}`
     const selectedLabelsId = `parcels-labels-${selectedConfig.id}`
+    const selectedSectionsId = `parcels-sections-${selectedConfig.id}`
+    const selectedBlockLabelsId = `block-labels-${selectedConfig.id}`
     if (mapInstance.getLayer(selectedFillId)) mapInstance.moveLayer(selectedFillId)
     if (mapInstance.getLayer(selectedOutlineId)) mapInstance.moveLayer(selectedOutlineId)
     if (mapInstance.getLayer(selectedLabelsId)) mapInstance.moveLayer(selectedLabelsId)
+    if (mapInstance.getLayer(selectedSectionsId)) mapInstance.moveLayer(selectedSectionsId)
+    if (mapInstance.getLayer(selectedBlockLabelsId)) mapInstance.moveLayer(selectedBlockLabelsId)
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async () => {
@@ -633,6 +720,62 @@ export default function Map({
           ],
         },
       })
+
+      if (!map.current) return
+      // Per-tract section number rendered from Surv_Sect. Only shown at z10+
+      // so we don't clutter the overview zooms.
+      const sectionsId = `parcels-sections-${countyConfig.id}`
+      map.current.addLayer({
+        id: sectionsId,
+        type: 'symbol',
+        source: sourceId,
+        minzoom: 10,
+        layout: {
+          'text-field': ['coalesce', ['get', 'Surv_Sect'], ''],
+          'text-size': 11,
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+          'text-anchor': 'center',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#ffffff',
+          'text-halo-color': '#1a1a1a',
+          'text-halo-width': 1.5,
+        },
+      })
+
+      if (!map.current) return
+      // Block labels: one point per distinct Block value, placed at the
+      // averaged centroid of all tracts in that block. Visible earlier than
+      // section numbers since blocks are larger aggregations.
+      const blockSourceId = `block-labels-source-${countyConfig.id}`
+      const blockLayerId = `block-labels-${countyConfig.id}`
+      const blockFeatureCollection = buildBlockLabelFeatureCollection(geojson)
+      if (blockFeatureCollection.features.length > 0) {
+        map.current.addSource(blockSourceId, { type: 'geojson', data: blockFeatureCollection })
+        if (!map.current) return
+        map.current.addLayer({
+          id: blockLayerId,
+          type: 'symbol',
+          source: blockSourceId,
+          minzoom: 8,
+          layout: {
+            'text-field': ['concat', 'Block ', ['get', 'block']],
+            'text-size': 13,
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+            'text-anchor': 'center',
+            'text-allow-overlap': false,
+            'symbol-placement': 'point',
+          },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': '#000000',
+            'text-halo-width': 2,
+          },
+        })
+      }
 
       const mouseEnterHandler = () => {
         map.current?.getCanvas().style.setProperty('cursor', 'pointer')
