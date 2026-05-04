@@ -11,6 +11,12 @@ export type County = {
   ownershipTable: string
   wellsTable: string
   geoJsonPath: string
+  // Slim variant of geoJsonPath used by the Mapbox renderer. Drops the
+  // ~95–98% of bytes that come from the embedded `owners_json` payload —
+  // those owners are still loaded from the full file in `app/page.tsx` for
+  // the side panel, but Mapbox doesn't need them and was choking on the
+  // 24/53 MB FeatureCollections during low/medium-zoom tile generation.
+  mapGeoJsonPath: string
   stats: { val: string; lbl: string }[]
   breakdown: { operator: string; pct: number }[]
   ownershipPctIsDecimal: boolean  // true = Howard style, false = Gonzales style
@@ -34,6 +40,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'gonzales_mineral_ownership',
     wellsTable: 'gonzales_wells',
     geoJsonPath: '/gonzales_parcels_enriched.geojson',
+    mapGeoJsonPath: '/gonzales_parcels_map.geojson',
     ownershipPctIsDecimal: false,
     abstractField: 'ABSTRACT_L',
     nriCode: 'XV',
@@ -65,6 +72,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'howard_mineral_ownership',
     wellsTable: 'howard_wells',
     geoJsonPath: '/howard_parcels_enriched.geojson',
+    mapGeoJsonPath: '/howard_parcels_map.geojson',
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
     nriCode: '',

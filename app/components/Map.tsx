@@ -670,8 +670,11 @@ export default function Map({
     clearTractLayers(mapInstance)
 
     const parcelsByCounty: Array<readonly [CountyKey, GeoJSON.FeatureCollection]> = []
+    // Always pull the slim map-only GeoJSON (props the renderer needs, no
+    // owners_json payload). The full enriched file is still fetched by the
+    // side panel in app/page.tsx for owner data.
     for (const [countyKey, countyConfig] of countyEntries) {
-      const response = await fetch(countyConfig.geoJsonPath)
+      const response = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
       if (renderToken !== renderTokenRef.current || !map.current) return
       if (!response.ok) {
         throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
@@ -1041,7 +1044,7 @@ export default function Map({
       {mapReady && (
         <TractSearch
           map={map.current}
-          geojsonUrl={COUNTIES[selectedCounty].geoJsonPath}
+          geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
         />
       )}
     </div>
