@@ -162,6 +162,14 @@ export default function Map({
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
+  // The county that was last visually styled as "active" by
+  // applyTractCountyStyles. Used to short-circuit the all-counties pass on
+  // every click so we only repaint the two counties whose styling actually
+  // flipped (old active → muted, new active → bright).
+  const lastStyledSelectedCountyRef = useRef<CountyKey | null>(null)
+  // Cache permit GeoJSON by county id so flipping between counties doesn't
+  // re-issue a Supabase round-trip every time.
+  const permitsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
 
   const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
   const TEXAS_OVERVIEW_ZOOM = 5.5
@@ -261,6 +269,9 @@ export default function Map({
       mapInstance.off('mouseleave', 'permits-layer', permitHandlersRef.current.mouseLeaveHandler)
     }
     permitHandlersRef.current = {}
+    // Layers are about to be removed — invalidate the cached "last styled"
+    // marker so the next applyTractCountyStyles re-applies the full pass.
+    lastStyledSelectedCountyRef.current = null
 
     removeLayerIfExists(mapInstance, 'permits-layer')
     removeSourceIfExists(mapInstance, 'permits')
@@ -329,13 +340,20 @@ export default function Map({
     const mapInstance = map.current
     if (!mapInstance) return
 
-    countyEntries.forEach(([countyKey, countyConfig]) => {
+    const newSelected = selectedCountyRef.current
+    const previouslySelected = lastStyledSelectedCountyRef.current
+
+    const stylePair = (
+      countyKey: CountyKey,
+      mode: 'active' | 'muted'
+    ): boolean => {
+      const countyConfig = COUNTIES[countyKey]
       const fillId = `parcels-fill-${countyConfig.id}`
       const outlineId = `parcels-outline-${countyConfig.id}`
-
-      if (!mapInstance.getLayer(fillId) || !mapInstance.getLayer(outlineId)) return
-
-      if (countyKey === selectedCountyRef.current) {
+      if (!mapInstance.getLayer(fillId) || !mapInstance.getLayer(outlineId)) {
+        return false
+      }
+      if (mode === 'active') {
         mapInstance.setPaintProperty(fillId, 'fill-color', selectedFillColorExpr)
         mapInstance.setPaintProperty(fillId, 'fill-opacity', selectedFillOpacityExpr)
         mapInstance.setPaintProperty(outlineId, 'line-color', selectedOutlineColorExpr)
@@ -348,74 +366,110 @@ export default function Map({
         mapInstance.setPaintProperty(outlineId, 'line-width', 0.8)
         mapInstance.setPaintProperty(outlineId, 'line-opacity', 1)
       }
-    })
+      return true
+    }
 
-    const selectedConfig = COUNTIES[selectedCountyRef.current]
-    const selectedFillId = `parcels-fill-${selectedConfig.id}`
-    const selectedOutlineId = `parcels-outline-${selectedConfig.id}`
-    const selectedLabelsId = `parcels-labels-${selectedConfig.id}`
-    const selectedSectionsId = `parcels-sections-${selectedConfig.id}`
-    const selectedBlockLabelsId = `block-labels-${selectedConfig.id}`
-    if (mapInstance.getLayer(selectedFillId)) mapInstance.moveLayer(selectedFillId)
-    if (mapInstance.getLayer(selectedOutlineId)) mapInstance.moveLayer(selectedOutlineId)
-    if (mapInstance.getLayer(selectedLabelsId)) mapInstance.moveLayer(selectedLabelsId)
-    if (mapInstance.getLayer(selectedSectionsId)) mapInstance.moveLayer(selectedSectionsId)
-    if (mapInstance.getLayer(selectedBlockLabelsId)) mapInstance.moveLayer(selectedBlockLabelsId)
+    if (previouslySelected === null) {
+      // First pass after layers were just (re)created — set every county to
+      // its correct mode in one go.
+      countyEntries.forEach(([countyKey]) => {
+        stylePair(countyKey, countyKey === newSelected ? 'active' : 'muted')
+      })
+    } else if (previouslySelected !== newSelected) {
+      // Incremental update: only the two counties whose styling actually
+      // changed need new paint properties. Skipping the others avoids
+      // redundant style events on every click.
+      stylePair(previouslySelected, 'muted')
+      stylePair(newSelected, 'active')
+    } else {
+      // Same county — nothing to repaint.
+      return
+    }
+
+    // Move the active county's symbol layers to the top of the stack. This
+    // is intentionally only done when the active county actually changed
+    // (the early return above prevents it on no-op calls); back-to-back
+    // moveLayer calls force a worker collision-detection pass on every
+    // symbol layer below them.
+    const selectedConfig = COUNTIES[newSelected]
+    const ids = [
+      `parcels-fill-${selectedConfig.id}`,
+      `parcels-outline-${selectedConfig.id}`,
+      `parcels-labels-${selectedConfig.id}`,
+      `parcels-sections-${selectedConfig.id}`,
+      `block-labels-${selectedConfig.id}`,
+    ]
+    for (const id of ids) {
+      if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+    }
+
+    lastStyledSelectedCountyRef.current = newSelected
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async () => {
     const mapInstance = map.current
     if (!mapInstance) return
 
-    const countyConfig = COUNTIES[selectedCountyRef.current]
+    const countyKey = selectedCountyRef.current
+    const countyConfig = COUNTIES[countyKey]
     const permitsTable = `${countyConfig.id}_permits`
 
-    let permitRows: Array<Record<string, unknown>> = []
-    const permitsResult = await supabase
-      .from(permitsTable)
-      .select(
-        'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
-      )
-      .not('latitude', 'is', null)
-      .not('longitude', 'is', null)
+    // Use cached GeoJSON if we already loaded permits for this county once.
+    let permitsGeoJSON = permitsCacheRef.current[countyKey] ?? null
 
-    if (permitsResult.error) {
-      // Table may not exist for this county (e.g. howard_permits).
-      // Fail soft: render an empty layer so nothing misleading shows up.
-      console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
-    } else {
-      permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
-    }
+    if (!permitsGeoJSON) {
+      let permitRows: Array<Record<string, unknown>> = []
+      const permitsResult = await supabase
+        .from(permitsTable)
+        .select(
+          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+        )
+        .not('latitude', 'is', null)
+        .not('longitude', 'is', null)
 
-    const permits = permitRows.filter((row) => {
-      const lon = Number(row.longitude)
-      const lat = Number(row.latitude)
-      // Guard against junk values (e.g. RRC fixed-width parser artifacts where
-      // lat/lon come through as multi-billion integers).
-      return (
-        Number.isFinite(lon) &&
-        Number.isFinite(lat) &&
-        lon >= -180 && lon <= 180 &&
-        lat >= -90 && lat <= 90
-      )
-    })
+      if (permitsResult.error) {
+        // Table may not exist for this county (e.g. howard_permits).
+        // Fail soft: render an empty layer so nothing misleading shows up.
+        console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
+      } else {
+        permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
+      }
 
-    const permitsGeoJSON: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: permits.map((permit) => ({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'Point' as const,
-          coordinates: [Number(permit.longitude), Number(permit.latitude)],
-        },
-        properties: {
-          operator: String(permit.operator_name ?? ''),
-          lease: String(permit.lease_name ?? ''),
-          date: String(permit.filed_date ?? permit.approved_date ?? ''),
-          type: String(permit.permit_type ?? ''),
-          status: String(permit.status ?? ''),
-        },
-      })),
+      const permits = permitRows.filter((row) => {
+        const lon = Number(row.longitude)
+        const lat = Number(row.latitude)
+        // Guard against junk values (e.g. RRC fixed-width parser artifacts where
+        // lat/lon come through as multi-billion integers).
+        return (
+          Number.isFinite(lon) &&
+          Number.isFinite(lat) &&
+          lon >= -180 && lon <= 180 &&
+          lat >= -90 && lat <= 90
+        )
+      })
+
+      permitsGeoJSON = {
+        type: 'FeatureCollection',
+        features: permits.map((permit) => ({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [Number(permit.longitude), Number(permit.latitude)],
+          },
+          properties: {
+            operator: String(permit.operator_name ?? ''),
+            lease: String(permit.lease_name ?? ''),
+            date: String(permit.filed_date ?? permit.approved_date ?? ''),
+            type: String(permit.permit_type ?? ''),
+            status: String(permit.status ?? ''),
+          },
+        })),
+      }
+      permitsCacheRef.current[countyKey] = permitsGeoJSON
+
+      // Bail out if the user switched away from this county while the
+      // network round-trip was in flight.
+      if (countyKey !== selectedCountyRef.current || !map.current) return
     }
 
     if (!mapInstance.getSource('permits')) {
