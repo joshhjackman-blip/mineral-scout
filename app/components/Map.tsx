@@ -692,7 +692,20 @@ export default function Map({
       const labelsId = `parcels-labels-${countyConfig.id}`
 
       if (!map.current) return
-      map.current.addSource(sourceId, { type: 'geojson', data: geojson, generateId: true })
+      map.current.addSource(sourceId, {
+        type: 'geojson',
+        data: geojson,
+        generateId: true,
+        // Default tolerance is 0.375 px which aggressively simplifies small
+        // polygons at low zoom — Howard's RRC abstract sections are tightly
+        // clustered ~2 km wide and were collapsing out of low-zoom tiles, so
+        // the fill layer had nothing to paint until you zoomed past 10. The
+        // lower tolerance keeps every polygon present from the first tile
+        // load while still trimming redundant vertices. The buffer bump
+        // reduces edge clipping artifacts when panning at the tract level.
+        tolerance: 0.05,
+        buffer: 256,
+      })
       if (!map.current) return
       map.current.addLayer({
         id: fillId,
