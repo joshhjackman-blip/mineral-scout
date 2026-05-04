@@ -8,7 +8,7 @@ import {
   MapPin, BarChart2, BookOpen, Clock,
   DollarSign, User, Building2,
   CheckCircle2, Circle, XCircle, Flame,
-  TrendingUp, Save, FileText, Package,
+  TrendingUp, Save, FileText, Package, ThumbsDown,
 } from 'lucide-react'
 
 type BuyerEntity = { name: string; address: string; city: string; state: string; zip: string }
@@ -227,6 +227,7 @@ const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; ico
   nurture:        { label: 'Nurture',       color: 'text-amber-700',   bg: 'bg-amber-50 border-amber-200',   icon: <TrendingUp size={11} /> },
   prospect:       { label: 'Prospect',      color: 'text-green-700',   bg: 'bg-green-50 border-green-200',   icon: <TrendingUp size={11} /> },
   not_interested: { label: 'Not Interested',color: 'text-slate-400',   bg: 'bg-slate-50 border-slate-100',   icon: <XCircle size={11} /> },
+  bad_lead:       { label: 'Bad Lead',      color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200',     icon: <ThumbsDown size={11} /> },
   skip_traced:    { label: 'Skip Traced',   color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
   offer_sent:     { label: 'Offer Sent',    color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',     icon: <DollarSign size={11} /> },
   closed:         { label: 'Closed',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
@@ -790,23 +791,40 @@ export default function CRM() {
                 </button>
               ))}
             </div>
-            <div className="flex gap-2 mt-2">
-              {(['all', 'gonzales', 'howard'] as const).map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setCountyFilter(c)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                    countyFilter === c
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+            <div className="mt-2">
+              <label className="sr-only" htmlFor="crm-county-filter">County</label>
+              <div className="relative">
+                <MapPin
+                  size={13}
+                  className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                />
+                <select
+                  id="crm-county-filter"
+                  value={countyFilter}
+                  onChange={(e) => setCountyFilter(e.target.value as typeof countyFilter)}
+                  className="w-full appearance-none pl-8 pr-7 py-1.5 text-xs font-medium bg-white border border-gray-200 rounded-md text-gray-700 hover:border-gray-300 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
                 >
-                  {c === 'all' ? 'All Counties' : c === 'gonzales' ? 'Gonzales' : 'Howard'}
-                  <span className="ml-1 opacity-70">
-                    {c === 'all' ? deals.length : deals.filter((d) => getDealCounty(d) === c).length}
-                  </span>
-                </button>
-              ))}
+                  {(['all', 'gonzales', 'howard'] as const).map((c) => {
+                    const label = c === 'all' ? 'All Counties' : c === 'gonzales' ? 'Gonzales' : 'Howard'
+                    const count = c === 'all'
+                      ? deals.length
+                      : deals.filter((d) => getDealCounty(d) === c).length
+                    return (
+                      <option key={c} value={c}>
+                        {label} ({count})
+                      </option>
+                    )
+                  })}
+                </select>
+                <svg
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+                  width="10" height="10" viewBox="0 0 24 24"
+                  fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
             </div>
           </div>
 
