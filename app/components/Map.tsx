@@ -669,21 +669,20 @@ export default function Map({
     clearCountyMarkers()
     clearTractLayers(mapInstance)
 
-    const parcelsByCounty: Array<readonly [CountyKey, GeoJSON.FeatureCollection]> = []
     // Always pull the slim map-only GeoJSON (props the renderer needs, no
     // owners_json payload). The full enriched file is still fetched by the
-    // side panel in app/page.tsx for owner data.
-    for (const [countyKey, countyConfig] of countyEntries) {
+    // side panel in app/page.tsx for owner data. Counties load in parallel
+    // so adding more never serializes the cold-load latency.
+    const fetchTasks = countyEntries.map(async ([countyKey, countyConfig]) => {
       const response = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
-      if (renderToken !== renderTokenRef.current || !map.current) return
       if (!response.ok) {
         throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
       }
-
       const geojson = await response.json() as GeoJSON.FeatureCollection
-      if (renderToken !== renderTokenRef.current || !map.current) return
-      parcelsByCounty.push([countyKey, geojson] as const)
-    }
+      return [countyKey, geojson] as const
+    })
+    const parcelsByCounty: Array<readonly [CountyKey, GeoJSON.FeatureCollection]> = await Promise.all(fetchTasks)
+    if (renderToken !== renderTokenRef.current || !map.current) return
 
     currentParcelsByCountyRef.current = {}
     parcelsByCounty.forEach(([countyKey, geojson]) => {

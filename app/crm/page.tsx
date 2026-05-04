@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { COUNTIES } from '@/lib/counties'
+import type { County, CountyKey } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
 import {
   Phone, Mail, Search,
@@ -254,24 +256,23 @@ const formatDate = (date: string) => {
   return `in ${diff}d`
 }
 
-type DealCounty = 'gonzales' | 'howard' | 'unknown'
+type DealCounty = CountyKey | 'unknown'
 
-const HOWARD_OPERATOR_PATTERNS = [
-  'apache', 'diamondback', 'sm energy', 'ovintiv',
-  'highpeak', 'scout energy', 'vital energy', 'birch operations',
-  'surge operating',
-]
-
-const GONZALES_OPERATOR_PATTERNS = [
-  'eog', 'baytex', 'marathon', 'auterra',
-]
+const KNOWN_COUNTY_IDS = new Set<CountyKey>(Object.keys(COUNTIES) as CountyKey[])
 
 const getDealCounty = (deal: Deal): DealCounty => {
-  const stored = (deal.county ?? '').toLowerCase().trim()
-  if (stored === 'gonzales' || stored === 'howard') return stored
+  const stored = (deal.county ?? '').toLowerCase().trim() as CountyKey
+  if (stored && KNOWN_COUNTY_IDS.has(stored)) return stored
   const op = (deal.operator_name ?? '').toLowerCase()
-  if (op && HOWARD_OPERATOR_PATTERNS.some((p) => op.includes(p))) return 'howard'
-  if (op && GONZALES_OPERATOR_PATTERNS.some((p) => op.includes(p))) return 'gonzales'
+  if (!op) return 'unknown'
+  // Walk every county's operatorPatterns list (sourced from lib/counties.ts)
+  // — adding a county there is the only place this logic needs to know
+  // about it.
+  for (const [countyId, county] of Object.entries(COUNTIES) as Array<[CountyKey, County]>) {
+    if (county.operatorPatterns.some((p) => op.includes(p))) {
+      return countyId
+    }
+  }
   return 'unknown'
 }
 
@@ -286,7 +287,7 @@ export default function CRM() {
   const [contactLog, setContactLog] = useState<ContactEntry[]>([])
   const [lastSaved, setLastSaved] = useState<string | null>(null)
   const [activeTag, setActiveTag] = useState('all')
-  const [countyFilter, setCountyFilter] = useState<'all' | 'gonzales' | 'howard'>('all')
+  const [countyFilter, setCountyFilter] = useState<'all' | CountyKey>('all')
   const [search, setSearch] = useState('')
   const [tasks, setTasks] = useState<Task[]>([])
   const [logModal, setLogModal] = useState<{ method: string } | null>(null)
@@ -545,7 +546,7 @@ export default function CRM() {
 
     const countyNameResolved = (() => {
       const c = getDealCounty(editingDeal)
-      return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+      return c === 'unknown' ? '' : (COUNTIES[c]?.name ?? '')
     })()
     const survName = (editingDeal.surv_name ?? '').trim()
     const blockVal = (editingDeal.block ?? '').trim()
@@ -598,7 +599,7 @@ export default function CRM() {
 
     const countyNameResolved = (() => {
       const c = getDealCounty(editingDeal)
-      return c === 'howard' ? 'Howard' : c === 'gonzales' ? 'Gonzales' : ''
+      return c === 'unknown' ? '' : (COUNTIES[c]?.name ?? '')
     })()
     const survName = (editingDeal.surv_name ?? '').trim()
     const blockVal = (editingDeal.block ?? '').trim()
@@ -804,14 +805,12 @@ export default function CRM() {
                   onChange={(e) => setCountyFilter(e.target.value as typeof countyFilter)}
                   className="w-full appearance-none pl-8 pr-7 py-1.5 text-xs font-medium bg-white border border-gray-200 rounded-md text-gray-700 hover:border-gray-300 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
                 >
-                  {(['all', 'gonzales', 'howard'] as const).map((c) => {
-                    const label = c === 'all' ? 'All Counties' : c === 'gonzales' ? 'Gonzales' : 'Howard'
-                    const count = c === 'all'
-                      ? deals.length
-                      : deals.filter((d) => getDealCounty(d) === c).length
+                  <option value="all">All Counties ({deals.length})</option>
+                  {(Object.entries(COUNTIES) as Array<[CountyKey, County]>).map(([countyId, county]) => {
+                    const count = deals.filter((d) => getDealCounty(d) === countyId).length
                     return (
-                      <option key={c} value={c}>
-                        {label} ({count})
+                      <option key={countyId} value={countyId}>
+                        {county.name} ({count})
                       </option>
                     )
                   })}

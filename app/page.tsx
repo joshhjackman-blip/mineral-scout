@@ -602,7 +602,10 @@ export default function Home() {
       const operator = selected.top_operator
       const fieldName = selected.field_name
 
-      if (countyRef.current.id === 'howard') {
+      // Counties that join wells via abstract require a parsed abstract
+      // value before they can produce any results — bail out early when
+      // missing.
+      if (countyRef.current.wellsJoinStrategy === 'abstract') {
         const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
         const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
 
@@ -1170,9 +1173,11 @@ export default function Home() {
     setOwnerTractsName(ownerName)
     setOwnerTractsLoading(true)
 
-    const ownershipTable = COUNTIES[resultCounty].ownershipTable
-    // Howard has an `abstract` column; Gonzales doesn't — join via rrc_lease_id there.
-    const selectCols = resultCounty === 'howard'
+    const resultCountyConfig = COUNTIES[resultCounty]
+    const ownershipTable = resultCountyConfig.ownershipTable
+    // Abstract-join counties expose an `abstract` column on the ownership
+    // row; rrc_lease_id-join counties don't.
+    const selectCols = resultCountyConfig.wellsJoinStrategy === 'abstract'
       ? 'abstract, rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
       : 'rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
     const { data: ownerRows, error: ownerRowsError } = await supabase
@@ -2361,7 +2366,7 @@ export default function Home() {
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                                     <div style={{ fontSize: 11, fontWeight: 600, color: '#111827' }}>
-                                      {county.id === 'howard' ? well.lease_name : (well.lease_name ?? 'Unknown lease')}
+                                      {well.lease_name ?? 'Unknown lease'}
                                     </div>
                                     <div style={{ display: 'flex', gap: 3 }}>
                                       <span
@@ -2393,7 +2398,7 @@ export default function Home() {
                                     </div>
                                   </div>
                                   <div style={{ fontSize: 10, color: '#6B7280' }}>
-                                    Operator: {county.id === 'howard' ? well.operator_name : (well.operator_name ?? 'Unknown operator')}
+                                    Operator: {well.operator_name ?? 'Unknown operator'}
                                   </div>
                                 </div>
                               ))}

@@ -83,7 +83,10 @@ export async function POST(req: NextRequest) {
   try {
     if (mode === 'tract') {
       const tractAbstractLabel = String(abstractLabel ?? abstract ?? '').trim()
-      if (county.id === 'howard') {
+      // For counties that store wells keyed on `abstract`, do a direct
+      // tract → wells lookup. Counties whose wells join via rrc_lease_id
+      // fall through to the operator/field-name path below.
+      if (county.wellsJoinStrategy === 'abstract') {
         const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
         if (!tractAbstract) {
           return NextResponse.json({ success: true, wells: [] })
@@ -116,6 +119,9 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, wells })
       }
 
+      // Counties that join by rrc_lease_id (e.g. Gonzales) — fall back to
+      // operator + field-name fuzzy matching since the owner row's lease id
+      // may not exist in the wells table.
       let data: WellRow[] = []
       const operatorWord = String(operator ?? '').trim().split(/\s+/)[0]
       const fieldWord = String(fieldName ?? '').trim().split(/\s+/)[0]
@@ -189,7 +195,10 @@ export async function POST(req: NextRequest) {
       [String(leaseId ?? '').trim(), normalizeLeaseId(leaseId)].filter(Boolean)
     )
 
-    if (county.id === 'howard') {
+    // For abstract-join counties, an owner row inside a given tract may
+    // carry an rrc_lease_id we can resolve back to wells via the wells
+    // table. Look those up and add them to the lease candidate set.
+    if (county.wellsJoinStrategy === 'abstract') {
       const tractAbstract = String(abstractLabel ?? '').replace(/^A-\s*/i, '').trim()
       const normalizedOwnerName = String(ownerName ?? '').trim()
 
@@ -236,7 +245,7 @@ export async function POST(req: NextRequest) {
     // happens, fall back to operator + field-name matching so the owner
     // still sees the wells associated with their unit rather than an empty
     // "No matched wells on this interest" message.
-    if (county.id !== 'howard' && primaryRows.length === 0) {
+    if (county.wellsJoinStrategy !== 'abstract' && primaryRows.length === 0) {
       const operatorWord = String(operator ?? '').trim().split(/\s+/)[0]
       const fieldPrimary = String(fieldName ?? '').trim().split(/\s+/)[0]
 
@@ -276,7 +285,7 @@ export async function POST(req: NextRequest) {
       ).values()
     )
 
-    if (county.id !== 'howard' && wells.length > 0) {
+    if (county.wellsJoinStrategy !== 'abstract' && wells.length > 0) {
       const lookupIds = Array.from(
         new Set(
           wells.flatMap((well) => {

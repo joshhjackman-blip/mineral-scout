@@ -22,6 +22,16 @@ export type County = {
   ownershipPctIsDecimal: boolean  // true = Howard style, false = Gonzales style
   abstractField: string           // field name in GeoJSON for abstract label
   nriCode: string                 // sptb_code value that means NRI (skip NRA calc)
+  // Lowercased substrings used by the CRM to derive a deal's county from
+  // its operator_name when no `county` column is set on the row. New
+  // counties just push their operator names here; CRM picks them up
+  // automatically.
+  operatorPatterns: string[]
+  // How the wells API joins wells to a tract/owner. Howard owners reference
+  // the abstract directly; Gonzales owners carry an `rrc_lease_id` that
+  // matches `gonzales_wells.rrc_lease_id`. Add a new strategy here when a
+  // future county uses a different join key.
+  wellsJoinStrategy: 'abstract' | 'rrc_lease_id'
 }
 
 export type CountyKey = keyof typeof COUNTIES
@@ -44,6 +54,8 @@ export const COUNTIES: Record<string, County> = {
     ownershipPctIsDecimal: false,
     abstractField: 'ABSTRACT_L',
     nriCode: 'XV',
+    operatorPatterns: ['eog', 'baytex', 'marathon', 'auterra'],
+    wellsJoinStrategy: 'rrc_lease_id',
     stats: [
       { val: '73,430', lbl: 'Total owners' },
       { val: '3,950', lbl: 'Hot (8-10)' },
@@ -76,6 +88,12 @@ export const COUNTIES: Record<string, County> = {
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
     nriCode: '',
+    operatorPatterns: [
+      'apache', 'diamondback', 'sm energy', 'ovintiv',
+      'highpeak', 'scout energy', 'vital energy', 'birch operations',
+      'surge operating',
+    ],
+    wellsJoinStrategy: 'abstract',
     stats: [
       { val: '215,592', lbl: 'Total owners' },
       { val: '22,072', lbl: 'Hot (8-10)' },
