@@ -2860,7 +2860,32 @@ export default function Home() {
                 setWellsExpanded(false)
               }}
               onOwnerClick={(tract) => {
-                setSelected(tract)
+                // The Mapbox layer is fed by the slim *_parcels_map.geojson
+                // (stripped of `owners_json` to keep tile bytes small), so the
+                // props the click handler hands us only carry counts. Enrich
+                // by looking up the matching TractRecord from the full
+                // GeoJSON the side panel already loaded — that's the source
+                // of truth for the owners list. Falls back to the raw slim
+                // props if no match is found (e.g. brand-new tracts that
+                // somehow haven't made it into `tracts` yet).
+                const clickedAbstract = String(
+                  tract.ABSTRACT_L ?? tract.abstract_label ?? ''
+                ).trim()
+                const fullTract = clickedAbstract
+                  ? tracts.find((t) => {
+                      const t1 = String(t.abstract_label ?? '').trim()
+                      if (!t1) return false
+                      if (t1 === clickedAbstract) return true
+                      // Tolerate either side carrying the "A-" prefix.
+                      const t1Bare = t1.replace(/^A-\s*/i, '')
+                      const clickedBare = clickedAbstract.replace(/^A-\s*/i, '')
+                      return t1Bare === clickedBare
+                    })
+                  : undefined
+                const enriched = fullTract
+                  ? toTractSelection(fullTract)
+                  : (tract as TractSelection)
+                setSelected(enriched)
                 setSelectedTractGeometry(
                   (tract.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined) ?? null
                 )
@@ -2869,9 +2894,9 @@ export default function Home() {
                 setOwnerTracts([])
                 setOwnerTractsName('')
                 trackEvent('tract_clicked', {
-                  abstract: tract.ABSTRACT_L ?? tract.abstract_label ?? '',
-                  owner_count: tract.owner_count ?? 0,
-                  max_score: tract.max_propensity_score ?? 0,
+                  abstract: clickedAbstract,
+                  owner_count: enriched.owner_count ?? 0,
+                  max_score: enriched.max_propensity_score ?? 0,
                 })
               }}
             />
