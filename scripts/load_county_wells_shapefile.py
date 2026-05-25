@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Load a county's RRC well shapefile bundle into Supabase.
 
+Targets the same schema Howard uses (``howard_wells``):
+
+    api_number, latitude, longitude, well_status, well_type, lease_name,
+    operator_name, rrc_lease_id, oil_gas_code, abstract, completion_date
+
 Texas RRC publishes per-county well bundles named ``wellNNN.zip`` where
 ``NNN`` is the FIPS county code. Each bundle contains three companion
 shapefiles:
@@ -9,23 +14,19 @@ shapefiles:
 * ``wellNNNb.shp`` — bottom-hole points (one per producing string)
 * ``wellNNNl.shp`` — lateral lines (LINESTRING per horizontal lateral)
 
-This script unpacks the zip, joins the three layers on ``API``/``API10``,
-classifies each well as horizontal or vertical, and upserts a flat row
-per well into ``<county>_wells``.
-
-The output schema mirrors what ``app/api/wells/route.ts`` expects:
-``api``, ``api10``, ``latitude``, ``longitude``, ``well_type``,
-``rrc_lease_id``, ``operator_name``, ``lease_name``, ``oil_gas_code``,
-plus a few useful identifiers. Operator/lease/oil_gas_code aren't in the
-shapefile itself — they're populated only when ``--cad-roll`` is passed
-pointing at the same county mineral roll, in which case the loader
-joins on ``api`` to fill those columns.
+This loader unpacks the zip, joins the three layers on ``API``, classifies
+each well as ``HORIZONTAL`` / ``VERTICAL``, spatially joins each surface
+point against the county's abstract polygons (``data/<county>/Abstracts.shp``)
+to populate the ``abstract`` join key, and optionally enriches
+``operator_name`` / ``lease_name`` / ``rrc_lease_id`` / ``oil_gas_code``
+from the same county's CAD owners file via API match.
 
 Usage::
 
-    python3 scripts/load_martin_wells.py --zip data/well317.zip
+    python3 scripts/load_martin_wells.py
     python3 scripts/load_county_wells_shapefile.py \\
         --county martin --zip data/well317.zip \\
+        --abstracts data/martin/Abstracts.shp \\
         --cad-roll data/owners__2025_Martin.xlsx
 """
 
@@ -47,38 +48,29 @@ DEFAULT_COUNTY_ID = "martin"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--county", default=os.getenv("COUNTY_ID", DEFAULT_COUNTY_ID))
+    parser.add_argument("--zip", dest="zip_path", default=os.getenv("COUNTY_WELLS_ZIP"))
+    parser.add_argument("--fips", default=os.getenv("COUNTY_FIPS_CODE"))
     parser.add_argument(
-        "--county",
-        default=os.getenv("COUNTY_ID", DEFAULT_COUNTY_ID),
-        help="County id (matches lib/counties.ts entry, e.g. 'martin', 'howard').",
-    )
-    parser.add_argument(
-        "--zip",
-        dest="zip_path",
-        default=os.getenv("COUNTY_WELLS_ZIP"),
-        help="Path to wellNNN.zip. Defaults to data/well<fipsCode>.zip when --fips is provided.",
-    )
-    parser.add_argument(
-        "--fips",
-        default=os.getenv("COUNTY_FIPS_CODE"),
-        help=(
-            "3-digit county FIPS code (e.g. '317' for Martin, '227' for Howard). "
-            "Used to default --zip and the inner shapefile prefix."
-        ),
+        "--abstracts",
+        default=os.getenv("COUNTY_ABSTRACTS_SHP"),
+        help="Path to <county>/Abstracts.shp for the spatial join (default: data/<county>/Abstracts.shp).",
     )
     parser.add_argument(
         "--cad-roll",
         dest="cad_roll",
         default=os.getenv("COUNTY_CAD_ROLL"),
-        help=(
-            "Optional path to the CAD mineral owners file (xlsx/csv) used to "
-            "fill operator_name / lease_name / rrc_lease_id by API match."
-        ),
+        help="Optional CAD owners file (xlsx/csv) to enrich operator/lease/rrc_lease_id by API match.",
     )
     parser.add_argument("--batch-size", type=int, default=500)
-    parser.add_argument("--dry-run", action="store_true", help="Parse only, do not write to Supabase.")
-    parser.add_argument("--supabase-url", help="Supabase URL. Defaults to NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL.")
-    parser.add_argument("--supabase-key", help="Service role key. Defaults to SUPABASE_SERVICE_ROLE_KEY/SUPABASE_KEY.")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--truncate",
+        action="store_true",
+        help="DELETE all rows from the target table before inserting.",
+    )
+    parser.add_argument("--supabase-url")
+    parser.add_argument("--supabase-key")
     return parser.parse_args()
 
 
@@ -118,13 +110,11 @@ def to_number(value: Any) -> float | None:
     return result
 
 
-def find_layer(extract_dir: Path, prefix: str, suffix: str) -> Path | None:
-    """Return path to the first ``<prefix><suffix>.shp`` (case-insensitive) found."""
+def find_layer(extract_dir: Path, prefix: str, suffix: str):
     target = f"{prefix}{suffix}.shp".lower()
     for candidate in extract_dir.rglob("*.shp"):
         if candidate.name.lower() == target:
             return candidate
-    # Fallback: any *.shp ending in suffix (handles renamed bundles).
     for candidate in extract_dir.rglob("*.shp"):
         if candidate.stem.lower().endswith(suffix):
             return candidate
@@ -132,24 +122,17 @@ def find_layer(extract_dir: Path, prefix: str, suffix: str) -> Path | None:
 
 
 def detect_prefix(extract_dir: Path, fips: str | None) -> str:
-    """Pick the inner shapefile prefix (e.g. ``well317`` or ``well227``)."""
     if fips:
         return f"well{fips}"
     candidates = sorted({p.stem.rstrip("sblSBL") for p in extract_dir.rglob("*.shp")})
     if not candidates:
         raise FileNotFoundError(f"No .shp files found inside {extract_dir}")
-    # Prefer entries that start with 'well'.
     well_candidates = [c for c in candidates if c.lower().startswith("well")]
     return (well_candidates or candidates)[0]
 
 
-def load_layers(zip_path: Path, fips: str | None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    try:
-        import geopandas as gpd
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "Missing dependency 'geopandas'. Install with: pip install geopandas"
-        ) from exc
+def load_layers(zip_path: Path, fips: str | None):
+    import geopandas as gpd
 
     if not zip_path.exists():
         raise FileNotFoundError(f"Wells zip not found: {zip_path}")
@@ -168,42 +151,34 @@ def load_layers(zip_path: Path, fips: str | None) -> tuple[pd.DataFrame, pd.Data
             raise FileNotFoundError(f"Could not find '{prefix}s.shp' in {zip_path}")
 
         surface_gdf = gpd.read_file(surface_path)
-        bottom_gdf = gpd.read_file(bottom_path) if bottom_path else gpd.GeoDataFrame()
-        lateral_gdf = gpd.read_file(lateral_path) if lateral_path else gpd.GeoDataFrame()
-        return (
-            pd.DataFrame(surface_gdf.drop(columns="geometry", errors="ignore")),
-            pd.DataFrame(bottom_gdf.drop(columns="geometry", errors="ignore")) if len(bottom_gdf) else pd.DataFrame(),
-            pd.DataFrame(lateral_gdf.drop(columns="geometry", errors="ignore")) if len(lateral_gdf) else pd.DataFrame(),
-        )
+        bottom_df = pd.DataFrame()
+        lateral_df = pd.DataFrame()
+        if bottom_path:
+            bottom_df = pd.DataFrame(gpd.read_file(bottom_path).drop(columns="geometry", errors="ignore"))
+        if lateral_path:
+            lateral_df = pd.DataFrame(gpd.read_file(lateral_path).drop(columns="geometry", errors="ignore"))
+        return surface_gdf, bottom_df, lateral_df
     finally:
         shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def normalize_api(value: Any) -> str | None:
-    """RRC publishes API as int and string forms; normalize to a 14-char zero-padded key."""
     text = to_str(value)
     if text is None:
         return None
     digits = "".join(ch for ch in text if ch.isdigit())
     if not digits:
         return None
-    return digits.zfill(14)[:14]
+    return digits.lstrip("0") or "0"
 
 
 def load_cad_roll(path: Path) -> dict[str, dict[str, str]]:
-    """Load a county mineral roll (xlsx/csv) keyed by 14-digit API.
-
-    Returns a mapping ``api -> { operator_name, lease_name, rrc_lease_id, oil_gas_code }``
-    for filling well rows that came from the geometry-only RRC shapefile.
-    Multiple owner rows can share the same API; we keep the first value seen
-    for each non-empty field.
-    """
     if path.suffix.lower() in {".xlsx", ".xls"}:
-        df = pd.read_excel(path, dtype=str)
+        df = pd.read_excel(path, dtype=object)
     else:
-        df = pd.read_csv(path, dtype=str, low_memory=False)
+        df = pd.read_csv(path, dtype=object, low_memory=False, index_col=False)
 
-    cols = {c.strip().lower(): c for c in df.columns}
+    cols = {str(c).strip().lower(): c for c in df.columns}
 
     def col(*names: str) -> str | None:
         for name in names:
@@ -215,7 +190,7 @@ def load_cad_roll(path: Path) -> dict[str, dict[str, str]]:
     operator_col = col("operator", "operator_name")
     lease_col = col("well", "lease_name", "county_lease_name")
     rrc_col = col("rrc_id", "rrc_lease_id")
-    oil_gas_col = col("class_type", "oil_gas_code", "rrc_oil_and_gas_code")
+    oil_gas_col = col("class_type", "oil_gas_code")
 
     if not api_col:
         return {}
@@ -234,28 +209,74 @@ def load_cad_roll(path: Path) -> dict[str, dict[str, str]]:
             if rrc_col and not entry.get("rrc_lease_id"):
                 entry["rrc_lease_id"] = to_str(row.get(rrc_col)) or ""
             if oil_gas_col and not entry.get("oil_gas_code"):
-                entry["oil_gas_code"] = (to_str(row.get(oil_gas_col)) or "").upper() or ""
+                code = (to_str(row.get(oil_gas_col)) or "").upper()
+                # Howard maps RI/WI/etc into oil_gas_code as 'O' (oil),
+                # 'G' (gas). The CAD class_type is "C" / "I" (lease class
+                # rather than commodity), so don't accept those — better to
+                # leave NULL and let downstream fall back to 'O'.
+                entry["oil_gas_code"] = code if code in {"O", "G"} else ""
     return lookup
 
 
 def classify_well_type(stcode: str | None, has_lateral: bool) -> str:
-    """Heuristic well classification.
-
-    RRC ``STCODE`` of ``H1``/``H2``... means a horizontal completion. A row
-    that participates in a lateral feature is also horizontal. Everything
-    else falls back to ``vertical``.
-    """
     code = (stcode or "").strip().upper()
     if code.startswith("H") or has_lateral:
-        return "horizontal"
-    return "vertical"
+        return "HORIZONTAL"
+    return "VERTICAL"
+
+
+def spatial_assign_abstract(surface_gdf, abstracts_path: Path) -> dict[str, str]:
+    """Return ``api -> abstract`` for surface wells that fall inside an abstract polygon."""
+    import geopandas as gpd
+
+    if not abstracts_path.exists():
+        print(f"  abstracts shapefile not found at {abstracts_path}; skipping spatial join")
+        return {}
+
+    abstracts = gpd.read_file(abstracts_path)
+    if abstracts.crs is None:
+        abstracts = abstracts.set_crs("EPSG:4326")
+    else:
+        abstracts = abstracts.to_crs("EPSG:4326")
+
+    if surface_gdf.crs is None:
+        surface_gdf = surface_gdf.set_crs("EPSG:4326")
+    else:
+        surface_gdf = surface_gdf.to_crs("EPSG:4326")
+
+    abstract_label_col = next(
+        (c for c in ("ABSTRACT_L", "ABSTRACT_N", "CODE", "ABSTRACT", "abstract")
+         if c in abstracts.columns),
+        None,
+    )
+    if abstract_label_col is None:
+        print(f"  abstracts shapefile lacks an abstract column ({list(abstracts.columns)}); skipping")
+        return {}
+
+    abstracts_subset = abstracts[[abstract_label_col, "geometry"]].rename(
+        columns={abstract_label_col: "_abstract_raw"}
+    )
+    joined = gpd.sjoin(surface_gdf, abstracts_subset, predicate="within", how="left")
+    api_to_abstract: dict[str, str] = {}
+    for _, row in joined.iterrows():
+        api = normalize_api(row.get("API") or row.get("API10") or row.get("APINUM"))
+        raw = to_str(row.get("_abstract_raw"))
+        if not api or not raw:
+            continue
+        # Howard owners store the bare abstract number (e.g. "543"); strip
+        # the optional A- prefix from the polygon label so the join keys
+        # line up across owners + wells.
+        normalized = raw[2:].strip() if raw.upper().startswith("A-") else raw
+        api_to_abstract.setdefault(api, normalized)
+    return api_to_abstract
 
 
 def build_well_rows(
-    surface_df: pd.DataFrame,
-    bottom_df: pd.DataFrame,
-    lateral_df: pd.DataFrame,
+    surface_gdf,
+    bottom_df,
+    lateral_df,
     cad_lookup: dict[str, dict[str, str]],
+    api_to_abstract: dict[str, str],
 ) -> list[dict[str, Any]]:
     bottom_by_api: dict[str, dict[str, Any]] = {}
     if len(bottom_df):
@@ -265,7 +286,7 @@ def build_well_rows(
                 continue
             bottom_by_api.setdefault(api, record)
 
-    lateral_lengths: dict[str, float] = {}
+    laterals: dict[str, float] = {}
     if len(lateral_df):
         for record in lateral_df.to_dict(orient="records"):
             api = normalize_api(record.get("API") or record.get("API10"))
@@ -273,42 +294,33 @@ def build_well_rows(
                 continue
             length = to_number(record.get("SHAPE_LEN"))
             if length is not None:
-                lateral_lengths[api] = max(length, lateral_lengths.get(api, 0.0))
+                laterals[api] = max(length, laterals.get(api, 0.0))
 
+    surface_records = pd.DataFrame(surface_gdf.drop(columns="geometry", errors="ignore")).to_dict(orient="records")
     rows: list[dict[str, Any]] = []
-    for record in surface_df.to_dict(orient="records"):
+    for record in surface_records:
         api = normalize_api(record.get("API") or record.get("API10") or record.get("APINUM"))
         if not api:
             continue
         bottom = bottom_by_api.get(api, {})
         latitude = to_number(record.get("LAT83") or record.get("LAT27"))
         longitude = to_number(record.get("LONG83") or record.get("LONG27"))
-        bottom_latitude = to_number(bottom.get("LAT83") or bottom.get("LAT27"))
-        bottom_longitude = to_number(bottom.get("LONG83") or bottom.get("LONG27"))
         stcode = to_str(bottom.get("STCODE"))
-        has_lateral = api in lateral_lengths
-        well_type = classify_well_type(stcode, has_lateral)
+        well_type = classify_well_type(stcode, api in laterals)
         cad = cad_lookup.get(api, {})
-
         rows.append(
             {
-                "api": api,
-                "api10": to_str(record.get("API10") or bottom.get("API10")),
-                "well_id": to_str(record.get("WELLID")),
-                "surface_id": to_str(record.get("SURFACE_ID") or bottom.get("SURFACE_ID")),
-                "bottom_id": to_str(bottom.get("BOTTOM_ID")),
+                "api_number": api,
                 "latitude": latitude,
                 "longitude": longitude,
-                "bottom_latitude": bottom_latitude,
-                "bottom_longitude": bottom_longitude,
-                "st_code": stcode,
+                "well_status": "ACTIVE",
                 "well_type": well_type,
-                "lateral_length": lateral_lengths.get(api),
-                "abstract": None,
                 "lease_name": cad.get("lease_name") or None,
                 "operator_name": cad.get("operator_name") or None,
                 "rrc_lease_id": cad.get("rrc_lease_id") or None,
                 "oil_gas_code": cad.get("oil_gas_code") or None,
+                "abstract": api_to_abstract.get(api),
+                "completion_date": None,
             }
         )
     return rows
@@ -329,13 +341,18 @@ def main() -> None:
     )
     if zip_path is None:
         raise ValueError("Provide --zip or --fips so we can locate the wells bundle.")
+    abstracts_path = Path(args.abstracts) if args.abstracts else Path(f"data/{county_id}/Abstracts.shp")
 
-    print(f"Loading wells for county '{county_id}' from {zip_path}")
-    surface_df, bottom_df, lateral_df = load_layers(zip_path, fips)
+    print(f"Loading wells for county '{county_id}' from {zip_path}", flush=True)
+    surface_gdf, bottom_df, lateral_df = load_layers(zip_path, fips)
     print(
-        f"Read {len(surface_df)} surface, {len(bottom_df)} bottom, "
-        f"{len(lateral_df)} lateral records."
+        f"Read {len(surface_gdf):,} surface, {len(bottom_df):,} bottom, "
+        f"{len(lateral_df):,} lateral records.",
+        flush=True,
     )
+
+    api_to_abstract = spatial_assign_abstract(surface_gdf, abstracts_path)
+    print(f"Spatial-joined {len(api_to_abstract):,} surface wells to abstracts.", flush=True)
 
     cad_lookup: dict[str, dict[str, str]] = {}
     if args.cad_roll:
@@ -343,10 +360,17 @@ def main() -> None:
         if not cad_path.exists():
             raise FileNotFoundError(f"--cad-roll path not found: {cad_path}")
         cad_lookup = load_cad_roll(cad_path)
-        print(f"Loaded {len(cad_lookup)} api->lease lookups from {cad_path.name}")
+        print(f"Loaded {len(cad_lookup):,} api->lease lookups from {cad_path.name}.", flush=True)
 
-    rows = build_well_rows(surface_df, bottom_df, lateral_df, cad_lookup)
-    print(f"Prepared {len(rows)} well rows.")
+    rows = build_well_rows(surface_gdf, bottom_df, lateral_df, cad_lookup, api_to_abstract)
+    horizontal = sum(1 for r in rows if r["well_type"] == "HORIZONTAL")
+    with_abstract = sum(1 for r in rows if r["abstract"])
+    with_operator = sum(1 for r in rows if r["operator_name"])
+    print(
+        f"Prepared {len(rows):,} well rows. Horizontal={horizontal:,}, "
+        f"WithAbstract={with_abstract:,}, WithOperator={with_operator:,}.",
+        flush=True,
+    )
 
     if args.dry_run:
         print("Dry run — first 3 rows:")
@@ -362,20 +386,23 @@ def main() -> None:
         ) from exc
 
     supabase_url = require_env_or_arg(args.supabase_url, "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL")
-    supabase_key = require_env_or_arg(
-        args.supabase_key, "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY"
-    )
+    supabase_key = require_env_or_arg(args.supabase_key, "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
     client = create_client(supabase_url, supabase_key)
+
+    if args.truncate:
+        print(f"Truncating {table_name} (DELETE … WHERE id IS NOT NULL)…", flush=True)
+        client.table(table_name).delete().not_.is_("id", "null").execute()
 
     total_batches = max(1, math.ceil(len(rows) / args.batch_size))
     written = 0
     for batch_index, batch in enumerate(chunked(rows, args.batch_size), start=1):
-        client.table(table_name).upsert(batch, on_conflict="api").execute()
+        client.table(table_name).insert(batch).execute()
         written += len(batch)
         pct = (written / len(rows)) * 100 if rows else 100.0
-        print(f"[{batch_index}/{total_batches}] Upserted {written}/{len(rows)} ({pct:.1f}%)", flush=True)
+        if batch_index == 1 or batch_index % 25 == 0 or batch_index == total_batches:
+            print(f"  [{batch_index}/{total_batches}] inserted {written:,}/{len(rows):,} ({pct:.1f}%)", flush=True)
 
-    print(f"Done. Wrote {written} rows into {table_name}.")
+    print(f"Done. Wrote {written:,} rows into {table_name}.")
 
 
 if __name__ == "__main__":

@@ -1,23 +1,35 @@
 #!/usr/bin/env python3
 """Load a county's mineral ownership roll (xlsx or csv) into Supabase.
 
-Handles the wide owner-format file the data provider ships for the Permian
-basin counties (Howard's ``howard_mineral_roll.csv``, Martin's
-``owners__2025_Martin.xlsx``, etc.). One CSV/XLSX row per owner × well ×
-lease, with columns like ``owner``, ``rrc_id``, ``operator``, ``abstract``,
-``acres``, ``interest``.
+Targets the same schema Howard uses (``howard_mineral_ownership``):
 
-The loader:
-1. Reads the file (CSV or XLSX, auto-detected by suffix).
-2. Maps source columns to the ``<county>_mineral_ownership`` schema.
-3. Computes ``out_of_state``, ``motivated``, and a ``propensity_score``
-   that mirrors the existing Gonzales scoring formula.
-4. Upserts in batches keyed on (owner_id, abstract, well, tax_year).
+    county, owner_name, mailing_address, mailing_city, mailing_state,
+    mailing_zip, rrc_lease_id, operator_name, field_name, acreage,
+    ownership_pct, appraised_value, sptb_code, abstract, block, section,
+    survey, lat, lon, tax_year, out_of_state, propensity_score,
+    motivated, raw_record
+
+Source file layout matches the data provider's wide owner format used for
+Howard (``howard_mineral_roll.csv``) and Martin (``owners__2025_Martin.xlsx``):
+
+    _key, owner_id, owner, address1..address4, city, state, zip, well,
+    yearbegan, rrc_id, operator, field_name, zone, survey, abstract,
+    block, section, extra, acres, type, interest, value, year, county,
+    apprasal, searchid, searchndx, bidam, add_date, lease_state,
+    matching, match2, lat, long, api, leaseunique, class_type, value_aop,
+    wells_in_lease, bbd_acres, acres_per_well, lease_boe_reserves,
+    net_boe_reserves, value_reserves
+
+Howard fills the ``abstract``, ``block``, ``section``, ``survey`` columns
+directly. Martin packs all of that into ``survey`` as a single string like
+``"T&P RR T1S BLK 35 SEC 4 A-654"`` or ``"T1N BLK 35 SEC 36 A-1013"``;
+:func:`parse_legal_description` extracts the abstract / block / section
+out of that text so the join key the parcel enrichment script reads
+(``abstract``) ends up populated identically across counties.
 
 Usage::
 
-    python3 scripts/load_martin_mineral_records.py \\
-        --input data/owners__2025_Martin.xlsx
+    python3 scripts/load_martin_mineral_records.py
     python3 scripts/load_county_mineral_records.py \\
         --county martin --input data/owners__2025_Martin.xlsx --dry-run
 """
@@ -37,75 +49,13 @@ import pandas as pd
 
 DEFAULT_COUNTY_ID = "martin"
 
-# Source column → table column. Source names are matched case-insensitively
-# and after collapsing whitespace, so files with mixed case / extra spaces
-# still resolve.
-COLUMN_MAP: dict[str, str] = {
-    "_key": "source_key",
-    "owner_id": "owner_id",
-    "owner": "owner_name",
-    "address1": "address_1",
-    "address2": "address_2",
-    "address3": "address_3",
-    "address4": "address_4",
-    "city": "mailing_city",
-    "state": "mailing_state",
-    "zip": "mailing_zip",
-    "well": "well",
-    "yearbegan": "year_began",
-    "rrc_id": "rrc_lease_id",
-    "operator": "operator_name",
-    "field_name": "field_name",
-    "zone": "zone",
-    "survey": "survey",
-    "abstract": "abstract",
-    "block": "block",
-    "section": "section",
-    "extra": "extra",
-    "acres": "acreage",
-    "type": "cad_property_type",
-    "interest": "ownership_pct",
-    "value": "appraised_value",
-    "year": "tax_year",
-    "county": "county",
-    "apprasal": "appraisal_code",
-    "appraisal": "appraisal_code",
-    "searchid": "search_id",
-    "searchndx": "search_index",
-    "bidam": "bid_amount",
-    "add_date": "add_date",
-    "lease_state": "lease_state",
-    "matching": "matching_flag",
-    "match2": "matching_flag_2",
-    "lat": "latitude",
-    "long": "longitude",
-    "api": "api",
-    "leaseunique": "lease_unique",
-    "class_type": "class_type",
-    "value_aop": "value_aop",
-    "wells_in_lease": "wells_in_lease",
-    "bbd_acres": "bbd_acres",
-    "acres_per_well": "acres_per_well",
-    "lease_boe_reserves": "lease_boe_reserves",
-    "net_boe_reserves": "net_boe_reserves",
-    "value_reserves": "value_reserves",
+# Source columns we care about, normalized to lowercase.
+SOURCE_COLUMNS = {
+    "_key", "owner_id", "owner", "address1", "address2", "address3", "address4",
+    "city", "state", "zip", "well", "rrc_id", "operator", "field_name",
+    "survey", "abstract", "block", "section", "acres", "type", "interest",
+    "value", "year", "county", "lat", "long",
 }
-
-NUMERIC_FIELDS = {
-    "acreage",
-    "ownership_pct",
-    "appraised_value",
-    "bid_amount",
-    "latitude",
-    "longitude",
-    "value_aop",
-    "bbd_acres",
-    "acres_per_well",
-    "lease_boe_reserves",
-    "net_boe_reserves",
-    "value_reserves",
-}
-INTEGER_FIELDS = {"year_began", "tax_year", "wells_in_lease"}
 
 
 def normalize_header(value: str) -> str:
@@ -154,18 +104,6 @@ def parse_decimal(value: Any) -> float | None:
             return None
 
 
-def parse_date(value: Any) -> date | None:
-    text = clean_str(value)
-    if text is None:
-        return None
-    for fmt in ("%Y-%m-%d", "%Y%m%d", "%m/%d/%Y", "%m/%d/%y", "%Y/%m/%d"):
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
-    return None
-
-
 def sanitize_json_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: sanitize_json_value(v) for k, v in value.items()}
@@ -181,74 +119,149 @@ def sanitize_json_value(value: Any) -> Any:
     return value
 
 
-def read_input(path: Path) -> list[dict[str, Any]]:
-    if path.suffix.lower() in {".xlsx", ".xls"}:
-        df = pd.read_excel(path, dtype=object)
+_TOWNSHIP_RE = re.compile(r"\bT\d+[NS]\b", re.IGNORECASE)
+_BLOCK_RE = re.compile(r"\bBLK\s*([A-Z0-9]+)", re.IGNORECASE)
+_SECTION_RE = re.compile(r"\bSEC\s*([A-Z0-9]+)", re.IGNORECASE)
+# Martin abstracts come through as "A-1013", "A-U34", etc. Howard owner
+# rows just store the bare number. Accept both shapes here.
+_ABSTRACT_RE = re.compile(r"\bA[-\s]?([A-Z0-9]+)\b", re.IGNORECASE)
+
+
+def parse_legal_description(survey_text: str) -> dict[str, str | None]:
+    """Pull abstract / block / section / surveyor out of a free-form survey string.
+
+    Examples seen in production data:
+        ``"T1N BLK 35 SEC 36 A-1013"``        -> abstract=1013, block=35 T1N, section=36
+        ``"T&P RR T1S BLK 35 SEC 4 A-654"``   -> abstract=654, block=35 T1S, section=4, survey=T&P RR
+        ``"T&P T1S BLK 27 SEC 10 A-645"``     -> abstract=645, block=27 T1S, section=10, survey=T&P
+        ``""`` (empty)                         -> all None
+    """
+    text = clean_str(survey_text)
+    if not text:
+        return {"abstract": None, "block": None, "section": None, "survey": None}
+
+    upper = text.upper()
+    township_match = _TOWNSHIP_RE.search(upper)
+    block_match = _BLOCK_RE.search(upper)
+    section_match = _SECTION_RE.search(upper)
+    abstract_match = _ABSTRACT_RE.search(upper)
+
+    abstract = abstract_match.group(1) if abstract_match else None
+    block_value: str | None
+    if block_match:
+        # Howard stores the block as "<num> <township>" (e.g. "35 T1S"), so
+        # mirror that when both pieces are available.
+        block_num = block_match.group(1)
+        if township_match:
+            block_value = f"{block_num} {township_match.group(0).upper()}"
+        else:
+            block_value = block_num
     else:
-        df = pd.read_csv(path, dtype=object, low_memory=False, index_col=False)
-    df.columns = [str(c).strip() for c in df.columns]
-    return df.to_dict(orient="records")
+        block_value = None
+    section_value = section_match.group(1) if section_match else None
+
+    # Strip the parsed tokens to leave only the surveyor / system name.
+    cleaned = _ABSTRACT_RE.sub("", upper)
+    cleaned = _SECTION_RE.sub("", cleaned)
+    cleaned = _BLOCK_RE.sub("", cleaned)
+    cleaned = _TOWNSHIP_RE.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·")
+    survey_value = cleaned or None
+
+    return {
+        "abstract": abstract,
+        "block": block_value,
+        "section": section_value,
+        "survey": survey_value,
+    }
 
 
 def build_payload(
     row: dict[str, Any],
     *,
     county_display: str,
-    source_file: str,
     column_lookup: dict[str, str],
 ) -> dict[str, Any]:
     raw: dict[str, Any] = {k: sanitize_json_value(v) for k, v in row.items()}
 
+    def src(name: str) -> Any:
+        column = column_lookup.get(name)
+        return row.get(column) if column else None
+
+    address_parts = [clean_str(src("address1")), clean_str(src("address2"))]
+    extra_address = [clean_str(src("address3")), clean_str(src("address4"))]
+    address_parts.extend(extra_address)
+    mailing_address = ", ".join(p for p in address_parts if p) or None
+
+    abstract = clean_str(src("abstract"))
+    block = clean_str(src("block"))
+    section = clean_str(src("section"))
+    survey_raw = clean_str(src("survey"))
+
+    if not abstract or not block or not section:
+        # Martin packs everything into the survey column. Howard fills the
+        # individual columns. Fall back to parsing only when the explicit
+        # column is missing so we don't clobber a known-good value.
+        parsed = parse_legal_description(survey_raw or "")
+        abstract = abstract or parsed["abstract"]
+        block = block or parsed["block"]
+        section = section or parsed["section"]
+        # Replace the freeform survey with just the surveyor name (e.g.
+        # "T&P RR") when we successfully extracted structured pieces;
+        # otherwise leave the original text intact.
+        if parsed["abstract"] or parsed["block"] or parsed["section"]:
+            survey_raw = parsed["survey"]
+
+    state = (clean_str(src("state")) or "").upper()
+    out_of_state = bool(state) and state not in {"TX", "TEXAS"}
+
     payload: dict[str, Any] = {
         "county": county_display,
+        "owner_name": clean_str(src("owner")),
+        "mailing_address": mailing_address,
+        "mailing_city": clean_str(src("city")),
+        "mailing_state": state or None,
+        "mailing_zip": clean_str(src("zip")),
+        "rrc_lease_id": clean_str(src("rrc_id")),
+        "operator_name": clean_str(src("operator")),
+        "field_name": clean_str(src("field_name")),
+        "acreage": parse_decimal(src("acres")),
+        "ownership_pct": parse_decimal(src("interest")),
+        "appraised_value": parse_decimal(src("value")),
+        "sptb_code": clean_str(src("type")),
+        "abstract": abstract,
+        "block": block,
+        "section": section,
+        "survey": survey_raw,
+        "lat": parse_decimal(src("lat")),
+        "lon": parse_decimal(src("long")),
+        "tax_year": parse_int(src("year")),
+        "out_of_state": out_of_state,
         "raw_record": raw,
-        "source_file": source_file,
     }
 
-    for source_lower, target in COLUMN_MAP.items():
-        column = column_lookup.get(source_lower)
-        if not column:
-            continue
-        value = row.get(column)
-        if target in NUMERIC_FIELDS:
-            payload[target] = parse_decimal(value)
-        elif target in INTEGER_FIELDS:
-            payload[target] = parse_int(value)
-        else:
-            payload[target] = clean_str(value)
-
-    address_parts = [
-        payload.get("address_1"),
-        payload.get("address_2"),
-        payload.get("address_3"),
-        payload.get("address_4"),
-    ]
-    payload["mailing_address"] = ", ".join(p for p in address_parts if p) or None
-
-    add_date = parse_date(payload.get("add_date"))
-    if add_date is not None:
-        payload["add_date"] = add_date.isoformat()
-
-    state = (payload.get("mailing_state") or "").strip().upper()
-    out_of_state = bool(state) and state not in {"TX", "TEXAS"}
-    payload["out_of_state"] = out_of_state
+    # Drop lat/lon when source value is the literal placeholder "0" — Martin
+    # mostly carries 0 in those columns and storing them as 0,0 would
+    # silently anchor every owner over the equator.
+    if payload["lat"] == 0:
+        payload["lat"] = None
+    if payload["lon"] == 0:
+        payload["lon"] = None
 
     score = compute_propensity_score(payload, out_of_state)
     payload["propensity_score"] = score
     payload["motivated"] = score >= 5
-
     return payload
 
 
 def compute_propensity_score(payload: dict[str, Any], out_of_state: bool) -> int:
     """Mirror the Gonzales propensity score (see migration 20260330110000).
 
-    Fields used:
-      +3  out-of-state mailing
-      +2  estate / trust owner name
-      +1  LLC / LP / corporate owner name
-      +1  small interest (< 50 acres of net acreage proxy, here ``acreage``)
-      +1  any cumulative oil production reported
+    +3 out-of-state mailing
+    +2 estate / trust owner name
+    +1 LLC / LP / corporate owner name
+    +1 acreage in (0, 50)
+    +1 any ownership_pct reported
     """
     score = 0
     name = (payload.get("owner_name") or "").upper()
@@ -258,7 +271,7 @@ def compute_propensity_score(payload: dict[str, Any], out_of_state: bool) -> int
         score += 2
     if any(token in name for token in (" LLC", " LP", " CORP", " INC")):
         score += 1
-    acreage = payload.get("acreage") or 0
+    acreage = payload.get("acreage")
     if isinstance(acreage, (int, float)) and 0 < acreage < 50:
         score += 1
     interest = payload.get("ownership_pct") or 0
@@ -269,6 +282,18 @@ def compute_propensity_score(payload: dict[str, Any], out_of_state: bool) -> int
 
 def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def read_input(path: Path) -> list[dict[str, Any]]:
+    if path.suffix.lower() in {".xlsx", ".xls"}:
+        df = pd.read_excel(path, dtype=object)
+    else:
+        # ``index_col=False`` stops pandas from silently promoting a leading
+        # column (e.g. ``_key``) into the row index when the header has fewer
+        # fields than data rows.
+        df = pd.read_csv(path, dtype=object, low_memory=False, index_col=False)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df.to_dict(orient="records")
 
 
 def parse_args() -> argparse.Namespace:
@@ -286,18 +311,18 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--county-display",
-        help="Display value to write into the 'county' column. Defaults to the capitalized county id.",
+        help="Display value for the 'county' column. Defaults to capitalized county id.",
     )
     parser.add_argument("--batch-size", type=int, default=500)
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--limit", type=int, default=0, help="Process only N rows (0 = all). Useful for smoke tests.")
+    parser.add_argument("--limit", type=int, default=0, help="Process only N rows (0 = all).")
+    parser.add_argument(
+        "--truncate",
+        action="store_true",
+        help="DELETE all rows from the target table before inserting (use for full reloads).",
+    )
     parser.add_argument("--supabase-url", help="Supabase URL.")
     parser.add_argument("--supabase-key", help="Supabase service-role key.")
-    parser.add_argument(
-        "--on-conflict",
-        default="source_key",
-        help="Unique-key columns used for upsert. Adjust if your table uses a different unique constraint.",
-    )
     return parser.parse_args()
 
 
@@ -324,7 +349,7 @@ def main() -> None:
     if not input_path.exists():
         raise FileNotFoundError(f"Owners file not found: {input_path}")
 
-    print(f"Loading owners for county '{county_id}' from {input_path}")
+    print(f"Loading owners for county '{county_id}' from {input_path}", flush=True)
     rows = read_input(input_path)
     if args.limit:
         rows = rows[: args.limit]
@@ -333,35 +358,34 @@ def main() -> None:
         return
 
     column_lookup = {normalize_header(c): c for c in rows[0].keys()}
-    matched = {src for src in COLUMN_MAP if src in column_lookup}
-    missing = sorted(set(COLUMN_MAP) - matched)
-    print(f"Mapped {len(matched)}/{len(COLUMN_MAP)} known columns.")
-    if missing:
-        print(f"  Unmapped columns from defaults: {', '.join(missing[:10])}")
+    matched = SOURCE_COLUMNS.intersection(column_lookup.keys())
+    missing = sorted(SOURCE_COLUMNS - matched)
+    print(f"Mapped {len(matched)}/{len(SOURCE_COLUMNS)} known source columns. Missing: {missing or '(none)'}.")
 
     payloads: list[dict[str, Any]] = []
     for index, row in enumerate(rows, start=1):
-        payload = build_payload(
-            row,
-            county_display=county_display,
-            source_file=input_path.name,
-            column_lookup=column_lookup,
-        )
+        payload = build_payload(row, county_display=county_display, column_lookup=column_lookup)
         payloads.append(payload)
-        if index % 10000 == 0:
+        if index % 25000 == 0:
             print(f"  parsed {index}/{len(rows)} rows", flush=True)
 
     motivated = sum(1 for entry in payloads if entry.get("motivated"))
     out_of_state = sum(1 for entry in payloads if entry.get("out_of_state"))
+    matched_abstract = sum(1 for entry in payloads if entry.get("abstract"))
     avg_score = (
         sum(entry.get("propensity_score") or 0 for entry in payloads) / max(len(payloads), 1)
     )
-    print(f"Prepared {len(payloads)} rows. Motivated={motivated}, OutOfState={out_of_state}, avgScore={avg_score:.2f}.")
+    print(
+        f"Prepared {len(payloads):,} rows. WithAbstract={matched_abstract:,}, "
+        f"Motivated={motivated:,}, OutOfState={out_of_state:,}, "
+        f"avgScore={avg_score:.2f}.",
+        flush=True,
+    )
 
     if args.dry_run:
+        sample = {k: v for k, v in payloads[0].items() if k != "raw_record"}
         print("Dry run — first row preview:")
-        first = {k: v for k, v in payloads[0].items() if k != "raw_record"}
-        for k, v in first.items():
+        for k, v in sample.items():
             print(f"  {k!s:25s} -> {v}")
         return
 
@@ -376,15 +400,22 @@ def main() -> None:
     supabase_key = require_env_or_arg(args.supabase_key, "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
     client = create_client(supabase_url, supabase_key)
 
+    if args.truncate:
+        # PostgREST DELETE without a filter is rejected; use a guaranteed-true
+        # filter (id is non-null on every row) so the entire table clears.
+        print(f"Truncating {table_name} (DELETE … WHERE id IS NOT NULL)…", flush=True)
+        client.table(table_name).delete().not_.is_("id", "null").execute()
+
     total_batches = max(1, math.ceil(len(payloads) / args.batch_size))
     written = 0
     for batch_index, batch in enumerate(chunked(payloads, args.batch_size), start=1):
-        client.table(table_name).upsert(batch, on_conflict=args.on_conflict).execute()
+        client.table(table_name).insert(batch).execute()
         written += len(batch)
         pct = (written / len(payloads)) * 100 if payloads else 100.0
-        print(f"[{batch_index}/{total_batches}] Upserted {written}/{len(payloads)} ({pct:.1f}%)", flush=True)
+        if batch_index == 1 or batch_index % 25 == 0 or batch_index == total_batches:
+            print(f"  [{batch_index}/{total_batches}] inserted {written:,}/{len(payloads):,} ({pct:.1f}%)", flush=True)
 
-    print(f"Done. Wrote {written} rows into {table_name}.")
+    print(f"Done. Wrote {written:,} rows into {table_name}.")
 
 
 if __name__ == "__main__":
