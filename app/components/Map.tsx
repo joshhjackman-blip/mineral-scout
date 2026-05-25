@@ -54,7 +54,10 @@ const buildBlockLabelFeatureCollection = (
   const blockCentroids: Record<string, { lngSum: number; latSum: number; count: number }> = {}
   for (const feature of featureCollection.features) {
     const props = (feature.properties ?? {}) as Record<string, unknown>
-    const blockRaw = props.Block ?? props.block
+    // Howard's Abstracts.shp exposes ``Block`` ("31 T2N"), Martin's exposes
+    // ``LEVEL2_BLO`` ("35 T1N", "A", "HA"); accept either so the centroid
+    // labels show up for all counties without per-county special casing.
+    const blockRaw = props.Block ?? props.block ?? props.LEVEL2_BLO ?? props.level2_blo
     const blockValue = typeof blockRaw === 'string'
       ? blockRaw.trim()
       : blockRaw != null
