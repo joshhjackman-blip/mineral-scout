@@ -119,10 +119,7 @@ export const COUNTIES: Record<string, County> = {
     mapCenter: [-101.95, 32.30],
     mapZoom: 10,
     fips: '48317',
-    // Real counts get populated after `enrich_martin_parcels.py` runs against
-    // the freshly-loaded martin_mineral_ownership table; using 0 keeps the
-    // active-counties card from showing a misleading placeholder.
-    totalLeads: 0,
+    totalLeads: 204978,
     fipsCode: '317',
     ownershipTable: 'martin_mineral_ownership',
     wellsTable: 'martin_wells',
@@ -133,29 +130,30 @@ export const COUNTIES: Record<string, County> = {
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
     nriCode: '',
-    // Martin County is dominated by Endeavor Energy with significant Pioneer
-    // (now ExxonMobil), Diamondback, Permian Resources, Apache, and BTA
-    // Permian Basin acreage. Add more patterns here as new operators show
-    // up in the Martin ownership roll.
+    // Top operators by row count from the 2025 ownership roll. Diamondback
+    // and Pioneer/ExxonMobil dominate; Birch and Ovintiv each hold a few %;
+    // the long tail (Endeavor, Apache, COG, Permian Resources, Concho/Conoco)
+    // shows up on enough leases to be worth fuzzy-matching for CRM
+    // auto-county detection.
     operatorPatterns: [
-      'endeavor', 'pioneer', 'exxon', 'xto', 'diamondback',
-      'permian resources', 'apache', 'bta', 'conoco', 'concho',
+      'diamondback', 'pioneer', 'exxon', 'xto',
+      'birch', 'ovintiv', 'cog operating', 'endeavor',
+      'permian resources', 'apache', 'concho', 'conoco',
     ],
     wellsJoinStrategy: 'abstract',
-    // Replace these with real aggregates after the first enrichment run.
     stats: [
-      { val: '0', lbl: 'Total owners' },
-      { val: '0', lbl: 'Hot (8-10)' },
-      { val: '0', lbl: 'Motivated (5-7)' },
-      { val: '0', lbl: 'Prospect (2-4)' },
-      { val: '0', lbl: 'Survey abstracts' },
-      { val: '0', lbl: 'Active wells' },
+      { val: '204,978', lbl: 'Total owners' },
+      { val: '13,696', lbl: 'Hot (8-10)' },
+      { val: '79,183', lbl: 'Motivated (5-7)' },
+      { val: '86,993', lbl: 'Prospect (2-4)' },
+      { val: '1,040', lbl: 'Survey abstracts' },
+      { val: '17,309', lbl: 'Active wells' },
     ],
     breakdown: [
-      { operator: 'Endeavor Energy', pct: 0 },
-      { operator: 'Pioneer / ExxonMobil', pct: 0 },
-      { operator: 'Diamondback E&P', pct: 0 },
-      { operator: 'Other', pct: 0 },
+      { operator: 'Diamondback E&P', pct: 33 },
+      { operator: 'Pioneer Natural Resources', pct: 26 },
+      { operator: 'Birch / Ovintiv', pct: 11 },
+      { operator: 'Other', pct: 30 },
     ],
   },
 }

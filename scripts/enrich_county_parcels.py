@@ -210,10 +210,29 @@ def main() -> None:
     else:
         parcels_gdf = parcels_gdf.to_crs("EPSG:4326")
 
-    parcels_gdf["ABSTRACT_N"] = parcels_gdf["CODE"].apply(to_abstract_code)
-    parcels_gdf["ABSTRACT_L"] = parcels_gdf["ABSTRACT_N"].apply(
-        lambda code: f"A-{code}" if code else ""
-    )
+    # Howard's Abstracts.shp ships with a single ``CODE`` column that we
+    # turn into ``ABSTRACT_N`` ("19") and ``ABSTRACT_L`` ("A-19"). Martin's
+    # Abstracts.shp already provides ``ABSTRACT_N`` ("3171013", FIPS-prefixed)
+    # and ``ABSTRACT_L`` ("A-1013"); fall back to deriving the bare abstract
+    # number from ABSTRACT_L when CODE is missing so both shapes produce the
+    # same downstream join key.
+    if "CODE" in parcels_gdf.columns:
+        parcels_gdf["ABSTRACT_N"] = parcels_gdf["CODE"].apply(to_abstract_code)
+        parcels_gdf["ABSTRACT_L"] = parcels_gdf["ABSTRACT_N"].apply(
+            lambda code: f"A-{code}" if code else ""
+        )
+    elif "ABSTRACT_L" in parcels_gdf.columns:
+        parcels_gdf["ABSTRACT_N"] = parcels_gdf["ABSTRACT_L"].apply(
+            lambda label: re.sub(r"^A-", "", str(label or ""), flags=re.IGNORECASE).strip()
+        )
+        parcels_gdf["ABSTRACT_L"] = parcels_gdf["ABSTRACT_L"].apply(
+            lambda label: str(label or "").strip()
+        )
+    else:
+        raise ValueError(
+            "Parcels shapefile must contain either a CODE column (Howard-style) "
+            "or an ABSTRACT_L column (Martin/Gonzales-style)."
+        )
 
     print("First 5 owners join-field preview:")
     for index, owner in enumerate(all_owners[:5], start=1):
@@ -253,10 +272,12 @@ def main() -> None:
     print(f"Unique abstract/group keys with owners: {len(owners_by_abstract)}")
     print("Sample keys:", list(owners_by_abstract.keys())[:10])
 
-    # PRIMARY MATCH (Howard): owner.abstract -> parcel CODE
+    # PRIMARY MATCH: owner.abstract -> parcel abstract number. ``ABSTRACT_N``
+    # is set above for both Howard (from CODE) and Martin (derived from
+    # ABSTRACT_L) shapefiles, so use it as the canonical join key.
     code_to_abstract_label: dict[str, str] = {}
     for _, row in parcels_gdf.iterrows():
-        code = to_abstract_code(row.get("CODE"))
+        code = to_abstract_code(row.get("CODE")) or to_abstract_code(row.get("ABSTRACT_N"))
         if not code:
             continue
         code_to_abstract_label[code] = f"A-{code}"

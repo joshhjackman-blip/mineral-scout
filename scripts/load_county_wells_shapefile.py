@@ -390,8 +390,21 @@ def main() -> None:
     client = create_client(supabase_url, supabase_key)
 
     if args.truncate:
-        print(f"Truncating {table_name} (DELETE … WHERE id IS NOT NULL)…", flush=True)
-        client.table(table_name).delete().not_.is_("id", "null").execute()
+        print(f"Truncating {table_name} in batches…", flush=True)
+        existing = (
+            client.table(table_name)
+            .select("id")
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        max_id = (existing.data[0]["id"] if existing.data else 0)
+        cursor = 0
+        delete_batch = 5000
+        while cursor <= max_id:
+            client.table(table_name).delete().gte("id", cursor).lt("id", cursor + delete_batch).execute()
+            cursor += delete_batch
+        print(f"  truncate complete (cleared up to id {max_id}).", flush=True)
 
     total_batches = max(1, math.ceil(len(rows) / args.batch_size))
     written = 0

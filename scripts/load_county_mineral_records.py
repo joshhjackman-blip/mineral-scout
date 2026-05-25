@@ -236,7 +236,11 @@ def build_payload(
         "lat": parse_decimal(src("lat")),
         "lon": parse_decimal(src("long")),
         "tax_year": parse_int(src("year")),
-        "out_of_state": out_of_state,
+        # NB: out_of_state is a Postgres-generated column on Howard's table
+        # (computed from mailing_state). Including it in the insert payload
+        # raises 428C9 / "cannot insert a non-DEFAULT value into a generated
+        # column", so we keep the boolean for propensity scoring but never
+        # ship it to the database.
         "raw_record": raw,
     }
 
@@ -255,29 +259,65 @@ def build_payload(
 
 
 def compute_propensity_score(payload: dict[str, Any], out_of_state: bool) -> int:
-    """Mirror the Gonzales propensity score (see migration 20260330110000).
+    """Mirror the production scoring formula from migration
+    ``20260331040000_improve_propensity_scoring.sql`` (Gonzales rescore that
+    Howard inherited). Capped at 10.
 
-    +3 out-of-state mailing
-    +2 estate / trust owner name
-    +1 LLC / LP / corporate owner name
-    +1 acreage in (0, 50)
-    +1 any ownership_pct reported
+    Buckets (max contribution shown):
+      LOCATION       (4): out-of-state mailing (3) + PO Box / P.O. address (1)
+      OWNER TYPE     (4): estate (4) | life estate (4); plus living trust (2)
+                          or irrevocable (3) or plain trust (1); plus LLC/LP
+                          (2 if also out-of-state, else 1)
+      ASSET SIZE     (3): acreage < 5 (3) | < 15 (2) | < 40 (1)
+      APPRAISED VAL  (2): < $5k (2) | < $15k (1)
+      INTEREST SIZE  (2): < 0.001 (2) | < 0.005 (1)
     """
-    score = 0
     name = (payload.get("owner_name") or "").upper()
+    address = (payload.get("mailing_address") or "").upper()
+    score = 0
+
     if out_of_state:
         score += 3
-    if "ESTATE" in name or "TRUST" in name:
+    if "P.O." in address or "PO BOX" in address:
+        score += 1
+
+    # Estate (life estate is a subset matched by the broader pattern).
+    if "ESTATE" in name:
+        score += 4
+    # Trust shape — these are additive layers in the SQL formula.
+    if "IRREVOCABLE" in name:
+        score += 3
+    if "LIVING TRUST" in name:
         score += 2
-    if any(token in name for token in (" LLC", " LP", " CORP", " INC")):
+    if "TRUST" in name and "LIVING TRUST" not in name and "IRREVOCABLE" not in name:
         score += 1
+    if "LLC" in name or " LP" in name:
+        score += 2 if out_of_state else 1
+
     acreage = payload.get("acreage")
-    if isinstance(acreage, (int, float)) and 0 < acreage < 50:
-        score += 1
-    interest = payload.get("ownership_pct") or 0
+    if isinstance(acreage, (int, float)) and acreage:
+        if acreage < 5:
+            score += 3
+        elif acreage < 15:
+            score += 2
+        elif acreage < 40:
+            score += 1
+
+    appraised = payload.get("appraised_value")
+    if isinstance(appraised, (int, float)) and appraised > 0:
+        if appraised < 5000:
+            score += 2
+        elif appraised < 15000:
+            score += 1
+
+    interest = payload.get("ownership_pct")
     if isinstance(interest, (int, float)) and interest > 0:
-        score += 1
-    return score
+        if interest < 0.001:
+            score += 2
+        elif interest < 0.005:
+            score += 1
+
+    return min(score, 10)
 
 
 def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
@@ -370,7 +410,7 @@ def main() -> None:
             print(f"  parsed {index}/{len(rows)} rows", flush=True)
 
     motivated = sum(1 for entry in payloads if entry.get("motivated"))
-    out_of_state = sum(1 for entry in payloads if entry.get("out_of_state"))
+    out_of_state = sum(1 for entry in payloads if (entry.get("mailing_state") or "").upper() not in ("", "TX", "TEXAS"))
     matched_abstract = sum(1 for entry in payloads if entry.get("abstract"))
     avg_score = (
         sum(entry.get("propensity_score") or 0 for entry in payloads) / max(len(payloads), 1)
@@ -401,10 +441,23 @@ def main() -> None:
     client = create_client(supabase_url, supabase_key)
 
     if args.truncate:
-        # PostgREST DELETE without a filter is rejected; use a guaranteed-true
-        # filter (id is non-null on every row) so the entire table clears.
-        print(f"Truncating {table_name} (DELETE … WHERE id IS NOT NULL)…", flush=True)
-        client.table(table_name).delete().not_.is_("id", "null").execute()
+        # A single DELETE over 200k+ rows blows past PostgREST's 8 s
+        # statement timeout; chunk by id range instead.
+        print(f"Truncating {table_name} in batches…", flush=True)
+        existing = (
+            client.table(table_name)
+            .select("id")
+            .order("id", desc=True)
+            .limit(1)
+            .execute()
+        )
+        max_id = (existing.data[0]["id"] if existing.data else 0)
+        cursor = 0
+        delete_batch = 5000
+        while cursor <= max_id:
+            client.table(table_name).delete().gte("id", cursor).lt("id", cursor + delete_batch).execute()
+            cursor += delete_batch
+        print(f"  truncate complete (cleared up to id {max_id}).", flush=True)
 
     total_batches = max(1, math.ceil(len(payloads) / args.batch_size))
     written = 0
