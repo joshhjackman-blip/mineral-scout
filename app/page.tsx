@@ -1398,10 +1398,12 @@ export default function Home() {
       { month: 'Mo 60', oil: Number(s.first_60_month_oil ?? s.First_60_Month_Oil ?? 0) },
     ].filter((p) => p.oil > 0)
     if (points.length > 0) return points
-    if (county.id !== 'howard') return points
+    if (county.id !== 'howard' && county.id !== 'martin') return points
 
-    // Howard currently lacks tract-level production rollups in GeoJSON; use a
-    // deterministic tract-specific fallback curve so the chart remains usable.
+    // Howard / Martin currently lack tract-level production rollups in
+    // GeoJSON (the source ownership rolls don't carry per-owner production
+    // history); use a deterministic tract-specific fallback curve so the
+    // chart remains usable.
     const ownerCount = Number(s.owner_count ?? 0)
     const score = Number(s.max_propensity_score ?? 0)
     const base = Math.max(25, Math.round(ownerCount * Math.max(score, 1) * 1.5))

@@ -109,4 +109,53 @@ export const COUNTIES: Record<string, County> = {
       { operator: 'Other', pct: 23 },
     ],
   },
+  martin: {
+    id: 'martin',
+    name: 'Martin',
+    state: 'TX',
+    displayName: 'Martin County, TX',
+    // Stanton (county seat) sits near 32.13°N, 101.79°W; the county centroid
+    // is a touch north and west of that.
+    mapCenter: [-101.95, 32.30],
+    mapZoom: 10,
+    fips: '48317',
+    // Real counts get populated after `enrich_martin_parcels.py` runs against
+    // the freshly-loaded martin_mineral_ownership table; using 0 keeps the
+    // active-counties card from showing a misleading placeholder.
+    totalLeads: 0,
+    fipsCode: '317',
+    ownershipTable: 'martin_mineral_ownership',
+    wellsTable: 'martin_wells',
+    geoJsonPath: '/martin_parcels_enriched.geojson',
+    mapGeoJsonPath: '/martin_parcels_map.geojson',
+    // Mirrors Howard: CAD ownership rolls express interest as a 0–1 decimal
+    // that gets multiplied by 100 for display.
+    ownershipPctIsDecimal: true,
+    abstractField: 'ABSTRACT_L',
+    nriCode: '',
+    // Martin County is dominated by Endeavor Energy with significant Pioneer
+    // (now ExxonMobil), Diamondback, Permian Resources, Apache, and BTA
+    // Permian Basin acreage. Add more patterns here as new operators show
+    // up in the Martin ownership roll.
+    operatorPatterns: [
+      'endeavor', 'pioneer', 'exxon', 'xto', 'diamondback',
+      'permian resources', 'apache', 'bta', 'conoco', 'concho',
+    ],
+    wellsJoinStrategy: 'abstract',
+    // Replace these with real aggregates after the first enrichment run.
+    stats: [
+      { val: '0', lbl: 'Total owners' },
+      { val: '0', lbl: 'Hot (8-10)' },
+      { val: '0', lbl: 'Motivated (5-7)' },
+      { val: '0', lbl: 'Prospect (2-4)' },
+      { val: '0', lbl: 'Survey abstracts' },
+      { val: '0', lbl: 'Active wells' },
+    ],
+    breakdown: [
+      { operator: 'Endeavor Energy', pct: 0 },
+      { operator: 'Pioneer / ExxonMobil', pct: 0 },
+      { operator: 'Diamondback E&P', pct: 0 },
+      { operator: 'Other', pct: 0 },
+    ],
+  },
 }

@@ -38,6 +38,7 @@ KEEP_PROPS = {
 INPUT_OUTPUT_PAIRS = [
     ('public/gonzales_parcels_enriched.geojson', 'public/gonzales_parcels_map.geojson'),
     ('public/howard_parcels_enriched.geojson',   'public/howard_parcels_map.geojson'),
+    ('public/martin_parcels_enriched.geojson',   'public/martin_parcels_map.geojson'),
 ]
 
 
