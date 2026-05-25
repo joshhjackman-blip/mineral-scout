@@ -400,7 +400,7 @@ def main() -> None:
         )
         max_id = (existing.data[0]["id"] if existing.data else 0)
         cursor = 0
-        delete_batch = 5000
+        delete_batch = 500
         while cursor <= max_id:
             client.table(table_name).delete().gte("id", cursor).lt("id", cursor + delete_batch).execute()
             cursor += delete_batch

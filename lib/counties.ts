@@ -150,10 +150,10 @@ export const COUNTIES: Record<string, County> = {
       { val: '17,309', lbl: 'Active wells' },
     ],
     breakdown: [
-      { operator: 'Diamondback E&P', pct: 33 },
-      { operator: 'Pioneer Natural Resources', pct: 26 },
-      { operator: 'Birch / Ovintiv', pct: 11 },
-      { operator: 'Other', pct: 30 },
+      { operator: 'Diamondback E&P', pct: 35 },
+      { operator: 'Pioneer / ExxonMobil', pct: 29 },
+      { operator: 'Ovintiv + Birch', pct: 15 },
+      { operator: 'Other', pct: 21 },
     ],
   },
 }
