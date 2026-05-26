@@ -66,10 +66,12 @@ type TractSelection = {
   block?: string
   surv_sect?: string
   desc_?: string
+  level3_sur?: string
   Surv_Name?: string
   Block?: string
   Surv_Sect?: string
   TEXTSTRING?: string
+  LEVEL3_SUR?: string
   NAME?: string
   DESC_?: string
   geometry?: GeoJSON.Geometry
@@ -98,6 +100,7 @@ type TractRecord = {
   block?: string
   surv_sect?: string
   desc_?: string
+  level3_sur?: string
 }
 
 type PipelineTag = 'prospect' | 'hot' | 'nurture' | 'not_interested'
@@ -153,6 +156,40 @@ const TEXAS_OVERVIEW_ZOOM = 5.5
 
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
+
+// Build the compact survey/legal description string used under each lead's
+// name for Howard / Martin (T&P RR coordinate system).
+//   "T1N BLK 35 SEC 36 A-1013"
+// Pulls township from the embedded "T?N/T?S" token in the tract's `block`
+// field (Howard stores e.g. "31 T2N", Martin stores e.g. "35 T1N"), the
+// block number from the remainder, the section from `surv_sect` (Howard's
+// Surv_Sect column) or `level3_sur` (Martin's LEVEL3_SUR column), and the
+// abstract label from `abstract_label`. Returns "" when the tract isn't a
+// T&P-style row (e.g. Martin CSL leagues, Gonzales) so the caller can hide
+// the line entirely.
+const buildLegalDescription = (tract: TractSelection | null | undefined): string => {
+  if (!tract) return ''
+  const block = String(tract.block ?? tract.Block ?? '').trim()
+  const sectionRaw = String(
+    tract.surv_sect ?? tract.Surv_Sect ?? tract.level3_sur ?? tract.LEVEL3_SUR ?? ''
+  ).trim()
+  const abstract = String(tract.abstract_label ?? tract.ABSTRACT_L ?? '').trim()
+
+  // Gonzales TEXTSTRING reuses the abstract label as a section descriptor;
+  // drop it so we don't render "SEC A-160 A-160".
+  const section = sectionRaw && sectionRaw !== abstract ? sectionRaw : ''
+
+  const townshipMatch = block.match(/T\d+[NS]/i)
+  const township = townshipMatch ? townshipMatch[0].toUpperCase() : ''
+  const blockNum = township
+    ? block.replace(townshipMatch![0], '').trim()
+    : block
+
+  if (township && blockNum && section && abstract) {
+    return `${township} BLK ${blockNum} SEC ${section} ${abstract}`
+  }
+  return ''
+}
 
 const SKIP_TRACE_LIMIT = 200
 
@@ -1093,6 +1130,7 @@ export default function Home() {
               block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
               surv_sect: String(props.Surv_Sect ?? props.TEXTSTRING ?? ''),
               desc_: String(props.DESC_ ?? ''),
+              level3_sur: String(props.LEVEL3_SUR ?? ''),
             }
           })
           .filter((tract) => tract.abstract_label !== '')
@@ -1137,6 +1175,7 @@ export default function Home() {
     block: tract.block,
     surv_sect: tract.surv_sect,
     desc_: tract.desc_,
+    level3_sur: tract.level3_sur,
   })
 
   const handleSearchSelect = async (result: OwnerSearchResult) => {
@@ -1464,6 +1503,11 @@ export default function Home() {
   const maxScore = toNumber(selected?.max_propensity_score)
   const fieldName = selected?.field_name ?? 'Unknown'
   const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
+  // Compact legal description shown under each lead's name for Howard /
+  // Martin tracts. Empty string for Gonzales (no T&P coordinates) and any
+  // Martin tract that isn't a T&P RR survey (CSL leagues, named-surveyor
+  // grants), in which case the line is omitted entirely.
+  const tractLegalDescription = buildLegalDescription(selected)
 
   return (
     <div
@@ -2259,6 +2303,19 @@ export default function Home() {
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
                               {i + 1}. {owner.owner_name}
                             </div>
+                            {tractLegalDescription && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: '#6B7280',
+                                  fontFamily: 'monospace',
+                                  marginTop: 2,
+                                  letterSpacing: '0.02em',
+                                }}
+                              >
+                                {tractLegalDescription}
+                              </div>
+                            )}
                             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
                               {owner.mailing_city && owner.mailing_state
                                 ? `${owner.mailing_city}, ${owner.mailing_state}`
