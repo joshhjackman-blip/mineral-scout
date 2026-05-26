@@ -239,6 +239,40 @@ export async function POST(req: NextRequest) {
       primaryRows = (data as WellRow[] | null) ?? []
     }
 
+    // Abstract-join counties (Howard, Martin) often have wells whose
+    // ``rrc_lease_id`` column wasn't populated during ingestion (only the
+    // wells whose API was matched against the CAD owners file get a lease
+    // id; that's ~46% of Martin wells). When the rrc_lease_id-based query
+    // returns nothing, fall back to listing wells in the same abstract that
+    // share the owner's operator — that's the same lease unit by another
+    // name. Limit operator narrowing to the first word of the operator
+    // string ("DIAMONDBACK", "COG", "PIONEER") so vendor naming variations
+    // like "DIAMONDBACK E&P LLC" vs "DIAMONDBACK E&P" still match.
+    if (county.wellsJoinStrategy === 'abstract' && primaryRows.length === 0) {
+      const tractAbstract = String(abstractLabel ?? '').replace(/^A-\s*/i, '').trim()
+      const operatorWord = String(operator ?? '').trim().split(/\s+/)[0]
+      if (tractAbstract && operatorWord) {
+        const { data: abstractWells } = await adminClient
+          .from(county.wellsTable)
+          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+          .eq('abstract', tractAbstract)
+          .ilike('operator_name', `%${operatorWord}%`)
+          .limit(20)
+        primaryRows = (abstractWells as WellRow[] | null) ?? []
+      }
+      // If the abstract has no operator match, fall back to all wells in the
+      // abstract — better to overshow than to leave the panel empty.
+      if (primaryRows.length === 0 && tractAbstract) {
+        const { data: allAbstractWells } = await adminClient
+          .from(county.wellsTable)
+          .select('lease_name, operator_name, well_type, rrc_lease_id, oil_gas_code')
+          .eq('abstract', tractAbstract)
+          .not('lease_name', 'is', null)
+          .limit(20)
+        primaryRows = (allAbstractWells as WellRow[] | null) ?? []
+      }
+    }
+
     // Gonzales-specific fallback: ~20% of owner rrc_lease_id values have no
     // matching rows in gonzales_wells because the wells feed doesn't cover
     // every modern horizontal lease in the CAD minerals roll. When that

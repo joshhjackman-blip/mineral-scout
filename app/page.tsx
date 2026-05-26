@@ -2336,24 +2336,39 @@ export default function Home() {
                                 )}
                               </div>
                             )}
-                            <div style={{ fontSize: 10, color: '#6B7280' }}>
-                              {ownershipPctValue > 0 && (
+                            {ownershipPctValue > 0 && (() => {
+                              // Gross acres for the lease/tract. Owner.acreage
+                              // is the lease's gross acreage from the CAD roll
+                              // (e.g. "442" on a Martin lease); fall back to
+                              // SHAPE_AREA-derived tract acreage when missing.
+                              const ownerAcres = Number(owner.acreage ?? 0)
+                              const grossAcres = ownerAcres > 0
+                                ? ownerAcres
+                                : getTractGrossAcres(selected)
+                              const acresLabel = grossAcres > 0
+                                ? grossAcres >= 100
+                                  ? grossAcres.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                                  : grossAcres.toFixed(1)
+                                : null
+                              return (
                                 <>
-                                  {`${ownershipPctValue.toFixed(4)}% ownership`}
+                                  <div style={{ fontSize: 10, color: '#6B7280' }}>
+                                    {acresLabel
+                                      ? `${ownershipPctValue.toFixed(4)}% interest on ${acresLabel} gross acres`
+                                      : `${ownershipPctValue.toFixed(4)}% interest`}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
+                                    <span style={{ color: '#9CA3AF' }}>DO Interest:</span>
+                                    <span style={{ color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
+                                      {ownershipDecimalValue.toFixed(6)}
+                                    </span>
+                                    <span style={{ color: '#9CA3AF' }}>
+                                      ({ownershipPctValue.toFixed(4)}%)
+                                    </span>
+                                  </div>
                                 </>
-                              )}
-                            </div>
-                            {ownershipPctValue > 0 && (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
-                                <span style={{ color: '#9CA3AF' }}>DO Interest:</span>
-                                <span style={{ color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
-                                  {ownershipDecimalValue.toFixed(6)}
-                                </span>
-                                <span style={{ color: '#9CA3AF' }}>
-                                  ({ownershipPctValue.toFixed(4)}%)
-                                </span>
-                              </div>
-                            )}
+                              )
+                            })()}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                             <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
