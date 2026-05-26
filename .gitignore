@@ -38,3 +38,8 @@ next-env.d.ts
 # python
 __pycache__/
 *.py[cod]
+
+# RRC OG Wellbore EWA report — 495 MB master well-to-lease lookup.
+# Pulled from Supabase storage on demand; not checked in.
+data/ewa/
+
