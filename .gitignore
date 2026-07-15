@@ -43,3 +43,9 @@ __pycache__/
 # Pulled from Supabase storage on demand; not checked in.
 data/ewa/
 
+# Midland StratMap DBF is ~160 MB (GitHub rejects files >100 MB). The raw
+# shapefile lives in the Supabase `Raw-Data` bucket under
+# `Midland_Shapefiles/shp/`; run scripts/build_stratmap_parcels_geojson.py
+# after re-downloading it if you need to regenerate midland_parcels_map.geojson.
+data/midland/
+
