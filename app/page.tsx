@@ -273,7 +273,7 @@ function TractActivityBadge({
           borderRadius: 999,
           padding: '2px 8px',
           color: swatch.fg,
-          fontFamily: 'Inter, sans-serif',
+          fontFamily: 'Instrument Sans, system-ui, sans-serif',
           fontSize: 11,
           fontWeight: 600,
           whiteSpace: 'nowrap',
@@ -282,7 +282,7 @@ function TractActivityBadge({
         {label}
       </span>
       {detail && (
-        <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+        <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
           {detail}
         </span>
       )}
@@ -1751,7 +1751,14 @@ export default function Home() {
       <div
         style={{
           height: isMobile ? 56 : 52,
-          background: '#FFFFFF',
+          // Subtle photo texture behind the top bar. The Permian hero
+          // sits at 4% opacity underneath a solid white base, which
+          // gives the header a hint of warmth / place without hurting
+          // the readability of nav copy or the map beneath.
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.98) 100%), " +
+            "url('/hero-permian.jpg') center/cover no-repeat",
+          backgroundBlendMode: 'normal',
           borderBottom: '1px solid #E5E7EB',
           display: 'flex',
           alignItems: 'center',
@@ -1816,7 +1823,7 @@ export default function Home() {
                     fontSize: 13,
                     color: '#374151',
                     textDecoration: 'none',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                     borderBottom: '1px solid #F3F4F6',
                   }}
                   onMouseEnter={(e) => {
@@ -1836,7 +1843,7 @@ export default function Home() {
                     fontSize: 13,
                     color: '#374151',
                     textDecoration: 'none',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                     borderBottom: '1px solid #F3F4F6',
                   }}
                   onMouseEnter={(e) => {
@@ -1856,7 +1863,7 @@ export default function Home() {
                     fontSize: 13,
                     color: '#374151',
                     textDecoration: 'none',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                     borderBottom: '1px solid #F3F4F6',
                   }}
                   onMouseEnter={(e) => {
@@ -1869,10 +1876,10 @@ export default function Home() {
                   CRM & Pipeline
                 </a>
                 <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
-                <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   {navCountyLabel}
                 </div>
-                <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   {countySummaryText}
                 </div>
               </div>
@@ -1881,7 +1888,7 @@ export default function Home() {
           <AppLogo width={150} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
             {!isMobile && (
-              <span style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Instrument Sans, system-ui, sans-serif', whiteSpace: 'nowrap' }}>
                 {navCountyLabel}
               </span>
             )}
@@ -1904,7 +1911,7 @@ export default function Home() {
                   background: '#FFFFFF',
                   color: '#6B7280',
                   fontSize: 11,
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                   padding: '0 8px',
                   cursor: 'pointer',
                 }}
@@ -1922,7 +1929,7 @@ export default function Home() {
                 background: '#FFFFFF',
                 color: '#6B7280',
                 fontSize: 11,
-                fontFamily: 'Inter, sans-serif',
+                fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 padding: '0 8px',
                 outline: 'none',
               }}
@@ -1956,7 +1963,7 @@ export default function Home() {
                 style={{
                   border: 'none', background: 'transparent', outline: 'none',
                   fontSize: 13, color: '#111827', width: '100%',
-                  fontFamily: 'Inter, sans-serif'
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif'
                 }}
               />
               {searching && (
@@ -2058,7 +2065,7 @@ export default function Home() {
               borderRadius: 6,
               border: '1px solid #2563EB',
               fontWeight: 500,
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'Instrument Sans, system-ui, sans-serif',
               whiteSpace: 'nowrap',
             }}
           >
@@ -2074,7 +2081,7 @@ export default function Home() {
               borderRadius: 6,
               border: '1px solid #EF9F27',
               fontWeight: 500,
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'Instrument Sans, system-ui, sans-serif',
               whiteSpace: 'nowrap',
             }}
           >
@@ -2090,7 +2097,7 @@ export default function Home() {
                 padding: '6px 12px',
                 borderRadius: 6,
                 border: '1px solid #E5E7EB',
-                fontFamily: 'Inter, sans-serif',
+                fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -2109,7 +2116,7 @@ export default function Home() {
               border: 'none',
               cursor: 'pointer',
               padding: '6px 12px',
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'Instrument Sans, system-ui, sans-serif',
               whiteSpace: 'nowrap',
             }}
           >
@@ -2128,7 +2135,7 @@ export default function Home() {
               border: '1px solid #E5E7EB',
               background: '#FFFFFF',
               cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
+              fontFamily: 'Instrument Sans, system-ui, sans-serif',
               whiteSpace: 'nowrap',
             }}
           >
@@ -2228,7 +2235,7 @@ export default function Home() {
                   cursor: 'pointer',
                   padding: '12px 16px',
                   marginBottom: 4,
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 }}
               >
                 ← Back
@@ -2236,7 +2243,7 @@ export default function Home() {
 
               <div
                 style={{
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                   fontSize: 13,
                   fontWeight: 600,
                   color: '#6B7280',
@@ -2249,7 +2256,7 @@ export default function Home() {
                 {legalSystemLine && (
                   <div
                     style={{
-                      fontFamily: 'Inter, sans-serif',
+                      fontFamily: 'Instrument Sans, system-ui, sans-serif',
                       fontSize: 11,
                       color: '#9CA3AF',
                       textTransform: 'uppercase',
@@ -2263,7 +2270,7 @@ export default function Home() {
                 {legalSectionLine && (
                   <div
                     style={{
-                      fontFamily: 'Inter, sans-serif',
+                      fontFamily: 'Instrument Sans, system-ui, sans-serif',
                       fontSize: 18,
                       fontWeight: 700,
                       color: '#111827',
@@ -2278,7 +2285,7 @@ export default function Home() {
                 {legalGranteeLine && (
                   <div
                     style={{
-                      fontFamily: 'Inter, sans-serif',
+                      fontFamily: 'Instrument Sans, system-ui, sans-serif',
                       fontSize: 11,
                       color: '#6B7280',
                     }}
@@ -2325,13 +2332,13 @@ export default function Home() {
                         background: visiblePermits.length > 0 ? '#DBEAFE' : '#F3F4F6',
                         color: visiblePermits.length > 0 ? '#1D4ED8' : '#9CA3AF',
                         border: `1px solid ${visiblePermits.length > 0 ? '#93C5FD' : '#E5E7EB'}`,
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'Instrument Sans, system-ui, sans-serif',
                         fontWeight: 600,
                       }}
                     >
                       {countyPermitsLoading ? '…' : visiblePermits.length}
                     </span>
-                    <span style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                    <span style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                       in this tract
                     </span>
                   </div>
@@ -2349,11 +2356,11 @@ export default function Home() {
                 {permitsExpanded && (
                   <div style={{ borderTop: '1px solid #F3F4F6', padding: '4px 0 8px' }}>
                     {countyPermitsLoading ? (
-                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic', fontFamily: 'Inter, sans-serif' }}>
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                         Loading permits…
                       </div>
                     ) : visiblePermits.length === 0 ? (
-                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                         No new permits in this tract.
                       </div>
                     ) : (
@@ -2387,7 +2394,7 @@ export default function Home() {
                                     fontSize: 12,
                                     fontWeight: 600,
                                     color: '#111827',
-                                    fontFamily: 'Inter, sans-serif',
+                                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
@@ -2396,11 +2403,11 @@ export default function Home() {
                                   {lease || (permitNumber ? `Permit ${permitNumber}` : api ? `API ${api}` : 'Unnamed permit')}
                                 </div>
                                 {operator && (
-                                  <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif', marginTop: 2 }}>
+                                  <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Instrument Sans, system-ui, sans-serif', marginTop: 2 }}>
                                     {operator}
                                   </div>
                                 )}
-                                <div style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, sans-serif', marginTop: 3, display: 'flex', gap: 8 }}>
+                                <div style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Instrument Sans, system-ui, sans-serif', marginTop: 3, display: 'flex', gap: 8 }}>
                                   {filed && <span>Filed {filed}</span>}
                                   {api && <span>API {api}</span>}
                                   {permitNumber && <span>#{permitNumber}</span>}
@@ -2414,7 +2421,7 @@ export default function Home() {
                                   background: statusBg,
                                   color: statusFg,
                                   border: `1px solid ${isPending ? '#93C5FD' : '#2563EB'}`,
-                                  fontFamily: 'Inter, sans-serif',
+                                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                                   fontWeight: 600,
                                   whiteSpace: 'nowrap',
                                   alignSelf: 'flex-start',
@@ -2426,7 +2433,7 @@ export default function Home() {
                           )
                         })}
                         {visiblePermits.length > 50 && (
-                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif', fontStyle: 'italic', textAlign: 'center' }}>
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Instrument Sans, system-ui, sans-serif', fontStyle: 'italic', textAlign: 'center' }}>
                             + {visiblePermits.length - 50} more (RRC daily scrape)
                           </div>
                         )}
@@ -2585,7 +2592,7 @@ export default function Home() {
                         padding: '3px 8px',
                         borderRadius: 6,
                         cursor: 'pointer',
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'Instrument Sans, system-ui, sans-serif',
                         fontWeight: ownerSort === s.key ? 600 : 400,
                         background: ownerSort === s.key ? '#EF9F27' : 'transparent',
                         border: ownerSort === s.key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
@@ -2794,7 +2801,7 @@ export default function Home() {
               </div>
 
               <div style={{ display: 'flex', marginTop: 14 }}>
-                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   Add all to pipeline
                 </button>
               </div>
@@ -2815,17 +2822,17 @@ export default function Home() {
                   cursor: 'pointer',
                   padding: '12px 16px',
                   marginBottom: 4,
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 }}
               >
                 ← Back
               </button>
 
               <div style={{ padding: '0 16px 12px' }}>
-                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
                   {ownerTractsName}
                 </div>
-                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   {ownerTractsLoading
                     ? 'Looking up tracts…'
                     : `${ownerTracts.length} tract${ownerTracts.length !== 1 ? 's' : ''} found`}
@@ -2867,10 +2874,10 @@ export default function Home() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ minWidth: 0, flex: 1, marginRight: 10 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', fontFamily: 'Inter, sans-serif' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                               {abstractLabel}
                             </div>
-                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
+                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                               {operator}
                             </div>
                           </div>
@@ -2882,18 +2889,18 @@ export default function Home() {
               )}
 
               {!ownerTractsLoading && ownerTracts.length === 0 && (
-                <div style={{ padding: '16px', color: '#6B7280', fontSize: 12, fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ padding: '16px', color: '#6B7280', fontSize: 12, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   No mapped tracts found.
                 </div>
               )}
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
+              <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
                 {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
               </div>
               {mapLevel === 'county' && (
-                <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 16, fontFamily: 'Inter, sans-serif' }}>
+                <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 16, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                   Click any highlighted county to explore
                 </div>
               )}
@@ -2923,14 +2930,14 @@ export default function Home() {
                     >
                       {card.val}
                     </div>
-                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Inter, sans-serif' }}>{card.lbl}</div>
+                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>{card.lbl}</div>
                   </div>
                 ))}
               </div>
 
               {mapLevel === 'county' && (
                 <>
-                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
+                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                     ACTIVE COUNTIES
                   </div>
                   <div>
@@ -2963,10 +2970,10 @@ export default function Home() {
                           }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: 'Inter, sans-serif' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                               {c.displayName}
                             </div>
-                            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
+                            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                               ~{c.totalLeads.toLocaleString()} total leads
                             </div>
                           </div>
@@ -2979,7 +2986,7 @@ export default function Home() {
 
               {mapLevel === 'tract' && (
               <>
-              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                 TOP 10 MOST ACTIVE TRACTS
               </div>
               <div
@@ -3039,7 +3046,7 @@ export default function Home() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
                 COUNTY BREAKDOWN
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -3086,7 +3093,7 @@ export default function Home() {
                 color: '#B45309',
                 fontSize: 11,
                 fontWeight: 600,
-                fontFamily: 'Inter, sans-serif',
+                fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 opacity: countySwitchLabelVisible ? 1 : 0,
                 transition: 'opacity 0.25s ease',
                 pointerEvents: 'none',
@@ -3150,7 +3157,7 @@ export default function Home() {
             </button>
           )}
           {loading ? (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Inter, sans-serif' }}>
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
               Loading...
             </div>
           ) : (
@@ -3280,7 +3287,7 @@ export default function Home() {
           whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Out of state</span>
+        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>Out of state</span>
         <button
           onClick={() => setOutOfStateOnly((prev) => !prev)}
           style={{
@@ -3327,7 +3334,7 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
-          <span style={{ fontSize: 12, color: '#374151', whiteSpace: 'nowrap', fontFamily: 'Inter, sans-serif' }}>Type:</span>
+          <span style={{ fontSize: 12, color: '#374151', whiteSpace: 'nowrap', fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>Type:</span>
           {(['all', 'individual', 'trust', 'company'] as const).map(type => (
             <button
               key={type}
@@ -3337,7 +3344,7 @@ export default function Home() {
                 padding: '3px 10px',
                 borderRadius: 10,
                 cursor: 'pointer',
-                fontFamily: 'Inter, sans-serif',
+                fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 whiteSpace: 'nowrap',
                 background: ownerTypeFilter === type ? 'rgba(239,159,39,0.2)' : 'transparent',
                 border: ownerTypeFilter === type ? '1px solid rgba(239,159,39,0.6)' : '1px solid #E5E7EB',
@@ -3416,7 +3423,7 @@ export default function Home() {
             fontSize: 12,
             padding: '10px 20px',
             borderRadius: 8,
-            fontFamily: 'Inter, sans-serif',
+            fontFamily: 'Instrument Sans, system-ui, sans-serif',
             zIndex: 9999,
             boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
           }}
@@ -3464,7 +3471,7 @@ export default function Home() {
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                   marginBottom: 20,
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 }}
               >
                 Step {ONBOARDING_STEPS[onboardingStep].step} of {String(ONBOARDING_STEPS.length).padStart(2, '0')}
@@ -3472,7 +3479,7 @@ export default function Home() {
 
               <h2
                 style={{
-                  fontFamily: 'Georgia, serif',
+                  fontFamily: 'Fraunces, Georgia, serif',
                   fontSize: 24,
                   fontWeight: 700,
                   color: '#111827',
@@ -3490,7 +3497,7 @@ export default function Home() {
                   color: '#4B5563',
                   lineHeight: 1.75,
                   marginBottom: 36,
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 }}
               >
                 {ONBOARDING_STEPS[onboardingStep].body}
@@ -3505,7 +3512,7 @@ export default function Home() {
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                     padding: 0,
                   }}
                 >
@@ -3523,7 +3530,7 @@ export default function Home() {
                         border: '1px solid #E5E7EB',
                         color: '#374151',
                         cursor: 'pointer',
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'Instrument Sans, system-ui, sans-serif',
                         fontWeight: 500,
                       }}
                     >
@@ -3542,7 +3549,7 @@ export default function Home() {
                         color: '#fff',
                         cursor: 'pointer',
                         fontWeight: 600,
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'Instrument Sans, system-ui, sans-serif',
                       }}
                     >
                       Next
@@ -3559,7 +3566,7 @@ export default function Home() {
                         color: '#fff',
                         cursor: 'pointer',
                         fontWeight: 600,
-                        fontFamily: 'Inter, sans-serif',
+                        fontFamily: 'Instrument Sans, system-ui, sans-serif',
                       }}
                     >
                       Start prospecting
@@ -3626,7 +3633,7 @@ export default function Home() {
                     color: pipelineTag === option.key ? '#8CC4FF' : '#6B7280',
                     fontSize: 11,
                     cursor: 'pointer',
-                    fontFamily: 'Inter, sans-serif',
+                    fontFamily: 'Instrument Sans, system-ui, sans-serif',
                   }}
                 >
                   {option.label}
@@ -3663,7 +3670,7 @@ export default function Home() {
                   color: '#8CC4FF',
                   fontSize: 12,
                   cursor: pipelineSaving ? 'not-allowed' : 'pointer',
-                  fontFamily: 'Inter, sans-serif',
+                  fontFamily: 'Instrument Sans, system-ui, sans-serif',
                 }}
               >
                 {pipelineSaving ? 'Saving...' : 'Add to pipeline'}
@@ -3758,7 +3765,7 @@ export default function Home() {
             background: '#FFFFFF', borderRadius: 12, padding: '28px 32px',
             width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+            <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
               Skip Trace Complete
             </div>
             <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>

@@ -98,12 +98,40 @@
   box-sizing: border-box;
 }
 
+/* Type stack tokens. Any inline `fontFamily: 'Inter, sans-serif'` we
+   haven't migrated yet still falls through to --font-body via the
+   body-level default below, so the app picks up the new fonts even
+   before every hard-coded call site is updated. */
+:root {
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+}
+
 body {
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: var(--font-body);
   background: #F4F5F7;
   color: #111827;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'ss01', 'ss02', 'cv01';
 }
+
+/* Display type — h1..h4 and anything opting in via .font-display or
+   fontFamily: 'var(--font-display)'. Fraunces reads best a little
+   tighter than default. */
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+  font-optical-sizing: auto;
+  font-variation-settings: 'opsz' 60;
+}
+
+/* Any legacy inline styles specifying 'Georgia, serif' still land on
+   Fraunces because Fraunces sits first in the display stack, and
+   Georgia is the fallback the old code chose anyway. Same for
+   'Inter, sans-serif' — those calls resolve to Instrument Sans via
+   the body default when Inter isn't loaded (it isn't). */
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 6px; height: 6px; }

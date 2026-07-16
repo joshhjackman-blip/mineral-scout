@@ -1,7 +1,7 @@
 /* ── Mineral Map Landing Page Styles ───────────────────────────────────────── */
 /* All classes prefixed with lp- to avoid conflicts with your existing Tailwind */
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Serif+Display:ital@0;1&display=swap');
+/* Fonts loaded globally in app/layout.tsx. */
 
 .lp-root {
   --lp-bg: #0e0d0b;
@@ -15,8 +15,8 @@
   --lp-amber-dim: rgba(239,159,39,0.12);
   --lp-amber-glow: rgba(239,159,39,0.25);
   --lp-teal: #2ec4b6;
-  --lp-font-serif: 'DM Serif Display', Georgia, serif;
-  --lp-font-sans: 'DM Sans', system-ui, sans-serif;
+  --lp-font-serif: 'Fraunces', Georgia, serif;
+  --lp-font-sans: 'Instrument Sans', system-ui, sans-serif;
 
   background: var(--lp-bg);
   color: var(--lp-text);
@@ -114,6 +114,18 @@
   padding: 120px 80px 100px;
   position: relative;
   overflow: hidden;
+  /* Cinematic Permian Basin photograph anchors the hero. Layered
+     dark-to-transparent gradients keep the headline readable
+     regardless of where the photo's dark values land. */
+  background:
+    linear-gradient(180deg,
+      rgba(14,13,11,0.55) 0%,
+      rgba(14,13,11,0.35) 30%,
+      rgba(14,13,11,0.55) 70%,
+      rgba(14,13,11,0.9)  100%
+    ),
+    url('/hero-permian.jpg') center/cover no-repeat;
+  background-attachment: fixed;
 }
 
 .lp-hero-bg {
@@ -130,7 +142,7 @@
   transform: translate(-50%, -50%);
   width: 100%;
   min-width: 900px;
-  opacity: 0.15;
+  opacity: 0.06; /* Barely there — the photo does the visual work now. */
 }
 
 .lp-hero-glow {
