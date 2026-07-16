@@ -634,8 +634,13 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     clean(owner.mailing_zip),
   ].filter(Boolean).join(' · ')
   return (
+    // Fills whatever the parent gives us. The parent controls whether
+    // this is a side panel (~50vw × full height, laid out to the left
+    // of the map) or a mobile bottom sheet (~58vh × 100vw under the
+    // map). Borders + shadows are owned by the parent so this
+    // component stays layout-agnostic.
     <div
-      className="flex flex-col bg-white border-t border-gray-200 shadow-[0_-8px_28px_rgba(15,23,42,0.10)]"
+      className="flex flex-1 flex-col bg-white h-full"
       role="dialog"
       aria-label={`Details for ${owner.owner_name}`}
       style={{ minHeight: 0 }}

@@ -2168,13 +2168,61 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Outer flex-column so the drawer at the bottom can be a real
-          sibling (not a fixed overlay). Top region is the classic
-          sidebar+map row; bottom region is the OwnerDrawer when open.
-          When the drawer is open we hide the sidebar so the map + drawer
-          both stay usable on a laptop-sized viewport. */}
+      {/* Outer flex-column so the mobile drawer (bottom sheet) stays
+          a real sibling. On desktop we render the OwnerDrawer as a
+          left-hand column INSIDE the sidebar+map row instead of
+          under it — that way the map keeps its full height on the
+          right and the broker doesn't have to scroll the drawer to
+          reach the wells / notes tabs. Mobile keeps the historical
+          bottom-sheet layout because a 50/50 split doesn't work on
+          a phone. */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row' }}>
+        {/* Desktop-only side drawer. Sits before the tract sidebar
+            in the row so it visually replaces it. `flex: none` +
+            explicit width so the map on the right can just grow to
+            fill the remainder without extra math. */}
+        {drawerOwner && !isMobile && (
+          <div
+            style={{
+              width: 'clamp(480px, 50vw, 720px)',
+              minWidth: 'clamp(480px, 50vw, 720px)',
+              flex: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              borderRight: '1px solid #E5E7EB',
+              background: '#FFFFFF',
+              order: 0,
+            }}
+          >
+            <OwnerDrawer
+              open={Boolean(drawerOwner)}
+              owner={drawerOwner}
+              tractLabel={drawerTractLabel}
+              tractLegalDescription={buildLegalDescription(selected) || null}
+              countyId={selectedCounty}
+              inPipeline={drawerOwner ? pipelineOwners.has(drawerOwner.owner_name) : false}
+              legalDescByAbstract={tractLegalDescLookup}
+              tractDevStatus={devStatusByAbstract[
+                String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
+              ] ?? null}
+              onClose={() => {
+                setDrawerOwner(null)
+                setDrawerTractLabel(null)
+                setExpandedOwner(null)
+              }}
+              onSkipTrace={(o) => handleSkipTrace(o as TractOwner)}
+              onAddToPipeline={(o) => handleAddToPipeline(o as TractOwner)}
+              onShowAllTracts={(o) => {
+                setDrawerOwner(null)
+                setDrawerTractLabel(null)
+                setExpandedOwner(null)
+                setOwnerTractsName(o.owner_name)
+              }}
+            />
+          </div>
+        )}
         {/* Left panel */}
         <div
           style={{
@@ -3200,15 +3248,13 @@ export default function Home() {
         </div>
       </div>
 
-      {/* OwnerDrawer sits as the second child of the outer flex-column
-          started above line 2178, right below the sidebar+map row. When
-          drawerOwner is null it renders nothing; when set it takes up
-          ~45vh at the bottom of the viewport and the map+sidebar row
-          above shrinks proportionally. */}
-      {drawerOwner && (
+      {/* Mobile-only bottom-sheet drawer. On phones a 50/50 side
+          split is unusable so we keep the historical layout where
+          the drawer takes the bottom half of the viewport. */}
+      {drawerOwner && isMobile && (
         <div
           style={{
-            height: isMobile ? '58vh' : '48vh',
+            height: '58vh',
             minHeight: 320,
             maxHeight: '75vh',
             flexShrink: 0,
@@ -3245,7 +3291,7 @@ export default function Home() {
           />
         </div>
       )}
-      </div>{/* /outer flex-column that wraps sidebar+map row and drawer */}
+      </div>{/* /outer flex-column that wraps sidebar+map row (+ mobile bottom drawer) */}
 
       {/* Bottom bar */}
       <div
