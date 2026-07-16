@@ -7,6 +7,13 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   output: 'standalone',
+  // Bundle the Platform Services Agreement markdown alongside the
+  // /legal/agreement route so its `fs.readFileSync` still resolves when
+  // the page is served from a Vercel serverless function (Next's file
+  // tracer misses filesystem reads outside app/ and public/ by default).
+  outputFileTracingIncludes: {
+    '/legal/agreement': ['./legal/**/*.md'],
+  },
   async headers() {
     // Aggressive caching for the parcel GeoJSON files. They're large and
     // immutable per deploy; a year-long max-age + immutable hint keeps them

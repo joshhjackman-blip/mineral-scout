@@ -1,0 +1,117 @@
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+// The signing API captures IP + user agent server-side (client-provided
+// values are not trusted) and writes one row to
+// public.platform_agreement_signatures via the service role. Anon key can
+// also insert per the migration's RLS policy, but writing from the server
+// lets us record the real IP even when there's a CDN in front.
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
+type SignPayload = {
+  signer_name?: string
+  signer_email?: string
+  signer_entity?: string | null
+  signer_title?: string | null
+  typed_signature?: string
+  agreement_version?: string
+  consent_checkboxes?: Record<string, boolean>
+}
+
+function firstNonEmptyHeader(headers: Headers, names: string[]): string | null {
+  for (const name of names) {
+    const value = headers.get(name)
+    if (value) {
+      const first = value.split(',')[0]?.trim()
+      if (first) return first
+    }
+  }
+  return null
+}
+
+export async function POST(request: Request) {
+  let body: SignPayload
+  try {
+    body = (await request.json()) as SignPayload
+  } catch {
+    return NextResponse.json({ ok: false, error: 'Invalid JSON payload.' }, { status: 400 })
+  }
+
+  const signerName = (body.signer_name || '').trim()
+  const signerEmail = (body.signer_email || '').trim().toLowerCase()
+  const typedSignature = (body.typed_signature || '').trim()
+  const version = (body.agreement_version || '').trim()
+  const checkboxes = body.consent_checkboxes || {}
+
+  if (signerName.length < 2)
+    return NextResponse.json({ ok: false, error: 'Signer name is required.' }, { status: 400 })
+  if (!/.+@.+\..+/.test(signerEmail))
+    return NextResponse.json({ ok: false, error: 'Valid email is required.' }, { status: 400 })
+  if (typedSignature.toLowerCase() !== signerName.toLowerCase())
+    return NextResponse.json(
+      { ok: false, error: 'Typed signature must exactly match the signer name.' },
+      { status: 400 },
+    )
+  if (!version)
+    return NextResponse.json({ ok: false, error: 'Agreement version is required.' }, { status: 400 })
+
+  const required = ['read', 'authority', 'bound', 'esign_consent'] as const
+  for (const key of required) {
+    if (!checkboxes[key]) {
+      return NextResponse.json(
+        { ok: false, error: `Consent checkbox "${key}" must be checked.` },
+        { status: 400 },
+      )
+    }
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!supabaseUrl || !serviceKey) {
+    return NextResponse.json(
+      { ok: false, error: 'Supabase environment is not configured.' },
+      { status: 500 },
+    )
+  }
+
+  const client = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
+
+  // Vercel puts the caller's IP in x-forwarded-for / x-real-ip;
+  // fall back to Cloudflare / Fastly / generic edge headers just in case.
+  const ip = firstNonEmptyHeader(request.headers, [
+    'x-forwarded-for',
+    'x-real-ip',
+    'cf-connecting-ip',
+    'fastly-client-ip',
+    'true-client-ip',
+  ])
+  const userAgent = request.headers.get('user-agent')
+
+  const { data, error } = await client
+    .from('platform_agreement_signatures')
+    .insert({
+      signer_name: signerName,
+      signer_email: signerEmail,
+      signer_entity: body.signer_entity?.trim() || null,
+      signer_title: body.signer_title?.trim() || null,
+      typed_signature: typedSignature,
+      agreement_version: version,
+      agreement_url: '/legal/agreement',
+      consent_checkboxes: checkboxes,
+      ip_address: ip,
+      user_agent: userAgent,
+    })
+    .select('id, signer_name, signer_email, signed_at, agreement_version')
+    .single()
+
+  if (error) {
+    console.error('[sign-agreement] insert error:', error)
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true, signature: data })
+}

@@ -1,0 +1,351 @@
+/* Extends landing.css. Only the agreement-specific bits live here so the
+   marketing look-and-feel stays consistent across pages. */
+
+.lp-legal-root {
+  background: var(--lp-bg);
+  min-height: 100vh;
+}
+
+.lp-legal-nav {
+  border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-legal-container {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 120px 24px 96px;
+}
+
+.lp-legal-header {
+  margin-bottom: 48px;
+}
+
+.lp-legal-h1 {
+  font-family: var(--lp-font-serif);
+  font-size: clamp(38px, 5vw, 56px);
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 8px 0 20px;
+  color: var(--lp-text);
+}
+
+.lp-legal-sub {
+  color: var(--lp-text-mid);
+  font-size: 16px;
+  line-height: 1.65;
+  max-width: 620px;
+}
+
+.lp-legal-inline-link {
+  color: var(--lp-amber);
+  border-bottom: 1px solid rgba(239, 159, 39, 0.4);
+}
+
+.lp-legal-inline-link:hover { color: #ffb84d; }
+
+.lp-legal-body {
+  color: var(--lp-text-mid);
+  font-family: var(--lp-font-sans);
+  font-size: 15.5px;
+  line-height: 1.72;
+}
+
+.lp-legal-body h1 {
+  font-family: var(--lp-font-serif);
+  font-size: clamp(30px, 3.6vw, 42px);
+  font-weight: 400;
+  color: var(--lp-text);
+  margin: 56px 0 20px;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.lp-legal-body h2 {
+  font-family: var(--lp-font-serif);
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--lp-text);
+  margin: 44px 0 16px;
+  letter-spacing: -0.01em;
+}
+
+.lp-legal-body h3 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--lp-text);
+  letter-spacing: -0.005em;
+  margin: 28px 0 10px;
+}
+
+.lp-legal-body h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lp-text-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 24px 0 8px;
+}
+
+.lp-legal-body p {
+  margin: 0 0 16px;
+}
+
+.lp-legal-body strong {
+  color: var(--lp-text);
+  font-weight: 600;
+}
+
+.lp-legal-body em {
+  color: var(--lp-text);
+  font-style: italic;
+}
+
+.lp-legal-body a {
+  color: var(--lp-amber);
+  border-bottom: 1px solid rgba(239, 159, 39, 0.3);
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.lp-legal-body a:hover {
+  color: #ffb84d;
+  border-color: rgba(239, 159, 39, 0.6);
+}
+
+.lp-legal-body ul,
+.lp-legal-body ol {
+  margin: 0 0 20px;
+  padding-left: 22px;
+}
+
+.lp-legal-body li {
+  margin-bottom: 8px;
+}
+
+.lp-legal-body li strong {
+  color: var(--lp-text);
+}
+
+.lp-legal-body code {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  background: var(--lp-bg2);
+  border: 1px solid var(--lp-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: var(--lp-text);
+}
+
+.lp-legal-body blockquote {
+  margin: 24px 0;
+  padding: 16px 20px;
+  border-left: 3px solid var(--lp-amber);
+  background: rgba(239, 159, 39, 0.06);
+  color: var(--lp-text);
+  border-radius: 0 8px 8px 0;
+}
+
+.lp-legal-body hr {
+  border: none;
+  border-top: 1px solid var(--lp-border);
+  margin: 40px 0;
+}
+
+.lp-legal-cta {
+  margin-top: 56px;
+  padding: 32px;
+  background: var(--lp-bg2);
+  border: 1px solid var(--lp-border);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.lp-legal-cta-hint {
+  color: var(--lp-text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 380px;
+}
+
+/* Signing page shared styles */
+
+.lp-sign-container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 120px 24px 96px;
+}
+
+.lp-sign-card {
+  background: var(--lp-bg2);
+  border: 1px solid var(--lp-border);
+  border-radius: 14px;
+  padding: 40px;
+  margin-top: 32px;
+}
+
+.lp-sign-field {
+  margin-bottom: 20px;
+}
+
+.lp-sign-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--lp-text-muted);
+  margin-bottom: 8px;
+}
+
+.lp-sign-field input {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--lp-bg);
+  border: 1px solid var(--lp-border);
+  border-radius: 8px;
+  color: var(--lp-text);
+  font-size: 15px;
+  font-family: var(--lp-font-sans);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lp-sign-field input:focus {
+  outline: none;
+  border-color: var(--lp-amber);
+  box-shadow: 0 0 0 3px rgba(239, 159, 39, 0.18);
+}
+
+.lp-sign-field input[type='text'].lp-sign-signature {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-style: italic;
+  font-size: 24px;
+  padding: 14px 16px;
+}
+
+.lp-sign-checks {
+  border-top: 1px solid var(--lp-border);
+  margin-top: 24px;
+  padding-top: 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.lp-sign-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--lp-text-mid);
+  line-height: 1.55;
+}
+
+.lp-sign-check input[type='checkbox'] {
+  margin-top: 2px;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--lp-amber);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.lp-sign-check strong {
+  color: var(--lp-text);
+  font-weight: 600;
+}
+
+.lp-sign-actions {
+  margin-top: 32px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lp-sign-actions button {
+  border: none;
+  cursor: pointer;
+  font-family: var(--lp-font-sans);
+}
+
+.lp-sign-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.lp-sign-error {
+  color: #ff8f6a;
+  font-size: 13.5px;
+  padding: 12px 14px;
+  background: rgba(255, 143, 106, 0.08);
+  border: 1px solid rgba(255, 143, 106, 0.3);
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.lp-sign-success {
+  padding: 32px;
+  background: linear-gradient(180deg, rgba(239, 159, 39, 0.08) 0%, var(--lp-bg2) 100%);
+  border: 1px solid rgba(239, 159, 39, 0.35);
+  border-radius: 14px;
+  text-align: center;
+}
+
+.lp-sign-success h2 {
+  font-family: var(--lp-font-serif);
+  font-size: 30px;
+  color: var(--lp-text);
+  margin: 0 0 12px;
+  letter-spacing: -0.01em;
+}
+
+.lp-sign-success h2 em {
+  color: var(--lp-amber);
+  font-style: italic;
+}
+
+.lp-sign-success p {
+  color: var(--lp-text-mid);
+  font-size: 15px;
+  line-height: 1.65;
+  margin: 0 0 24px;
+}
+
+.lp-sign-success dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 20px;
+  text-align: left;
+  padding: 20px;
+  background: var(--lp-bg);
+  border: 1px solid var(--lp-border);
+  border-radius: 10px;
+  color: var(--lp-text-mid);
+  font-size: 13px;
+  margin-bottom: 24px;
+}
+
+.lp-sign-success dt {
+  color: var(--lp-text-muted);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.lp-sign-success dd {
+  margin: 0;
+  color: var(--lp-text);
+}
+
+@media (max-width: 720px) {
+  .lp-legal-container { padding: 96px 20px 80px; }
+  .lp-sign-container { padding: 96px 20px 80px; }
+  .lp-sign-card { padding: 28px 20px; }
+  .lp-legal-cta { padding: 24px; }
+}

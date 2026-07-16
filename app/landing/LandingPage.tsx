@@ -121,6 +121,7 @@ function Nav() {
         <a href="#platform">Platform</a>
         <a href="#pricing">Pricing</a>
         <a href="#valuations">Valuations</a>
+        <a href="/legal/agreement">Agreement</a>
         <a href="https://getmineralmap.com/auth" className="lp-nav-cta">Get started free →</a>
       </div>
     </nav>
@@ -137,15 +138,16 @@ function Hero() {
         <div className="lp-hero-glow2" />
         <OilFieldSVG />
       </div>
-      <div className="lp-hero-eyebrow reveal">Built for mineral brokers & buyers</div>
+      <div className="lp-hero-eyebrow reveal">Built for mineral brokers &amp; acquisition shops</div>
       <h1 className="reveal reveal-delay-1">
-        Every tool your brokerage needs.<br />
+        Every tool your acquisition desk needs.<br />
         <em>Free until you close.</em>
       </h1>
       <p className="lp-hero-sub reveal reveal-delay-2">
-        County ownership data, a CRM, click-to-call, and one-click PSAs — all in one
-        place. You pay nothing upfront. We take a small cut only when you close a
-        deal we helped you find.
+        Whether you&apos;re running a two-person brokerage or an in-house
+        acquisition team, get county ownership data, a CRM, click-to-call, and
+        one-click PSAs in one place. You pay nothing upfront. We take a small cut
+        only when you close a deal we helped you find.
       </p>
       <div className="lp-hero-actions reveal reveal-delay-3">
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary">
@@ -171,8 +173,13 @@ function ModelBand() {
         <div className="reveal">
           <span className="lp-section-label">The pitch</span>
           <h2 className="lp-model-heading">
-            Stop paying <em>$8K+ a month</em> just to run your brokerage.
+            Stop paying <em>$8K+ a month</em> just to run acquisitions.
           </h2>
+          <p className="lp-model-sub">
+            The stack a mid-market brokerage or acquisition shop stitches
+            together costs almost as much as a junior analyst — before a single
+            deal closes.
+          </p>
         </div>
         <div className="lp-model-cols">
           <div className="lp-model-col lp-model-col-bad reveal reveal-delay-1">
@@ -218,7 +225,7 @@ const FEATURES = [
   },
   {
     title: 'Built-in CRM',
-    desc: 'Pipelines, notes, owner history, and next‑action reminders — designed for how mineral brokers actually work. Nothing to import, nothing to sync.',
+    desc: 'Pipelines, notes, owner history, and next‑action reminders — designed for how brokerages and acquisition teams actually run deals. Nothing to import, nothing to sync.',
     icon: (
       <>
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -275,11 +282,12 @@ function Features() {
     <section id="platform" className="lp-section">
       <span className="lp-section-label reveal">The platform</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        Every tool a mineral broker needs — under one login.
+        Everything a broker or acquisition shop needs — under one login.
       </h2>
       <p className="lp-section-sub reveal reveal-delay-2">
-        Data, CRM, dialer, PSAs, skip tracing, and valuations. Built for the workflow
-        you already run, minus the six separate invoices.
+        Data, CRM, dialer, PSAs, skip tracing, and valuations. Built for the
+        workflow brokerages and in-house acquisition desks already run, minus
+        the six separate invoices.
       </p>
       <div className="lp-features-grid lp-features-grid-3">
         {FEATURES.map((f, i) => (
@@ -379,6 +387,11 @@ function PricingBand() {
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary lp-btn-large lp-pricing-card-cta">
           Create your account →
         </a>
+        <p className="lp-pricing-card-fineprint">
+          By creating an account you&apos;ll be asked to sign our{' '}
+          <a href="/legal/agreement">Platform Services Agreement</a> — 10% success
+          fee on Platform Leads you close, 24-month attribution, no monthly fees.
+        </p>
       </div>
     </section>
   )
@@ -440,7 +453,7 @@ function CTABand() {
   return (
     <section className="lp-cta-band">
       <h2 className="reveal">
-        Run your whole brokerage from<br />
+        Run your brokerage or acquisition desk from<br />
         <em>one login. Free.</em>
       </h2>
       <p className="reveal reveal-delay-1">
@@ -465,11 +478,12 @@ function Footer() {
     <footer className="lp-footer">
       <div>
         <img src="/mineral-map-logo-light.svg" alt="Mineral Map" className="lp-footer-logo" />
-        <div className="lp-footer-copy">© 2026 Mineral Map · Built for mineral brokers</div>
+        <div className="lp-footer-copy">© 2026 Mineral Map · Built for mineral brokers &amp; acquisition shops</div>
       </div>
       <div className="lp-footer-links">
         <a href="#pricing">Pricing</a>
         <a href="#valuations">Valuations</a>
+        <a href="/legal/agreement">Agreement</a>
         <a href="https://getmineralmap.com/auth">Sign in</a>
         <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
       </div>
