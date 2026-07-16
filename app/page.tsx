@@ -396,8 +396,6 @@ const buildLegalDescription = (tract: TractSelection | null | undefined): string
   return abstract || ''
 }
 
-const SKIP_TRACE_LIMIT = 200
-
 const ONBOARDING_STEPS = [
   {
     step: '01',
@@ -584,7 +582,6 @@ export default function Home() {
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
-  const [skipTraceUsage, setSkipTraceUsage] = useState<{ count: number; limit: number } | null>(null)
   const [pipelineCandidate, setPipelineCandidate] = useState<TractOwner | null>(null)
   const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
   const [pipelineSaving, setPipelineSaving] = useState(false)
@@ -729,33 +726,6 @@ export default function Home() {
     return () => clearTimeout(timer)
   }, [mapLevel, selectedCounty])
 
-  const refreshSkipTraceUsage = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (!session) {
-      setSkipTraceUsage({ count: 0, limit: SKIP_TRACE_LIMIT })
-      return
-    }
-
-    const currentMonth = new Date().toISOString().slice(0, 7)
-    const { data, error } = await supabase
-      .from('skip_trace_usage')
-      .select('count')
-      .eq('user_id', session.user.id)
-      .eq('month', currentMonth)
-      .maybeSingle()
-
-    if (error) {
-      console.error('Failed to fetch skip trace usage:', error)
-      return
-    }
-
-    const count = Number((data as { count?: number } | null)?.count ?? 0)
-    setSkipTraceUsage({ count, limit: SKIP_TRACE_LIMIT })
-  }, [])
-
   useEffect(() => {
     // 900px is the width at which the drawer's side-panel layout
     // (clamp(480px, 50vw, 720px) + map) stops being usable, so below
@@ -774,10 +744,6 @@ export default function Home() {
     window.addEventListener('resize', handler)
     return () => window.removeEventListener('resize', handler)
   }, [])
-
-  useEffect(() => {
-    void refreshSkipTraceUsage()
-  }, [refreshSkipTraceUsage])
 
   useEffect(() => {
     let mounted = true
@@ -1266,26 +1232,7 @@ export default function Home() {
       const result = await response.json()
       console.log('Skip trace result:', result)
 
-      if (result.error === 'monthly_limit_reached') {
-        const usageCount = Number(result.count ?? SKIP_TRACE_LIMIT)
-        const usageLimit = Number(result.limit ?? SKIP_TRACE_LIMIT)
-        setSkipTraceUsage({ count: usageCount, limit: usageLimit })
-        alert('You have used all 200 skip traces for this month. Resets on the 1st.')
-        setSkipTraceLoading(false)
-        setSkipTracing(null)
-        return
-      }
-
       if (result.success) {
-        if (typeof result.count === 'number') {
-          setSkipTraceUsage({
-            count: Number(result.count),
-            limit: Number(result.limit ?? SKIP_TRACE_LIMIT),
-          })
-        } else {
-          void refreshSkipTraceUsage()
-        }
-
         const phone = result.phones?.[0] ?? null
         const email = result.emails?.[0] ?? null
         console.log('Saving to CRM - phone:', phone, 'email:', email)
@@ -1882,6 +1829,26 @@ export default function Home() {
                   ← Map
                 </a>
                 <a
+                  href="/permits"
+                  style={{
+                    display: 'block',
+                    padding: '10px 16px',
+                    fontSize: 13,
+                    color: '#374151',
+                    textDecoration: 'none',
+                    fontFamily: 'Inter, sans-serif',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#EFF6FF'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  Recent permits
+                </a>
+                <a
                   href="/crm"
                   style={{
                     display: 'block',
@@ -2066,30 +2033,10 @@ export default function Home() {
             )}
           </div>
         )}
-        {!isMobile && skipTraceUsage && (
-          <div
-            style={{
-              fontSize: 11,
-              color: skipTraceUsage.count >= 180 ? '#dc2626' : '#9CA3AF',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              whiteSpace: 'nowrap',
-              marginRight: 8,
-            }}
-          >
-            <span>Skip traces:</span>
-            <span
-              style={{
-                fontWeight: 600,
-                color: skipTraceUsage.count >= 180 ? '#dc2626' : '#374151',
-              }}
-            >
-              {skipTraceUsage.count}
-            </span>
-            <span>/ {skipTraceUsage.limit}</span>
-          </div>
-        )}
+        {/* "Skip traces: X / 200" display was removed with the monthly
+            cap. Usage is still tracked server-side in skip_trace_usage
+            for internal accounting, but end users have unlimited
+            skip traces. */}
         <div
           style={{
             display: 'flex',
@@ -2101,6 +2048,22 @@ export default function Home() {
             flexShrink: 1,
           }}
         >
+          <a
+            href="/permits"
+            style={{
+              fontSize: 12,
+              color: '#2563EB',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #2563EB',
+              fontWeight: 500,
+              fontFamily: 'Inter, sans-serif',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Permits
+          </a>
           <a
             href="/crm"
             style={{
@@ -3749,12 +3712,7 @@ export default function Home() {
               }}
             >
               This will search for phone number and email address.
-              Uses 1 skip trace credit from your monthly allowance.
-              <br />
-              <br />
-              <span style={{ color: '#EF9F27' }}>
-                Monthly limit: {SKIP_TRACE_LIMIT} skip traces · resets on the 1st
-              </span>
+              Skip traces are unlimited.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button

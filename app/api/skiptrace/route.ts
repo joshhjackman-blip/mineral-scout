@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
 
-const MONTHLY_LIMIT = 200
+// Skip trace usage is still tracked in the skip_trace_usage table
+// for internal accounting / abuse detection, but there is no monthly
+// cap enforced on end users. Setting the limit to Number.MAX_SAFE_INTEGER
+// keeps the response shape backwards-compatible with the older UI
+// (`limit: N`) so nothing downstream has to change.
+const MONTHLY_LIMIT = Number.MAX_SAFE_INTEGER
 
 const pushUniquePhone = (phones: string[], value: unknown) => {
   if (typeof value !== 'string') return
