@@ -1,0 +1,56 @@
+name: Development status nightly recompute
+
+# Ticket 1.3 §3 explicit ask: nightly cron at 2 AM. Runs the same
+# scripts/compute_development_status.py the 5 PM permits workflow
+# calls, but on a separate 2 AM CT schedule so anything landed in
+# the DB via other paths (manual EWA backfill, hand-loaded lease
+# memoranda) gets picked up overnight for the next morning's
+# Central-time users.
+#
+# Requires: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY as repo secrets
+# (same ones the daily permits workflow uses). ANTHROPIC_API_KEY is
+# NOT required here — this workflow only touches the classifier, not
+# the operator agent.
+#
+# Cron: 07:00 UTC = 2:00 AM CDT (Chicago summer) / 1:00 AM CST
+# (winter). GitHub Actions cron doesn't understand timezones, so
+# we accept the ~1-hour DST drift twice a year rather than run two
+# scheduled entries.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      counties:
+        description: 'Counties to recompute (default: gonzales,howard,martin — the ones with an Abstracts.shp on file)'
+        required: false
+        default: 'gonzales,howard,martin'
+
+concurrency:
+  group: development-status-nightly
+  cancel-in-progress: false
+
+jobs:
+  compute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install supabase pyshp geopandas shapely
+
+      - name: Recompute tract_development_status
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin' }}"
+          python scripts/compute_development_status.py --county "$COUNTIES"

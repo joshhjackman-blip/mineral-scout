@@ -174,9 +174,13 @@ export default function Map({
   const [showPDP, setShowPDP] = useState(true)
   const [showPermits, setShowPermits] = useState(true)
   const [showPrePermits, setShowPrePermits] = useState(true)
+  const [showDucs, setShowDucs] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
   const [showDevStatus, setShowDevStatus] = useState(false)
   const [preProductionOnly, setPreProductionOnly] = useState(false)
+  // Ticket 1.3 §5 pud_score minimum slider. When > 0, parcels whose
+  // pud_score falls below the threshold fade to transparent.
+  const [minPudScore, setMinPudScore] = useState(0)
   // Latest devStatusByAbstract in a ref so the setupTractLevel closure
   // (memoized on countyEntries only) still sees fresh data.
   const devStatusByAbstractRef = useRef(devStatusByAbstract ?? {})
@@ -297,11 +301,11 @@ export default function Map({
       tractClickHandlerRef.current = null
     }
 
-    // Detach the click/hover listeners attached to any of the three
+    // Detach the click/hover listeners attached to any of the four
     // per-category permit sub-layers. permitHandlersRef only preserves the
     // last-attached bundle; the others get wiped when the map removes the
     // source below, which detaches all listeners on those layer ids.
-    for (const layerId of ['permits-approved-layer', 'permits-pending-layer', 'permits-rigs-layer']) {
+    for (const layerId of ['permits-approved-layer', 'permits-pending-layer', 'permits-ducs-layer', 'permits-rigs-layer']) {
       if (permitHandlersRef.current.clickHandler) {
         mapInstance.off('click', layerId, permitHandlersRef.current.clickHandler)
       }
@@ -319,6 +323,7 @@ export default function Map({
 
     removeLayerIfExists(mapInstance, 'permits-approved-layer')
     removeLayerIfExists(mapInstance, 'permits-pending-layer')
+    removeLayerIfExists(mapInstance, 'permits-ducs-layer')
     removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
 
@@ -433,10 +438,16 @@ export default function Map({
         ['coalesce', ['get', 'development_status'], 'FRONTIER'],
         ['literal', ['PUD_DUC', 'PUD_PERMITTED']],
       ]
+      // Ticket 1.3 §5 min pud_score filter — fade out tracts whose
+      // score is below the slider value.
+      const scoreFilter: mapboxgl.Expression = [
+        '>=',
+        ['to-number', ['coalesce', ['get', 'pud_score'], 0]],
+        minPudScore,
+      ]
+      let base: mapboxgl.Expression
       if (showDevStatus) {
-        // Dev-view opacities: solid on classified tracts, dim on Frontier
-        // unless the pre-production filter is off.
-        const base: mapboxgl.Expression = [
+        base = [
           'match',
           ['coalesce', ['get', 'development_status'], 'FRONTIER'],
           'PDP',            0.62,
@@ -446,25 +457,35 @@ export default function Map({
           'LEASING_ACTIVE', 0.60,
           0.18,
         ]
-        return preProductionOnly
-          ? (['case', preFilter, base, 0] as mapboxgl.Expression)
-          : base
+      } else {
+        base = [
+          'match',
+          ['coalesce', ['get', 'production_status'], 'none'],
+          'pdp',            showPDP ? 0.78 : 0.18,
+          'pud',            0.72,
+          'new_permit',     0.18,
+          'pending_permit', 0.14,
+          0.18,
+        ]
       }
-      const base: mapboxgl.Expression = [
-        'match',
-        ['coalesce', ['get', 'production_status'], 'none'],
-        'pdp',            showPDP ? 0.78 : 0.18,
-        'pud',            0.72,
-        'new_permit',     0.18,
-        'pending_permit', 0.14,
-        0.18,
-      ]
-      return preProductionOnly
-        ? (['case', preFilter, base, 0] as mapboxgl.Expression)
-        : base
+      // Stack the filters. Case expressions read outward-in; the last
+      // matching branch wins.
+      if (preProductionOnly && minPudScore > 0) {
+        return ['case',
+          ['all', preFilter, scoreFilter], base,
+          0,
+        ] as mapboxgl.Expression
+      }
+      if (preProductionOnly) {
+        return ['case', preFilter, base, 0] as mapboxgl.Expression
+      }
+      if (minPudScore > 0) {
+        return ['case', scoreFilter, base, 0] as mapboxgl.Expression
+      }
+      return base
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showPDP, showDevStatus, preProductionOnly]
+    [showPDP, showDevStatus, preProductionOnly, minPudScore]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
@@ -604,7 +625,7 @@ export default function Map({
       const permitsResult = await supabase
         .from(permitsTable)
         .select(
-          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date,permit_status,abstract_number'
         )
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
@@ -631,18 +652,36 @@ export default function Map({
         )
       })
 
-      // Categorize each row into one of three activity layers. The RRC
-      // scraper (scripts/scrape_rrc_permits.py) tags rows so this maps 1:1:
-      //   permit_type contains 'Drill' -> rig    (wells currently drilling
-      //                                            via SYMNUM=21 fallback)
-      //   status contains 'PEND'/'FILED' -> pre_permit (application filed)
-      //   everything else               -> permit (approved permit or
-      //                                            unknown status)
-      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+      // Ticket 1.3 permit-layer split. Spec §5:
+      //   blue   -> approved-not-spud (`permit`)
+      //   purple -> DUC = spud_date set, no completion_date (`duc`)
+      //   pale   -> pending / filed applications (`pre_permit`)
+      //   red    -> physical rig on location right now (`rig`)
+      // Priority: completion terminates (drops to none), spud >
+      // approved > pending. Category assignment reads spud_date /
+      // completion_date first (Ticket 1.3 columns) and falls back
+      // to the SYMNUM / permit_type text signals for permits that
+      // haven't been backfilled yet.
+      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'duc' | 'rig' => {
         const type = String(row.permit_type ?? '').toUpperCase()
         const status = String(row.status ?? '').toUpperCase()
-        if (type.includes('DRILL') || type.includes('RIG') || status.includes('DRILL')) {
-          return 'rig'
+        const permitStatus = String(row.permit_status ?? '').toUpperCase()
+        const hasSpud = Boolean(row.spud_date) || permitStatus === 'SPUD'
+        const hasCompletion = Boolean(row.completion_date) || permitStatus === 'COMPLETED'
+        if (hasCompletion) {
+          // Well is done — not a permit anymore. Rendered indirectly via
+          // production_status='pdp' on the parcel fill. Filter here.
+          return 'permit'
+        }
+        if (hasSpud || type.includes('RIG')) {
+          // Rig-on-location comes through as permit_type=Drilling from
+          // the SYMNUM=21 fallback; a spud_date from the EWA backfill
+          // is the stronger signal. Both categorize as DUC — spec
+          // treats spud-no-completion as one bucket.
+          return type.includes('RIG') ? 'rig' : 'duc'
+        }
+        if (type.includes('DRILL') || status.includes('DRILL')) {
+          return 'duc'
         }
         if (status.includes('PEND') || status.includes('FILED') || status.includes('HELD')) {
           return 'pre_permit'
@@ -675,11 +714,13 @@ export default function Map({
       if (countyKey !== selectedCountyRef.current || !map.current) return
     }
 
-    // Three sub-layers, each filtered on `category`. Adds up to a single
-    // toggleable set of activity dots without duplicating the source.
+    // Four sub-layers on the same GeoJSON source. Each filters on the
+    // client-side `category` prop the categorize() call above assigned.
+    // Spec §5: blue = approved-not-spud, purple = DUC, pale = pending,
+    // red = physical rig on location (a separate real-time signal).
     const PERMIT_LAYERS: Array<{
       id: string
-      category: 'permit' | 'pre_permit' | 'rig'
+      category: 'permit' | 'pre_permit' | 'duc' | 'rig'
       color: string
       strokeColor: string
       radius: number
@@ -706,6 +747,16 @@ export default function Map({
         visible: showPrePermits,
         popupTitle: 'Pre-Permit / Filed',
         popupColor: '#1e40af',
+      },
+      {
+        id: 'permits-ducs-layer',
+        category: 'duc',
+        color: '#A855F7',
+        strokeColor: '#ffffff',
+        radius: 7,
+        visible: showDucs,
+        popupTitle: 'DUC — Spud, awaiting completion',
+        popupColor: '#7C3AED',
       },
       {
         id: 'permits-rigs-layer',
@@ -787,7 +838,7 @@ export default function Map({
         mapInstance.setLayoutProperty(layer.id, 'visibility', layer.visible ? 'visible' : 'none')
       }
     }
-  }, [showPermits, showPrePermits, showRigs])
+  }, [showPermits, showPrePermits, showDucs, showRigs])
 
   const setupCountyOverview = useCallback(async () => {
     const mapInstance = map.current
@@ -1356,7 +1407,7 @@ export default function Map({
   // is memoized on the fill/opacity expressions, which depend on showPDP).
   useEffect(() => {
     lastStyledSelectedCountyRef.current = null
-  }, [showPDP, showDevStatus, preProductionOnly])
+  }, [showPDP, showDevStatus, preProductionOnly, minPudScore])
 
   // Re-inject development_status onto every loaded feature when the
   // per-county dev-status lookup changes (initial fetch + county switch).
@@ -1401,6 +1452,7 @@ export default function Map({
     const layerVis: Array<[string, boolean]> = [
       ['permits-approved-layer',  tractLevel && showPermits],
       ['permits-pending-layer',   tractLevel && showPrePermits],
+      ['permits-ducs-layer',      tractLevel && showDucs],
       ['permits-rigs-layer',      tractLevel && showRigs],
     ]
     for (const [layerId, visible] of layerVis) {
@@ -1408,7 +1460,7 @@ export default function Map({
         mapInstance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
       }
     }
-  }, [mapLevel, showPermits, showPrePermits, showRigs])
+  }, [mapLevel, showPermits, showPrePermits, showDucs, showRigs])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -1448,12 +1500,16 @@ export default function Map({
           onPermits={setShowPermits}
           prePermitsVisible={showPrePermits}
           onPrePermits={setShowPrePermits}
+          ducsVisible={showDucs}
+          onDucs={setShowDucs}
           rigsVisible={showRigs}
           onRigs={setShowRigs}
           devStatusVisible={showDevStatus}
           onDevStatus={setShowDevStatus}
           preProductionOnly={preProductionOnly}
           onPreProductionOnly={setPreProductionOnly}
+          minPudScore={minPudScore}
+          onMinPudScore={setMinPudScore}
           pdpFill={PRODUCTION_STATUS_FILL.pdp}
           devPalette={DEV_STATUS_FILL}
           devLabels={DEV_STATUS_LABEL}
@@ -1475,9 +1531,11 @@ function LayerTogglePanel({
   pdpVisible, onPDP,
   permitsVisible, onPermits,
   prePermitsVisible, onPrePermits,
+  ducsVisible, onDucs,
   rigsVisible, onRigs,
   devStatusVisible, onDevStatus,
   preProductionOnly, onPreProductionOnly,
+  minPudScore, onMinPudScore,
   pdpFill,
   devPalette,
   devLabels,
@@ -1488,12 +1546,16 @@ function LayerTogglePanel({
   onPermits: (v: boolean) => void
   prePermitsVisible: boolean
   onPrePermits: (v: boolean) => void
+  ducsVisible: boolean
+  onDucs: (v: boolean) => void
   rigsVisible: boolean
   onRigs: (v: boolean) => void
   devStatusVisible: boolean
   onDevStatus: (v: boolean) => void
   preProductionOnly: boolean
   onPreProductionOnly: (v: boolean) => void
+  minPudScore: number
+  onMinPudScore: (v: number) => void
   pdpFill: string
   devPalette: Record<DevelopmentStatusKey, string>
   devLabels: Record<DevelopmentStatusKey, string>
@@ -1509,6 +1571,7 @@ function LayerTogglePanel({
     { label: 'PDP',         swatch: 'fill', color: pdpFill,   checked: pdpVisible,       onChange: onPDP,       disabled: devStatusVisible },
     { label: 'Permits',     swatch: 'dot',  color: '#2563EB', checked: permitsVisible,   onChange: onPermits },
     { label: 'Pre-permits', swatch: 'dot',  color: '#93C5FD', checked: prePermitsVisible, onChange: onPrePermits },
+    { label: 'DUCs',        swatch: 'dot',  color: '#A855F7', checked: ducsVisible,       onChange: onDucs },
     { label: 'Rigs',        swatch: 'dot',  color: '#DC2626', checked: rigsVisible,      onChange: onRigs },
   ]
 
@@ -1596,6 +1659,40 @@ function LayerTogglePanel({
         </label>
         <div style={{ marginTop: 4, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
           Show only tracts flagged PUD (DUC) or PUD (Permitted).
+        </div>
+
+        {/* Ticket 1.3 §5 min pud_score slider. Composable with the
+            Pre-production filter above and with the existing
+            owner-type filter in the bottom toolbar. */}
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <span style={{ fontWeight: 600, color: minPudScore > 0 ? '#0F172A' : '#94A3B8' }}>
+              Min pud_score
+            </span>
+            <span
+              style={{
+                fontFamily: 'JetBrains Mono, ui-monospace, monospace',
+                fontSize: 11,
+                background: minPudScore > 0 ? '#FEF3C7' : '#F1F5F9',
+                color: minPudScore > 0 ? '#B45309' : '#64748B',
+                border: `1px solid ${minPudScore > 0 ? '#FDE68A' : '#E5E7EB'}`,
+                borderRadius: 6,
+                padding: '1px 6px',
+              }}
+            >
+              {minPudScore}
+              <span style={{ opacity: 0.6 }}>/10</span>
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={1}
+            value={minPudScore}
+            onChange={(e) => onMinPudScore(Number(e.target.value))}
+            style={{ width: '100%', marginTop: 4, accentColor: '#F97316' }}
+          />
         </div>
       </div>
     </div>
