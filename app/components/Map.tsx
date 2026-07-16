@@ -12,6 +12,55 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 // Flatten a GeoJSON polygon/multipolygon geometry into a flat array of [lng, lat]
 // coordinate pairs so we can compute a rough bbox-based centroid without adding
 // @turf as a dependency.
+// Bare-abstract normalizer used by every parcel-lookup site in this
+// file: strips a leading "A-" so a shapefile-labeled 'A-160' matches
+// a compute-script-keyed '160' in tract_development_status.
+const bareAbstract = (raw: unknown): string =>
+  String(raw ?? '').replace(/^A-\s*/i, '').trim()
+
+// Injects Ticket 1.3 development_status + pud_score + secondary
+// signal flags (dev_flag_permit / dev_flag_duc / dev_flag_infill /
+// dev_flag_pending) onto every feature in the county's parcels
+// GeoJSON. Called once on load and again whenever
+// devStatusByAbstract changes so tiles reflow with fresh data.
+function injectDevStatusIntoFeatures(
+  collection: GeoJSON.FeatureCollection,
+  lookup: Record<string, {
+    development_status?: string
+    pud_score?: number
+    signal_detail?: {
+      permits?: unknown[]
+      ducs?: unknown[]
+      adjacent_permit_count?: number
+      infill_gaps?: number
+    }
+  }>,
+): void {
+  if (!lookup || Object.keys(lookup).length === 0) return
+  for (const feature of collection.features) {
+    const props = feature.properties ?? {}
+    const key = bareAbstract(props.ABSTRACT_L ?? props.ABSTRACT_N)
+    const entry = key ? lookup[key] : undefined
+    const detail = entry?.signal_detail ?? {}
+    const permits = Array.isArray(detail.permits) ? detail.permits : []
+    const ducs = Array.isArray(detail.ducs) ? detail.ducs : []
+    const infill = Number(detail.infill_gaps ?? 0)
+    const production = String(props.production_status ?? '').toLowerCase()
+    feature.properties = {
+      ...props,
+      development_status: entry?.development_status ?? 'FRONTIER',
+      pud_score: entry?.pud_score ?? 0,
+      // Secondary indicator flags. Union with pre-existing
+      // production_status='new_permit' / 'pending_permit' so old
+      // pre-Ticket-1.3 data still lights up the dots.
+      dev_flag_permit: permits.length > 0 || production === 'new_permit',
+      dev_flag_duc: ducs.length > 0,
+      dev_flag_infill: infill > 0,
+      dev_flag_pending: production === 'pending_permit',
+    }
+  }
+}
+
 const flattenPolygonCoords = (geometry: GeoJSON.Geometry | null | undefined): number[][] => {
   if (!geometry) return []
   if (geometry.type === 'Polygon') return (geometry.coordinates[0] ?? []) as number[][]
@@ -325,6 +374,14 @@ export default function Map({
     countyEntries.forEach(([, countyConfig]) => {
       removeLayerIfExists(mapInstance, `block-labels-${countyConfig.id}`)
       removeSourceIfExists(mapInstance, `block-labels-source-${countyConfig.id}`)
+      // Ticket 1.3 multi-color overlay dots (one per secondary signal).
+      removeLayerIfExists(mapInstance, `parcels-permit-dot-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-duc-dot-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-infill-dot-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-pending-dot-${countyConfig.id}`)
+      // Old singular dot layer id from before the multi-color refactor.
+      // Left in the cleanup list so a mid-deploy source swap can tear
+      // it down without a `getLayer` guard.
       removeLayerIfExists(mapInstance, `parcels-permit-dots-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-sections-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
@@ -578,7 +635,10 @@ export default function Map({
       `parcels-outline-${selectedConfig.id}`,
       `parcels-labels-${selectedConfig.id}`,
       `parcels-sections-${selectedConfig.id}`,
-      `parcels-permit-dots-${selectedConfig.id}`,
+      `parcels-permit-dot-${selectedConfig.id}`,
+      `parcels-duc-dot-${selectedConfig.id}`,
+      `parcels-infill-dot-${selectedConfig.id}`,
+      `parcels-pending-dot-${selectedConfig.id}`,
       `block-labels-${selectedConfig.id}`,
     ]
     for (const id of ids) {
@@ -952,24 +1012,7 @@ export default function Map({
 
     currentParcelsByCountyRef.current = {}
     parcelsByCounty.forEach(([countyKey, geojson]) => {
-      // Inject Ticket 1.3 development_status + pud_score into each feature
-      // from the caller-supplied lookup so the paint expressions can
-      // `get('development_status')` directly. Missing rows fall back to
-      // FRONTIER / 0.
-      const devLookup = devStatusByAbstractRef.current
-      if (devLookup && Object.keys(devLookup).length > 0) {
-        for (const feature of geojson.features) {
-          const props = feature.properties ?? {}
-          const bare = String(props.ABSTRACT_L ?? props.ABSTRACT_N ?? '')
-            .replace(/^A-\s*/i, '').trim()
-          const entry = bare ? devLookup[bare] : undefined
-          feature.properties = {
-            ...props,
-            development_status: entry?.development_status ?? 'FRONTIER',
-            pud_score: entry?.pud_score ?? 0,
-          }
-        }
-      }
+      injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
       const countyConfig = COUNTIES[countyKey]
       const sourceId = `parcels-${countyConfig.id}`
@@ -1116,45 +1159,64 @@ export default function Map({
       })
 
       if (!map.current) return
-      // Permit dot: one blue bullet per parcel whose production_status
-      // is new_permit or pending_permit. Mapbox places `symbol-placement:
-      // point` symbols at the polygon's centroid, so no separate point
-      // source or centroid computation is required. Visible from z9 so
-      // permit density is legible during county overview but doesn't
-      // clash with basemap glyphs at extreme zoom-out.
-      const permitDotsId = `parcels-permit-dots-${countyConfig.id}`
-      map.current.addLayer({
-        id: permitDotsId,
-        type: 'symbol',
-        source: sourceId,
-        minzoom: 9,
-        filter: [
-          'in',
-          ['coalesce', ['get', 'production_status'], 'none'],
-          ['literal', ['new_permit', 'pending_permit']],
-        ],
-        layout: {
-          'text-field': '●',
-          'text-size': 14,
-          'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
-          'text-anchor': 'center',
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-          'symbol-placement': 'point',
-        },
-        paint: {
-          'text-color': PRODUCTION_STATUS_DOT,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5,
-          'text-opacity': [
-            'match',
-            ['coalesce', ['get', 'production_status'], 'none'],
-            'new_permit',     1.0,
-            'pending_permit', 0.8, // slightly dimmer so the pending vs approved distinction is still visible
-            0,
-          ],
-        },
-      })
+      // Secondary centroid dots — Ticket 1.3 multi-color per tract.
+      // A single categorical fill (highest-priority status wins) hid
+      // secondary signals from view: e.g. a producing PDP tract that
+      // ALSO has a fresh permit filed would just look green. These
+      // dots render on top of the fill regardless of the primary
+      // status so users can see stacked signals at a glance:
+      //
+      //   dev_flag_permit  -> blue dot  (approved permit on this tract)
+      //   dev_flag_duc     -> purple dot (spud, no completion)
+      //   dev_flag_infill  -> teal dot  (spacing gap in this tract's unit)
+      //   dev_flag_pending -> pale-blue (pre-permit / filed application)
+      //
+      // Dots are stacked at the parcel centroid with a small offset
+      // per signal so multiple stacked signals stay individually
+      // visible. When a tract has none of these, no dot renders.
+      const overlayLayers: Array<{
+        id: string
+        propertyName: string
+        color: string
+        offsetX: number
+        offsetY: number
+        size: number
+      }> = [
+        // Approved permit on this tract regardless of primary status.
+        { id: `parcels-permit-dot-${countyConfig.id}`,     propertyName: 'dev_flag_permit',  color: '#2563EB', offsetX: -0.35, offsetY: -0.30, size: 12 },
+        // DUC signal on this tract.
+        { id: `parcels-duc-dot-${countyConfig.id}`,        propertyName: 'dev_flag_duc',     color: '#A855F7', offsetX:  0.35, offsetY: -0.30, size: 12 },
+        // Infill spacing gap in the tract's unit.
+        { id: `parcels-infill-dot-${countyConfig.id}`,     propertyName: 'dev_flag_infill',  color: '#0891B2', offsetX: -0.35, offsetY:  0.35, size: 10 },
+        // Pending / filed application (kept for backwards compat with
+        // the pre-Ticket-1.3 production_status='pending_permit' data).
+        { id: `parcels-pending-dot-${countyConfig.id}`,    propertyName: 'dev_flag_pending', color: '#93C5FD', offsetX:  0.35, offsetY:  0.35, size: 10 },
+      ]
+      for (const layer of overlayLayers) {
+        map.current.addLayer({
+          id: layer.id,
+          type: 'symbol',
+          source: sourceId,
+          minzoom: 9,
+          filter: ['==', ['coalesce', ['get', layer.propertyName], false], true],
+          layout: {
+            'text-field': '●',
+            'text-size': layer.size,
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+            'text-anchor': 'center',
+            'text-offset': [layer.offsetX, layer.offsetY],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+            'symbol-placement': 'point',
+          },
+          paint: {
+            'text-color': layer.color,
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5,
+            'text-opacity': 0.95,
+          },
+        })
+      }
 
       if (!map.current) return
       // Block labels: one point per distinct Block value, placed at the
@@ -1358,10 +1420,10 @@ export default function Map({
     lastStyledSelectedCountyRef.current = null
   }, [showPDP, showDevStatus, preProductionOnly])
 
-  // Re-inject development_status onto every loaded feature when the
-  // per-county dev-status lookup changes (initial fetch + county switch).
-  // Without this, features loaded before the Supabase query returns would
-  // stay tagged FRONTIER forever.
+  // Re-inject development_status + secondary flags onto every loaded
+  // feature when the per-county dev-status lookup changes (initial
+  // fetch + county switch). Without this, features loaded before the
+  // Supabase query returns would stay tagged FRONTIER forever.
   useEffect(() => {
     const mapInstance = map.current
     if (!mapInstance) return
@@ -1370,17 +1432,7 @@ export default function Map({
     let updated = 0
     for (const [countyKey, collection] of Object.entries(currentParcelsByCountyRef.current)) {
       if (!collection) continue
-      for (const feature of collection.features) {
-        const props = feature.properties ?? {}
-        const bare = String(props.ABSTRACT_L ?? props.ABSTRACT_N ?? '')
-          .replace(/^A-\s*/i, '').trim()
-        const entry = bare ? lookup[bare] : undefined
-        feature.properties = {
-          ...props,
-          development_status: entry?.development_status ?? 'FRONTIER',
-          pud_score: entry?.pud_score ?? 0,
-        }
-      }
+      injectDevStatusIntoFeatures(collection, lookup)
       const sourceId = `parcels-${COUNTIES[countyKey as CountyKey].id}`
       const source = mapInstance.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined
       if (source) {

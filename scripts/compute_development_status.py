@@ -248,7 +248,7 @@ def load_abstract_polygons(county: str, data_dir: Path,
                     print(f"  no {shp_name} inside {key}; abstracts unavailable")
                     return []
                 gdf = gpd.read_file(candidate)
-                return _abstracts_from_gdf(gdf)
+                return _abstracts_from_gdf(gdf, county)
         except Exception as exc:
             print(f"  bucket fetch failed for {key}: {exc}")
             return []
@@ -258,20 +258,33 @@ def load_abstract_polygons(county: str, data_dir: Path,
         return []
 
     gdf = gpd.read_file(local_path)
-    return _abstracts_from_gdf(gdf)
+    return _abstracts_from_gdf(gdf, county)
 
 
-def _abstracts_from_gdf(gdf) -> list[dict[str, Any]]:
-    import geopandas as gpd  # noqa: F401 — ensures crs helper below imports
+def _abstracts_from_gdf(gdf, county: str) -> list[dict[str, Any]]:
+    """Extract (abstract, geometry) pairs from a county's Abstracts.shp.
+
+    Column priority is county-aware: Gonzales's Abstracts.shp stores
+    ``ABSTRACT_N`` as a FIPS-prefixed 5-6-digit value ('177160' for
+    abstract A-160) while ``ABSTRACT_L`` carries the bare display label
+    ('A-160'). Howard's shapefile uses ``CODE`` for the bare number.
+    Preferring the display-label column produces keys that line up 1:1
+    with the ABSTRACT_L values injected into the map's slim geojson.
+
+    Falls back through the other columns when the preferred one is
+    missing, and defensively strips any county-FIPS prefix left over
+    from a fallback pick.
+    """
+    import geopandas as gpd  # noqa: F401
     if gdf.crs is None:
         gdf = gdf.set_crs("EPSG:4326")
     else:
         gdf = gdf.to_crs("EPSG:4326")
-    label_col = None
-    for candidate in ("CODE", "ABSTRACT_N", "ABSTRACT_L", "abstract"):
-        if candidate in gdf.columns:
-            label_col = candidate
-            break
+    fips = COUNTY_FIPS.get(county, "")
+    # ABSTRACT_L / CODE first (both usually bare); ABSTRACT_N last since
+    # some counties bake the FIPS prefix into it.
+    priority = ("ABSTRACT_L", "CODE", "abstract", "ABSTRACT_N")
+    label_col = next((c for c in priority if c in gdf.columns), None)
     if label_col is None:
         print(f"  no abstract column found in shapefile (cols: {list(gdf.columns)[:10]}...)")
         return []
@@ -280,6 +293,15 @@ def _abstracts_from_gdf(gdf) -> list[dict[str, Any]]:
         abstract = normalize_abstract(r.get(label_col))
         if not abstract:
             continue
+        # If the picked column was FIPS-prefixed (rare, but happens on
+        # ABSTRACT_N fallback), strip the county FIPS so the key matches
+        # the map's ABSTRACT_L-derived bare key.
+        if fips and abstract.startswith(fips) and len(abstract) > len(fips):
+            candidate = abstract[len(fips):].lstrip("0") or "0"
+            # Only accept the FIPS-strip when what's left looks like a
+            # reasonable abstract number (1-5 digits).
+            if candidate.isdigit() and len(candidate) <= 5:
+                abstract = candidate
         geom = r.get("geometry")
         if geom is None or geom.is_empty:
             continue
@@ -398,16 +420,31 @@ def fetch_operator_dev_programs(client: Client, county: str) -> set[str]:
 
 
 def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
+    """Fetch every well row for a county. Handles per-county column
+    drift: Howard / Martin ``<county>_wells`` tables carry an
+    ``abstract`` column (populated by the loader's spatial join);
+    Gonzales does not. The ``full_cols`` -> ``minimal_cols`` fallback
+    mirrors the same trick paginate_permits uses. Lat/lon-null rows
+    are dropped client-side because a ``.not_.is_`` filter combined
+    with keyset pagination sometimes empties the first page against
+    Gonzales's shape.
+    """
+    full_cols = (
+        "api_number, latitude, longitude, well_status, well_type, "
+        "abstract, completion_date, operator_name, lease_name"
+    )
+    minimal_cols = (
+        "api_number, latitude, longitude, well_status, well_type, "
+        "completion_date, operator_name, lease_name"
+    )
+    columns = full_cols
     rows: list[dict[str, Any]] = []
     last_api = ""
     while True:
         try:
             query = (
                 client.table(table)
-                .select("api_number, latitude, longitude, well_status, well_type, "
-                        "abstract, completion_date, operator_name, lease_name")
-                .not_.is_("latitude", "null")
-                .not_.is_("longitude", "null")
+                .select(columns)
                 .order("api_number", desc=False)
                 .limit(PAGE_SIZE)
             )
@@ -416,8 +453,15 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
             result = query.execute()
         except Exception as exc:
             message = str(exc).lower()
-            if "not find" in message or "does not exist" in message:
-                return []
+            # Missing column -> retry with the county-agnostic subset.
+            if "column" in message and "does not exist" in message and columns == full_cols:
+                columns = minimal_cols
+                continue
+            # Missing table -> bail out with what we have.
+            if "relation" in message and "does not exist" in message:
+                return rows
+            if "not find" in message and "table" in message:
+                return rows
             raise
         page = result.data or []
         if not page:
@@ -426,7 +470,10 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
         last_api = page[-1].get("api_number") or last_api
         if len(page) < PAGE_SIZE:
             break
-    return rows
+    return [
+        r for r in rows
+        if r.get("latitude") is not None and r.get("longitude") is not None
+    ]
 
 
 def classify_permit(permit: dict[str, Any], today: dt.date) -> str:

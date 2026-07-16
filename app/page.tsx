@@ -373,6 +373,9 @@ const buildLegalDescription = (tract: TractSelection | null | undefined): string
     tract.surv_sect ?? tract.Surv_Sect ?? tract.level3_sur ?? tract.LEVEL3_SUR ?? ''
   ).trim()
   const abstract = String(tract.abstract_label ?? tract.ABSTRACT_L ?? '').trim()
+  const surveyName = String(
+    tract.surv_name ?? tract.Surv_Name ?? tract.level1_sur ?? tract.LEVEL1_SUR ?? tract.desc_ ?? tract.DESC_ ?? ''
+  ).trim()
 
   // Gonzales TEXTSTRING reuses the abstract label as a section descriptor;
   // drop it so we don't render "SEC A-160 A-160".
@@ -384,10 +387,17 @@ const buildLegalDescription = (tract: TractSelection | null | undefined): string
     ? block.replace(townshipMatch![0], '').trim()
     : block
 
+  // T&P counties (Howard, most of Martin) — full coordinate line.
   if (township && blockNum && section && abstract) {
     return `${township} BLK ${blockNum} SEC ${section} ${abstract}`
   }
-  return ''
+  // Non-T&P shape (Gonzales, Martin CSL leagues, older Howard rows) —
+  // fall back to survey name + abstract label so the drawer always has
+  // something to render. Mirrors scripts/build_map_geojson.py's
+  // build_legal_desc() so the map's baked-in `legal_desc` prop and the
+  // client-side derivation stay in sync.
+  if (surveyName && abstract) return `${surveyName} ${abstract}`
+  return abstract || ''
 }
 
 const SKIP_TRACE_LIMIT = 200
