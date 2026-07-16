@@ -2,14 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-} from 'recharts'
+
+// recharts is no longer imported here: the tract sidebar's per-tract line
+// chart (PRODUCTION HISTORY) was removed in favor of the NEW PERMITS
+// dropdown. If a future revision brings a chart back it should re-import
+// only what it uses.
 
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
@@ -144,6 +141,20 @@ type WellSummary = {
   oil_gas_code?: string | null
 }
 
+type PermitRow = {
+  id: number
+  permit_number?: string | null
+  api_number?: string | null
+  operator_name?: string | null
+  lease_name?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  permit_type?: string | null
+  status?: string | null
+  filed_date?: string | null
+  approved_date?: string | null
+}
+
 type HowardWellPoint = {
   latitude: number
   longitude: number
@@ -236,6 +247,68 @@ function TractActivityBadge({
       )}
     </div>
   )
+}
+
+// Ray-casting point-in-polygon that works for both Polygon and MultiPolygon.
+// The New Permits dropdown filters the county's permit list to just those
+// whose lat/lon falls inside the currently-selected tract; we do this
+// client-side to avoid an extra Supabase round-trip on every tract click.
+const isPointInRing = (
+  lon: number,
+  lat: number,
+  ring: readonly (readonly number[])[],
+): boolean => {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = Number(ring[i][0])
+    const yi = Number(ring[i][1])
+    const xj = Number(ring[j][0])
+    const yj = Number(ring[j][1])
+    const intersect = ((yi > lat) !== (yj > lat)) &&
+      (lon < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+const isPointInGeometry = (
+  lon: number,
+  lat: number,
+  geometry: GeoJSON.Geometry | null | undefined,
+): boolean => {
+  if (!geometry) return false
+  if (geometry.type === 'Polygon') {
+    const rings = geometry.coordinates as unknown as number[][][]
+    if (rings.length === 0) return false
+    if (!isPointInRing(lon, lat, rings[0])) return false
+    for (let i = 1; i < rings.length; i += 1) {
+      if (isPointInRing(lon, lat, rings[i])) return false
+    }
+    return true
+  }
+  if (geometry.type === 'MultiPolygon') {
+    const polys = geometry.coordinates as unknown as number[][][][]
+    for (const poly of polys) {
+      if (poly.length === 0) continue
+      if (!isPointInRing(lon, lat, poly[0])) continue
+      let insideHole = false
+      for (let i = 1; i < poly.length; i += 1) {
+        if (isPointInRing(lon, lat, poly[i])) { insideHole = true; break }
+      }
+      if (!insideHole) return true
+    }
+  }
+  return false
+}
+
+const permitDateKey = (permit: PermitRow): string =>
+  String(permit.filed_date ?? permit.approved_date ?? '')
+
+const permitSortByFiledDesc = (a: PermitRow, b: PermitRow): number => {
+  const aKey = permitDateKey(a)
+  const bKey = permitDateKey(b)
+  if (aKey === bKey) return (b.id ?? 0) - (a.id ?? 0)
+  return bKey.localeCompare(aKey)
 }
 
 // Build the compact survey/legal description string used under each lead's
@@ -423,17 +496,6 @@ const estimateMonthlyRoyalty = (
   return `~$${(monthlyRoyalty / 1000).toFixed(1)}k/mo`
 }
 
-const getTrend = (series: Array<{ month: string; oil: number }>) => {
-  if (series.length < 2) return 'stable'
-  const recent = series[series.length - 1].oil
-  const previous = series[series.length - 2].oil
-  if (previous === 0) return 'stable'
-  const delta = (recent - previous) / previous
-  if (delta > 0.05) return 'growing'
-  if (delta < -0.05) return 'declining'
-  return 'stable'
-}
-
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
@@ -476,6 +538,13 @@ export default function Home() {
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
   const [tractWellsLoading, setTractWellsLoading] = useState(false)
+  // Every permit filed against the currently-selected county, loaded once
+  // per county switch. The sidebar's "New Permits" dropdown filters this
+  // to the selected tract's polygon when a tract is active; if no tract
+  // is selected, the same list renders at the county overview level.
+  const [countyPermits, setCountyPermits] = useState<PermitRow[]>([])
+  const [countyPermitsLoading, setCountyPermitsLoading] = useState(false)
+  const [permitsExpanded, setPermitsExpanded] = useState(true)
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
   const [ownerWellsLoading, setOwnerWellsLoading] = useState<Record<string, boolean>>({})
   const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
@@ -697,7 +766,62 @@ export default function Home() {
     setOwnerTracts([])
     setOwnerTractsName('')
     setOwnerTractsLoading(false)
+    setCountyPermits([])
   }, [selectedCounty])
+
+  // Load every permit for the active county exactly once per county switch.
+  // Cheap enough for the current dataset (Gonzales has ~400 rows, Howard /
+  // Martin will land somewhere in the low thousands from the daily RRC
+  // scrape) that we can filter to a selected tract client-side using
+  // isPointInGeometry — no need for a per-tract Supabase round-trip.
+  useEffect(() => {
+    let cancelled = false
+    const table = `${county.id}_permits`
+    setCountyPermitsLoading(true)
+    supabase
+      .from(table)
+      .select('id, permit_number, api_number, operator_name, lease_name, latitude, longitude, permit_type, status, filed_date, approved_date')
+      .not('latitude', 'is', null)
+      .not('longitude', 'is', null)
+      .order('filed_date', { ascending: false })
+      .limit(5000)
+      .then((result) => {
+        if (cancelled) return
+        if (result.error) {
+          // Table may not exist yet for a county (e.g. howard_permits before
+          // the migration in PR #25 is applied). Fail soft: empty list, no
+          // toast — the sidebar renders "No new permits" naturally.
+          console.warn(`[permits] ${table} unavailable:`, result.error.message)
+          setCountyPermits([])
+        } else {
+          const rows = (result.data ?? []) as PermitRow[]
+          setCountyPermits(rows.filter((r) => {
+            const lon = Number(r.longitude)
+            const lat = Number(r.latitude)
+            return (
+              Number.isFinite(lon) && Number.isFinite(lat) &&
+              lon >= -180 && lon <= 180 && lat >= -90 && lat <= 90
+            )
+          }))
+        }
+        setCountyPermitsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [county.id])
+
+  const visiblePermits = useMemo(() => {
+    const sorted = [...countyPermits].sort(permitSortByFiledDesc)
+    if (!selectedTractGeometry) return sorted
+    return sorted.filter((permit) =>
+      isPointInGeometry(
+        Number(permit.longitude),
+        Number(permit.latitude),
+        selectedTractGeometry,
+      )
+    )
+  }, [countyPermits, selectedTractGeometry])
 
   const tractOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
@@ -1540,41 +1664,6 @@ export default function Home() {
       return true
     })
   }, [filteredOwnersList])
-  const productionData = useMemo(() => {
-    if (!selected) return []
-    const s = selected as Record<string, unknown>
-    const points = [
-      { month: 'Mo 6', oil: Number(s.first_6_month_oil ?? s.First_6_Month_Oil ?? 0) },
-      { month: 'Mo 12', oil: Number(s.first_12_month_oil ?? s.First_12_Month_Oil ?? 0) },
-      { month: 'Mo 24', oil: Number(s.first_24_month_oil ?? s.First_24_Month_Oil ?? 0) },
-      { month: 'Mo 60', oil: Number(s.first_60_month_oil ?? s.First_60_Month_Oil ?? 0) },
-    ].filter((p) => p.oil > 0)
-    if (points.length > 0) return points
-    if (county.id !== 'howard' && county.id !== 'martin') return points
-
-    // Howard / Martin currently lack tract-level production rollups in
-    // GeoJSON (the source ownership rolls don't carry per-owner production
-    // history); use a deterministic tract-specific fallback curve so the
-    // chart remains usable.
-    const ownerCount = Number(s.owner_count ?? 0)
-    const score = Number(s.max_propensity_score ?? 0)
-    const base = Math.max(25, Math.round(ownerCount * Math.max(score, 1) * 1.5))
-    return [
-      { month: 'Mo 6', oil: base },
-      { month: 'Mo 12', oil: Math.round(base * 1.9) },
-      { month: 'Mo 24', oil: Math.round(base * 3.5) },
-      { month: 'Mo 60', oil: Math.round(base * 6.8) },
-    ]
-  }, [county.id, selected])
-  const productionPeak = useMemo(
-    () => productionData.reduce((max, point) => Math.max(max, point.oil), 0),
-    [productionData]
-  )
-  const productionTrend = useMemo(
-    () => getTrend(productionData),
-    [productionData]
-  )
-
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
@@ -2170,25 +2259,142 @@ export default function Home() {
                 </span>
               </div>
 
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
-                <div style={{ width: '100%', height: 140, minHeight: 140 }}>
-                  <ResponsiveContainer width="100%" height={140}>
-                    <LineChart data={productionData}>
-                      <XAxis dataKey="month" stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />
-                      <YAxis stroke="#6B7280" tick={{ fill: '#6B7280', fontSize: 10 }} />
-                      <Tooltip
-                        contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
-                        labelStyle={{ color: '#6B7280' }}
-                      />
-                      <Line type="monotone" dataKey="oil" stroke="#EF9F27" strokeWidth={2} dot={{ r: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: '#6B7280' }}>
-                  <span>Peak production: {productionPeak.toLocaleString()}</span>
-                  <span>Current trend: {productionTrend}</span>
-                </div>
+              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+                <button
+                  onClick={() => setPermitsExpanded((prev) => !prev)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#2563EB', fontSize: 12, fontWeight: 600, letterSpacing: '0.02em' }}>
+                      NEW PERMITS
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        padding: '1px 8px',
+                        borderRadius: 999,
+                        background: visiblePermits.length > 0 ? '#DBEAFE' : '#F3F4F6',
+                        color: visiblePermits.length > 0 ? '#1D4ED8' : '#9CA3AF',
+                        border: `1px solid ${visiblePermits.length > 0 ? '#93C5FD' : '#E5E7EB'}`,
+                        fontFamily: 'Inter, sans-serif',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {countyPermitsLoading ? '…' : visiblePermits.length}
+                    </span>
+                    <span style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                      in this tract
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: '#9CA3AF',
+                      transform: permitsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s',
+                    }}
+                  >
+                    ▼
+                  </span>
+                </button>
+                {permitsExpanded && (
+                  <div style={{ borderTop: '1px solid #F3F4F6', padding: '4px 0 8px' }}>
+                    {countyPermitsLoading ? (
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic', fontFamily: 'Inter, sans-serif' }}>
+                        Loading permits…
+                      </div>
+                    ) : visiblePermits.length === 0 ? (
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif' }}>
+                        No new permits in this tract.
+                      </div>
+                    ) : (
+                      <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                        {visiblePermits.slice(0, 50).map((permit) => {
+                          const status = String(permit.status ?? '').toUpperCase()
+                          const isPending = status.includes('PEND') || status.includes('FILED')
+                          const statusFg = isPending ? '#1E40AF' : '#1D4ED8'
+                          const statusBg = isPending ? '#EFF6FF' : '#DBEAFE'
+                          const statusLabel = isPending ? 'Pending' : (status || 'Approved')
+                          const filed = String(permit.filed_date ?? permit.approved_date ?? '').slice(0, 10)
+                          const lease = String(permit.lease_name ?? '').trim()
+                          const operator = String(permit.operator_name ?? '').trim()
+                          const permitNumber = String(permit.permit_number ?? '').trim()
+                          const api = String(permit.api_number ?? '').trim()
+                          return (
+                            <div
+                              key={`permit-${permit.id}`}
+                              style={{
+                                padding: '10px 16px',
+                                borderTop: '1px solid #F9FAFB',
+                                display: 'flex',
+                                gap: 8,
+                                alignItems: 'flex-start',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: '#111827',
+                                    fontFamily: 'Inter, sans-serif',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                >
+                                  {lease || (permitNumber ? `Permit ${permitNumber}` : api ? `API ${api}` : 'Unnamed permit')}
+                                </div>
+                                {operator && (
+                                  <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif', marginTop: 2 }}>
+                                    {operator}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, sans-serif', marginTop: 3, display: 'flex', gap: 8 }}>
+                                  {filed && <span>Filed {filed}</span>}
+                                  {api && <span>API {api}</span>}
+                                  {permitNumber && <span>#{permitNumber}</span>}
+                                </div>
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  padding: '2px 8px',
+                                  borderRadius: 999,
+                                  background: statusBg,
+                                  color: statusFg,
+                                  border: `1px solid ${isPending ? '#93C5FD' : '#2563EB'}`,
+                                  fontFamily: 'Inter, sans-serif',
+                                  fontWeight: 600,
+                                  whiteSpace: 'nowrap',
+                                  alignSelf: 'flex-start',
+                                }}
+                              >
+                                {statusLabel}
+                              </span>
+                            </div>
+                          )
+                        })}
+                        {visiblePermits.length > 50 && (
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Inter, sans-serif', fontStyle: 'italic', textAlign: 'center' }}>
+                            + {visiblePermits.length - 50} more (RRC daily scrape)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>

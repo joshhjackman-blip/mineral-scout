@@ -1,0 +1,72 @@
+name: RRC permits daily scrape
+
+# Pulls the last ~30 days of drilling permits from the RRC public search
+# for each active county and upserts them into <county>_permits so the
+# tract sidebar's New Permits dropdown + the parcels production_status
+# classifier reflect the latest RRC filings.
+#
+# Cron: 10:00 UTC daily = 5:00 AM CDT (America/Chicago summer) or
+# 4:00 AM CST (winter). GitHub Actions cron doesn't support timezones,
+# so we accept the ~1-hour drift twice a year rather than run two
+# scheduled entries. Manual dispatch is enabled for ad-hoc catch-up.
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    inputs:
+      counties:
+        description: 'Comma-separated county ids to scrape (default: gonzales,howard,martin)'
+        required: false
+        default: 'gonzales,howard,martin'
+      days:
+        description: 'Lookback window in days (max ~90)'
+        required: false
+        default: '30'
+      wells_only:
+        description: 'Skip the HTML fetch and use only the SYMNUM fallback'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+concurrency:
+  group: rrc-permits-daily
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install supabase pyshp
+
+      - name: Scrape and upsert permits
+        env:
+          # Supabase creds must be set as repo secrets before the cron
+          # is enabled. Service role is required so the scraper can
+          # write to <county>_permits under RLS.
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin' }}"
+          DAYS="${{ github.event.inputs.days || '30' }}"
+          WELLS_ONLY_FLAG=""
+          if [ "${{ github.event.inputs.wells_only }}" = "true" ]; then
+            WELLS_ONLY_FLAG="--wells-only"
+          fi
+          python scripts/scrape_rrc_permits.py \
+            --county "$COUNTIES" \
+            --days "$DAYS" \
+            $WELLS_ONLY_FLAG
