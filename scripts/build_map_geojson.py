@@ -28,7 +28,14 @@ KEEP_PROPS = {
     'LEVEL1_SUR', 'LEVEL2_BLO', 'TEXTSTRING',
     # Geometry helpers
     'SHAPE_AREA', 'STArea__',
-    # Paint inputs
+    # Paint inputs: parcel-level well activity classification. `production_status`
+    # is a categorical (pdp / pud / new_permit / pending_permit / none) written
+    # by scripts/add_production_status.py; the counts feed the sidebar's
+    # PDP/PUD/permits stat cards. `max_propensity_score` is retained during the
+    # transition so previously deployed clients don't hard-fail; new client code
+    # ignores it.
+    'production_status', 'pdp_well_count', 'pud_well_count', 'well_count',
+    'permit_count', 'new_permit_count', 'pending_permit_count',
     'max_propensity_score',
     # Misc that the map labels/popups read
     'owner_count', 'top_operator', 'field_name',
