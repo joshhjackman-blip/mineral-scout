@@ -68,6 +68,9 @@ export type OwnerDrawerWell = {
   well_status?: string | null
   latitude?: number | null
   longitude?: number | null
+  // Populated client-side after the per-county fan-out so the Wells
+  // tab can group rows by county the same way the Leases tab does.
+  county_id?: CountyKey
 }
 
 export type DevelopmentStatusValue =
@@ -266,17 +269,27 @@ function useOwnerWells(
   holdings: OwnerDrawerHolding[],
   open: boolean,
 ) {
+  // Cross-county well fan-out. Fires one /api/wells call per county
+  // and merges. Uses each county's rrc_lease_ids from the merged
+  // holdings when available (holdings are cross-county already), so
+  // Martin permits for a Gonzales-clicked owner still surface here.
   const [wells, setWells] = useState<OwnerDrawerWell[]>([])
   const [loading, setLoading] = useState(false)
 
-  const leaseIds = useMemo(() => {
-    const set = new Set<string>()
-    if (owner?.rrc_lease_id != null) set.add(String(owner.rrc_lease_id))
-    for (const h of holdings) {
-      if (h.rrc_lease_id != null) set.add(String(h.rrc_lease_id))
+  // Per-county sets of lease IDs, computed once holdings arrive.
+  const leaseIdsByCounty = useMemo(() => {
+    const byCounty: Record<string, string[]> = {}
+    if (owner?.rrc_lease_id != null && county.id) {
+      byCounty[county.id] = [String(owner.rrc_lease_id)]
     }
-    return Array.from(set).filter(Boolean)
-  }, [owner?.rrc_lease_id, holdings])
+    for (const h of holdings) {
+      if (!h.county_id || h.rrc_lease_id == null) continue
+      const c = h.county_id as string
+      byCounty[c] = byCounty[c] ?? []
+      byCounty[c].push(String(h.rrc_lease_id))
+    }
+    return byCounty
+  }, [owner?.rrc_lease_id, holdings, county.id])
 
   useEffect(() => {
     if (!open || !owner) {
@@ -285,34 +298,67 @@ function useOwnerWells(
     }
     let cancelled = false
     setLoading(true)
-    void (async () => {
+
+    const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
+    const requests = countyEntries.map(async ([countyKey, cfg]) => {
+      const leaseIds = leaseIdsByCounty[countyKey] ?? []
+      const body: Record<string, unknown> = {
+        countyId: countyKey,
+        mode: 'owner',
+        ownerName: owner.owner_name,
+        // Only pass leaseId / abstract to the currently-active county
+        // (the two hints only make sense in the context that surfaced
+        // the tract click). Other counties get the pure owner-name
+        // lookup so we catch cross-county leases the drawer didn't
+        // know about at click time.
+        leaseId: countyKey === county.id && owner.rrc_lease_id != null ? String(owner.rrc_lease_id) : '',
+        leaseIds,
+        abstract: countyKey === county.id && tractLabel ? tractLabel.replace(/^A-\s*/i, '') : '',
+        operator: countyKey === county.id ? (owner.operator_name ?? null) : null,
+      }
       try {
-        const body: Record<string, unknown> = {
-          countyId: county.id,
-          mode: 'owner',
-          ownerName: owner.owner_name,
-          leaseId: owner.rrc_lease_id != null ? String(owner.rrc_lease_id) : '',
-          leaseIds,
-          abstract: tractLabel ? tractLabel.replace(/^A-\s*/i, '') : '',
-          operator: owner.operator_name ?? null,
-        }
         const response = await fetch('/api/wells', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
+        // /api/wells returns 401 for unauthed sessions; treat that as
+        // "just no rows" so the tab still renders.
+        if (!response.ok) return { countyKey, wells: [] as OwnerDrawerWell[] }
         const payload = (await response.json()) as { wells?: OwnerDrawerWell[] }
-        if (!cancelled) setWells(Array.isArray(payload.wells) ? payload.wells : [])
+        const rows = Array.isArray(payload.wells) ? payload.wells : []
+        return {
+          countyKey,
+          wells: rows.map((w) => ({ ...w, county_id: countyKey })),
+        }
       } catch {
-        if (!cancelled) setWells([])
-      } finally {
-        if (!cancelled) setLoading(false)
+        return { countyKey, wells: [] as OwnerDrawerWell[] }
       }
-    })()
+    })
+
+    void Promise.all(requests).then((results) => {
+      if (cancelled) return
+      const merged: OwnerDrawerWell[] = []
+      for (const r of results) merged.push(...r.wells)
+      // Sort with the active county first, then by well_type
+      // (HORIZONTAL first — most brokers care about drilled laterals).
+      const activeCountyId = county.id as string
+      merged.sort((a, b) => {
+        const activeA = a.county_id === activeCountyId ? 0 : 1
+        const activeB = b.county_id === activeCountyId ? 0 : 1
+        if (activeA !== activeB) return activeA - activeB
+        const hA = String(a.well_type ?? '').toUpperCase() === 'HORIZONTAL' ? 0 : 1
+        const hB = String(b.well_type ?? '').toUpperCase() === 'HORIZONTAL' ? 0 : 1
+        return hA - hB
+      })
+      setWells(merged)
+      setLoading(false)
+    })
+
     return () => {
       cancelled = true
     }
-  }, [county.id, open, owner, tractLabel, leaseIds])
+  }, [county.id, open, owner, tractLabel, leaseIdsByCounty])
 
   return { wells, loading }
 }
@@ -594,7 +640,16 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 ? `Leases (${holdings.length} · ${uniqueHoldingCounties} counties)`
                 : `Leases (${holdings.length || 0})`,
           },
-          { key: 'wells'    as const, label: `Wells (${wells.length || (wellsLoading ? '…' : '0')})` },
+          {
+            key: 'wells' as const,
+            label: (() => {
+              if (wellsLoading) return 'Wells (…)'
+              const c = new Set(wells.map((w) => w.county_id).filter(Boolean))
+              return c.size > 1
+                ? `Wells (${wells.length} · ${c.size} counties)`
+                : `Wells (${wells.length || 0})`
+            })(),
+          },
           { key: 'notes'    as const, label: 'Notes' },
         ].map((t) => {
           const active = tab === t.key
@@ -640,7 +695,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           />
         )}
         {tab === 'wells' && (
-          <WellsPanel wells={wells} loading={wellsLoading} />
+          <WellsPanel wells={wells} loading={wellsLoading} county={county} />
         )}
         {tab === 'notes' && (
           <NotesPanel
@@ -946,48 +1001,104 @@ function HoldingsPanel({
   )
 }
 
-function WellsPanel({ wells, loading }: { wells: OwnerDrawerWell[]; loading: boolean }) {
+function WellsPanel({
+  wells, loading, county,
+}: {
+  wells: OwnerDrawerWell[]
+  loading: boolean
+  county: County
+}) {
   if (loading) {
-    return <div className="text-sm text-gray-500">Looking up wells…</div>
+    return <div className="text-sm text-gray-500">Looking up wells across all counties…</div>
   }
   if (wells.length === 0) {
     return (
       <div className="text-sm text-gray-500">
-        No wells matched this owner in the current county&apos;s wells table.
+        No wells matched this owner in any county&apos;s wells table.
       </div>
     )
   }
+
+  const activeCountyId = county.id as CountyKey
+  const byCounty: Partial<Record<CountyKey, OwnerDrawerWell[]>> = {}
+  for (const w of wells) {
+    const key = (w.county_id ?? activeCountyId) as CountyKey
+    if (!byCounty[key]) byCounty[key] = []
+    byCounty[key]!.push(w)
+  }
+  const orderedCountyKeys: CountyKey[] = [
+    activeCountyId,
+    ...Object.keys(byCounty).filter((k) => k !== activeCountyId) as CountyKey[],
+  ].filter((k, i, arr) => arr.indexOf(k) === i && byCounty[k])
+
+  const totalWells = wells.length
+  const totalCounties = orderedCountyKeys.length
+
   return (
-    <div className="flex flex-col gap-2">
-      {wells.map((well, i) => {
-        const isGas = clean(well.oil_gas_code).toUpperCase() === 'G'
-        const isHz = clean(well.well_type).toUpperCase() === 'HORIZONTAL'
+    <div className="flex flex-col gap-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+        <span className="font-semibold">{totalWells}</span> well{totalWells === 1 ? '' : 's'}
+        {' '}on this owner across{' '}
+        <span className="font-semibold">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}.
+      </div>
+
+      {orderedCountyKeys.map((countyKey) => {
+        const rows = byCounty[countyKey] ?? []
+        const cfg = COUNTIES[countyKey]
+        const isActive = countyKey === activeCountyId
         return (
-          <div
-            key={`${well.api_number ?? 'well'}-${i}`}
-            className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
-          >
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-gray-900">
-                {clean(well.lease_name) || 'Unknown lease'}
-              </div>
-              <div className="mt-0.5 text-xs text-gray-500">
-                {clean(well.operator_name) || 'Unknown operator'}
-                {clean(well.api_number) && (
-                  <span className="ml-2 font-mono text-gray-400">API {clean(well.api_number)}</span>
+          <div key={countyKey} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div
+              className={`flex items-center justify-between border-b border-gray-100 px-4 py-2 ${
+                isActive ? 'bg-amber-50/60' : ''
+              }`}
+            >
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-700">
+                {cfg.displayName}
+                {isActive && (
+                  <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-900">
+                    Active
+                  </span>
                 )}
               </div>
+              <div className="text-[11px] text-gray-500">
+                {rows.length} well{rows.length === 1 ? '' : 's'}
+              </div>
             </div>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-              isGas ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-800'
-            }`}>
-              {isGas ? 'GAS' : 'OIL'}
-            </span>
-            <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-              isHz ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-100 text-slate-600'
-            }`}>
-              {isHz ? 'HZ' : 'VT'}
-            </span>
+            <div className="flex flex-col gap-2 p-3">
+              {rows.map((well, i) => {
+                const isGas = clean(well.oil_gas_code).toUpperCase() === 'G'
+                const isHz = clean(well.well_type).toUpperCase() === 'HORIZONTAL'
+                return (
+                  <div
+                    key={`${countyKey}-${well.api_number ?? 'well'}-${i}`}
+                    className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-gray-900">
+                        {clean(well.lease_name) || 'Unknown lease'}
+                      </div>
+                      <div className="mt-0.5 text-xs text-gray-500">
+                        {clean(well.operator_name) || 'Unknown operator'}
+                        {clean(well.api_number) && (
+                          <span className="ml-2 font-mono text-gray-400">API {clean(well.api_number)}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                      isGas ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-amber-200 bg-amber-50 text-amber-800'
+                    }`}>
+                      {isGas ? 'GAS' : 'OIL'}
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                      isHz ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-slate-200 bg-slate-100 text-slate-600'
+                    }`}>
+                      {isHz ? 'HZ' : 'VT'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )
       })}
