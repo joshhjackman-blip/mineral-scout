@@ -13,6 +13,7 @@ import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { COUNTIES } from '@/lib/counties'
 
+import OwnerDrawer from './components/OwnerDrawer'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 type TractOwner = {
@@ -540,6 +541,13 @@ export default function Home() {
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
+  // Owner detail drawer at the bottom of the viewport. When set, an
+  // OwnerDrawer component slides up over the map area, showing all the
+  // owner's leases, wells, and CRM actions.
+  const [drawerOwner, setDrawerOwner] = useState<TractOwner | null>(null)
+  // The tract label active at the moment the drawer opened, so the
+  // drawer stays anchored to that tract even if the sidebar changes.
+  const [drawerTractLabel, setDrawerTractLabel] = useState<string | null>(null)
   const [wellsExpanded, setWellsExpanded] = useState(false)
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
@@ -629,6 +637,14 @@ export default function Home() {
   useEffect(() => {
     countyRef.current = county
   }, [county])
+
+  // Close the owner drawer whenever the active tract changes so a stale
+  // drawer from another tract doesn't stay visible after the user
+  // navigates elsewhere.
+  useEffect(() => {
+    setDrawerOwner(null)
+    setDrawerTractLabel(null)
+  }, [selected?.abstract_label, selected?.ABSTRACT_L])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -773,6 +789,8 @@ export default function Home() {
     setOwnerTractsName('')
     setOwnerTractsLoading(false)
     setCountyPermits([])
+    setDrawerOwner(null)
+    setDrawerTractLabel(null)
   }, [selectedCounty])
 
   // Load every permit for the active county exactly once per county switch.
@@ -2571,10 +2589,13 @@ export default function Home() {
                   const isHighlighted = highlightedOwner === normalizedOwnerName
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
-                  const ownerWellMatches = ownerWells[ownerKey] ?? []
-                  const ownerWellLoading = Boolean(ownerWellsLoading[ownerKey])
-                  const hasLoadedOwnerWells = Object.prototype.hasOwnProperty.call(ownerWells, ownerKey)
-                  const signals = isExpanded ? getScoreBreakdown(owner) : []
+                  // ownerWells / ownerWellsLoading are still populated when a
+                  // user clicks a row so the follow-up drawer render doesn't
+                  // have to wait — the sidebar just no longer displays them
+                  // inline. Score-signals + wells now live in OwnerDrawer.
+                  void ownerWells[ownerKey]
+                  void ownerWellsLoading[ownerKey]
+                  void getScoreBreakdown
                   const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
@@ -2596,16 +2617,29 @@ export default function Home() {
                       <div
                         id={ownerElementId}
                         onClick={() => {
-                          const nextExpanded = isExpanded ? null : i
-                          setExpandedOwner(nextExpanded)
-                          if (nextExpanded !== null) {
-                            void fetchOwnerWells(owner, ownerKey)
-                            trackEvent('owner_expanded', {
-                              owner_name: owner.owner_name,
-                              score: owner.propensity_score,
-                              abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
-                            })
-                          }
+                          // Clicking an owner now opens the bottom
+                          // drawer (OwnerDrawer) instead of the old
+                          // inline score-signals expander. The
+                          // legacy expandedOwner state is kept in
+                          // sync so any downstream code that reads
+                          // it keeps working; only the DOM branch
+                          // that used to render the inline body has
+                          // been removed.
+                          setDrawerOwner(owner)
+                          setDrawerTractLabel(
+                            String(
+                              selected?.ABSTRACT_L
+                                ?? selected?.abstract_label
+                                ?? '',
+                            ).trim() || null,
+                          )
+                          setExpandedOwner(i)
+                          void fetchOwnerWells(owner, ownerKey)
+                          trackEvent('owner_drawer_opened', {
+                            owner_name: owner.owner_name,
+                            score: owner.propensity_score,
+                            abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
+                          })
                         }}
                         style={{
                           padding: '10px 16px',
@@ -2707,135 +2741,16 @@ export default function Home() {
                             )}
                           </div>
                         </div>
-                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <span style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▶</span>
-                          {isExpanded ? 'Hide score breakdown' : 'Why this score?'}
+                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span aria-hidden style={{ display: 'inline-block', transform: isExpanded ? 'translateY(-1px)' : 'none', transition: 'transform 0.15s', color: isExpanded ? '#EF9F27' : '#9CA3AF' }}>
+                            ↗
+                          </span>
+                          {isExpanded ? 'Open in detail drawer' : 'Click to open details'}
                         </div>
                       </div>
-
-                      {isExpanded && (
-                        <div style={{ padding: '8px 16px 12px 28px', background: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: '#92400E', letterSpacing: '0.08em', marginBottom: 6, textTransform: 'uppercase' }}>
-                            Score Signals
-                          </div>
-                          {signals.length === 0 ? (
-                            <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>No strong signals detected</div>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                              {signals.map((signal, si) => (
-                                <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#EF9F27', flexShrink: 0 }} />
-                                  <span style={{ fontSize: 11, color: '#374151' }}>{signal}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {ownerWellLoading && (
-                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
-                              <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
-                                Looking up wells on this interest...
-                              </div>
-                            </div>
-                          )}
-
-                          {!ownerWellLoading && hasLoadedOwnerWells && ownerWellMatches.length === 0 && (
-                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
-                              <div style={{ fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
-                                No matched wells on this interest
-                              </div>
-                            </div>
-                          )}
-
-                          {ownerWellMatches.length > 0 && (
-                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #F3F4F6' }}>
-                              <div style={{ fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
-                                Wells on this interest
-                              </div>
-                              {ownerWellMatches.map((well, wi) => (
-                                <div
-                                  key={`${well.rrc_lease_id ?? 'well'}-${wi}`}
-                                  style={{
-                                    marginBottom: 6,
-                                    padding: '6px 8px',
-                                    background: '#F9FAFB',
-                                    borderRadius: 6,
-                                    border: '1px solid #F3F4F6',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: '#111827' }}>
-                                      {well.lease_name ?? 'Unknown lease'}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: 3 }}>
-                                      <span
-                                        style={{
-                                          fontSize: 9,
-                                          fontWeight: 700,
-                                          padding: '1px 5px',
-                                          borderRadius: 3,
-                                          background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
-                                          color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
-                                          border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
-                                        }}
-                                      >
-                                        {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
-                                      </span>
-                                      <span
-                                        style={{
-                                          fontSize: 9,
-                                          fontWeight: 600,
-                                          padding: '1px 5px',
-                                          borderRadius: 3,
-                                          background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
-                                          color: well.well_type === 'HORIZONTAL' ? '#D97706' : '#9CA3AF',
-                                          border: `1px solid ${well.well_type === 'HORIZONTAL' ? '#FDE68A' : '#E5E7EB'}`,
-                                        }}
-                                      >
-                                        {well.well_type === 'HORIZONTAL' ? 'HZ' : 'VT'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div style={{ fontSize: 10, color: '#6B7280' }}>
-                                    Operator: {well.operator_name ?? 'Unknown operator'}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleAddToPipeline(owner)
-                              }}
-                              style={{
-                                fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
-                                background: pipelineOwners.has(owner.owner_name) ? 'rgba(122,184,53,0.15)' : 'rgba(239,159,39,0.12)',
-                                border: pipelineOwners.has(owner.owner_name) ? '0.5px solid #7AB835' : '0.5px solid #EF9F27',
-                                color: pipelineOwners.has(owner.owner_name) ? '#7AB835' : '#B45309',
-                              }}
-                            >
-                              {pipelineOwners.has(owner.owner_name) ? '✓ In pipeline' : '+ Add to pipeline'}
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleSkipTrace(owner)
-                              }}
-                              style={{
-                                fontSize: 10, padding: '4px 10px', borderRadius: 4, cursor: 'pointer',
-                                background: 'transparent',
-                                border: '0.5px solid #E5E7EB',
-                                color: '#6B7280',
-                              }}
-                            >
-                              Skip trace
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      {/* Inline score-signals + wells expansion was removed;
+                          the full detail lives in OwnerDrawer at the bottom
+                          of the viewport (rendered below the map). */}
                     </div>
                   )
                 })}
@@ -3880,6 +3795,35 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <OwnerDrawer
+        open={Boolean(drawerOwner)}
+        owner={drawerOwner}
+        tractLabel={drawerTractLabel}
+        countyId={selectedCounty}
+        inPipeline={drawerOwner ? pipelineOwners.has(drawerOwner.owner_name) : false}
+        isMobile={isMobile}
+        onClose={() => {
+          setDrawerOwner(null)
+          setDrawerTractLabel(null)
+          setExpandedOwner(null)
+        }}
+        onSkipTrace={(o) => {
+          handleSkipTrace(o as TractOwner)
+        }}
+        onAddToPipeline={(o) => {
+          handleAddToPipeline(o as TractOwner)
+        }}
+        onShowAllTracts={(o) => {
+          // Reuse the existing "show all tracts" flow attached to the
+          // sidebar's "Show all tracts" affordance. Closes the drawer
+          // so the user sees the resulting tract list.
+          setDrawerOwner(null)
+          setDrawerTractLabel(null)
+          setExpandedOwner(null)
+          setOwnerTractsName(o.owner_name)
+        }}
+      />
     </div>
   )
 }
