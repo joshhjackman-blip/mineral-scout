@@ -56,11 +56,15 @@ export const COUNTIES: Record<string, County> = {
     nriCode: 'XV',
     operatorPatterns: ['eog', 'baytex', 'marathon', 'auterra'],
     wellsJoinStrategy: 'rrc_lease_id',
+    // Stat cards render in order. PDP/PUD/permit counts are computed live
+    // from the loaded parcels GeoJSON (see combinedStats in app/page.tsx);
+    // the numbers baked in here are static fallbacks for pre-hydration
+    // and for the CRM sidebar which still reads from lib/counties.ts.
     stats: [
       { val: '73,430', lbl: 'Total owners' },
-      { val: '3,950', lbl: 'Hot (8-10)' },
-      { val: '19,047', lbl: 'Motivated (5-7)' },
-      { val: '46,401', lbl: 'Prospect (2-4)' },
+      { val: '329', lbl: 'PDP tracts' },
+      { val: '6', lbl: 'PUD tracts' },
+      { val: '0', lbl: 'New permits' },
       { val: '207', lbl: 'Survey abstracts' },
       { val: '4,512', lbl: 'Active wells' },
     ],
@@ -96,9 +100,9 @@ export const COUNTIES: Record<string, County> = {
     wellsJoinStrategy: 'abstract',
     stats: [
       { val: '215,592', lbl: 'Total owners' },
-      { val: '22,072', lbl: 'Hot (8-10)' },
-      { val: '33,096', lbl: 'Motivated (5-7)' },
-      { val: '134,278', lbl: 'Prospect (2-4)' },
+      { val: '936', lbl: 'PDP tracts' },
+      { val: '0', lbl: 'PUD tracts' },
+      { val: '0', lbl: 'New permits' },
       { val: '987', lbl: 'Survey abstracts' },
       { val: '17,483', lbl: 'Active wells' },
     ],
@@ -143,9 +147,9 @@ export const COUNTIES: Record<string, County> = {
     wellsJoinStrategy: 'abstract',
     stats: [
       { val: '204,978', lbl: 'Total owners' },
-      { val: '13,696', lbl: 'Hot (8-10)' },
-      { val: '79,183', lbl: 'Motivated (5-7)' },
-      { val: '86,993', lbl: 'Prospect (2-4)' },
+      { val: '992', lbl: 'PDP tracts' },
+      { val: '0', lbl: 'PUD tracts' },
+      { val: '0', lbl: 'New permits' },
       { val: '1,040', lbl: 'Survey abstracts' },
       { val: '17,309', lbl: 'Active wells' },
     ],
