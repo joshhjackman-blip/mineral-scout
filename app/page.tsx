@@ -187,10 +187,15 @@ const PRODUCTION_STATUS_LABEL: Record<string, string> = {
   pending_permit: 'Pending Permit',
   none: 'No activity',
 }
+// Palette mirrors PRODUCTION_STATUS_FILL in app/components/Map.tsx:
+//   PDP -> yellow, PUD -> green, permits -> neutral fill + blue dot.
+// The sidebar badge uses the tint (`bg`) as the pill background and the
+// darker `border` for the outline so the badge reads as the same visual
+// object as the parcel on the map.
 const PRODUCTION_STATUS_COLOR: Record<string, { fg: string; bg: string; border: string }> = {
-  pdp:            { fg: '#14532D', bg: '#DCFCE7', border: '#166534' },
-  pud:            { fg: '#92400E', bg: '#FEF3C7', border: '#F59E0B' },
-  new_permit:     { fg: '#1D4ED8', bg: '#DBEAFE', border: '#2563EB' },
+  pdp:            { fg: '#854D0E', bg: '#FEF9C3', border: '#EAB308' }, // yellow
+  pud:            { fg: '#166534', bg: '#DCFCE7', border: '#22C55E' }, // green
+  new_permit:     { fg: '#1D4ED8', bg: '#DBEAFE', border: '#2563EB' }, // blue-dot tint
   pending_permit: { fg: '#1E40AF', bg: '#EFF6FF', border: '#93C5FD' },
   none:           { fg: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
 }
@@ -3406,8 +3411,8 @@ export default function Home() {
           <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Activity:</span>
           {([
             { key: 'all',            label: 'All',    color: '#0F172A' },
-            { key: 'pdp',            label: 'PDP',    color: '#166534' },
-            { key: 'pud',            label: 'PUD',    color: '#F59E0B' },
+            { key: 'pdp',            label: 'PDP',    color: '#CA8A04' }, // yellow chip
+            { key: 'pud',            label: 'PUD',    color: '#16A34A' }, // green chip
             { key: 'new_permit',     label: 'New',    color: '#2563EB' },
             { key: 'pending_permit', label: 'Pending', color: '#93C5FD' },
           ] as const).map((chip) => (

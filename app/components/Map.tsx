@@ -282,6 +282,7 @@ export default function Map({
     countyEntries.forEach(([, countyConfig]) => {
       removeLayerIfExists(mapInstance, `block-labels-${countyConfig.id}`)
       removeSourceIfExists(mapInstance, `block-labels-source-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-permit-dots-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-sections-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
@@ -291,28 +292,36 @@ export default function Map({
     currentParcelsByCountyRef.current = {}
   }, [countyEntries])
 
-  // Parcels are now colored by well-activity classification rather than by
-  // owner propensity score. The property `production_status` is written per
-  // tract by scripts/add_production_status.py:
+  // Parcels are colored by well-activity classification. `production_status`
+  // is written per tract by scripts/add_production_status.py:
   //   pdp             — tract has ≥1 drilled + completed well (bottom-hole)
   //   pud             — tract has wells but none with a bottom-hole record
   //   new_permit      — no wells; approved permit in <county>_permits
   //   pending_permit  — no wells; pending permit
   //   none            — no wells and no permits
+  //
+  // Permit-only tracts do NOT get a colored fill anymore — instead a small
+  // blue dot is placed at the parcel centroid by a separate symbol layer
+  // (`parcels-permit-dots-{countyId}`) below. Users read PDP/PUD via fill
+  // color and permits via the dot on top.
   const PRODUCTION_STATUS_FILL: Record<string, string> = {
-    pdp:            '#166534', // deep green  — drilled + producing
-    pud:            '#F59E0B', // amber        — proved undeveloped
-    new_permit:     '#2563EB', // blue         — approved permit
-    pending_permit: '#93C5FD', // pale blue    — pending permit
+    pdp:            '#EAB308', // yellow — drilled + producing
+    pud:            '#22C55E', // green  — proved undeveloped
+    new_permit:     '#E5E7EB', // no fill — permits render as a blue dot instead
+    pending_permit: '#E5E7EB',
     none:           '#E5E7EB', // neutral gray — no activity
   }
   const PRODUCTION_STATUS_OUTLINE: Record<string, string> = {
-    pdp:            '#14532D',
-    pud:            '#B45309',
-    new_permit:     '#1D4ED8',
-    pending_permit: '#3B82F6',
+    pdp:            '#CA8A04', // yellow-600
+    pud:            '#15803D', // green-700
+    new_permit:     '#CBD5E1',
+    pending_permit: '#CBD5E1',
     none:           '#CBD5E1',
   }
+  // Dot color for the permits-on-parcel symbol layer. Matches the existing
+  // permits-layer (individual permit points) so the two visual cues stay
+  // consistent when both are shown.
+  const PRODUCTION_STATUS_DOT = '#2563EB'
 
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
     () => [
@@ -332,11 +341,13 @@ export default function Map({
     () => [
       'match',
       ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            0.72,
-      'pud',            0.65,
-      'new_permit',     0.55,
-      'pending_permit', 0.45,
-      0.28,
+      'pdp',            0.55, // yellow reads harshly at high opacity — dial it back
+      'pud',            0.55,
+      // Permit-only parcels stay near-transparent so the blue dot on top
+      // is the visual cue, not the fill.
+      'new_permit',     0.18,
+      'pending_permit', 0.14,
+      0.18,
     ],
     []
   )
@@ -359,10 +370,12 @@ export default function Map({
     () => [
       'match',
       ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            1.8,
+      'pdp',            1.6,
       'pud',            1.6,
-      'new_permit',     1.4,
-      'pending_permit', 1.2,
+      // Permit / no-activity parcels use the neutral outline so the
+      // blue centroid dot is the only visual indicator.
+      'new_permit',     0.9,
+      'pending_permit', 0.9,
       0.9,
     ],
     []
@@ -429,6 +442,7 @@ export default function Map({
       `parcels-outline-${selectedConfig.id}`,
       `parcels-labels-${selectedConfig.id}`,
       `parcels-sections-${selectedConfig.id}`,
+      `parcels-permit-dots-${selectedConfig.id}`,
       `block-labels-${selectedConfig.id}`,
     ]
     for (const id of ids) {
@@ -858,6 +872,47 @@ export default function Map({
       })
 
       if (!map.current) return
+      // Permit dot: one blue bullet per parcel whose production_status
+      // is new_permit or pending_permit. Mapbox places `symbol-placement:
+      // point` symbols at the polygon's centroid, so no separate point
+      // source or centroid computation is required. Visible from z9 so
+      // permit density is legible during county overview but doesn't
+      // clash with basemap glyphs at extreme zoom-out.
+      const permitDotsId = `parcels-permit-dots-${countyConfig.id}`
+      map.current.addLayer({
+        id: permitDotsId,
+        type: 'symbol',
+        source: sourceId,
+        minzoom: 9,
+        filter: [
+          'in',
+          ['coalesce', ['get', 'production_status'], 'none'],
+          ['literal', ['new_permit', 'pending_permit']],
+        ],
+        layout: {
+          'text-field': '●',
+          'text-size': 14,
+          'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': PRODUCTION_STATUS_DOT,
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+          'text-opacity': [
+            'match',
+            ['coalesce', ['get', 'production_status'], 'none'],
+            'new_permit',     1.0,
+            'pending_permit', 0.8, // slightly dimmer so the pending vs approved distinction is still visible
+            0,
+          ],
+        },
+      })
+
+      if (!map.current) return
       // Block labels: one point per distinct Block value, placed at the
       // averaged centroid of all tracts in that block. Visible earlier than
       // section numbers since blocks are larger aggregations.
@@ -1091,18 +1146,36 @@ export default function Map({
       {mapReady && mapLevel === 'tract' && (
         <ProductionStatusLegend
           fill={PRODUCTION_STATUS_FILL}
+          dot={PRODUCTION_STATUS_DOT}
         />
       )}
     </div>
   )
 }
 
-function ProductionStatusLegend({ fill }: { fill: Record<string, string> }) {
-  const items: Array<[keyof typeof fill & string, string]> = [
-    ['pdp',            'PDP'],
-    ['pud',            'PUD'],
-    ['new_permit',     'New Permit'],
-    ['pending_permit', 'Pending Permit'],
+// Legend entry styles diverge because PDP / PUD render as filled polygons
+// while permit-only parcels render as a blue centroid dot. `swatch: 'fill'`
+// draws a colored square; `swatch: 'dot'` draws a blue bullet in place of
+// the square so what you see in the legend matches what you see on the map.
+type LegendEntry = {
+  key: 'pdp' | 'pud' | 'new_permit' | 'pending_permit'
+  label: string
+  swatch: 'fill' | 'dot'
+  opacity?: number
+}
+
+function ProductionStatusLegend({
+  fill,
+  dot,
+}: {
+  fill: Record<string, string>
+  dot: string
+}) {
+  const items: LegendEntry[] = [
+    { key: 'pdp',            label: 'PDP',            swatch: 'fill' },
+    { key: 'pud',            label: 'PUD',            swatch: 'fill' },
+    { key: 'new_permit',     label: 'New Permit',     swatch: 'dot' },
+    { key: 'pending_permit', label: 'Pending Permit', swatch: 'dot', opacity: 0.8 },
   ]
   return (
     <div
@@ -1123,25 +1196,50 @@ function ProductionStatusLegend({ fill }: { fill: Record<string, string> }) {
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
-        minWidth: 140,
+        minWidth: 150,
       }}
     >
       <div style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569', fontSize: 10 }}>
         Well Activity
       </div>
-      {items.map(([key, label]) => (
-        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 2,
-              background: fill[key],
-              border: '1px solid rgba(15,23,42,0.15)',
-              flexShrink: 0,
-            }}
-          />
-          <span>{label}</span>
+      {items.map((item) => (
+        <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {item.swatch === 'fill' ? (
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: 2,
+                background: fill[item.key],
+                border: '1px solid rgba(15,23,42,0.25)',
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <span
+              style={{
+                width: 12,
+                height: 12,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  background: dot,
+                  border: '1px solid rgba(255,255,255,0.9)',
+                  boxShadow: '0 0 0 1px rgba(15,23,42,0.25)',
+                  opacity: item.opacity ?? 1,
+                }}
+              />
+            </span>
+          )}
+          <span>{item.label}</span>
         </div>
       ))}
     </div>
