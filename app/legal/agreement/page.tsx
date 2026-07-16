@@ -7,14 +7,14 @@ import '../../landing/landing.css'
 import './agreement.css'
 
 export const metadata: Metadata = {
-  title: 'Platform Services Agreement — Mineral Map',
+  title: 'Platform Services Agreement · Mineral Map',
   description:
     'The Platform Services Agreement every Mineral Map customer signs before accessing the platform. 10% success fee on Platform Leads closed during a 24-month attribution tail. No monthly, per-seat, or per-lookup charges.',
 }
 
 // The signed agreement is drafted in markdown at legal/PLATFORM-SERVICES-AGREEMENT.md
 // so it can be version-controlled and diff-reviewed. The page pulls it at
-// build time and renders a lightweight HTML view of the markdown — no
+// build time and renders a lightweight HTML view of the markdown. No
 // runtime markdown parser dependency needed, just the handful of block
 // types the doc actually uses.
 export default function AgreementPage() {
@@ -181,7 +181,7 @@ function renderMarkdown(md: string): string {
       continue
     }
 
-    // Paragraph — accumulate lines until blank or heading/list start.
+    // Paragraph: accumulate lines until blank or heading/list start.
     const para: string[] = [trimmed]
     i += 1
     while (i < lines.length) {

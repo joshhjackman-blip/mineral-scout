@@ -146,8 +146,8 @@ function Hero() {
       <p className="lp-hero-sub reveal reveal-delay-2">
         Whether you&apos;re running a two-person brokerage or an in-house
         acquisition team, get county ownership data, a CRM, click-to-call, and
-        one-click PSAs in one place. You pay nothing upfront. We take a small cut
-        only when you close a deal we helped you find.
+        one-click PSAs in one place. You pay nothing upfront. We only take a fee
+        post close.
       </p>
       <div className="lp-hero-actions reveal reveal-delay-3">
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary">
@@ -173,11 +173,11 @@ function ModelBand() {
         <div className="reveal">
           <span className="lp-section-label">The pitch</span>
           <h2 className="lp-model-heading">
-            Stop paying <em>$8K+ a month</em> just to run acquisitions.
+            Stop paying <em>thousands a month</em> just to run acquisitions.
           </h2>
           <p className="lp-model-sub">
             The stack a mid-market brokerage or acquisition shop stitches
-            together costs almost as much as a junior analyst — before a single
+            together costs almost as much as a junior analyst, before a single
             deal closes.
           </p>
         </div>
@@ -185,23 +185,19 @@ function ModelBand() {
           <div className="lp-model-col lp-model-col-bad reveal reveal-delay-1">
             <div className="lp-model-col-tag">The old way</div>
             <ul>
-              <li><s>$2,000/mo</s> — data subscription</li>
-              <li><s>$1,500/mo</s> — CRM + dialer</li>
-              <li><s>$800/mo</s> — phone numbers &amp; SMS</li>
-              <li><s>$3,000/mo</s> — GIS + mapping</li>
-              <li><s>Per‑lookup fees</s> — skip trace</li>
-              <li><s>Legal drafting</s> — outsourced PSAs</li>
+              <li><s>$10,000/yr</s> for tax rolls</li>
+              <li><s>$500/mo</s> for CRM</li>
+              <li><s>$3,000/mo</s> for skip tracing</li>
+              <li><s>Outsourced legal drafting</s> for PSAs</li>
             </ul>
           </div>
           <div className="lp-model-col lp-model-col-good reveal reveal-delay-2">
             <div className="lp-model-col-tag">Mineral Map</div>
             <ul>
-              <li><strong>$0</strong> — sign up and start prospecting</li>
-              <li><strong>$0</strong> — no seat charges for your team</li>
-              <li><strong>$0</strong> — every tool included</li>
-              <li><strong>Small %</strong> of the deals we help you close</li>
-              <li><strong>Aligned</strong> — we only win when you do</li>
-              <li><strong>Cancel anytime</strong> — nothing to unwind</li>
+              <li><strong>$0</strong> to sign up and start prospecting</li>
+              <li><strong>$0</strong> for seat charges on your team</li>
+              <li><strong>$0</strong> for every tool, every county</li>
+              <li><strong>% fee on closed deals.</strong> That&apos;s the whole model.</li>
             </ul>
           </div>
         </div>
@@ -215,7 +211,7 @@ function ModelBand() {
 const FEATURES = [
   {
     title: 'Ownership + well data',
-    desc: 'Every abstract mapped to its current mineral owner. See PDP / PUD activity, new permits, and lease context in one view — no separate GIS subscription needed.',
+    desc: 'Every abstract mapped to its current mineral owner. See PDP / PUD activity, new permits, and lease context in one view, without a separate GIS subscription.',
     icon: (
       <>
         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -225,7 +221,7 @@ const FEATURES = [
   },
   {
     title: 'Built-in CRM',
-    desc: 'Pipelines, notes, owner history, and next‑action reminders — designed for how brokerages and acquisition teams actually run deals. Nothing to import, nothing to sync.',
+    desc: 'Pipelines, notes, owner history, and next‑action reminders. Designed for how brokerages and acquisition teams actually run deals. Nothing to import, nothing to sync.',
     icon: (
       <>
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -268,7 +264,7 @@ const FEATURES = [
   },
   {
     title: 'Valuations on request',
-    desc: 'Need a comp‑backed valuation before you make an offer? Our team puts one together for you — usually same day.',
+    desc: 'Need a comp‑backed valuation before you make an offer? Our team puts one together for you, usually same day.',
     icon: (
       <>
         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
@@ -282,7 +278,7 @@ function Features() {
     <section id="platform" className="lp-section">
       <span className="lp-section-label reveal">The platform</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        Everything a broker or acquisition shop needs — under one login.
+        Everything a broker or acquisition shop needs, under one login.
       </h2>
       <p className="lp-section-sub reveal reveal-delay-2">
         Data, CRM, dialer, PSAs, skip tracing, and valuations. Built for the
@@ -315,7 +311,7 @@ const STEPS = [
   {
     num: '02',
     title: 'Find opportunities',
-    desc: 'Filter parcels by activity — PDP, PUD, new permits. Skip trace the owner, add to your pipeline in one click.',
+    desc: 'Filter parcels by activity: PDP, PUD, new permits. Skip trace the owner, add to your pipeline in one click.',
   },
   {
     num: '03',
@@ -324,8 +320,8 @@ const STEPS = [
   },
   {
     num: '04',
-    title: 'Close — we take a cut',
-    desc: 'A small share of each deal we helped you find. No monthly fees, no per‑seat charges. If you don\u2019t close, you don\u2019t pay.',
+    title: 'Close, we take a fee',
+    desc: 'A percentage of each deal you close through the platform. No monthly fees, no per‑seat charges. If you don\u2019t close, you don\u2019t pay.',
   },
 ]
 
@@ -334,7 +330,7 @@ function HowItWorks() {
     <section id="how" className="lp-section lp-how-section">
       <span className="lp-section-label reveal">How it works</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        Sign up today. First deal by month‑end.
+        Sign up today. Start prospecting in five minutes.
       </h2>
       <div className="lp-steps-container lp-steps-container-4">
         {STEPS.map((s, i) => (
@@ -357,11 +353,11 @@ function PricingBand() {
     <section id="pricing" className="lp-section lp-pricing-band">
       <span className="lp-section-label reveal">Pricing</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        <em>$0</em> to start. Small cut when you close.
+        <em>$0</em> to start. A % fee on closed deals.
       </h2>
       <p className="lp-section-sub reveal reveal-delay-2">
-        You get every feature, every county, unlimited seats. We win when you win —
-        that&apos;s the whole model.
+        You get every feature, every county, unlimited seats. We take a
+        percentage of each deal you close, and nothing else.
       </p>
       <div className="lp-pricing-card reveal reveal-delay-3">
         <div className="lp-pricing-card-header">
@@ -377,8 +373,8 @@ function PricingBand() {
         </div>
         <div className="lp-pricing-card-divider" />
         <ul className="lp-pricing-card-list">
-          <li>Every county we cover — Gonzales, Howard, Martin, and the 10‑county Permian expansion</li>
-          <li>Unlimited seats — bring your whole team</li>
+          <li>Every county we cover: Gonzales, Howard, Martin, and the 10‑county Permian expansion</li>
+          <li>Unlimited seats for your whole team</li>
           <li>Skip tracing included, no per‑lookup fees</li>
           <li>Dedicated Mineral Map phone number &amp; SMS</li>
           <li>Auto‑drafted PSAs with e‑signature</li>
@@ -389,7 +385,7 @@ function PricingBand() {
         </a>
         <p className="lp-pricing-card-fineprint">
           By creating an account you&apos;ll be asked to sign our{' '}
-          <a href="/legal/agreement">Platform Services Agreement</a> — 10% success
+          <a href="/legal/agreement">Platform Services Agreement</a>: 10% success
           fee on Platform Leads you close, 24-month attribution, no monthly fees.
         </p>
       </div>
@@ -410,7 +406,7 @@ function ValuationsBand() {
             <em>Get a comp‑backed valuation first.</em>
           </h2>
           <p>
-            Send us the tract and we&apos;ll put together a valuation — comparable
+            Send us the tract and we&apos;ll put together a valuation: comparable
             deals, current well activity, decline curves, and a suggested offer range.
             No charge. Same day when we can.
           </p>

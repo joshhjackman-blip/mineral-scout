@@ -126,8 +126,8 @@ export default function SignAgreementPage() {
                   <span className="lp-legal-inline-link">
                     Platform Services Agreement
                   </span>
-                </Link>{' '}
-                — including the 10% success fee and 24-month attribution tail.
+                </Link>
+                , including the 10% success fee and 24-month attribution tail.
               </p>
             </div>
 
@@ -307,8 +307,8 @@ function SignedSuccess({ success }: { success: SuccessState }) {
         Signed. <em>Welcome.</em>
       </h2>
       <p>
-        Your signature is on file. A record of this signing — including timestamp,
-        IP, and user agent — is stored in the Mineral Map audit table for the
+        Your signature is on file. A record of this signing, including timestamp,
+        IP, and user agent, is stored in the Mineral Map audit table for the
         life of the Agreement.
       </p>
       <dl>
