@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './landing.css'
 
 // ── Hooks ────────────────────────────────────────────────────────────────────
@@ -53,8 +53,7 @@ function Counter({ target, duration = 1800 }: { target: number; duration?: numbe
   return <span ref={ref}>{val.toLocaleString()}</span>
 }
 
-// `Counter` is exported so we can reuse it for hero stats animations later
-// without tripping the unused-vars lint rule.
+// Exported for reuse if we add hero stats later. Keeps unused-vars quiet.
 export { Counter }
 
 // ── Oil Field SVG ─────────────────────────────────────────────────────────────
@@ -119,9 +118,10 @@ function Nav() {
         <img src="/mineral-map-logo-light.svg" alt="Mineral Map" />
       </a>
       <div className="lp-nav-links">
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="https://getmineralmap.com/auth" className="lp-nav-cta">Access platform →</a>
+        <a href="#platform">Platform</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#valuations">Valuations</a>
+        <a href="https://getmineralmap.com/auth" className="lp-nav-cta">Get started free →</a>
       </div>
     </nav>
   )
@@ -137,32 +137,78 @@ function Hero() {
         <div className="lp-hero-glow2" />
         <OilFieldSVG />
       </div>
-      <div className="lp-hero-eyebrow reveal">Mineral Acquisition Intelligence</div>
+      <div className="lp-hero-eyebrow reveal">Built for mineral brokers & buyers</div>
       <h1 className="reveal reveal-delay-1">
-        Find the right <em>mineral owners</em><br />
-        <em>before anyone else.</em>
+        Every tool your brokerage needs.<br />
+        <em>Free until you close.</em>
       </h1>
       <p className="lp-hero-sub reveal reveal-delay-2">
-        Mineral Map combines county ownership data, well context, and motivation
-        scoring to prioritize acquisition outreach — so you spend time on the
-        owners most likely to sell.
+        County ownership data, a CRM, click-to-call, and one-click PSAs — all in one
+        place. You pay nothing upfront. We take a small cut only when you close a
+        deal we helped you find.
       </p>
       <div className="lp-hero-actions reveal reveal-delay-3">
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary">
-          Access platform →
+          Get started free →
         </a>
-        <a href="#how" className="lp-btn-secondary">See how it works</a>
+        <a href="#platform" className="lp-btn-secondary">See what&apos;s included</a>
+      </div>
+      <ul className="lp-hero-checks reveal reveal-delay-4">
+        <li><span aria-hidden>✓</span> No monthly fee</li>
+        <li><span aria-hidden>✓</span> No per-seat charge</li>
+        <li><span aria-hidden>✓</span> No data subscription</li>
+      </ul>
+    </section>
+  )
+}
+
+// ── Business Model Band ───────────────────────────────────────────────────────
+
+function ModelBand() {
+  return (
+    <section className="lp-model-band">
+      <div className="lp-model-inner">
+        <div className="reveal">
+          <span className="lp-section-label">The pitch</span>
+          <h2 className="lp-model-heading">
+            Stop paying <em>$8K+ a month</em> just to run your brokerage.
+          </h2>
+        </div>
+        <div className="lp-model-cols">
+          <div className="lp-model-col lp-model-col-bad reveal reveal-delay-1">
+            <div className="lp-model-col-tag">The old way</div>
+            <ul>
+              <li><s>$2,000/mo</s> — data subscription</li>
+              <li><s>$1,500/mo</s> — CRM + dialer</li>
+              <li><s>$800/mo</s> — phone numbers &amp; SMS</li>
+              <li><s>$3,000/mo</s> — GIS + mapping</li>
+              <li><s>Per‑lookup fees</s> — skip trace</li>
+              <li><s>Legal drafting</s> — outsourced PSAs</li>
+            </ul>
+          </div>
+          <div className="lp-model-col lp-model-col-good reveal reveal-delay-2">
+            <div className="lp-model-col-tag">Mineral Map</div>
+            <ul>
+              <li><strong>$0</strong> — sign up and start prospecting</li>
+              <li><strong>$0</strong> — no seat charges for your team</li>
+              <li><strong>$0</strong> — every tool included</li>
+              <li><strong>Small %</strong> of the deals we help you close</li>
+              <li><strong>Aligned</strong> — we only win when you do</li>
+              <li><strong>Cancel anytime</strong> — nothing to unwind</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </section>
   )
 }
 
-// ── Features ──────────────────────────────────────────────────────────────────
+// ── Platform / Features ───────────────────────────────────────────────────────
 
 const FEATURES = [
   {
-    title: 'Ownership mapping',
-    desc: 'Every abstract in your target county mapped to its current mineral owner. Visualize contiguous acreage, interests, and chain of title.',
+    title: 'Ownership + well data',
+    desc: 'Every abstract mapped to its current mineral owner. See PDP / PUD activity, new permits, and lease context in one view — no separate GIS subscription needed.',
     icon: (
       <>
         <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -171,13 +217,8 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Propensity scoring',
-    desc: 'Proprietary signals — including out-of-state ownership, estate-held minerals, and well proximity — combined into a single acquisition score.',
-    icon: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
-  },
-  {
     title: 'Built-in CRM',
-    desc: 'Track outreach, notes, and deal status without leaving the platform. Pipeline management designed for how mineral acquisition actually works.',
+    desc: 'Pipelines, notes, owner history, and next‑action reminders — designed for how mineral brokers actually work. Nothing to import, nothing to sync.',
     icon: (
       <>
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -188,8 +229,29 @@ const FEATURES = [
     ),
   },
   {
-    title: 'Skip tracing',
-    desc: 'Locate current contact info for mineral owners directly from the platform. Skip traces included depending on your plan.',
+    title: 'Click‑to‑call & SMS',
+    desc: 'A Mineral Map phone number, a dialer inside the app, and every call auto‑logged to the owner\u2019s record. Stop paying a separate voice provider.',
+    icon: (
+      <>
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+      </>
+    ),
+  },
+  {
+    title: 'One-click PSAs',
+    desc: 'Generate a Purchase & Sale Agreement pre‑filled with owner name, tract description, and terms straight from a deal. Send for e‑signature in seconds.',
+    icon: (
+      <>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="9" y1="13" x2="15" y2="13" />
+        <line x1="9" y1="17" x2="15" y2="17" />
+      </>
+    ),
+  },
+  {
+    title: 'Skip tracing included',
+    desc: 'Find mailing addresses, phone numbers, and email addresses for any mineral owner. No per‑lookup fees, no external vendor to reconcile.',
     icon: (
       <>
         <circle cx="11" cy="11" r="8" />
@@ -197,19 +259,29 @@ const FEATURES = [
       </>
     ),
   },
+  {
+    title: 'Valuations on request',
+    desc: 'Need a comp‑backed valuation before you make an offer? Our team puts one together for you — usually same day.',
+    icon: (
+      <>
+        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </>
+    ),
+  },
 ]
 
 function Features() {
   return (
-    <section id="features" className="lp-section">
-      <span className="lp-section-label reveal">Platform capabilities</span>
+    <section id="platform" className="lp-section">
+      <span className="lp-section-label reveal">The platform</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        Everything you need to work smarter in mineral acquisition.
+        Every tool a mineral broker needs — under one login.
       </h2>
       <p className="lp-section-sub reveal reveal-delay-2">
-        Built specifically for landmen and acquisition professionals — not a generic GIS viewer.
+        Data, CRM, dialer, PSAs, skip tracing, and valuations. Built for the workflow
+        you already run, minus the six separate invoices.
       </p>
-      <div className="lp-features-grid">
+      <div className="lp-features-grid lp-features-grid-3">
         {FEATURES.map((f, i) => (
           <div key={i} className={`lp-feature-card reveal reveal-delay-${(i % 3) + 1}`}>
             <div className="lp-feature-icon">
@@ -229,18 +301,23 @@ function Features() {
 const STEPS = [
   {
     num: '01',
-    title: 'Browse the map',
-    desc: 'Explore every survey abstract in your target county. Each parcel shows ownership, acreage, and active well context.',
+    title: 'Sign up free',
+    desc: 'No credit card. No sales call. Log in and get access to every county we cover today.',
   },
   {
     num: '02',
-    title: 'Filter by score',
-    desc: 'Sort owners by propensity score. Our multi-signal model surfaces the most motivated sellers so you prioritize the right conversations.',
+    title: 'Find opportunities',
+    desc: 'Filter parcels by activity — PDP, PUD, new permits. Skip trace the owner, add to your pipeline in one click.',
   },
   {
     num: '03',
-    title: 'Reach out & track',
-    desc: 'Use built-in skip tracing to find contact info, then log every touchpoint in the integrated CRM without switching tools.',
+    title: 'Work the deal in one place',
+    desc: 'Call from the app, log notes, send a PSA. Every touchpoint stays attached to the owner\u2019s record.',
+  },
+  {
+    num: '04',
+    title: 'Close — we take a cut',
+    desc: 'A small share of each deal we helped you find. No monthly fees, no per‑seat charges. If you don\u2019t close, you don\u2019t pay.',
   },
 ]
 
@@ -249,11 +326,11 @@ function HowItWorks() {
     <section id="how" className="lp-section lp-how-section">
       <span className="lp-section-label reveal">How it works</span>
       <h2 className="lp-section-heading reveal reveal-delay-1">
-        From county data to priority outreach in minutes.
+        Sign up today. First deal by month‑end.
       </h2>
-      <div className="lp-steps-container">
+      <div className="lp-steps-container lp-steps-container-4">
         {STEPS.map((s, i) => (
-          <div key={i} className={`lp-step-card reveal reveal-delay-${i + 1}`}>
+          <div key={i} className={`lp-step-card reveal reveal-delay-${(i % 3) + 1}`}>
             <span className="lp-step-num">{s.num}</span>
             {i < STEPS.length - 1 && <div className="lp-step-connector" />}
             <h3>{s.title}</h3>
@@ -265,24 +342,116 @@ function HowItWorks() {
   )
 }
 
+// ── Pricing / Model ───────────────────────────────────────────────────────────
+
+function PricingBand() {
+  return (
+    <section id="pricing" className="lp-section lp-pricing-band">
+      <span className="lp-section-label reveal">Pricing</span>
+      <h2 className="lp-section-heading reveal reveal-delay-1">
+        <em>$0</em> to start. Small cut when you close.
+      </h2>
+      <p className="lp-section-sub reveal reveal-delay-2">
+        You get every feature, every county, unlimited seats. We win when you win —
+        that&apos;s the whole model.
+      </p>
+      <div className="lp-pricing-card reveal reveal-delay-3">
+        <div className="lp-pricing-card-header">
+          <span className="lp-pricing-card-tag">Broker plan</span>
+          <div className="lp-pricing-card-price">
+            <span className="lp-pricing-card-price-value">$0</span>
+            <span className="lp-pricing-card-price-period">forever</span>
+          </div>
+          <p className="lp-pricing-card-sub">
+            Plus a percentage of each deal we help you close. Transparent, itemized,
+            paid at closing.
+          </p>
+        </div>
+        <div className="lp-pricing-card-divider" />
+        <ul className="lp-pricing-card-list">
+          <li>Every county we cover — Gonzales, Howard, Martin, and the 10‑county Permian expansion</li>
+          <li>Unlimited seats — bring your whole team</li>
+          <li>Skip tracing included, no per‑lookup fees</li>
+          <li>Dedicated Mineral Map phone number &amp; SMS</li>
+          <li>Auto‑drafted PSAs with e‑signature</li>
+          <li>Valuation team on‑call for offers you&apos;re about to make</li>
+        </ul>
+        <a href="https://getmineralmap.com/auth" className="lp-btn-primary lp-btn-large lp-pricing-card-cta">
+          Create your account →
+        </a>
+      </div>
+    </section>
+  )
+}
+
+// ── Valuations Callout ────────────────────────────────────────────────────────
+
+function ValuationsBand() {
+  return (
+    <section id="valuations" className="lp-valuations-band">
+      <div className="lp-valuations-inner">
+        <div className="lp-valuations-copy reveal">
+          <span className="lp-section-label">Valuations, on us</span>
+          <h2 className="lp-valuations-heading">
+            About to make an offer?<br />
+            <em>Get a comp‑backed valuation first.</em>
+          </h2>
+          <p>
+            Send us the tract and we&apos;ll put together a valuation — comparable
+            deals, current well activity, decline curves, and a suggested offer range.
+            No charge. Same day when we can.
+          </p>
+          <div className="lp-valuations-actions">
+            <a
+              href="mailto:josh@brentwoodenterprisesllc.com?subject=Valuation%20request&body=Tract%2Fabstract%3A%20%0AApprox%20acreage%3A%20%0AOwner%20name%3A%20%0ANotes%3A%20"
+              className="lp-btn-primary"
+            >
+              Request a valuation →
+            </a>
+            <span className="lp-valuations-hint">
+              Or hit <strong>Request valuation</strong> on any tract inside the app.
+            </span>
+          </div>
+        </div>
+        <div className="lp-valuations-panel reveal reveal-delay-1">
+          <div className="lp-valuations-panel-header">
+            <span>Sample valuation</span>
+            <span className="lp-valuations-panel-badge">Draft · 24h turnaround</span>
+          </div>
+          <dl className="lp-valuations-panel-dl">
+            <div><dt>Tract</dt><dd>A‑543 · Howard County</dd></div>
+            <div><dt>Gross acres</dt><dd>160.0</dd></div>
+            <div><dt>Owner NRA</dt><dd>16.25</dd></div>
+            <div><dt>Active wells</dt><dd>3 PDP · 1 PUD</dd></div>
+            <div><dt>Recent comps</dt><dd>$12,400 – $16,800 / NRA</dd></div>
+            <div className="lp-valuations-panel-highlight">
+              <dt>Suggested offer</dt><dd>$14,200 / NRA</dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── CTA Band ──────────────────────────────────────────────────────────────────
 
 function CTABand() {
   return (
     <section className="lp-cta-band">
       <h2 className="reveal">
-        Get ahead of the<br />
-        <em>next acquisition.</em>
+        Run your whole brokerage from<br />
+        <em>one login. Free.</em>
       </h2>
       <p className="reveal reveal-delay-1">
-        No contracts. Cancel anytime. Your first 7 days are free.
+        No credit card. No monthly fee. Start prospecting in the next five minutes.
       </p>
       <div className="lp-cta-actions reveal reveal-delay-2">
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary lp-btn-large">
-          Start free trial →
+          Get started free →
         </a>
-        <a href="https://getmineralmap.com/pricing" className="lp-btn-secondary">
-          View pricing
+        <a href="#pricing" className="lp-btn-secondary">
+          See how we get paid
         </a>
       </div>
     </section>
@@ -296,10 +465,11 @@ function Footer() {
     <footer className="lp-footer">
       <div>
         <img src="/mineral-map-logo-light.svg" alt="Mineral Map" className="lp-footer-logo" />
-        <div className="lp-footer-copy">© 2026 Mineral Map · Mineral Acquisition Intelligence</div>
+        <div className="lp-footer-copy">© 2026 Mineral Map · Built for mineral brokers</div>
       </div>
       <div className="lp-footer-links">
-        <a href="https://getmineralmap.com/pricing">Pricing</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#valuations">Valuations</a>
         <a href="https://getmineralmap.com/auth">Sign in</a>
         <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
       </div>
@@ -315,8 +485,11 @@ export default function LandingPage() {
     <div className="lp-root">
       <Nav />
       <Hero />
+      <ModelBand />
       <Features />
       <HowItWorks />
+      <PricingBand />
+      <ValuationsBand />
       <CTABand />
       <Footer />
     </div>

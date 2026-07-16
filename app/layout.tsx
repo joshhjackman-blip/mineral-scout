@@ -7,8 +7,9 @@ import PostHogProvider from "@/app/components/PostHogProvider"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Mineral Map",
-  description: "Off-market mineral rights prospecting",
+  title: "Mineral Map — Every tool a mineral broker needs. Free until you close.",
+  description:
+    "Ownership data, CRM, click-to-call, PSAs, skip tracing, and comp-backed valuations for mineral brokers and buyers. Free platform — we only take a cut when you close.",
   icons: {
     icon: "/mineral-map-logo.svg",
   },
