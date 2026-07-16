@@ -757,7 +757,13 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
-    const updateMobile = () => setIsMobile(window.innerWidth < 1024)
+    // 900px is the width at which the drawer's side-panel layout
+    // (clamp(480px, 50vw, 720px) + map) stops being usable, so below
+    // that we fall back to the mobile bottom-sheet. This used to be
+    // 1024 which meant standard laptop-with-docked-panel widths
+    // silently got the mobile layout even though they had plenty of
+    // horizontal space.
+    const updateMobile = () => setIsMobile(window.innerWidth < 900)
     updateMobile()
     window.addEventListener('resize', updateMobile)
     return () => window.removeEventListener('resize', updateMobile)
