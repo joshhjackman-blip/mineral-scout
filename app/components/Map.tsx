@@ -129,6 +129,19 @@ type CountyOverviewHandlers = {
   hoveredFips: string | null
 }
 
+export type DevelopmentStatusKey =
+  | 'PDP'
+  | 'PUD_DUC'
+  | 'PUD_PERMITTED'
+  | 'PUD_INFILL'
+  | 'LEASING_ACTIVE'
+  | 'FRONTIER'
+
+export type DevStatusMapEntry = {
+  development_status: DevelopmentStatusKey
+  pud_score: number
+}
+
 export default function Map({
   onOwnerClick,
   focusTarget,
@@ -137,6 +150,7 @@ export default function Map({
   mapLevel,
   onCountySelect,
   onCountySwitch,
+  devStatusByAbstract,
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
@@ -145,18 +159,30 @@ export default function Map({
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
+  devStatusByAbstract?: Record<string, DevStatusMapEntry>
 }) {
   // In-map layer toggles (see LayerTogglePanel at the bottom of the file).
-  //   showPDP           colored PDP parcel fills (yellow)
+  //   showPDP           colored PDP parcel fills (yellow, activity view)
   //   showPermits       approved drilling permits (blue dots)
   //   showPrePermits    pending / filed permit applications (pale blue dots)
   //   showRigs          wells currently drilling (red dots, sourced from
   //                     permit_type='Drilling' rows the RRC scraper writes)
-  // Toggles are local state — no need to lift them into app/page.tsx.
+  //   showDevStatus     Ticket 1.3 development-lifecycle coloring — when
+  //                     ON we swap the parcel fill from the production_status
+  //                     match to a development_status match (6-bucket palette).
+  //   preProductionOnly Filter: hide every parcel except PUD_DUC + PUD_PERMITTED.
   const [showPDP, setShowPDP] = useState(true)
   const [showPermits, setShowPermits] = useState(true)
   const [showPrePermits, setShowPrePermits] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
+  const [showDevStatus, setShowDevStatus] = useState(false)
+  const [preProductionOnly, setPreProductionOnly] = useState(false)
+  // Latest devStatusByAbstract in a ref so the setupTractLevel closure
+  // (memoized on countyEntries only) still sees fresh data.
+  const devStatusByAbstractRef = useRef(devStatusByAbstract ?? {})
+  useEffect(() => {
+    devStatusByAbstractRef.current = devStatusByAbstract ?? {}
+  }, [devStatusByAbstract])
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapReady, setMapReady] = useState(false)
@@ -340,66 +366,155 @@ export default function Map({
   // consistent when both are shown.
   const PRODUCTION_STATUS_DOT = '#2563EB'
 
-  // PDP fill / opacity swap to the neutral gray when `showPDP` is off so
-  // the "PDP" layer toggle actually hides the yellow tint without dropping
-  // the outline or the parcel shape. PUD keeps its green fill regardless
-  // (few enough tracts that a dedicated toggle isn't worth the UI).
+  // Ticket 1.3 Phase 1 UI — Development-status palette. Applied when
+  // showDevStatus is on. Field-name is `development_status` on the
+  // parcel features (injected client-side after the GeoJSON loads).
+  const DEV_STATUS_FILL: Record<DevelopmentStatusKey, string> = {
+    PDP:            '#16A34A', // green — producing now
+    PUD_DUC:        '#A855F7', // purple — drilled but not yet completed
+    PUD_PERMITTED:  '#F97316', // orange — approved permit, not spud
+    PUD_INFILL:     '#3B82F6', // blue — spacing-gap infill candidate
+    LEASING_ACTIVE: '#FACC15', // yellow — fresh lease memo (Phase 3)
+    FRONTIER:       '#E5E7EB', // gray — no signals
+  }
+  const DEV_STATUS_OUTLINE: Record<DevelopmentStatusKey, string> = {
+    PDP:            '#166534',
+    PUD_DUC:        '#6B21A8',
+    PUD_PERMITTED:  '#C2410C',
+    PUD_INFILL:     '#1D4ED8',
+    LEASING_ACTIVE: '#A16207',
+    FRONTIER:       '#CBD5E1',
+  }
+  const DEV_STATUS_LABEL: Record<DevelopmentStatusKey, string> = {
+    PDP: 'PDP', PUD_DUC: 'PUD (DUC)', PUD_PERMITTED: 'PUD (Permitted)',
+    PUD_INFILL: 'PUD (Infill)', LEASING_ACTIVE: 'Leasing active', FRONTIER: 'Frontier',
+  }
+
+  // Two paint modes, chosen by the Development view toggle:
+  //   showDevStatus === false (default)  -> activity coloring
+  //     match on `production_status` (pdp/pud/permits/none).
+  //   showDevStatus === true             -> Ticket 1.3 dev-status view
+  //     match on `development_status` (6-bucket palette). The feature
+  //     property gets injected client-side in setupTractLevel from
+  //     devStatusByAbstract before the layer paints.
+  //
+  // Pre-production filter: when preProductionOnly is on, both modes
+  // dial opacity to 0 for every tract except PUD_DUC / PUD_PERMITTED
+  // (the "royalty about to jump" cohort per spec).
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            showPDP ? PRODUCTION_STATUS_FILL.pdp : PRODUCTION_STATUS_FILL.none,
-      'pud',            PRODUCTION_STATUS_FILL.pud,
-      'new_permit',     PRODUCTION_STATUS_FILL.new_permit,
-      'pending_permit', PRODUCTION_STATUS_FILL.pending_permit,
-      PRODUCTION_STATUS_FILL.none,
-    ],
+    () => showDevStatus
+      ? [
+          'match',
+          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
+          'PDP',            DEV_STATUS_FILL.PDP,
+          'PUD_DUC',        DEV_STATUS_FILL.PUD_DUC,
+          'PUD_PERMITTED',  DEV_STATUS_FILL.PUD_PERMITTED,
+          'PUD_INFILL',     DEV_STATUS_FILL.PUD_INFILL,
+          'LEASING_ACTIVE', DEV_STATUS_FILL.LEASING_ACTIVE,
+          DEV_STATUS_FILL.FRONTIER,
+        ]
+      : [
+          'match',
+          ['coalesce', ['get', 'production_status'], 'none'],
+          'pdp',            showPDP ? PRODUCTION_STATUS_FILL.pdp : PRODUCTION_STATUS_FILL.none,
+          'pud',            PRODUCTION_STATUS_FILL.pud,
+          'new_permit',     PRODUCTION_STATUS_FILL.new_permit,
+          'pending_permit', PRODUCTION_STATUS_FILL.pending_permit,
+          PRODUCTION_STATUS_FILL.none,
+        ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showPDP]
+    [showPDP, showDevStatus]
   )
 
   const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            showPDP ? 0.78 : 0.18,
-      'pud',            0.72,
-      // Permit-only parcels stay near-transparent so the blue centroid dot
-      // is the visual cue, not the fill.
-      'new_permit',     0.18,
-      'pending_permit', 0.14,
-      0.18,
-    ],
-    [showPDP]
+    () => {
+      const preFilter: mapboxgl.Expression = [
+        'in',
+        ['coalesce', ['get', 'development_status'], 'FRONTIER'],
+        ['literal', ['PUD_DUC', 'PUD_PERMITTED']],
+      ]
+      if (showDevStatus) {
+        // Dev-view opacities: solid on classified tracts, dim on Frontier
+        // unless the pre-production filter is off.
+        const base: mapboxgl.Expression = [
+          'match',
+          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
+          'PDP',            0.62,
+          'PUD_DUC',        0.82,
+          'PUD_PERMITTED',  0.78,
+          'PUD_INFILL',     0.70,
+          'LEASING_ACTIVE', 0.60,
+          0.18,
+        ]
+        return preProductionOnly
+          ? (['case', preFilter, base, 0] as mapboxgl.Expression)
+          : base
+      }
+      const base: mapboxgl.Expression = [
+        'match',
+        ['coalesce', ['get', 'production_status'], 'none'],
+        'pdp',            showPDP ? 0.78 : 0.18,
+        'pud',            0.72,
+        'new_permit',     0.18,
+        'pending_permit', 0.14,
+        0.18,
+      ]
+      return preProductionOnly
+        ? (['case', preFilter, base, 0] as mapboxgl.Expression)
+        : base
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showPDP, showDevStatus, preProductionOnly]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            PRODUCTION_STATUS_OUTLINE.pdp,
-      'pud',            PRODUCTION_STATUS_OUTLINE.pud,
-      'new_permit',     PRODUCTION_STATUS_OUTLINE.new_permit,
-      'pending_permit', PRODUCTION_STATUS_OUTLINE.pending_permit,
-      PRODUCTION_STATUS_OUTLINE.none,
-    ],
+    () => showDevStatus
+      ? [
+          'match',
+          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
+          'PDP',            DEV_STATUS_OUTLINE.PDP,
+          'PUD_DUC',        DEV_STATUS_OUTLINE.PUD_DUC,
+          'PUD_PERMITTED',  DEV_STATUS_OUTLINE.PUD_PERMITTED,
+          'PUD_INFILL',     DEV_STATUS_OUTLINE.PUD_INFILL,
+          'LEASING_ACTIVE', DEV_STATUS_OUTLINE.LEASING_ACTIVE,
+          DEV_STATUS_OUTLINE.FRONTIER,
+        ]
+      : [
+          'match',
+          ['coalesce', ['get', 'production_status'], 'none'],
+          'pdp',            PRODUCTION_STATUS_OUTLINE.pdp,
+          'pud',            PRODUCTION_STATUS_OUTLINE.pud,
+          'new_permit',     PRODUCTION_STATUS_OUTLINE.new_permit,
+          'pending_permit', PRODUCTION_STATUS_OUTLINE.pending_permit,
+          PRODUCTION_STATUS_OUTLINE.none,
+        ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [showDevStatus]
   )
 
   const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            1.6,
-      'pud',            1.6,
-      // Permit / no-activity parcels use the neutral outline so the
-      // blue centroid dot is the only visual indicator.
-      'new_permit',     0.9,
-      'pending_permit', 0.9,
-      0.9,
-    ],
-    []
+    () => showDevStatus
+      ? [
+          'match',
+          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
+          'PDP',            1.4,
+          'PUD_DUC',        2.0,
+          'PUD_PERMITTED',  1.8,
+          'PUD_INFILL',     1.4,
+          'LEASING_ACTIVE', 1.4,
+          0.9,
+        ]
+      : [
+          'match',
+          ['coalesce', ['get', 'production_status'], 'none'],
+          'pdp',            1.6,
+          'pud',            1.6,
+          'new_permit',     0.9,
+          'pending_permit', 0.9,
+          0.9,
+        ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showDevStatus]
   )
 
   const applyTractCountyStyles = useCallback(() => {
@@ -837,6 +952,24 @@ export default function Map({
 
     currentParcelsByCountyRef.current = {}
     parcelsByCounty.forEach(([countyKey, geojson]) => {
+      // Inject Ticket 1.3 development_status + pud_score into each feature
+      // from the caller-supplied lookup so the paint expressions can
+      // `get('development_status')` directly. Missing rows fall back to
+      // FRONTIER / 0.
+      const devLookup = devStatusByAbstractRef.current
+      if (devLookup && Object.keys(devLookup).length > 0) {
+        for (const feature of geojson.features) {
+          const props = feature.properties ?? {}
+          const bare = String(props.ABSTRACT_L ?? props.ABSTRACT_N ?? '')
+            .replace(/^A-\s*/i, '').trim()
+          const entry = bare ? devLookup[bare] : undefined
+          feature.properties = {
+            ...props,
+            development_status: entry?.development_status ?? 'FRONTIER',
+            pud_score: entry?.pud_score ?? 0,
+          }
+        }
+      }
       currentParcelsByCountyRef.current[countyKey] = geojson
       const countyConfig = COUNTIES[countyKey]
       const sourceId = `parcels-${countyConfig.id}`
@@ -1223,7 +1356,42 @@ export default function Map({
   // is memoized on the fill/opacity expressions, which depend on showPDP).
   useEffect(() => {
     lastStyledSelectedCountyRef.current = null
-  }, [showPDP])
+  }, [showPDP, showDevStatus, preProductionOnly])
+
+  // Re-inject development_status onto every loaded feature when the
+  // per-county dev-status lookup changes (initial fetch + county switch).
+  // Without this, features loaded before the Supabase query returns would
+  // stay tagged FRONTIER forever.
+  useEffect(() => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+    const lookup = devStatusByAbstract ?? {}
+    if (Object.keys(lookup).length === 0) return
+    let updated = 0
+    for (const [countyKey, collection] of Object.entries(currentParcelsByCountyRef.current)) {
+      if (!collection) continue
+      for (const feature of collection.features) {
+        const props = feature.properties ?? {}
+        const bare = String(props.ABSTRACT_L ?? props.ABSTRACT_N ?? '')
+          .replace(/^A-\s*/i, '').trim()
+        const entry = bare ? lookup[bare] : undefined
+        feature.properties = {
+          ...props,
+          development_status: entry?.development_status ?? 'FRONTIER',
+          pud_score: entry?.pud_score ?? 0,
+        }
+      }
+      const sourceId = `parcels-${COUNTIES[countyKey as CountyKey].id}`
+      const source = mapInstance.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined
+      if (source) {
+        source.setData(collection)
+        updated += 1
+      }
+    }
+    if (updated > 0) {
+      lastStyledSelectedCountyRef.current = null
+    }
+  }, [devStatusByAbstract])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
@@ -1282,22 +1450,37 @@ export default function Map({
           onPrePermits={setShowPrePermits}
           rigsVisible={showRigs}
           onRigs={setShowRigs}
+          devStatusVisible={showDevStatus}
+          onDevStatus={setShowDevStatus}
+          preProductionOnly={preProductionOnly}
+          onPreProductionOnly={setPreProductionOnly}
           pdpFill={PRODUCTION_STATUS_FILL.pdp}
+          devPalette={DEV_STATUS_FILL}
+          devLabels={DEV_STATUS_LABEL}
         />
       )}
     </div>
   )
 }
 
-// In-map layer control. Fixed to the top-right of the map viewport. Each
-// row is a checkbox + color swatch + label so the user can read the
-// palette and toggle any layer independently.
+// In-map layer control. Fixed to the top-right of the map viewport with
+// three sections stacked vertically:
+//   ACTIVITY   — activity-view point + fill toggles (PDP / Permits / Pre / Rigs)
+//   DEVELOPMENT — Ticket 1.3 view: toggle swaps the fill palette to the
+//                 6-bucket development-lifecycle scheme; when active,
+//                 the legend below shows every dev-status color
+//   FILTERS    — Pre-Production Tracts checkbox (hides every parcel
+//                except PUD_DUC / PUD_PERMITTED)
 function LayerTogglePanel({
   pdpVisible, onPDP,
   permitsVisible, onPermits,
   prePermitsVisible, onPrePermits,
   rigsVisible, onRigs,
+  devStatusVisible, onDevStatus,
+  preProductionOnly, onPreProductionOnly,
   pdpFill,
+  devPalette,
+  devLabels,
 }: {
   pdpVisible: boolean
   onPDP: (v: boolean) => void
@@ -1307,20 +1490,32 @@ function LayerTogglePanel({
   onPrePermits: (v: boolean) => void
   rigsVisible: boolean
   onRigs: (v: boolean) => void
+  devStatusVisible: boolean
+  onDevStatus: (v: boolean) => void
+  preProductionOnly: boolean
+  onPreProductionOnly: (v: boolean) => void
   pdpFill: string
+  devPalette: Record<DevelopmentStatusKey, string>
+  devLabels: Record<DevelopmentStatusKey, string>
 }) {
-  const rows: Array<{
+  const activityRows: Array<{
     label: string
     swatch: 'fill' | 'dot'
     color: string
     checked: boolean
     onChange: (v: boolean) => void
+    disabled?: boolean
   }> = [
-    { label: 'PDP',         swatch: 'fill', color: pdpFill,   checked: pdpVisible,       onChange: onPDP },
+    { label: 'PDP',         swatch: 'fill', color: pdpFill,   checked: pdpVisible,       onChange: onPDP,       disabled: devStatusVisible },
     { label: 'Permits',     swatch: 'dot',  color: '#2563EB', checked: permitsVisible,   onChange: onPermits },
     { label: 'Pre-permits', swatch: 'dot',  color: '#93C5FD', checked: prePermitsVisible, onChange: onPrePermits },
     { label: 'Rigs',        swatch: 'dot',  color: '#DC2626', checked: rigsVisible,      onChange: onRigs },
   ]
+
+  const devKeys: DevelopmentStatusKey[] = [
+    'PDP', 'PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL', 'LEASING_ACTIVE', 'FRONTIER',
+  ]
+
   return (
     <div
       style={{
@@ -1338,70 +1533,153 @@ function LayerTogglePanel({
         zIndex: 5,
         display: 'flex',
         flexDirection: 'column',
-        gap: 6,
-        minWidth: 168,
+        gap: 10,
+        minWidth: 200,
+        maxWidth: 240,
       }}
     >
-      <div style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569', fontSize: 10, marginBottom: 2 }}>
-        Layers
+      <div>
+        <div style={sectionHeadingStyle}>Activity</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {activityRows.map((row) => (
+            <ToggleRow key={row.label} row={row} />
+          ))}
+        </div>
       </div>
-      {rows.map((row) => (
-        <label
-          key={row.label}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            cursor: 'pointer',
-            userSelect: 'none',
-            fontSize: 12.5,
-          }}
-        >
+
+      <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+        <div style={sectionHeadingStyle}>Development</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
           <input
             type="checkbox"
-            checked={row.checked}
-            onChange={(e) => row.onChange(e.target.checked)}
-            style={{ margin: 0, accentColor: row.color, cursor: 'pointer', width: 14, height: 14 }}
+            checked={devStatusVisible}
+            onChange={(e) => onDevStatus(e.target.checked)}
+            style={{ margin: 0, accentColor: '#A855F7', cursor: 'pointer', width: 14, height: 14 }}
           />
+          <span style={{ fontWeight: 600, color: devStatusVisible ? '#0F172A' : '#94A3B8' }}>
+            Development view
+          </span>
+        </label>
+        {devStatusVisible && (
+          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            {devKeys.map((key) => (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#0F172A' }}>
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 2,
+                    background: devPalette[key],
+                    border: '1px solid rgba(15,23,42,0.25)',
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ lineHeight: 1.2 }}>{devLabels[key]}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+        <div style={sectionHeadingStyle}>Filters</div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+          <input
+            type="checkbox"
+            checked={preProductionOnly}
+            onChange={(e) => onPreProductionOnly(e.target.checked)}
+            style={{ margin: 0, accentColor: '#F97316', cursor: 'pointer', width: 14, height: 14 }}
+          />
+          <span style={{ fontWeight: 600, color: preProductionOnly ? '#0F172A' : '#94A3B8' }}>
+            Pre-production only
+          </span>
+        </label>
+        <div style={{ marginTop: 4, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
+          Show only tracts flagged PUD (DUC) or PUD (Permitted).
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const sectionHeadingStyle: React.CSSProperties = {
+  fontWeight: 600,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+  color: '#475569',
+  fontSize: 10,
+  marginBottom: 6,
+}
+
+function ToggleRow({
+  row,
+}: {
+  row: {
+    label: string
+    swatch: 'fill' | 'dot'
+    color: string
+    checked: boolean
+    onChange: (v: boolean) => void
+    disabled?: boolean
+  }
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        cursor: row.disabled ? 'not-allowed' : 'pointer',
+        userSelect: 'none',
+        fontSize: 12.5,
+        opacity: row.disabled ? 0.5 : 1,
+      }}
+      title={row.disabled ? 'Hidden while Development view is on' : undefined}
+    >
+      <input
+        type="checkbox"
+        checked={row.checked}
+        disabled={row.disabled}
+        onChange={(e) => row.onChange(e.target.checked)}
+        style={{ margin: 0, accentColor: row.color, cursor: row.disabled ? 'not-allowed' : 'pointer', width: 14, height: 14 }}
+      />
+      <span
+        style={{
+          width: 14,
+          height: 14,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {row.swatch === 'fill' ? (
           <span
             style={{
-              width: 14,
-              height: 14,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
+              width: 12,
+              height: 12,
+              borderRadius: 2,
+              background: row.color,
+              border: '1px solid rgba(15,23,42,0.25)',
+              opacity: row.checked ? 1 : 0.35,
             }}
-          >
-            {row.swatch === 'fill' ? (
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 2,
-                  background: row.color,
-                  border: '1px solid rgba(15,23,42,0.25)',
-                  opacity: row.checked ? 1 : 0.35,
-                }}
-              />
-            ) : (
-              <span
-                style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  background: row.color,
-                  border: '1.5px solid #ffffff',
-                  boxShadow: '0 0 0 1px rgba(15,23,42,0.35)',
-                  opacity: row.checked ? 1 : 0.35,
-                }}
-              />
-            )}
-          </span>
-          <span style={{ color: row.checked ? '#0F172A' : '#94A3B8' }}>{row.label}</span>
-        </label>
-      ))}
-    </div>
+          />
+        ) : (
+          <span
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: row.color,
+              border: '1.5px solid #ffffff',
+              boxShadow: '0 0 0 1px rgba(15,23,42,0.35)',
+              opacity: row.checked ? 1 : 0.35,
+            }}
+          />
+        )}
+      </span>
+      <span style={{ color: row.checked ? '#0F172A' : '#94A3B8' }}>{row.label}</span>
+    </label>
   )
 }
 

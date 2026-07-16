@@ -142,6 +142,45 @@ type WellSummary = {
   oil_gas_code?: string | null
 }
 
+export type DevelopmentStatus =
+  | 'PDP'
+  | 'PUD_DUC'
+  | 'PUD_PERMITTED'
+  | 'PUD_INFILL'
+  | 'LEASING_ACTIVE'
+  | 'FRONTIER'
+
+export type DevStatusSignal = {
+  permits?: Array<{
+    permit_number?: string | null
+    api?: string | null
+    operator?: string | null
+    lease?: string | null
+    status?: string | null
+    approved_date?: string | null
+    spud_date?: string | null
+  }>
+  ducs?: Array<{
+    api?: string | null
+    operator?: string | null
+    lease?: string | null
+    spud_date?: string | null
+    status?: string | null
+    source?: string | null
+  }>
+  adjacent_permits?: Array<{ operator?: string | null; count?: number }>
+  adjacent_permit_count?: number
+  infill_gaps?: number
+  leases?: unknown[]
+}
+
+export type DevStatusRow = {
+  development_status: DevelopmentStatus
+  pud_score: number
+  signal_detail: DevStatusSignal
+  last_computed?: string
+}
+
 type PermitRow = {
   id: number
   permit_number?: string | null
@@ -575,6 +614,19 @@ export default function Home() {
   const [countyPermits, setCountyPermits] = useState<PermitRow[]>([])
   const [countyPermitsLoading, setCountyPermitsLoading] = useState(false)
   const [permitsExpanded, setPermitsExpanded] = useState(true)
+  // Per-county tract development lifecycle status from Ticket 1.3. Keyed on
+  // the bare abstract number ('543', not 'A-543') so it lines up with
+  // tract_development_status.abstract_number written by
+  // scripts/compute_development_status.py.
+  const [devStatusByAbstract, setDevStatusByAbstract] = useState<Record<string, DevStatusRow>>({})
+  // Ticket 1.3 dev status for the currently-selected tract, if any.
+  // Consumed by the sidebar's ⚡ badge and the OwnerDrawer's status
+  // section. Same bare-abstract key convention as devStatusByAbstract.
+  const selectedTractDevStatus = useMemo(() => {
+    const key = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
+      .replace(/^A-\s*/i, '').trim()
+    return key ? devStatusByAbstract[key] ?? null : null
+  }, [selected, devStatusByAbstract])
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
   const [ownerWellsLoading, setOwnerWellsLoading] = useState<Record<string, boolean>>({})
   const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
@@ -807,7 +859,53 @@ export default function Home() {
     setCountyPermits([])
     setDrawerOwner(null)
     setDrawerTractLabel(null)
+    setDevStatusByAbstract({})
   }, [selectedCounty])
+
+  // Fetch tract_development_status for the active county. Rows come from
+  // scripts/compute_development_status.py (Ticket 1.3 Phase 1). Missing
+  // rows fall back to FRONTIER / score 0 client-side; a missing table
+  // fails soft with an empty lookup so old builds don't crash.
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('tract_development_status')
+      .select('abstract_number, development_status, pud_score, signal_detail, last_computed')
+      .eq('county_id', county.id)
+      .limit(5000)
+      .then((result) => {
+        if (cancelled) return
+        if (result.error) {
+          const msg = result.error.message.toLowerCase()
+          if (!msg.includes('not find') && !msg.includes('does not exist')) {
+            console.warn('[dev_status] fetch error:', result.error.message)
+          }
+          setDevStatusByAbstract({})
+          return
+        }
+        const out: Record<string, DevStatusRow> = {}
+        for (const row of (result.data ?? []) as Array<{
+          abstract_number?: string | null
+          development_status?: string | null
+          pud_score?: number | null
+          signal_detail?: unknown
+          last_computed?: string | null
+        }>) {
+          const bare = String(row.abstract_number ?? '').replace(/^A-\s*/i, '').trim()
+          if (!bare) continue
+          out[bare] = {
+            development_status: (row.development_status as DevelopmentStatus) ?? 'FRONTIER',
+            pud_score: Number(row.pud_score ?? 0),
+            signal_detail: (row.signal_detail as DevStatusSignal) ?? {},
+            last_computed: row.last_computed ?? undefined,
+          }
+        }
+        setDevStatusByAbstract(out)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [county.id])
 
   // Load every permit for the active county exactly once per county switch.
   // Cheap enough for the current dataset (Gonzales has ~400 rows, Howard /
@@ -2763,6 +2861,33 @@ export default function Home() {
                             {owner.out_of_state && (
                               <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(239,159,39,0.12)', color: '#B45309', border: '0.5px solid rgba(239,159,39,0.3)' }}>OOS</span>
                             )}
+                            {selectedTractDevStatus && (
+                              selectedTractDevStatus.development_status === 'PUD_DUC' ||
+                              selectedTractDevStatus.development_status === 'PUD_PERMITTED'
+                            ) && (
+                              <span
+                                style={{
+                                  fontSize: 9,
+                                  padding: '1px 5px',
+                                  borderRadius: 6,
+                                  background: selectedTractDevStatus.development_status === 'PUD_DUC'
+                                    ? 'rgba(168,85,247,0.14)'
+                                    : 'rgba(249,115,22,0.14)',
+                                  color: selectedTractDevStatus.development_status === 'PUD_DUC'
+                                    ? '#6B21A8'
+                                    : '#9A3412',
+                                  border: `0.5px solid ${
+                                    selectedTractDevStatus.development_status === 'PUD_DUC'
+                                      ? 'rgba(168,85,247,0.4)'
+                                      : 'rgba(249,115,22,0.4)'
+                                  }`,
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`Development ${selectedTractDevStatus.development_status === 'PUD_DUC' ? 'DUC' : 'permitted'} · pud_score ${selectedTractDevStatus.pud_score}/10`}
+                              >
+                                ⚡ Dev pending
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -3169,6 +3294,7 @@ export default function Home() {
               mapFlyToRef={mapFlyToRef}
               mapLevel={mapLevel}
               focusTarget={selected}
+              devStatusByAbstract={devStatusByAbstract}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
@@ -3253,6 +3379,9 @@ export default function Home() {
             countyId={selectedCounty}
             inPipeline={drawerOwner ? pipelineOwners.has(drawerOwner.owner_name) : false}
             legalDescByAbstract={tractLegalDescLookup}
+            tractDevStatus={devStatusByAbstract[
+              String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
+            ] ?? null}
             onClose={() => {
               setDrawerOwner(null)
               setDrawerTractLabel(null)

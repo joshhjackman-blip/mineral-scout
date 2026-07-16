@@ -67,6 +67,45 @@ export type OwnerDrawerWell = {
   longitude?: number | null
 }
 
+export type DevelopmentStatusValue =
+  | 'PDP'
+  | 'PUD_DUC'
+  | 'PUD_PERMITTED'
+  | 'PUD_INFILL'
+  | 'LEASING_ACTIVE'
+  | 'FRONTIER'
+
+export type DevStatusSignalDetail = {
+  permits?: Array<{
+    permit_number?: string | null
+    api?: string | null
+    operator?: string | null
+    lease?: string | null
+    status?: string | null
+    approved_date?: string | null
+    spud_date?: string | null
+  }>
+  ducs?: Array<{
+    api?: string | null
+    operator?: string | null
+    lease?: string | null
+    spud_date?: string | null
+    status?: string | null
+    source?: string | null
+  }>
+  adjacent_permits?: Array<{ operator?: string | null; count?: number }>
+  adjacent_permit_count?: number
+  infill_gaps?: number
+  leases?: unknown[]
+}
+
+export type TractDevStatus = {
+  development_status: DevelopmentStatusValue
+  pud_score: number
+  signal_detail?: DevStatusSignalDetail
+  last_computed?: string
+}
+
 export type OwnerDrawerProps = {
   open: boolean
   owner: OwnerLike | null
@@ -78,10 +117,10 @@ export type OwnerDrawerProps = {
   onSkipTrace: (owner: OwnerLike) => void
   onAddToPipeline: (owner: OwnerLike) => void
   onShowAllTracts?: (owner: OwnerLike) => void
-  // abstract label (bare, e.g. "543") -> "T2N BLK 31 SEC 20 A-543"
-  // for the Leases tab. Built from the county's parcels_map.geojson
-  // in the parent and passed in so we don't re-load the file here.
   legalDescByAbstract?: Record<string, string>
+  // Ticket 1.3 dev-lifecycle status for the tract the owner is on.
+  // Missing / undefined -> render a subtle "no status computed yet" chip.
+  tractDevStatus?: TractDevStatus | null
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -338,6 +377,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   const {
     open, owner, tractLabel, tractLegalDescription, countyId, inPipeline,
     onClose, onSkipTrace, onAddToPipeline, onShowAllTracts, legalDescByAbstract,
+    tractDevStatus,
   } = props
 
   const county = COUNTIES[countyId]
@@ -418,6 +458,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-indigo-700">
                 Lease #{rrcLease}
               </span>
+            )}
+            {tractDevStatus && (
+              <DevStatusPill status={tractDevStatus.development_status} score={tractDevStatus.pud_score} />
             )}
             {badges.map((b) => (
               <span key={b.label} className={`rounded-full border px-2 py-0.5 ${b.classes}`}>
@@ -515,6 +558,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             tractLegalDescription={tractLegalDescription ?? null}
             rrcLease={rrcLease}
             county={county}
+            tractDevStatus={tractDevStatus ?? null}
           />
         )}
         {tab === 'holdings' && (
@@ -604,7 +648,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 
 function OverviewPanel({
   owner, ownershipPct, acreage, nra, royaltyEstimate, cumOil,
-  tractLabel, tractLegalDescription, rrcLease, county,
+  tractLabel, tractLegalDescription, rrcLease, county, tractDevStatus,
 }: {
   owner: OwnerLike
   ownershipPct: number | null
@@ -616,6 +660,7 @@ function OverviewPanel({
   tractLegalDescription: string | null
   rrcLease: string
   county: County
+  tractDevStatus: TractDevStatus | null
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -671,6 +716,8 @@ function OverviewPanel({
           )}
         </SectionCard>
       </div>
+
+      {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
     </div>
   )
 }
@@ -803,6 +850,195 @@ function WellsPanel({ wells, loading }: { wells: OwnerDrawerWell[]; loading: boo
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Development-status (Ticket 1.3) ────────────────────────────────────
+
+const DEV_STATUS_STYLE: Record<DevelopmentStatusValue, { label: string; classes: string; dotBg: string }> = {
+  PDP:            { label: 'PDP',              classes: 'border-emerald-300 bg-emerald-50 text-emerald-800', dotBg: '#16A34A' },
+  PUD_DUC:        { label: 'PUD · DUC',        classes: 'border-purple-300 bg-purple-50 text-purple-800',    dotBg: '#A855F7' },
+  PUD_PERMITTED:  { label: 'PUD · Permitted',  classes: 'border-orange-300 bg-orange-50 text-orange-800',    dotBg: '#F97316' },
+  PUD_INFILL:     { label: 'PUD · Infill',     classes: 'border-blue-300 bg-blue-50 text-blue-800',          dotBg: '#3B82F6' },
+  LEASING_ACTIVE: { label: 'Leasing active',   classes: 'border-yellow-300 bg-yellow-50 text-yellow-800',    dotBg: '#EAB308' },
+  FRONTIER:       { label: 'Frontier',         classes: 'border-slate-200 bg-slate-50 text-slate-600',       dotBg: '#94A3B8' },
+}
+
+function DevStatusPill({ status, score }: { status: DevelopmentStatusValue; score: number }) {
+  const style = DEV_STATUS_STYLE[status]
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${style.classes}`}
+      title={`Development status: ${style.label} · pud_score ${score}/10`}
+    >
+      <span
+        aria-hidden
+        style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: style.dotBg,
+          boxShadow: '0 0 0 1px rgba(255,255,255,0.9)',
+        }}
+      />
+      {style.label}
+      <span className="ml-1 text-[10px] font-normal opacity-70">{score}/10</span>
+    </span>
+  )
+}
+
+function DevStatusCard({ status }: { status: TractDevStatus }) {
+  const style = DEV_STATUS_STYLE[status.development_status]
+  const detail = status.signal_detail || {}
+  const permits = detail.permits ?? []
+  const ducs = detail.ducs ?? []
+  const adjacentCount = detail.adjacent_permit_count ?? 0
+  const infill = detail.infill_gaps ?? 0
+  const [open, setOpen] = useState(true)
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+          Development status
+        </div>
+        <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${style.classes}`}>
+          <span
+            aria-hidden
+            style={{
+              display: 'inline-block',
+              width: 9,
+              height: 9,
+              borderRadius: '50%',
+              background: style.dotBg,
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.9)',
+            }}
+          />
+          {style.label}
+          <span className="opacity-75">· {status.pud_score}/10</span>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
+        <DevMetric label="Permits" value={permits.length} />
+        <DevMetric label="DUCs" value={ducs.length} />
+        <DevMetric label="Adj. permits" value={adjacentCount} />
+        <DevMetric label="Infill gaps" value={infill} />
+      </div>
+
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        className="mt-3 flex w-full items-center justify-between text-xs font-semibold text-gray-600 hover:text-gray-900"
+      >
+        <span>{open ? 'Hide' : 'Show'} why this status?</span>
+        <span aria-hidden style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
+      </button>
+
+      {open && (
+        <div className="mt-3 space-y-3">
+          {permits.length > 0 && (
+            <DevSignalGroup title="Permits">
+              {permits.map((p, i) => (
+                <DevSignalRow
+                  key={`permit-${p.permit_number ?? p.api ?? i}`}
+                  primary={
+                    <>
+                      {clean(p.lease) || `Permit ${clean(p.permit_number) || '—'}`}
+                      {clean(p.status) && (
+                        <span className="ml-2 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-600">
+                          {clean(p.status)}
+                        </span>
+                      )}
+                    </>
+                  }
+                  meta={[
+                    clean(p.operator),
+                    clean(p.approved_date) && `Approved ${clean(p.approved_date)}`,
+                    clean(p.spud_date) && `Spud ${clean(p.spud_date)}`,
+                    clean(p.api) && `API ${clean(p.api)}`,
+                  ].filter(Boolean).join(' · ')}
+                />
+              ))}
+            </DevSignalGroup>
+          )}
+
+          {ducs.length > 0 && (
+            <DevSignalGroup title="DUCs">
+              {ducs.map((d, i) => (
+                <DevSignalRow
+                  key={`duc-${d.api ?? i}`}
+                  primary={clean(d.lease) || `Well ${clean(d.api) || '—'}`}
+                  meta={[
+                    clean(d.operator),
+                    clean(d.spud_date) && `Spud ${clean(d.spud_date)}`,
+                    clean(d.status),
+                    clean(d.source) && `via ${clean(d.source)}`,
+                  ].filter(Boolean).join(' · ')}
+                />
+              ))}
+            </DevSignalGroup>
+          )}
+
+          {adjacentCount > 0 && (
+            <DevSignalGroup title="Adjacent permits">
+              <div className="text-xs text-gray-700">
+                {adjacentCount} approved / drilling permit{adjacentCount === 1 ? '' : 's'} on neighboring abstracts.
+                {(detail.adjacent_permits ?? []).length > 0 && (
+                  <span className="ml-1 text-gray-500">
+                    Top operators: {(detail.adjacent_permits ?? [])
+                      .filter((a) => a.operator)
+                      .slice(0, 3)
+                      .map((a) => `${a.operator} (${a.count})`)
+                      .join(', ')}
+                  </span>
+                )}
+              </div>
+            </DevSignalGroup>
+          )}
+
+          {permits.length === 0 && ducs.length === 0 && adjacentCount === 0 && (
+            <div className="text-xs text-gray-500">
+              No development signals on this tract yet. Score will climb as
+              RRC permits, spud reports, or adjacent activity land.
+            </div>
+          )}
+
+          {status.last_computed && (
+            <div className="text-[10px] uppercase tracking-widest text-gray-400">
+              Last recomputed {new Date(status.last_computed).toLocaleString()}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DevMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{label}</div>
+      <div className="mt-0.5 font-serif text-lg font-bold text-gray-900">{value}</div>
+    </div>
+  )
+}
+
+function DevSignalGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">{title}</div>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  )
+}
+
+function DevSignalRow({ primary, meta }: { primary: ReactNode; meta: string }) {
+  return (
+    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-800">
+      <div className="font-medium text-gray-900">{primary}</div>
+      {meta && <div className="mt-0.5 text-[11px] text-gray-500">{meta}</div>}
     </div>
   )
 }
