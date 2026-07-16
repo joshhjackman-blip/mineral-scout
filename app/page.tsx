@@ -214,10 +214,6 @@ const COUNTY_ORDER: CountyKey[] = Object.keys(COUNTIES) as CountyKey[]
 const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
 const TEXAS_OVERVIEW_ZOOM = 5.5
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- still referenced by owner-row badges elsewhere in this file; kept until the full score-removal follow-up.
-const scoreBadgeColor = (score: number) =>
-  score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
-
 // Palette mirrors PRODUCTION_STATUS_FILL in app/components/Map.tsx so the
 // sidebar tract badge visually matches the parcel color on the map.
 const PRODUCTION_STATUS_LABEL: Record<string, string> = {
@@ -406,37 +402,32 @@ const ONBOARDING_STEPS = [
   {
     step: '01',
     title: 'Welcome to Mineral Map',
-    body: 'The complete mineral rights prospecting platform for the Eagle Ford Basin. Every owner scored, mapped, and ready to contact. This tour takes about 60 seconds.',
+    body: 'The complete mineral rights prospecting platform for the Eagle Ford and Permian basins. Every owner, mapped, and ready to contact. This tour takes about 60 seconds.',
   },
   {
     step: '02',
     title: 'Read the map',
-    body: 'Every survey abstract is colored by acquisition opportunity. Red tracts have the most motivated sellers. Green tracts are low priority. The color tells you where to focus before you click anything.',
+    body: 'Every survey abstract is colored by activity: yellow tracts have PDP wells producing today, green tracts have PUD wells permitted or drilling, and a blue dot means a fresh permit was just filed. That is where to focus.',
   },
   {
     step: '03',
     title: 'Click any tract',
-    body: 'Clicking a tract opens a ranked list of every fractional owner. Owners are sorted by propensity score — the most likely sellers at the top. Expand any row to see exactly why they scored that way.',
+    body: 'Clicking a tract opens the full list of fractional owners. Sort them A to Z, Z to A, largest by NRA, or smallest, and open any row to see holdings across every county on one screen.',
   },
   {
     step: '04',
     title: 'Search by owner name',
-    body: 'Use the search bar to find any of the 73,000+ mineral owners by name. Results are deduplicated and sorted by score so the most motivated version of each owner always appears first.',
+    body: 'Use the search bar to find any of the mineral owners by name. Results are deduplicated across counties and sorted alphabetically.',
   },
   {
     step: '05',
     title: 'Build your pipeline',
-    body: 'Add any owner to your pipeline with one click. The CRM tracks contacts, follow-up reminders, notes, and offers. Skip trace for phone and email directly from the owner row or the CRM.',
+    body: 'Add any owner to your pipeline with one click. The CRM tracks contacts, follow-up reminders, notes, and offers. Skip trace for phone and email directly from the owner drawer.',
   },
   {
     step: '06',
-    title: 'Value the deal',
-    body: 'Use the Comp Calculator to estimate value from monthly royalty income. Reference transactions from Gonzales County are included so you have market context before making an offer.',
-  },
-  {
-    step: '07',
     title: 'Ready to prospect',
-    body: 'Start by clicking any red tract on the map. Your hottest leads are waiting.',
+    body: 'Start by clicking any tract with an active permit or PDP well. Your best leads are waiting.',
   },
 ]
 
@@ -479,9 +470,6 @@ const classifyOwner = (name: string): 'trust' | 'company' | 'individual' => {
   ) return 'company'
   return 'individual'
 }
-
-const ownerTypePriority = (name: string): number =>
-  classifyOwner(name) === 'individual' ? 0 : 1
 
 const SQM_PER_ACRE = 4046.86
 
@@ -577,18 +565,17 @@ export default function Home() {
   }, [tracts])
   const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
-  const [motivatedOnly, setMotivatedOnly] = useState(false)
   const [outOfStateOnly, setOutOfStateOnly] = useState(false)
   const [largeInterestOnly, setLargeInterestOnly] = useState(false)
   const [minNRA, setMinNRA] = useState<number>(0)
-  const [ownerSort, setOwnerSort] = useState<'score' | 'interest' | 'nra'>('score')
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Min score slider; state kept so downstream filters/exports stay wired.
-  const [minScore, setMinScore] = useState(0)
-  // showPermits/setShowPermits removed with the bottom-toolbar button;
-  // layer toggles now live inside Map.tsx (LayerTogglePanel).
+  // Sort model was previously score-based ('score' | 'interest' | 'nra').
+  // Proprietary scoring was removed from the UI; owners are ranked
+  // alphabetically by default and can be flipped to Z-A or sorted by
+  // NRA (Net Royalty Acres) largest/smallest, which is the real
+  // size signal brokers care about.
+  type OwnerSortKey = 'az' | 'za' | 'largest' | 'smallest'
+  const [ownerSort, setOwnerSort] = useState<OwnerSortKey>('az')
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Tier chips; state kept so the owner-list filter default-passes until it's migrated to activityFilter.
-  const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
   // Well-activity chip filter that replaced the score-based tier chips in
   // the bottom toolbar. Currently only recolors its own chip; the toolbar
   // comment near ActivityChip explains why it's not yet wired into Map.tsx
@@ -1083,10 +1070,10 @@ export default function Home() {
     setOnboardingStep(0)
   }
 
-  const getDefaultPipelineTag = (owner: TractOwner): PipelineTag => {
-    const score = toNumber(owner.propensity_score)
-    if (score >= 8) return 'hot'
-    if (score >= 6) return 'nurture'
+  const getDefaultPipelineTag = (): PipelineTag => {
+    // Default pipeline tag is now 'prospect' for everything;
+    // proprietary scoring was removed so we no longer auto-classify
+    // 'hot' / 'nurture' at pipeline-add time. Users tag manually.
     return 'prospect'
   }
 
@@ -1096,7 +1083,7 @@ export default function Home() {
 
   const handleOpenAddToPipeline = (owner: TractOwner) => {
     setPipelineCandidate(owner)
-    setPipelineTag(getDefaultPipelineTag(owner))
+    setPipelineTag(getDefaultPipelineTag())
   }
 
   const handleAddToPipeline = (owner: TractOwner) => {
@@ -1142,9 +1129,9 @@ export default function Home() {
         words.map((word) =>
           supabase
             .from(COUNTIES[countyKey].ownershipTable)
-            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, propensity_score, rrc_lease_id, operator_name, acreage, ownership_pct')
+            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
             .ilike('owner_name', `%${word}%`)
-            .order('propensity_score', { ascending: false })
+            .order('owner_name', { ascending: true })
             .limit(100)
             .then((result) => ({ ...result, countyId: countyKey }))
         )
@@ -1172,74 +1159,29 @@ export default function Home() {
         words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
       )
 
-      // Deduplicate by owner name keeping highest score.
+      // Deduplicate by owner name (per county). First occurrence wins;
+      // Supabase already returned rows ordered by owner_name so this
+      // gives us a stable A–Z result set.
       const seen = new Map<string, OwnerSearchResult>()
       for (const owner of filtered) {
         const keyCounty = String(owner.countyId ?? selectedCounty)
         const key = `${String(owner.owner_name ?? '').toUpperCase().trim()}::${keyCounty}`
-        if (!seen.has(key) || Number(owner.propensity_score ?? 0) > Number(seen.get(key)?.propensity_score ?? 0)) {
+        if (!seen.has(key)) {
           seen.set(key, owner)
         }
       }
 
-      const topResults = Array.from(seen.values()).slice(0, 10)
+      const topResults = Array.from(seen.values())
+        .sort((a, b) =>
+          String(a.owner_name ?? '').localeCompare(String(b.owner_name ?? '')),
+        )
+        .slice(0, 10)
       setSearchResults(topResults)
       setSearchOpen(topResults.length > 0)
       setSearching(false)
       searchTimeoutRef.current = null
     }, 400)
   }
-
-  const getScoreBreakdown = (owner: TractOwner): string[] => {
-    const signals: string[] = []
-    const name = (owner.owner_name ?? '').toUpperCase()
-    const state = (owner.mailing_state ?? '').toUpperCase()
-    const address = (owner.mailing_address ?? owner.address_1 ?? '').toUpperCase()
-    const grossAc = Number(owner.acreage ?? 0)
-    const interest = getOwnershipDecimalValue(owner, county.ownershipPctIsDecimal)
-    const acreage = grossAc > 0 && interest > 0 ? grossAc * interest : grossAc
-    const nri = getOwnershipPctValue(owner, county.ownershipPctIsDecimal) / 100
-    const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
-    const isIndividual = ownerTypePriority(owner.owner_name) === 0
-
-    if (isIndividual) {
-      signals.push('Individual owner — highest priority')
-      if (state && state !== 'TX' && state !== 'TEXAS') {
-        signals.push('Out of state individual — top target')
-      }
-    }
-    if (!isIndividual && state && state !== 'TX' && state !== 'TEXAS' && state.length > 0)
-      signals.push('Out of state owner')
-    if (name.includes('LIFE ESTATE'))
-      signals.push('Life estate')
-    else if (name.includes('ESTATE'))
-      signals.push('Estate or probate')
-    if (name.includes('IRREVOCABLE'))
-      signals.push('Irrevocable trust')
-    if (name.includes('LIVING TRUST') || name.includes('LIV TR'))
-      signals.push('Living trust')
-    else if (name.includes('TRUST') && !name.includes('IRREVOCABLE') && !name.includes('LIFE ESTATE'))
-      signals.push('Trust')
-    if ((name.includes('LLC') || name.includes('LP')) && state !== 'TX')
-      signals.push('Out of state LLC or LP')
-    if (address.includes('P.O.') || address.includes('PO BOX'))
-      signals.push('PO Box address')
-    if (acreage > 0 && acreage < 5)
-      signals.push('Very small acreage - under 5 acres')
-    else if (acreage >= 5 && acreage < 15)
-      signals.push('Small acreage - 5 to 15 acres')
-    else if (acreage >= 15 && acreage < 40)
-      signals.push('Small acreage - 15 to 40 acres')
-    if (nri > 0 && nri < 0.001)
-      signals.push('Tiny fractional interest')
-    else if (nri >= 0.001 && nri < 0.005)
-      signals.push('Small fractional interest')
-    if (cumOil > 0)
-      signals.push('Active production')
-
-    return signals
-  }
-
 
   const handleAddToPipelineConfirm = async () => {
     if (!pipelineCandidate) return
@@ -1264,7 +1206,6 @@ export default function Home() {
       mailing_zip: owner.mailing_zip ?? '',
       mailing_address: owner.address_1 ?? owner.mailing_address ?? '',
       acreage: owner.acreage ?? null,
-      propensity_score: owner.propensity_score ?? 0,
       source: 'map',
       tag: pipelineTag,
       county: selectedCounty,
@@ -1290,7 +1231,6 @@ export default function Home() {
     showToast(`${owner.owner_name} added to pipeline (${pipelineTag.replace('_', ' ')})`)
     trackEvent('lead_added_to_pipeline', {
       owner_name: owner.owner_name,
-      score: owner.propensity_score,
     })
   }
 
@@ -1356,7 +1296,6 @@ export default function Home() {
           mailing_state: skipTracing.mailing_state ?? '',
           mailing_zip: skipTracing.mailing_zip ?? '',
           acreage: skipTracing.acreage ?? null,
-          propensity_score: skipTracing.propensity_score ?? 0,
           tag: 'skip_traced',
           phone,
           email,
@@ -1586,8 +1525,8 @@ export default function Home() {
     // Abstract-join counties expose an `abstract` column on the ownership
     // row; rrc_lease_id-join counties don't.
     const selectCols = resultCountyConfig.wellsJoinStrategy === 'abstract'
-      ? 'abstract, rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
-      : 'rrc_lease_id, operator_name, propensity_score, ownership_pct, acreage'
+      ? 'abstract, rrc_lease_id, operator_name, ownership_pct, acreage'
+      : 'rrc_lease_id, operator_name, ownership_pct, acreage'
     const { data: ownerRows, error: ownerRowsError } = await supabase
       .from(ownershipTable)
       .select(selectCols)
@@ -1604,7 +1543,6 @@ export default function Home() {
           abstract?: string | null
           rrc_lease_id?: string | number | null
           operator_name?: string | null
-          propensity_score?: number | null
         }
         const abstractNumeric = String(record.abstract ?? '').trim()
         const leaseIdRaw = String(record.rrc_lease_id ?? '').trim()
@@ -1664,7 +1602,7 @@ export default function Home() {
 
     const focusOnTract = (tractSelection: TractSelection) => {
       setSelected(tractSelection)
-      setOwnerSort('score')
+      setOwnerSort('az')
       setExpandedOwner(null)
       setHighlightedOwner(normalizedOwner)
 
@@ -1727,44 +1665,46 @@ export default function Home() {
   )
 
   const selectedOwners = tractOwners
-  const tierByScore = (score: number): 'hot' | 'motivated' | 'prospect' | 'low' => {
-    if (score >= 8) return 'hot'
-    if (score >= 5) return 'motivated'
-    if (score >= 2) return 'prospect'
-    return 'low'
-  }
   const deduplicatedOwners = useMemo(() => {
     const seen = new Map<string, TractOwner>()
     for (const owner of selectedOwners) {
       const name = String(owner.owner_name ?? '').trim()
       if (!name) continue
       const existing = seen.get(name)
-      if (!existing || Number(owner.propensity_score ?? 0) > Number(existing.propensity_score ?? 0)) {
+      // Keep the row with the largest NRA when the same owner
+      // appears on multiple leases; that preserves the "biggest
+      // stake" version of the record, which is what brokers care
+      // about now that scoring is gone.
+      const currentNRA = getNRA(owner, selected, county) ?? 0
+      const existingNRA = existing ? (getNRA(existing, selected, county) ?? 0) : -1
+      if (!existing || currentNRA > existingNRA) {
         seen.set(name, owner)
       }
     }
     return Array.from(seen.values())
+    // Selected + county are stable references at this depth; the
+    // effect only meaningfully re-runs when selectedOwners changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOwners])
 
   const sortedOwners = useMemo(() => {
     const owners = [...deduplicatedOwners]
-    if (ownerSort === 'score') {
-      owners.sort((a, b) => {
-        const scoreDiff = Number(b.propensity_score ?? 0) - Number(a.propensity_score ?? 0)
-        if (scoreDiff !== 0) return scoreDiff
-        return ownerTypePriority(a.owner_name) - ownerTypePriority(b.owner_name)
-      })
-    } else if (ownerSort === 'interest') {
-      owners.sort(
-        (a, b) =>
-          getOwnershipPctValue(b, county.ownershipPctIsDecimal) -
-          getOwnershipPctValue(a, county.ownershipPctIsDecimal)
-      )
-    } else if (ownerSort === 'nra') {
+    const nameKey = (o: TractOwner) => String(o.owner_name ?? '').trim().toUpperCase()
+    if (ownerSort === 'az') {
+      owners.sort((a, b) => nameKey(a).localeCompare(nameKey(b)))
+    } else if (ownerSort === 'za') {
+      owners.sort((a, b) => nameKey(b).localeCompare(nameKey(a)))
+    } else if (ownerSort === 'largest') {
       owners.sort(
         (a, b) =>
           (getNRA(b, selected, county) ?? 0) -
-          (getNRA(a, selected, county) ?? 0)
+          (getNRA(a, selected, county) ?? 0),
+      )
+    } else if (ownerSort === 'smallest') {
+      owners.sort(
+        (a, b) =>
+          (getNRA(a, selected, county) ?? 0) -
+          (getNRA(b, selected, county) ?? 0),
       )
     }
     return owners
@@ -1772,8 +1712,6 @@ export default function Home() {
 
   const filteredOwnersList = useMemo(() => {
     return sortedOwners.filter((owner) => {
-      const score = toNumber(owner.propensity_score)
-      if (tierFilter !== 'all' && tierByScore(score) !== tierFilter) return false
       if (ownerTypeFilter !== 'all' && classifyOwner(String(owner.owner_name ?? '')) !== ownerTypeFilter) {
         return false
       }
@@ -1787,7 +1725,7 @@ export default function Home() {
       }
       return true
     })
-  }, [county, sortedOwners, ownerTypeFilter, tierFilter, largeInterestOnly, minNRA, selected])
+  }, [county, sortedOwners, ownerTypeFilter, largeInterestOnly, minNRA, selected])
 
   const cleanOwnersList = useMemo(() => {
     return filteredOwnersList.filter((owner: TractOwner) => {
@@ -1837,7 +1775,6 @@ export default function Home() {
   }
   const ownerCount = toNumber(selected?.owner_count)
   const topOperator = selected?.top_operator ?? 'Unknown'
-  const maxScore = toNumber(selected?.max_propensity_score)
   const fieldName = selected?.field_name ?? 'Unknown'
   const estExpiration = selected?.est_lease_expiration ?? 'Unknown'
   // Compact legal description shown under each lead's name for Howard /
@@ -1958,26 +1895,6 @@ export default function Home() {
                 >
                   CRM & Pipeline
                 </a>
-                <a
-                  href="/methodology"
-                  style={{
-                    display: 'block',
-                    padding: '10px 16px',
-                    fontSize: 13,
-                    color: '#374151',
-                    textDecoration: 'none',
-                    fontFamily: 'Inter, sans-serif',
-                    borderBottom: '1px solid #F3F4F6',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#FEF3C7'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent'
-                  }}
-                >
-                  📊 Methodology
-                </a>
                 <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
                 <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
                   {navCountyLabel}
@@ -2080,10 +1997,7 @@ export default function Home() {
                 background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000, overflow: 'hidden'
               }}>
-                {searchResults.map((result, i) => {
-                  const score = Number(result.propensity_score ?? 0)
-                  const scoreColor = score >= 8 ? '#F44336' : score >= 5 ? '#FF9800' : score >= 2 ? '#8BC34A' : '#9E9E9E'
-                  return (
+                {searchResults.map((result, i) => (
                     <div
                       key={`${result.owner_name}-${i}`}
                       onMouseDown={() => {
@@ -2121,15 +2035,15 @@ export default function Home() {
                           ) : result.operator_name ? ` · ${result.operator_name}` : ''}
                         </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>{score}/10</span>
-                        {result.acreage && <span style={{ fontSize: 10, color: '#9CA3AF' }}>{Number(result.acreage).toFixed(1)} ac</span>}
-                      </div>
+                      {result.acreage ? (
+                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>
+                          {Number(result.acreage).toFixed(1)} ac
+                        </span>
+                      ) : null}
                     </div>
-                  )
-                })}
+                ))}
                 <div style={{ padding: '8px 14px', fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', background: '#FAFAFA' }}>
-                  {searchResults.length} results · sorted by score
+                  {searchResults.length} results
                 </div>
               </div>
             )}
@@ -2181,23 +2095,6 @@ export default function Home() {
             flexShrink: 1,
           }}
         >
-          {!hideSecondaryNavActions && (
-            <a
-              href="/methodology"
-              style={{
-                fontSize: 12,
-                color: '#6B7280',
-                textDecoration: 'none',
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: '1px solid #E5E7EB',
-                fontFamily: 'Inter, sans-serif',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Methodology
-            </a>
-          )}
           <a
             href="/crm"
             style={{
@@ -2213,21 +2110,6 @@ export default function Home() {
             }}
           >
             CRM →
-          </a>
-          <a
-            href="/comps"
-            style={{
-              fontSize: 12,
-              color: '#6B7280',
-              textDecoration: 'none',
-              padding: '6px 12px',
-              borderRadius: 6,
-              border: '1px solid #E5E7EB',
-              fontFamily: 'Inter, sans-serif',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Comps
           </a>
           {!hideSecondaryNavActions && (
             <a
@@ -2391,9 +2273,6 @@ export default function Home() {
               <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 12, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
-                  {maxScore}/10 HOT
-                </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
                   {ownerCount} owners
                 </span>
@@ -2674,14 +2553,16 @@ export default function Home() {
                   All owners in tract ({filteredOwnersList.length})
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  {[
-                    { key: 'score', label: 'Score' },
-                    { key: 'interest', label: '% Ownership' },
-                    { key: 'nra', label: 'NRA' },
-                  ].map((s) => (
+                  {([
+                    { key: 'az',       label: 'A–Z',    title: 'Sort owners A to Z' },
+                    { key: 'za',       label: 'Z–A',    title: 'Sort owners Z to A' },
+                    { key: 'largest',  label: 'Largest', title: 'Largest to smallest by NRA' },
+                    { key: 'smallest', label: 'Smallest', title: 'Smallest to largest by NRA' },
+                  ] as const).map((s) => (
                     <button
                       key={s.key}
-                      onClick={() => setOwnerSort(s.key as 'score' | 'interest' | 'nra')}
+                      onClick={() => setOwnerSort(s.key)}
+                      title={s.title}
                       style={{
                         fontSize: 10,
                         padding: '3px 8px',
@@ -2702,7 +2583,6 @@ export default function Home() {
               </div>
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {cleanOwnersList.map((owner: TractOwner, i: number) => {
-                  const score = Number(owner.propensity_score ?? 0)
                   const isExpanded = expandedOwner === i
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName
@@ -2711,11 +2591,9 @@ export default function Home() {
                   // ownerWells / ownerWellsLoading are still populated when a
                   // user clicks a row so the follow-up drawer render doesn't
                   // have to wait — the sidebar just no longer displays them
-                  // inline. Score-signals + wells now live in OwnerDrawer.
+                  // inline. Wells now live in OwnerDrawer.
                   void ownerWells[ownerKey]
                   void ownerWellsLoading[ownerKey]
-                  void getScoreBreakdown
-                  const scoreColor = score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
                   const ownerType = classifyOwner(String(owner.owner_name ?? ''))
                   const typeColor = ownerType === 'trust' ? '#7AB835' : ownerType === 'company' ? '#378ADD' : '#9CA3AF'
                   const typeLabel = ownerType === 'trust' ? 'TRUST' : ownerType === 'company' ? 'CO' : 'IND'
@@ -2756,7 +2634,6 @@ export default function Home() {
                           void fetchOwnerWells(owner, ownerKey)
                           trackEvent('owner_drawer_opened', {
                             owner_name: owner.owner_name,
-                            score: owner.propensity_score,
                             abstract: selected?.ABSTRACT_L ?? selected?.abstract_label ?? '',
                           })
                         }}
@@ -2849,9 +2726,6 @@ export default function Home() {
                             })()}
                           </div>
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                            <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
-                              {score}/10
-                            </div>
                             <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: `${typeColor}15`, color: typeColor, border: `0.5px solid ${typeColor}30` }}>
                               {typeLabel}
                             </span>
@@ -2945,15 +2819,13 @@ export default function Home() {
                 <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', margin: '0 14px' }}>
                   {ownerTracts.map((tract, i) => {
                     const abstractLabel = tract.ABSTRACT_L ?? tract.abstract_label ?? 'Unknown'
-                    const score = Number(tract.max_propensity_score ?? 0)
-                    const scoreColor = score >= 8 ? '#F44336' : score >= 5 ? '#FF9800' : score >= 2 ? '#8BC34A' : '#9E9E9E'
                     const operator = tract.top_operator ?? ''
                     return (
                       <div
                         key={`${abstractLabel}-${i}`}
                         onClick={() => {
                           setSelected(tract)
-                          setOwnerSort('score')
+                          setOwnerSort('az')
                           setExpandedOwner(null)
                           setHighlightedOwner(ownerTractsName.toUpperCase())
                           setTimeout(() => {
@@ -2984,9 +2856,6 @@ export default function Home() {
                             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontFamily: 'Inter, sans-serif' }}>
                               {operator}
                             </div>
-                          </div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: scoreColor, fontFamily: 'monospace' }}>
-                            {score}/10
                           </div>
                         </div>
                       </div>
@@ -3049,9 +2918,6 @@ export default function Home() {
                   </div>
                   <div>
                     {Object.values(COUNTIES).map((c) => {
-                      const hotVal = Number(
-                        (c.stats.find((s) => s.lbl === 'Hot (8-10)')?.val ?? '0').replace(/,/g, '')
-                      )
                       return (
                         <div
                           key={c.id}
@@ -3087,21 +2953,6 @@ export default function Home() {
                               ~{c.totalLeads.toLocaleString()} total leads
                             </div>
                           </div>
-                          <div
-                            style={{
-                              background: 'rgba(220,38,38,0.1)',
-                              border: '1px solid rgba(220,38,38,0.25)',
-                              borderRadius: 999,
-                              padding: '3px 10px',
-                              color: '#DC2626',
-                              fontFamily: 'Inter, sans-serif',
-                              fontSize: 11,
-                              fontWeight: 600,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {hotVal.toLocaleString()} hot
-                          </div>
                         </div>
                       )
                     })}
@@ -3128,7 +2979,7 @@ export default function Home() {
                     key={`${tract.abstract_label}-${tract.level1_sur}-${index}`}
                     onClick={() => {
                       setSelected(toTractSelection(tract))
-                      setOwnerSort('score')
+                      setOwnerSort('az')
                       setExpandedOwner(null)
                       trackEvent('tract_clicked', {
                         abstract: tract.abstract_label,
@@ -3335,14 +3186,13 @@ export default function Home() {
                 setSelectedTractGeometry(
                   (tract.geometry as GeoJSON.Polygon | GeoJSON.MultiPolygon | undefined) ?? null
                 )
-                setOwnerSort('score')
+                setOwnerSort('az')
                 setExpandedOwner(null)
                 setOwnerTracts([])
                 setOwnerTractsName('')
                 trackEvent('tract_clicked', {
                   abstract: clickedAbstract,
                   owner_count: enriched.owner_count ?? 0,
-                  max_score: enriched.max_propensity_score ?? 0,
                 })
               }}
             />
@@ -3415,32 +3265,6 @@ export default function Home() {
           whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Motivated only</span>
-        <button
-          onClick={() => setMotivatedOnly((prev) => !prev)}
-          style={{
-            width: 32,
-            height: 18,
-            borderRadius: 9,
-            border: 'none',
-            background: motivatedOnly ? '#EF9F27' : '#D1D5DB',
-            position: 'relative',
-            cursor: 'pointer',
-          }}
-        >
-          <span
-            style={{
-              position: 'absolute',
-              top: 2,
-              left: motivatedOnly ? 14 : 2,
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              background: '#fff',
-            }}
-          />
-        </button>
-
         <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Out of state</span>
         <button
           onClick={() => setOutOfStateOnly((prev) => !prev)}
@@ -3509,13 +3333,11 @@ export default function Home() {
             </button>
           ))}
         </div>
-        {/* Well activity chips replace the old propensity-score tier filter.
-            Coloring on the map is driven by parcel-level production_status
-            (see Map.tsx). These chips just recolor the toolbar label — the
-            score-based `tierFilter` / `minScore` state variables are still
-            defined (and default to no-op values) because a few less-visible
-            code paths in this file still read them; they'll disappear in a
-            follow-up sweep once every downstream reference is migrated. */}
+        {/* Well activity chips. Coloring on the map is driven by parcel-
+            level production_status (see Map.tsx); these chips just recolor
+            the toolbar label. Proprietary scoring (`tierFilter`, `minScore`,
+            `propensity_score`) has been removed from the UI in favor of an
+            alphabetical / NRA-based owner sort — see `ownerSort` state. */}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
           <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Activity:</span>
           {([

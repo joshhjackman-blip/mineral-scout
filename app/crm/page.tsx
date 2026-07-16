@@ -7,7 +7,7 @@ import type { County, CountyKey } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
 import {
   Phone, Mail, Search,
-  MapPin, BarChart2, BookOpen, Clock,
+  MapPin, Clock,
   DollarSign, User, Building2,
   CheckCircle2, Circle, XCircle, Flame,
   TrendingUp, Save, FileText, Package, ThumbsDown,
@@ -353,7 +353,6 @@ export default function CRM() {
       mailing_zip: toSave.mailing_zip ?? null,
       acreage: toSave.acreage === null || toSave.acreage === undefined ? null : Number(toSave.acreage),
       monthly_royalty: toSave.monthly_royalty === null || toSave.monthly_royalty === undefined ? null : Number(toSave.monthly_royalty),
-      propensity_score: toSave.propensity_score === null || toSave.propensity_score === undefined ? null : Number(toSave.propensity_score),
       tag: toSave.tag ?? 'prospect',
       offer_amount: toSave.offer_amount === null || toSave.offer_amount === undefined ? null : Number(toSave.offer_amount),
       follow_up_date: toSave.follow_up_date || null,
@@ -738,12 +737,6 @@ export default function CRM() {
         <nav className="flex items-center gap-1">
           <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
-          </Link>
-          <Link href="/comps" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
-            <BarChart2 size={13} />Comps
-          </Link>
-          <Link href="/methodology" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
-            <BookOpen size={13} />Methodology
           </Link>
         </nav>
       </header>
@@ -1243,31 +1236,9 @@ export default function CRM() {
                 </div>
 
                 <div className="p-4 border-b border-gray-100">
-                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Lead Score</div>
-                  <div className="flex items-center gap-3">
-                    <div className={`text-3xl font-bold font-serif ${
-                      (selected.propensity_score ?? 0) >= 8 ? 'text-red-600' :
-                      (selected.propensity_score ?? 0) >= 6 ? 'text-amber-600' : 'text-gray-500'
-                    }`}>
-                      {selected.propensity_score ?? 0}
-                      <span className="text-lg text-gray-400 font-normal">/10</span>
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-700">
-                        {(selected.propensity_score ?? 0) >= 8 ? 'Hot lead' :
-                         (selected.propensity_score ?? 0) >= 6 ? 'Warm lead' : 'Low priority'}
-                      </div>
-                      <div className="text-xs text-gray-400">Source: {selected.source ?? 'map'}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${
-                        (selected.propensity_score ?? 0) >= 8 ? 'bg-red-500' :
-                        (selected.propensity_score ?? 0) >= 6 ? 'bg-amber-400' : 'bg-gray-300'
-                      }`}
-                      style={{ width: `${((selected.propensity_score ?? 0) / 10) * 100}%` }}
-                    />
+                  <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Lead Source</div>
+                  <div className="text-sm text-gray-700 font-medium">
+                    {selected.source ?? 'map'}
                   </div>
                 </div>
 
