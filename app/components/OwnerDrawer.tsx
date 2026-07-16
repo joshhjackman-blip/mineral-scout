@@ -53,6 +53,9 @@ export type OwnerDrawerHolding = {
   rrc_lease_id?: string | number | null
   interest_type?: string | null
   propensity_score?: number | null
+  // Which county the row was pulled from. Added client-side after the
+  // per-county fetch so the Leases tab can group rows by county.
+  county_id?: CountyKey
 }
 
 export type OwnerDrawerWell = {
@@ -176,34 +179,84 @@ function abstractKey(raw: unknown): string {
 }
 
 function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean) {
+  // Cross-county holdings. Every county the platform knows about
+  // (COUNTIES in lib/counties.ts) is queried in parallel; results are
+  // merged, tagged with county_id, and sorted with the drawer's
+  // active county first. This is the "broker calls one lead → sees
+  // every interest they own across all our data" behavior the user
+  // asked for on 2026-07-16.
   const [holdings, setHoldings] = useState<OwnerDrawerHolding[]>([])
   const [loading, setLoading] = useState(false)
+  const [errorMessages, setErrorMessages] = useState<Array<{ county: CountyKey; message: string }>>([])
 
   useEffect(() => {
     if (!open || !owner) {
       setHoldings([])
+      setErrorMessages([])
       return
     }
     let cancelled = false
     setLoading(true)
-    supabase
-      .from(county.ownershipTable)
-      .select('id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, decimal_interest, rrc_lease_id, interest_type, propensity_score')
-      .eq('owner_name', owner.owner_name)
-      .order('propensity_score', { ascending: false })
-      .order('acreage', { ascending: false })
-      .limit(200)
-      .then((result) => {
-        if (cancelled) return
-        setHoldings(result.error ? [] : ((result.data ?? []) as OwnerDrawerHolding[]))
-        setLoading(false)
+    setErrorMessages([])
+
+    const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
+    const perCountyPromises = countyEntries.map(async ([countyKey, cfg]) => {
+      const result = await supabase
+        .from(cfg.ownershipTable)
+        .select('id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, decimal_interest, rrc_lease_id, interest_type, propensity_score')
+        .eq('owner_name', owner.owner_name)
+        .order('propensity_score', { ascending: false })
+        .order('acreage', { ascending: false })
+        .limit(500)
+      if (result.error) {
+        return { countyKey, rows: [] as OwnerDrawerHolding[], error: result.error.message }
+      }
+      const rows = ((result.data ?? []) as OwnerDrawerHolding[]).map((r) => ({ ...r, county_id: countyKey }))
+      return { countyKey, rows, error: null as string | null }
+    })
+
+    Promise.all(perCountyPromises).then((results) => {
+      if (cancelled) return
+      const merged: OwnerDrawerHolding[] = []
+      const errs: Array<{ county: CountyKey; message: string }> = []
+      for (const r of results) {
+        if (r.error) {
+          const msg = r.error.toLowerCase()
+          // Ignore "table does not exist" errors for counties whose
+          // ownership table hasn't landed yet (e.g., the 10 new
+          // Permian counties). Any other error surfaces in the UI.
+          if (!msg.includes('not find') && !msg.includes('does not exist')) {
+            errs.push({ county: r.countyKey, message: r.error })
+          }
+          continue
+        }
+        merged.push(...r.rows)
+      }
+      // Sort with the currently-active county first (broker's focus
+      // stays on-screen), then by propensity_score desc, then acreage.
+      const activeCountyId = county.id as CountyKey
+      merged.sort((a, b) => {
+        const activeA = a.county_id === activeCountyId ? 0 : 1
+        const activeB = b.county_id === activeCountyId ? 0 : 1
+        if (activeA !== activeB) return activeA - activeB
+        const scoreA = Number(a.propensity_score ?? 0)
+        const scoreB = Number(b.propensity_score ?? 0)
+        if (scoreA !== scoreB) return scoreB - scoreA
+        const acA = Number(a.acreage ?? 0)
+        const acB = Number(b.acreage ?? 0)
+        return acB - acA
       })
+      setHoldings(merged)
+      setErrorMessages(errs)
+      setLoading(false)
+    })
+
     return () => {
       cancelled = true
     }
-  }, [county.ownershipTable, open, owner])
+  }, [open, owner, county.id])
 
-  return { holdings, loading }
+  return { holdings, loading, errorMessages }
 }
 
 function useOwnerWells(
@@ -381,7 +434,16 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   } = props
 
   const county = COUNTIES[countyId]
-  const { holdings, loading: holdingsLoading } = useOwnerHoldings(county, owner, open)
+  const {
+    holdings,
+    loading: holdingsLoading,
+    errorMessages: holdingsErrors,
+  } = useOwnerHoldings(county, owner, open)
+  const uniqueHoldingCounties = useMemo(() => {
+    const set = new Set<string>()
+    for (const h of holdings) if (h.county_id) set.add(h.county_id as string)
+    return set.size
+  }, [holdings])
   const { wells, loading: wellsLoading } = useOwnerWells(county, owner, tractLabel, holdings, open)
   const {
     note, setNote, loading: noteLoading, saving: noteSaving,
@@ -524,7 +586,14 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       <nav className="flex items-center gap-1 border-b border-gray-100 px-6 pt-2">
         {[
           { key: 'overview' as const, label: 'Overview' },
-          { key: 'holdings' as const, label: `Leases (${holdings.length || (holdingsLoading ? '…' : '0')})` },
+          {
+            key: 'holdings' as const,
+            label: holdingsLoading
+              ? 'Leases (…)'
+              : uniqueHoldingCounties > 1
+                ? `Leases (${holdings.length} · ${uniqueHoldingCounties} counties)`
+                : `Leases (${holdings.length || 0})`,
+          },
           { key: 'wells'    as const, label: `Wells (${wells.length || (wellsLoading ? '…' : '0')})` },
           { key: 'notes'    as const, label: 'Notes' },
         ].map((t) => {
@@ -567,6 +636,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             loading={holdingsLoading}
             county={county}
             legalDescByAbstract={legalDescByAbstract}
+            errorMessages={holdingsErrors}
           />
         )}
         {tab === 'wells' && (
@@ -725,80 +795,149 @@ function OverviewPanel({
 }
 
 function HoldingsPanel({
-  holdings, loading, county, legalDescByAbstract,
+  holdings, loading, county, legalDescByAbstract, errorMessages,
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
   county: County
   legalDescByAbstract: Record<string, string> | undefined
+  errorMessages?: Array<{ county: CountyKey; message: string }>
 }) {
   if (loading) {
-    return <div className="text-sm text-gray-500">Loading leases…</div>
+    return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
   }
   if (holdings.length === 0) {
     return (
       <div className="text-sm text-gray-500">
-        No matching rows found in {county.displayName}&apos;s mineral ownership table.
+        No matching rows found in any county&apos;s mineral ownership table.
       </div>
     )
   }
+
+  // Group holdings by county so the drawer surfaces "3 leases in Howard,
+  // 1 in Martin" at a glance. Currently-active county comes first.
+  const byCounty: Partial<Record<CountyKey, OwnerDrawerHolding[]>> = {}
+  for (const h of holdings) {
+    const key = (h.county_id ?? (county.id as CountyKey)) as CountyKey
+    if (!byCounty[key]) byCounty[key] = []
+    byCounty[key]!.push(h)
+  }
+  const activeCountyId = county.id as CountyKey
+  const orderedCountyKeys: CountyKey[] = [
+    activeCountyId,
+    ...Object.keys(byCounty).filter((k) => k !== activeCountyId) as CountyKey[],
+  ].filter((k, i, arr) => arr.indexOf(k) === i && byCounty[k])
+
+  const totalCounties = orderedCountyKeys.length
+  const totalLeases = holdings.length
+
   return (
-    <div className="flex flex-col gap-2">
-      {holdings.map((h, i) => {
-        const bareAbstract = abstractKey(h.abstract)
-        const abstractLabel = bareAbstract ? `A-${bareAbstract}` : ''
-        const legalDesc = bareAbstract ? (legalDescByAbstract?.[bareAbstract] || '') : ''
-        const ownershipPct = ownershipPctValue(h.ownership_pct ?? h.decimal_interest, county.ownershipPctIsDecimal)
-        const acres = displayNumber(h.acreage)
-        const nra = (ownershipPct != null && h.acreage != null)
-          ? Number(h.acreage) * (ownershipPct / 100)
-          : null
+    <div className="flex flex-col gap-3">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+        <span className="font-semibold">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
+        {' '}across{' '}
+        <span className="font-semibold">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}.
+        Offer on all of them, not just the one from the map click.
+      </div>
+
+      {errorMessages && errorMessages.length > 0 && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
+          Some counties errored: {errorMessages.map((e) => `${e.county}`).join(', ')}. Retry or check RLS.
+        </div>
+      )}
+
+      {orderedCountyKeys.map((countyKey) => {
+        const rows = byCounty[countyKey] ?? []
+        const cfg = COUNTIES[countyKey]
+        const isActive = countyKey === activeCountyId
+        // Legal descriptions in the current tract's county come from
+        // legalDescByAbstract (built by the parent from the loaded
+        // TractRecord[]); other counties don't have that pre-built
+        // lookup, so we fall back to the bare abstract label.
         return (
-          <div
-            key={`${h.id ?? h.rrc_lease_id ?? i}`}
-            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
-          >
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.5fr_1fr_0.9fr_1.1fr] md:items-center">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Legal description</div>
-                <div className="mt-1 font-mono text-sm font-semibold text-gray-900">
-                  {legalDesc || abstractLabel || 'Unmatched abstract'}
-                </div>
-                {legalDesc && legalDesc !== abstractLabel && abstractLabel && (
-                  <div className="mt-0.5 font-mono text-[11px] text-gray-400">{abstractLabel}</div>
-                )}
-                {clean(h.county_lease_name) && (
-                  <div className="mt-1 text-xs text-gray-500">Lease: {clean(h.county_lease_name)}</div>
+          <div key={countyKey} className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <div
+              className={`flex items-center justify-between border-b border-gray-100 px-4 py-2 ${
+                isActive ? 'bg-amber-50/60' : ''
+              }`}
+            >
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-700">
+                {cfg.displayName}
+                {isActive && (
+                  <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-900">
+                    Active
+                  </span>
                 )}
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Operator</div>
-                <div className="mt-1 text-sm text-gray-900">{clean(h.operator_name) || '—'}</div>
-                {clean(h.field_name) && (
-                  <div className="text-xs text-gray-500">{clean(h.field_name)}</div>
-                )}
+              <div className="text-[11px] text-gray-500">
+                {rows.length} lease{rows.length === 1 ? '' : 's'}
               </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Interest</div>
-                <div className="mt-1 font-mono text-sm text-gray-900">
-                  {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-                </div>
-                {h.interest_type && (
-                  <div className="text-xs text-gray-500">{h.interest_type}</div>
-                )}
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Acres / NRA</div>
-                <div className="mt-1 font-mono text-sm text-gray-900">
-                  {acres ?? '—'}
-                  {nra != null && (
-                    <span className="ml-2 text-gray-500">({nra.toFixed(nra < 1 ? 3 : 2)} NRA)</span>
-                  )}
-                </div>
-                {h.rrc_lease_id != null && (
-                  <div className="text-xs text-gray-500">Lease #{h.rrc_lease_id}</div>
-                )}
-              </div>
+            </div>
+            <div className="flex flex-col gap-2 p-3">
+              {rows.map((h, i) => {
+                const bareAbstract = abstractKey(h.abstract)
+                const abstractLabel = bareAbstract ? `A-${bareAbstract}` : ''
+                const legalDesc = isActive && bareAbstract
+                  ? (legalDescByAbstract?.[bareAbstract] || '')
+                  : ''
+                const ownershipPct = ownershipPctValue(
+                  h.ownership_pct ?? h.decimal_interest,
+                  cfg.ownershipPctIsDecimal,
+                )
+                const acres = displayNumber(h.acreage)
+                const nra = (ownershipPct != null && h.acreage != null)
+                  ? Number(h.acreage) * (ownershipPct / 100)
+                  : null
+                return (
+                  <div
+                    key={`${countyKey}-${h.id ?? h.rrc_lease_id ?? i}`}
+                    className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+                  >
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.5fr_1fr_0.9fr_1.1fr] md:items-center">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Legal description</div>
+                        <div className="mt-1 font-mono text-sm font-semibold text-gray-900">
+                          {legalDesc || abstractLabel || 'Unmatched abstract'}
+                        </div>
+                        {legalDesc && legalDesc !== abstractLabel && abstractLabel && (
+                          <div className="mt-0.5 font-mono text-[11px] text-gray-400">{abstractLabel}</div>
+                        )}
+                        {clean(h.county_lease_name) && (
+                          <div className="mt-1 text-xs text-gray-500">Lease: {clean(h.county_lease_name)}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Operator</div>
+                        <div className="mt-1 text-sm text-gray-900">{clean(h.operator_name) || '—'}</div>
+                        {clean(h.field_name) && (
+                          <div className="text-xs text-gray-500">{clean(h.field_name)}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Interest</div>
+                        <div className="mt-1 font-mono text-sm text-gray-900">
+                          {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
+                        </div>
+                        {h.interest_type && (
+                          <div className="text-xs text-gray-500">{h.interest_type}</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Acres / NRA</div>
+                        <div className="mt-1 font-mono text-sm text-gray-900">
+                          {acres ?? '—'}
+                          {nra != null && (
+                            <span className="ml-2 text-gray-500">({nra.toFixed(nra < 1 ? 3 : 2)} NRA)</span>
+                          )}
+                        </div>
+                        {h.rrc_lease_id != null && (
+                          <div className="text-xs text-gray-500">Lease #{h.rrc_lease_id}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         )
