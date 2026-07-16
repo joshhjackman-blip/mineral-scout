@@ -5,19 +5,19 @@ name: RRC permits daily scrape
 # tract sidebar's New Permits dropdown + the parcels production_status
 # classifier reflect the latest RRC filings.
 #
-# Cron: 10:00 UTC daily = 5:00 AM CDT (America/Chicago summer) or
-# 4:00 AM CST (winter). GitHub Actions cron doesn't support timezones,
+# Cron: 22:00 UTC daily = 5:00 PM CDT (America/Chicago summer) or
+# 4:00 PM CST (winter). GitHub Actions cron doesn't support timezones,
 # so we accept the ~1-hour drift twice a year rather than run two
 # scheduled entries. Manual dispatch is enabled for ad-hoc catch-up.
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '0 22 * * *'
   workflow_dispatch:
     inputs:
       counties:
-        description: 'Comma-separated county ids to scrape (default: gonzales,howard,martin)'
+        description: 'Comma-separated county ids to scrape (default: all 12 counties on file)'
         required: false
-        default: 'gonzales,howard,martin'
+        default: 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
       days:
         description: 'Lookback window in days (max ~90)'
         required: false
@@ -60,7 +60,7 @@ jobs:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin' }}"
+          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           DAYS="${{ github.event.inputs.days || '30' }}"
           WELLS_ONLY_FLAG=""
           if [ "${{ github.event.inputs.wells_only }}" = "true" ]; then
