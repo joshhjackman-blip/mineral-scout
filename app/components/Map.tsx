@@ -18,11 +18,45 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 const bareAbstract = (raw: unknown): string =>
   String(raw ?? '').replace(/^A-\s*/i, '').trim()
 
-// Injects Ticket 1.3 development_status + pud_score + secondary
-// signal flags (dev_flag_permit / dev_flag_duc / dev_flag_infill /
-// dev_flag_pending) onto every feature in the county's parcels
-// GeoJSON. Called once on load and again whenever
-// devStatusByAbstract changes so tiles reflow with fresh data.
+// Unified lifecycle statuses used to color the tract fills. Every tract
+// on the map falls into exactly ONE of these buckets — the old split
+// between "Activity" (production_status) and "Development" (dev_status)
+// caused the same concept to render in two different colors (PDP was
+// yellow on one view and green on the other), which was confusing, so
+// they've been merged. All coloring, toggles, and legend rows work off
+// map_status now.
+type UnifiedStatus =
+  | 'PDP'
+  | 'PUD_DUC'
+  | 'PUD_PERMITTED'
+  | 'PUD_INFILL'
+  | 'LEASING_ACTIVE'
+  | 'FRONTIER'
+
+// Map a production_status string (older schema, always populated on the
+// baked geojson) into the unified dev-status space. Used as a fallback
+// when tract_development_status hasn't been computed for a county yet
+// (e.g. Martin only has production_status right now, not dev status).
+function productionStatusToUnified(production: string): UnifiedStatus {
+  const p = production.toLowerCase()
+  if (p === 'pdp') return 'PDP'
+  if (p === 'pud' || p === 'new_permit' || p === 'pending_permit') return 'PUD_PERMITTED'
+  return 'FRONTIER'
+}
+
+// Compute the unified map_status for a single feature from whichever
+// signal is stronger: dev-status classification wins when it's not
+// FRONTIER; otherwise fall back to production_status. Result is written
+// to feature.properties.map_status.
+function deriveMapStatus(
+  props: GeoJSON.GeoJsonProperties,
+  entry: { development_status?: string } | undefined,
+): UnifiedStatus {
+  const devStatus = entry?.development_status
+  if (devStatus && devStatus !== 'FRONTIER') return devStatus as UnifiedStatus
+  return productionStatusToUnified(String(props?.production_status ?? 'none'))
+}
+
 function injectDevStatusIntoFeatures(
   collection: GeoJSON.FeatureCollection,
   lookup: Record<string, {
@@ -36,27 +70,17 @@ function injectDevStatusIntoFeatures(
     }
   }>,
 ): void {
-  if (!lookup || Object.keys(lookup).length === 0) return
+  const hasLookup = lookup && Object.keys(lookup).length > 0
   for (const feature of collection.features) {
     const props = feature.properties ?? {}
     const key = bareAbstract(props.ABSTRACT_L ?? props.ABSTRACT_N)
-    const entry = key ? lookup[key] : undefined
-    const detail = entry?.signal_detail ?? {}
-    const permits = Array.isArray(detail.permits) ? detail.permits : []
-    const ducs = Array.isArray(detail.ducs) ? detail.ducs : []
-    const infill = Number(detail.infill_gaps ?? 0)
-    const production = String(props.production_status ?? '').toLowerCase()
+    const entry = hasLookup && key ? lookup[key] : undefined
+    const mapStatus = deriveMapStatus(props, entry)
     feature.properties = {
       ...props,
       development_status: entry?.development_status ?? 'FRONTIER',
       pud_score: entry?.pud_score ?? 0,
-      // Secondary indicator flags. Union with pre-existing
-      // production_status='new_permit' / 'pending_permit' so old
-      // pre-Ticket-1.3 data still lights up the dots.
-      dev_flag_permit: permits.length > 0 || production === 'new_permit',
-      dev_flag_duc: ducs.length > 0,
-      dev_flag_infill: infill > 0,
-      dev_flag_pending: production === 'pending_permit',
+      map_status: mapStatus,
     }
   }
 }
@@ -210,22 +234,26 @@ export default function Map({
   onCountySwitch: (countyId: string) => void
   devStatusByAbstract?: Record<string, DevStatusMapEntry>
 }) {
-  // In-map layer toggles (see LayerTogglePanel at the bottom of the file).
-  //   showPDP           colored PDP parcel fills (yellow, activity view)
-  //   showPermits       approved drilling permits (blue dots)
-  //   showPrePermits    pending / filed permit applications (pale blue dots)
-  //   showRigs          wells currently drilling (red dots, sourced from
-  //                     permit_type='Drilling' rows the RRC scraper writes)
-  //   showDevStatus     Ticket 1.3 development-lifecycle coloring — when
-  //                     ON we swap the parcel fill from the production_status
-  //                     match to a development_status match (6-bucket palette).
-  //   preProductionOnly Filter: hide every parcel except PUD_DUC + PUD_PERMITTED.
-  const [showPDP, setShowPDP] = useState(true)
-  const [showPermits, setShowPermits] = useState(true)
-  const [showPrePermits, setShowPrePermits] = useState(true)
+  // In-map layer toggles. Every tract on the map is classified into one
+  // of the 6 UnifiedStatus buckets (see deriveMapStatus at the top of
+  // this file). Each toggle controls whether that bucket is visible on
+  // the fill — turning one off drops its fill-opacity + outline-width
+  // to 0, effectively hiding those tracts. The Rigs toggle is separate:
+  // it drives a red-dot overlay showing wells currently drilling,
+  // which is a live signal that's meaningful regardless of the tract's
+  // primary classification.
+  const [statusVisible, setStatusVisible] = useState<Record<UnifiedStatus, boolean>>({
+    PDP: true,
+    PUD_DUC: true,
+    PUD_PERMITTED: true,
+    PUD_INFILL: true,
+    LEASING_ACTIVE: true,
+    FRONTIER: true,
+  })
+  const setStatus = useCallback((key: UnifiedStatus, v: boolean) => {
+    setStatusVisible((prev) => ({ ...prev, [key]: v }))
+  }, [])
   const [showRigs, setShowRigs] = useState(true)
-  const [showDevStatus, setShowDevStatus] = useState(false)
-  const [preProductionOnly, setPreProductionOnly] = useState(false)
   // Latest devStatusByAbstract in a ref so the setupTractLevel closure
   // (memoized on countyEntries only) still sees fresh data.
   const devStatusByAbstractRef = useRef(devStatusByAbstract ?? {})
@@ -404,174 +432,114 @@ export default function Map({
   // blue dot is placed at the parcel centroid by a separate symbol layer
   // (`parcels-permit-dots-{countyId}`) below. Users read PDP/PUD via fill
   // color and permits via the dot on top.
-  const PRODUCTION_STATUS_FILL: Record<string, string> = {
-    pdp:            '#FACC15', // saturated yellow — drilled + producing
-    pud:            '#16A34A', // saturated green — proved undeveloped
-    new_permit:     '#E5E7EB', // no fill — permits render as a blue dot instead
-    pending_permit: '#E5E7EB',
-    none:           '#E5E7EB', // neutral gray — no activity
+  // Unified lifecycle palette. Every tract paints via a match on
+  // `map_status` (injected in deriveMapStatus). No more Activity vs
+  // Development split — one status per tract, one color per status,
+  // one legend row per status.
+  const STATUS_FILL: Record<UnifiedStatus, string> = {
+    PDP:            '#EAB308', // yellow — producing today
+    PUD_DUC:        '#A855F7', // purple — drilled, awaiting completion
+    PUD_PERMITTED:  '#2563EB', // blue — approved permit, not drilled
+    PUD_INFILL:     '#F97316', // orange — spacing-gap infill candidate
+    LEASING_ACTIVE: '#16A34A', // green — fresh lease memo
+    FRONTIER:       '#E5E7EB', // gray — no signals yet
   }
-  const PRODUCTION_STATUS_OUTLINE: Record<string, string> = {
-    pdp:            '#A16207', // yellow-700, darker to read against #FACC15
-    pud:            '#166534', // green-800
-    new_permit:     '#CBD5E1',
-    pending_permit: '#CBD5E1',
-    none:           '#CBD5E1',
-  }
-  // Dot color for the permits-on-parcel symbol layer. Matches the existing
-  // permits-layer (individual permit points) so the two visual cues stay
-  // consistent when both are shown.
-  const PRODUCTION_STATUS_DOT = '#2563EB'
-
-  // Ticket 1.3 Phase 1 UI — Development-status palette. Applied when
-  // showDevStatus is on. Field-name is `development_status` on the
-  // parcel features (injected client-side after the GeoJSON loads).
-  const DEV_STATUS_FILL: Record<DevelopmentStatusKey, string> = {
-    PDP:            '#16A34A', // green — producing now
-    PUD_DUC:        '#A855F7', // purple — drilled but not yet completed
-    PUD_PERMITTED:  '#F97316', // orange — approved permit, not spud
-    PUD_INFILL:     '#3B82F6', // blue — spacing-gap infill candidate
-    LEASING_ACTIVE: '#FACC15', // yellow — fresh lease memo (Phase 3)
-    FRONTIER:       '#E5E7EB', // gray — no signals
-  }
-  const DEV_STATUS_OUTLINE: Record<DevelopmentStatusKey, string> = {
-    PDP:            '#166534',
+  const STATUS_OUTLINE: Record<UnifiedStatus, string> = {
+    PDP:            '#A16207',
     PUD_DUC:        '#6B21A8',
-    PUD_PERMITTED:  '#C2410C',
-    PUD_INFILL:     '#1D4ED8',
-    LEASING_ACTIVE: '#A16207',
+    PUD_PERMITTED:  '#1D4ED8',
+    PUD_INFILL:     '#C2410C',
+    LEASING_ACTIVE: '#166534',
     FRONTIER:       '#CBD5E1',
   }
-  const DEV_STATUS_LABEL: Record<DevelopmentStatusKey, string> = {
-    PDP: 'PDP', PUD_DUC: 'PUD (DUC)', PUD_PERMITTED: 'PUD (Permitted)',
-    PUD_INFILL: 'PUD (Infill)', LEASING_ACTIVE: 'Leasing active', FRONTIER: 'Frontier',
+  const STATUS_LABEL: Record<UnifiedStatus, string> = {
+    PDP:            'PDP',
+    PUD_DUC:        'PUD (DUC)',
+    PUD_PERMITTED:  'PUD (Permitted)',
+    PUD_INFILL:     'PUD (Infill)',
+    LEASING_ACTIVE: 'Leasing active',
+    FRONTIER:       'Frontier',
+  }
+  // Baseline opacities per status (before per-status toggle is applied).
+  // Classified tracts sit around 0.70; Frontier is dim so it recedes.
+  const STATUS_OPACITY: Record<UnifiedStatus, number> = {
+    PDP:            0.72,
+    PUD_DUC:        0.82,
+    PUD_PERMITTED:  0.78,
+    PUD_INFILL:     0.75,
+    LEASING_ACTIVE: 0.65,
+    FRONTIER:       0.18,
+  }
+  const STATUS_OUTLINE_WIDTH: Record<UnifiedStatus, number> = {
+    PDP:            1.6,
+    PUD_DUC:        2.0,
+    PUD_PERMITTED:  1.8,
+    PUD_INFILL:     1.5,
+    LEASING_ACTIVE: 1.4,
+    FRONTIER:       0.9,
   }
 
-  // Two paint modes, chosen by the Development view toggle:
-  //   showDevStatus === false (default)  -> activity coloring
-  //     match on `production_status` (pdp/pud/permits/none).
-  //   showDevStatus === true             -> Ticket 1.3 dev-status view
-  //     match on `development_status` (6-bucket palette). The feature
-  //     property gets injected client-side in setupTractLevel from
-  //     devStatusByAbstract before the layer paints.
-  //
-  // Pre-production filter: when preProductionOnly is on, both modes
-  // dial opacity to 0 for every tract except PUD_DUC / PUD_PERMITTED
-  // (the "royalty about to jump" cohort per spec).
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
-    () => showDevStatus
-      ? [
-          'match',
-          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
-          'PDP',            DEV_STATUS_FILL.PDP,
-          'PUD_DUC',        DEV_STATUS_FILL.PUD_DUC,
-          'PUD_PERMITTED',  DEV_STATUS_FILL.PUD_PERMITTED,
-          'PUD_INFILL',     DEV_STATUS_FILL.PUD_INFILL,
-          'LEASING_ACTIVE', DEV_STATUS_FILL.LEASING_ACTIVE,
-          DEV_STATUS_FILL.FRONTIER,
-        ]
-      : [
-          'match',
-          ['coalesce', ['get', 'production_status'], 'none'],
-          'pdp',            showPDP ? PRODUCTION_STATUS_FILL.pdp : PRODUCTION_STATUS_FILL.none,
-          'pud',            PRODUCTION_STATUS_FILL.pud,
-          'new_permit',     PRODUCTION_STATUS_FILL.new_permit,
-          'pending_permit', PRODUCTION_STATUS_FILL.pending_permit,
-          PRODUCTION_STATUS_FILL.none,
-        ],
+    () => [
+      'match',
+      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
+      'PDP',            STATUS_FILL.PDP,
+      'PUD_DUC',        STATUS_FILL.PUD_DUC,
+      'PUD_PERMITTED',  STATUS_FILL.PUD_PERMITTED,
+      'PUD_INFILL',     STATUS_FILL.PUD_INFILL,
+      'LEASING_ACTIVE', STATUS_FILL.LEASING_ACTIVE,
+      STATUS_FILL.FRONTIER,
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showPDP, showDevStatus]
+    []
   )
 
+  // Toggling a status off drops its fill-opacity to 0. That's cheaper
+  // than a `filter` update (no source refresh needed) and keeps the
+  // outline/label layers in sync via the same trick below.
   const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
-    () => {
-      const preFilter: mapboxgl.Expression = [
-        'in',
-        ['coalesce', ['get', 'development_status'], 'FRONTIER'],
-        ['literal', ['PUD_DUC', 'PUD_PERMITTED']],
-      ]
-      if (showDevStatus) {
-        // Dev-view opacities: solid on classified tracts, dim on Frontier
-        // unless the pre-production filter is off.
-        const base: mapboxgl.Expression = [
-          'match',
-          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
-          'PDP',            0.62,
-          'PUD_DUC',        0.82,
-          'PUD_PERMITTED',  0.78,
-          'PUD_INFILL',     0.70,
-          'LEASING_ACTIVE', 0.60,
-          0.18,
-        ]
-        return preProductionOnly
-          ? (['case', preFilter, base, 0] as mapboxgl.Expression)
-          : base
-      }
-      const base: mapboxgl.Expression = [
-        'match',
-        ['coalesce', ['get', 'production_status'], 'none'],
-        'pdp',            showPDP ? 0.78 : 0.18,
-        'pud',            0.72,
-        'new_permit',     0.18,
-        'pending_permit', 0.14,
-        0.18,
-      ]
-      return preProductionOnly
-        ? (['case', preFilter, base, 0] as mapboxgl.Expression)
-        : base
-    },
+    () => [
+      'match',
+      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
+      'PDP',            statusVisible.PDP            ? STATUS_OPACITY.PDP            : 0,
+      'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OPACITY.PUD_DUC        : 0,
+      'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OPACITY.PUD_PERMITTED  : 0,
+      'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OPACITY.PUD_INFILL     : 0,
+      'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
+      statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showPDP, showDevStatus, preProductionOnly]
+    [statusVisible]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
-    () => showDevStatus
-      ? [
-          'match',
-          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
-          'PDP',            DEV_STATUS_OUTLINE.PDP,
-          'PUD_DUC',        DEV_STATUS_OUTLINE.PUD_DUC,
-          'PUD_PERMITTED',  DEV_STATUS_OUTLINE.PUD_PERMITTED,
-          'PUD_INFILL',     DEV_STATUS_OUTLINE.PUD_INFILL,
-          'LEASING_ACTIVE', DEV_STATUS_OUTLINE.LEASING_ACTIVE,
-          DEV_STATUS_OUTLINE.FRONTIER,
-        ]
-      : [
-          'match',
-          ['coalesce', ['get', 'production_status'], 'none'],
-          'pdp',            PRODUCTION_STATUS_OUTLINE.pdp,
-          'pud',            PRODUCTION_STATUS_OUTLINE.pud,
-          'new_permit',     PRODUCTION_STATUS_OUTLINE.new_permit,
-          'pending_permit', PRODUCTION_STATUS_OUTLINE.pending_permit,
-          PRODUCTION_STATUS_OUTLINE.none,
-        ],
+    () => [
+      'match',
+      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
+      'PDP',            STATUS_OUTLINE.PDP,
+      'PUD_DUC',        STATUS_OUTLINE.PUD_DUC,
+      'PUD_PERMITTED',  STATUS_OUTLINE.PUD_PERMITTED,
+      'PUD_INFILL',     STATUS_OUTLINE.PUD_INFILL,
+      'LEASING_ACTIVE', STATUS_OUTLINE.LEASING_ACTIVE,
+      STATUS_OUTLINE.FRONTIER,
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showDevStatus]
+    []
   )
 
   const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
-    () => showDevStatus
-      ? [
-          'match',
-          ['coalesce', ['get', 'development_status'], 'FRONTIER'],
-          'PDP',            1.4,
-          'PUD_DUC',        2.0,
-          'PUD_PERMITTED',  1.8,
-          'PUD_INFILL',     1.4,
-          'LEASING_ACTIVE', 1.4,
-          0.9,
-        ]
-      : [
-          'match',
-          ['coalesce', ['get', 'production_status'], 'none'],
-          'pdp',            1.6,
-          'pud',            1.6,
-          'new_permit',     0.9,
-          'pending_permit', 0.9,
-          0.9,
-        ],
+    () => [
+      'match',
+      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
+      'PDP',            statusVisible.PDP            ? STATUS_OUTLINE_WIDTH.PDP            : 0,
+      'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OUTLINE_WIDTH.PUD_DUC        : 0,
+      'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OUTLINE_WIDTH.PUD_PERMITTED  : 0,
+      'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OUTLINE_WIDTH.PUD_INFILL     : 0,
+      'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OUTLINE_WIDTH.LEASING_ACTIVE : 0,
+      statusVisible.FRONTIER ? STATUS_OUTLINE_WIDTH.FRONTIER : 0,
+    ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showDevStatus]
+    [statusVisible]
   )
 
   const applyTractCountyStyles = useCallback(() => {
@@ -635,10 +603,6 @@ export default function Map({
       `parcels-outline-${selectedConfig.id}`,
       `parcels-labels-${selectedConfig.id}`,
       `parcels-sections-${selectedConfig.id}`,
-      `parcels-permit-dot-${selectedConfig.id}`,
-      `parcels-duc-dot-${selectedConfig.id}`,
-      `parcels-infill-dot-${selectedConfig.id}`,
-      `parcels-pending-dot-${selectedConfig.id}`,
       `block-labels-${selectedConfig.id}`,
     ]
     for (const id of ids) {
@@ -747,26 +711,11 @@ export default function Map({
       popupTitle: string
       popupColor: string
     }> = [
-      {
-        id: 'permits-approved-layer',
-        category: 'permit',
-        color: '#2563EB',
-        strokeColor: '#ffffff',
-        radius: 7,
-        visible: showPermits,
-        popupTitle: 'Approved Permit',
-        popupColor: '#1d4ed8',
-      },
-      {
-        id: 'permits-pending-layer',
-        category: 'pre_permit',
-        color: '#93C5FD',
-        strokeColor: '#ffffff',
-        radius: 6,
-        visible: showPrePermits,
-        popupTitle: 'Pre-Permit / Filed',
-        popupColor: '#1e40af',
-      },
+      // Only "currently drilling" survives as a per-point overlay.
+      // Approved / pending permits are subsumed by the tract-level
+      // PUD (Permitted) fill in the unified palette, so drawing an
+      // individual blue dot for every permit on top of an already-
+      // blue tract was double-encoding the same signal.
       {
         id: 'permits-rigs-layer',
         category: 'rig',
@@ -847,7 +796,7 @@ export default function Map({
         mapInstance.setLayoutProperty(layer.id, 'visibility', layer.visible ? 'visible' : 'none')
       }
     }
-  }, [showPermits, showPrePermits, showRigs])
+  }, [showRigs])
 
   const setupCountyOverview = useCallback(async () => {
     const mapInstance = map.current
@@ -1159,64 +1108,13 @@ export default function Map({
       })
 
       if (!map.current) return
-      // Secondary centroid dots — Ticket 1.3 multi-color per tract.
-      // A single categorical fill (highest-priority status wins) hid
-      // secondary signals from view: e.g. a producing PDP tract that
-      // ALSO has a fresh permit filed would just look green. These
-      // dots render on top of the fill regardless of the primary
-      // status so users can see stacked signals at a glance:
-      //
-      //   dev_flag_permit  -> blue dot  (approved permit on this tract)
-      //   dev_flag_duc     -> purple dot (spud, no completion)
-      //   dev_flag_infill  -> teal dot  (spacing gap in this tract's unit)
-      //   dev_flag_pending -> pale-blue (pre-permit / filed application)
-      //
-      // Dots are stacked at the parcel centroid with a small offset
-      // per signal so multiple stacked signals stay individually
-      // visible. When a tract has none of these, no dot renders.
-      const overlayLayers: Array<{
-        id: string
-        propertyName: string
-        color: string
-        offsetX: number
-        offsetY: number
-        size: number
-      }> = [
-        // Approved permit on this tract regardless of primary status.
-        { id: `parcels-permit-dot-${countyConfig.id}`,     propertyName: 'dev_flag_permit',  color: '#2563EB', offsetX: -0.35, offsetY: -0.30, size: 12 },
-        // DUC signal on this tract.
-        { id: `parcels-duc-dot-${countyConfig.id}`,        propertyName: 'dev_flag_duc',     color: '#A855F7', offsetX:  0.35, offsetY: -0.30, size: 12 },
-        // Infill spacing gap in the tract's unit.
-        { id: `parcels-infill-dot-${countyConfig.id}`,     propertyName: 'dev_flag_infill',  color: '#0891B2', offsetX: -0.35, offsetY:  0.35, size: 10 },
-        // Pending / filed application (kept for backwards compat with
-        // the pre-Ticket-1.3 production_status='pending_permit' data).
-        { id: `parcels-pending-dot-${countyConfig.id}`,    propertyName: 'dev_flag_pending', color: '#93C5FD', offsetX:  0.35, offsetY:  0.35, size: 10 },
-      ]
-      for (const layer of overlayLayers) {
-        map.current.addLayer({
-          id: layer.id,
-          type: 'symbol',
-          source: sourceId,
-          minzoom: 9,
-          filter: ['==', ['coalesce', ['get', layer.propertyName], false], true],
-          layout: {
-            'text-field': '●',
-            'text-size': layer.size,
-            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
-            'text-anchor': 'center',
-            'text-offset': [layer.offsetX, layer.offsetY],
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-            'symbol-placement': 'point',
-          },
-          paint: {
-            'text-color': layer.color,
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 1.5,
-            'text-opacity': 0.95,
-          },
-        })
-      }
+      // Secondary centroid dots (permit / DUC / infill / pending) were
+      // removed with the unified-legend redesign. Each of those signals
+      // now paints as the tract's primary color via the map_status
+      // derivation in deriveMapStatus (PUD_PERMITTED, PUD_DUC, and
+      // PUD_INFILL respectively). If a broker wants the exact spud
+      // location for a permit they click the tract and read the
+      // permits list in the OwnerDrawer.
 
       if (!map.current) return
       // Block labels: one point per distinct Block value, placed at the
@@ -1411,14 +1309,14 @@ export default function Map({
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
-  // When the PDP toggle flips, applyTractCountyStyles's own optimization
-  // ("same county — nothing to repaint") would swallow the update. Force a
-  // repaint by invalidating the last-styled ref before the effect above
-  // re-fires (which happens automatically because applyTractCountyStyles
-  // is memoized on the fill/opacity expressions, which depend on showPDP).
+  // When any per-status toggle flips, applyTractCountyStyles's own
+  // "same county, nothing to repaint" optimization would swallow the
+  // update. Force a repaint by invalidating the last-styled ref before
+  // the effect above re-fires (applyTractCountyStyles is memoized on
+  // the fill/opacity expressions, which depend on statusVisible).
   useEffect(() => {
     lastStyledSelectedCountyRef.current = null
-  }, [showPDP, showDevStatus, preProductionOnly])
+  }, [statusVisible])
 
   // Re-inject development_status + secondary flags onto every loaded
   // feature when the per-county dev-status lookup changes (initial
@@ -1450,17 +1348,17 @@ export default function Map({
     if (!map.current) return
     const mapInstance = map.current
     const tractLevel = mapLevel === 'tract'
-    const layerVis: Array<[string, boolean]> = [
-      ['permits-approved-layer',  tractLevel && showPermits],
-      ['permits-pending-layer',   tractLevel && showPrePermits],
-      ['permits-rigs-layer',      tractLevel && showRigs],
-    ]
-    for (const [layerId, visible] of layerVis) {
-      if (mapInstance.getLayer(layerId)) {
-        mapInstance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
-      }
+    // Only the rigs overlay remains as an independent dot layer.
+    // Approved / pre-permits used to be here but they're now expressed
+    // as PUD (Permitted) tract fills via the unified legend.
+    if (mapInstance.getLayer('permits-rigs-layer')) {
+      mapInstance.setLayoutProperty(
+        'permits-rigs-layer',
+        'visibility',
+        tractLevel && showRigs ? 'visible' : 'none',
+      )
     }
-  }, [mapLevel, showPermits, showPrePermits, showRigs])
+  }, [mapLevel, showRigs])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -1494,79 +1392,47 @@ export default function Map({
       )}
       {mapReady && mapLevel === 'tract' && (
         <LayerTogglePanel
-          pdpVisible={showPDP}
-          onPDP={setShowPDP}
-          permitsVisible={showPermits}
-          onPermits={setShowPermits}
-          prePermitsVisible={showPrePermits}
-          onPrePermits={setShowPrePermits}
+          statusVisible={statusVisible}
+          onStatus={setStatus}
+          statusPalette={STATUS_FILL}
+          statusLabels={STATUS_LABEL}
           rigsVisible={showRigs}
           onRigs={setShowRigs}
-          devStatusVisible={showDevStatus}
-          onDevStatus={setShowDevStatus}
-          preProductionOnly={preProductionOnly}
-          onPreProductionOnly={setPreProductionOnly}
-          pdpFill={PRODUCTION_STATUS_FILL.pdp}
-          devPalette={DEV_STATUS_FILL}
-          devLabels={DEV_STATUS_LABEL}
         />
       )}
     </div>
   )
 }
 
-// In-map layer control. Fixed to the top-right of the map viewport with
-// three sections stacked vertically:
-//   ACTIVITY   — activity-view point + fill toggles (PDP / Permits / Pre / Rigs)
-//   DEVELOPMENT — Ticket 1.3 view: toggle swaps the fill palette to the
-//                 6-bucket development-lifecycle scheme; when active,
-//                 the legend below shows every dev-status color
-//   FILTERS    — Pre-Production Tracts checkbox (hides every parcel
-//                except PUD_DUC / PUD_PERMITTED)
+// In-map layer control. Fixed to the top-right of the map viewport.
+// Single unified LEGEND — one row per UnifiedStatus, one color per
+// status, one toggle per row. Checking a row shows those tracts;
+// unchecking hides them by dropping fill-opacity to 0. Below the
+// legend a single OVERLAYS section carries the Active rigs dot
+// toggle, which is the one signal that doesn't collapse cleanly
+// into the primary tract classification.
 function LayerTogglePanel({
-  pdpVisible, onPDP,
-  permitsVisible, onPermits,
-  prePermitsVisible, onPrePermits,
+  statusVisible, onStatus,
+  statusPalette, statusLabels,
   rigsVisible, onRigs,
-  devStatusVisible, onDevStatus,
-  preProductionOnly, onPreProductionOnly,
-  pdpFill,
-  devPalette,
-  devLabels,
 }: {
-  pdpVisible: boolean
-  onPDP: (v: boolean) => void
-  permitsVisible: boolean
-  onPermits: (v: boolean) => void
-  prePermitsVisible: boolean
-  onPrePermits: (v: boolean) => void
+  statusVisible: Record<UnifiedStatus, boolean>
+  onStatus: (key: UnifiedStatus, v: boolean) => void
+  statusPalette: Record<UnifiedStatus, string>
+  statusLabels: Record<UnifiedStatus, string>
   rigsVisible: boolean
   onRigs: (v: boolean) => void
-  devStatusVisible: boolean
-  onDevStatus: (v: boolean) => void
-  preProductionOnly: boolean
-  onPreProductionOnly: (v: boolean) => void
-  pdpFill: string
-  devPalette: Record<DevelopmentStatusKey, string>
-  devLabels: Record<DevelopmentStatusKey, string>
 }) {
-  const activityRows: Array<{
-    label: string
-    swatch: 'fill' | 'dot'
-    color: string
-    checked: boolean
-    onChange: (v: boolean) => void
-    disabled?: boolean
-  }> = [
-    { label: 'PDP',         swatch: 'fill', color: pdpFill,   checked: pdpVisible,       onChange: onPDP,       disabled: devStatusVisible },
-    { label: 'Permits',     swatch: 'dot',  color: '#2563EB', checked: permitsVisible,   onChange: onPermits },
-    { label: 'Pre-permits', swatch: 'dot',  color: '#93C5FD', checked: prePermitsVisible, onChange: onPrePermits },
-    { label: 'Rigs',        swatch: 'dot',  color: '#DC2626', checked: rigsVisible,      onChange: onRigs },
-  ]
-
-  const devKeys: DevelopmentStatusKey[] = [
+  const statusKeys: UnifiedStatus[] = [
     'PDP', 'PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL', 'LEASING_ACTIVE', 'FRONTIER',
   ]
+  const legendRows = statusKeys.map((key) => ({
+    label: statusLabels[key],
+    swatch: 'fill' as const,
+    color: statusPalette[key],
+    checked: statusVisible[key],
+    onChange: (v: boolean) => onStatus(key, v),
+  }))
 
   return (
     <div
@@ -1586,68 +1452,32 @@ function LayerTogglePanel({
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
-        minWidth: 200,
-        maxWidth: 240,
+        minWidth: 210,
+        maxWidth: 250,
       }}
     >
       <div>
-        <div style={sectionHeadingStyle}>Activity</div>
+        <div style={sectionHeadingStyle}>Legend</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          {activityRows.map((row) => (
+          {legendRows.map((row) => (
             <ToggleRow key={row.label} row={row} />
           ))}
         </div>
       </div>
 
       <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
-        <div style={sectionHeadingStyle}>Development</div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input
-            type="checkbox"
-            checked={devStatusVisible}
-            onChange={(e) => onDevStatus(e.target.checked)}
-            style={{ margin: 0, accentColor: '#A855F7', cursor: 'pointer', width: 14, height: 14 }}
-          />
-          <span style={{ fontWeight: 600, color: devStatusVisible ? '#0F172A' : '#94A3B8' }}>
-            Development view
-          </span>
-        </label>
-        {devStatusVisible && (
-          <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-            {devKeys.map((key) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#0F172A' }}>
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 2,
-                    background: devPalette[key],
-                    border: '1px solid rgba(15,23,42,0.25)',
-                    flexShrink: 0,
-                  }}
-                />
-                <span style={{ lineHeight: 1.2 }}>{devLabels[key]}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
-        <div style={sectionHeadingStyle}>Filters</div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-          <input
-            type="checkbox"
-            checked={preProductionOnly}
-            onChange={(e) => onPreProductionOnly(e.target.checked)}
-            style={{ margin: 0, accentColor: '#F97316', cursor: 'pointer', width: 14, height: 14 }}
-          />
-          <span style={{ fontWeight: 600, color: preProductionOnly ? '#0F172A' : '#94A3B8' }}>
-            Pre-production only
-          </span>
-        </label>
+        <div style={sectionHeadingStyle}>Overlays</div>
+        <ToggleRow
+          row={{
+            label: 'Active rigs',
+            swatch: 'dot',
+            color: '#DC2626',
+            checked: rigsVisible,
+            onChange: onRigs,
+          }}
+        />
         <div style={{ marginTop: 4, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
-          Show only tracts flagged PUD (DUC) or PUD (Permitted).
+          Red dot per well currently drilling.
         </div>
       </div>
     </div>
@@ -1672,7 +1502,6 @@ function ToggleRow({
     color: string
     checked: boolean
     onChange: (v: boolean) => void
-    disabled?: boolean
   }
 }) {
   return (
@@ -1681,19 +1510,16 @@ function ToggleRow({
         display: 'flex',
         alignItems: 'center',
         gap: 8,
-        cursor: row.disabled ? 'not-allowed' : 'pointer',
+        cursor: 'pointer',
         userSelect: 'none',
         fontSize: 12.5,
-        opacity: row.disabled ? 0.5 : 1,
       }}
-      title={row.disabled ? 'Hidden while Development view is on' : undefined}
     >
       <input
         type="checkbox"
         checked={row.checked}
-        disabled={row.disabled}
         onChange={(e) => row.onChange(e.target.checked)}
-        style={{ margin: 0, accentColor: row.color, cursor: row.disabled ? 'not-allowed' : 'pointer', width: 14, height: 14 }}
+        style={{ margin: 0, accentColor: row.color, cursor: 'pointer', width: 14, height: 14 }}
       />
       <span
         style={{
