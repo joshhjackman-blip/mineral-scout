@@ -127,10 +127,12 @@ COUNTY_ABSTRACTS_BUCKET = {
 }
 
 STATUS_PRIORITY = [
-    "PDP",
+    # Order matters — first match wins. Revised 2026-07-16 so infill
+    # signals surface even on producing acreage in mature basins.
     "PUD_DUC",
+    "PUD_INFILL",       # covers both "PDP + fresh permit" and Phase 2 spacing gaps
     "PUD_PERMITTED",
-    "PUD_INFILL",       # populated in Phase 2
+    "PDP",
     "LEASING_ACTIVE",   # populated in Phase 3
     "FRONTIER",
 ]
@@ -861,16 +863,33 @@ def summarize_abstract(
                 "source_url": clean_text(memo.get("source_url")) or None,
             })
 
-    # Status priority (highest wins) per spec:
-    #   PDP > PUD_DUC > PUD_PERMITTED > PUD_INFILL > LEASING_ACTIVE > FRONTIER
-    if has_producing_well:
-        status = "PDP"
-    elif duc_on_tract > 0:
+    # Status priority (highest wins). Revised 2026-07-16 after the
+    # Martin all-yellow feedback: the original spec put PDP first, but
+    # in mature basins (Midland / Delaware) every tract has a producing
+    # well, so PDP swallowed every other signal and the map went
+    # monolithic yellow. The rules below now surface fresh drilling
+    # activity ON TOP of production as PUD_INFILL — the "royalty about
+    # to jump" cohort brokers actually care about — before falling
+    # through to a plain PDP classification.
+    #
+    #   PUD_DUC        drilled + no completion (most urgent — royalty
+    #                  hits when completion crews finish)
+    #   PUD_INFILL     PDP tract with fresh permits OR spacing-gap
+    #                  detection hit (infill drilling on producing acreage)
+    #   PUD_PERMITTED  approved permit on a non-producing tract
+    #   PDP            producing wells, no fresh activity
+    #   LEASING_ACTIVE fresh lease memo but no drilling
+    #   FRONTIER       nothing
+    if duc_on_tract > 0:
         status = "PUD_DUC"
+    elif has_producing_well and (approved_on_tract > 0 or infill_hit_count > 0):
+        status = "PUD_INFILL"
     elif approved_on_tract > 0:
         status = "PUD_PERMITTED"
     elif infill_hit_count > 0:
         status = "PUD_INFILL"
+    elif has_producing_well:
+        status = "PDP"
     elif fresh_lease_memos:
         status = "LEASING_ACTIVE"
     else:
