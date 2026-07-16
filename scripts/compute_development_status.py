@@ -2,24 +2,30 @@
 """Compute development_status + pud_score for every abstract in a county
 and upsert into public.tract_development_status.
 
-Implements Phase 1A + 1C of ticket 1.3 (PUD / Development-Status
+Implements Phases 1 + 2 + 3 of ticket 1.3 (PUD / Development-Status
 Tracking). Runs after the daily RRC permits scrape so status transitions
 propagate within 24h. See legal/ticket-1.3-pud-tracking-spec.md for the
 full spec.
 
-Signals used (Phase 1):
-* Producing wells        (from <county>_wells)          -> PDP
-* Drilled-uncompleted    (well row w/o completion_date  -> PUD_DUC
+Signals in play
+---------------
+* Producing wells        (from <county>_wells)                  -> PDP
+* Drilled-uncompleted    (well row w/o completion_date          -> PUD_DUC
                           or permit w/ spud_date but no
                           completion_date)
-* Approved permit        (permit approved_date set,     -> PUD_PERMITTED
+* Approved permit        (permit approved_date set,              -> PUD_PERMITTED
                           spud_date null, < 24 months old)
-* Adjacent permit        (approved permit on a tract    -> +2 score
+* Adjacent permit        (approved permit on a tract             -> +2 score
                           bordering this abstract)
-
-Signals deferred (later phases): PUD_INFILL (Phase 2, PostGIS spacing
-gap analysis), LEASING_ACTIVE (Phase 3, county recorder scrape),
-operator development-program bonus (Phase 3 agent).
+* Infill spacing gap     (PHASE 2: gap > INFILL_GAP_MIN_FT       -> +2 score
+                          between adjacent parallel laterals     -> PUD_INFILL
+                          on this tract's producing unit)          if no stronger signal
+* Recent lease memo      (PHASE 3: fresh county-recorder lease   -> +1 score
+                          on this abstract, < 24 months old)     -> LEASING_ACTIVE
+                                                                     if no stronger signal
+* Operator dev program   (PHASE 3: operator with an active       -> +1 score
+                          development program tagged by the
+                          quarterly Claude operator agent)
 
 Data sources:
 * data/<county>/Abstracts.shp   — polygon per abstract, needed for
@@ -66,6 +72,45 @@ BATCH_UPSERT_SIZE = 200
 # Counties whose Abstracts.shp we know how to locate. Others get
 # skipped with a NOTICE so cron runs stay green even when a Permian
 # county's abstract shapefile hasn't landed yet.
+COUNTY_FIPS = {
+    "gonzales": "177",
+    "howard":   "227",
+    "martin":   "317",
+    "midland":   "329",
+    "glasscock": "173",
+    "upton":     "461",
+    "reagan":    "383",
+    "crane":     "103",
+    "pecos":     "371",
+    "ward":      "475",
+    "winkler":   "495",
+    "loving":    "301",
+    "reeves":    "389",
+}
+
+
+def _resolve_fips(county: str) -> str | None:
+    return COUNTY_FIPS.get(county)
+
+
+def _resolve_wells_zip(county: str, fips: str | None, data_dir: Path,
+                       client: Client) -> Path | None:
+    if not fips:
+        return None
+    cached = data_dir / f"well{fips}.zip"
+    if cached.exists():
+        return cached
+    key = f"well{fips}.zip"
+    try:
+        blob = client.storage.from_(BUCKET_NAME).download(key)
+    except Exception as exc:
+        print(f"  wells zip fetch failed ({key}): {exc}")
+        return None
+    data_dir.mkdir(parents=True, exist_ok=True)
+    cached.write_bytes(blob)
+    return cached
+
+
 COUNTY_ABSTRACTS_LOCAL = {
     "gonzales": "data/gonzales/Abstracts.shp",
     "howard":   "data/howard/Abstracts.shp",
@@ -93,6 +138,21 @@ STATUS_PRIORITY = [
 # 24 months — permits older than this that never spud'd are considered
 # expired (spec §PHASE 1A).
 PERMIT_EXPIRY_MONTHS = 24
+
+# Lease memoranda older than this contribute nothing (spec §PHASE 3).
+LEASE_MEMO_AGE_MONTHS = 24
+
+# PHASE 2 spacing thresholds.
+#   INFILL_AZIMUTH_TOLERANCE_DEG — group laterals with parallel-ish
+#   headings into the same field cluster before measuring spacing.
+#   ±15° per spec §PHASE 2.
+#   INFILL_GAP_MIN_FT — spec calls out Eagle Ford spacing of
+#   330–660 ft between laterals; any adjacent same-cluster pair
+#   more than 1,200 ft apart is flagged as an infill candidate.
+INFILL_AZIMUTH_TOLERANCE_DEG = 15.0
+INFILL_GAP_MIN_FT = 1200.0
+INFILL_GAP_MAX_FT = 3600.0
+FEET_PER_DEGREE_LAT = 364_000.0  # rough Texas-latitude conversion
 
 
 def parse_args() -> argparse.Namespace:
@@ -228,17 +288,70 @@ def _abstracts_from_gdf(gdf) -> list[dict[str, Any]]:
 
 
 def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
+    """Fetch every permit row for a county. Handles two schema variants:
+    the post-Ticket-1.3 shape (with spud_date / completion_date /
+    abstract_number / permit_status) and the pre-migration shape.
+    Returns [] if the table itself doesn't exist yet.
+    """
+    full_columns = (
+        "id, permit_number, api_number, operator_name, lease_name, "
+        "latitude, longitude, permit_type, status, filed_date, approved_date, "
+        "spud_date, completion_date, abstract_number, permit_status"
+    )
+    minimal_columns = (
+        "id, permit_number, api_number, operator_name, lease_name, "
+        "latitude, longitude, permit_type, status, filed_date, approved_date"
+    )
+    columns = full_columns
     rows: list[dict[str, Any]] = []
     last_id = 0
     while True:
         try:
             result = (
                 client.table(table)
-                .select(
-                    "id, permit_number, api_number, operator_name, lease_name, "
-                    "latitude, longitude, permit_type, status, filed_date, approved_date, "
-                    "spud_date, completion_date, abstract_number, permit_status"
-                )
+                .select(columns)
+                .gt("id", last_id)
+                .order("id", desc=False)
+                .limit(PAGE_SIZE)
+                .execute()
+            )
+        except Exception as exc:
+            message = str(exc).lower()
+            # A missing column error means the migration hasn't been
+            # applied yet — fall back to the pre-migration column set
+            # and retry from the same last_id.
+            if "column" in message and columns == full_columns:
+                columns = minimal_columns
+                continue
+            # A missing table error means we don't ingest this county
+            # yet. Bail out with what we already have.
+            if "relation" in message and "does not exist" in message:
+                return rows
+            if "not find" in message and "table" in message:
+                return rows
+            raise
+        page = result.data or []
+        if not page:
+            break
+        rows.extend(page)
+        last_id = page[-1]["id"]
+        if len(page) < PAGE_SIZE:
+            break
+    return rows
+
+
+def paginate_lease_memoranda(client: Client, county: str) -> list[dict[str, Any]]:
+    """Fetch fresh lease-memo rows from public.lease_memoranda for one
+    county. Fails soft if the table isn't there yet (Phase 3 migration
+    not applied) — returns []."""
+    rows: list[dict[str, Any]] = []
+    last_id = 0
+    while True:
+        try:
+            result = (
+                client.table("lease_memoranda")
+                .select("id, abstract_number, lessee, lessor, memo_date, filed_date, source_url")
+                .eq("county_id", county)
                 .gt("id", last_id)
                 .order("id", desc=False)
                 .limit(PAGE_SIZE)
@@ -248,22 +361,7 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
             message = str(exc).lower()
             if "not find" in message or "does not exist" in message:
                 return []
-            if "column" in message and "does not exist" in message:
-                # Older permits table without the new columns — fall back
-                # to a minimal select. Migration adds them; when it hasn't
-                # been applied yet, we still return what we can.
-                result = (
-                    client.table(table)
-                    .select("id, permit_number, api_number, operator_name, "
-                            "lease_name, latitude, longitude, permit_type, "
-                            "status, filed_date, approved_date")
-                    .gt("id", last_id)
-                    .order("id", desc=False)
-                    .limit(PAGE_SIZE)
-                    .execute()
-                )
-            else:
-                raise
+            raise
         page = result.data or []
         if not page:
             break
@@ -272,6 +370,31 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
         if len(page) < PAGE_SIZE:
             break
     return rows
+
+
+def fetch_operator_dev_programs(client: Client, county: str) -> set[str]:
+    """Return the set of operator_name values with an active development
+    program in this county per public.operator_dev_programs. Fails soft
+    when the table doesn't exist."""
+    try:
+        result = (
+            client.table("operator_dev_programs")
+            .select("operator_name")
+            .eq("county_id", county)
+            .eq("active", True)
+            .limit(1000)
+            .execute()
+        )
+    except Exception as exc:
+        message = str(exc).lower()
+        if "not find" in message or "does not exist" in message:
+            return set()
+        raise
+    return {
+        clean_text(row.get("operator_name")).upper()
+        for row in (result.data or [])
+        if clean_text(row.get("operator_name"))
+    }
 
 
 def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
@@ -397,6 +520,182 @@ def assign_permits_to_abstracts(
     return out
 
 
+def _load_lateral_lines(zip_path: Path):
+    """Read the RRC lateral shapefile (wellNNNl.shp) out of a well
+    bundle zip and return a list of dicts:
+      [{'geom': <shapely LineString>, 'operator': str, 'api': str}]
+
+    Returns [] if the zip is missing, unreadable, or has no lateral
+    layer. Uses geopandas because the operator name lives in the DBF
+    and we want the geometry as shapely for spacing math.
+    """
+    import geopandas as gpd
+    if not zip_path.exists():
+        return []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(tmp)
+            lateral_path = None
+            for candidate in Path(tmp).rglob("*.shp"):
+                if candidate.stem.lower().endswith("l"):
+                    lateral_path = candidate
+                    break
+            if lateral_path is None:
+                return []
+            gdf = gpd.read_file(lateral_path)
+            if gdf.crs is None:
+                gdf = gdf.set_crs("EPSG:4326")
+            else:
+                gdf = gdf.to_crs("EPSG:4326")
+            operator_col = next(
+                (c for c in gdf.columns if c.upper() in {"OPERATOR", "OPERATOR_N", "OPNAME"}),
+                None,
+            )
+            api_col = next(
+                (c for c in gdf.columns if c.upper() in {"API", "API10", "APINUM"}),
+                None,
+            )
+            out: list[dict[str, Any]] = []
+            for _, row in gdf.iterrows():
+                geom = row.get("geometry")
+                if geom is None or geom.is_empty:
+                    continue
+                out.append({
+                    "geom": geom,
+                    "operator": clean_text(row.get(operator_col)) if operator_col else "",
+                    "api": clean_text(row.get(api_col)) if api_col else "",
+                })
+            return out
+    except Exception as exc:
+        print(f"  lateral shapefile read failed ({zip_path.name}): {exc}")
+        return []
+
+
+def _lateral_azimuth_deg(line) -> float:
+    """Return the 0–180° heading of a shapely LineString using its
+    endpoints. Direction-agnostic (a line running N and its S-going
+    twin both hash to the same bucket)."""
+    coords = list(line.coords)
+    if len(coords) < 2:
+        return 0.0
+    x0, y0 = coords[0][:2]
+    x1, y1 = coords[-1][:2]
+    dx = x1 - x0
+    dy = y1 - y0
+    if dx == 0 and dy == 0:
+        return 0.0
+    theta = math.degrees(math.atan2(dy, dx))
+    if theta < 0:
+        theta += 180.0
+    if theta >= 180.0:
+        theta -= 180.0
+    return theta
+
+
+def _midpoint(line) -> tuple[float, float]:
+    coords = list(line.coords)
+    if not coords:
+        return (0.0, 0.0)
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+
+def compute_infill_gaps(
+    abstracts: list[dict[str, Any]],
+    laterals: list[dict[str, Any]],
+) -> dict[str, int]:
+    """PHASE 2 spacing analysis.
+
+    Groups laterals by (operator, azimuth cluster ±15°). Within each
+    cluster, sorts by perpendicular offset to a cluster reference line
+    and measures adjacent-pair spacing. Adjacent gaps > INFILL_GAP_MIN_FT
+    and < INFILL_GAP_MAX_FT are treated as infill candidates and the
+    corridor is intersected with abstracts to produce per-abstract
+    hit counts.
+
+    Returns: abstract -> count of infill-gap corridors touching that
+    abstract. Callers convert count>0 into a PUD_INFILL status + +2 score.
+    """
+    if not abstracts or not laterals:
+        return {}
+    from shapely.geometry import LineString, MultiLineString, Point
+    from shapely.strtree import STRtree
+
+    # Bucket laterals by operator + coarse azimuth bin. The bin is
+    # (int(theta / 15) * 15) so 0..14 -> bin 0, 15..29 -> bin 15, etc.
+    # Adjacent bins are considered together so 14° and 16° still cluster.
+    buckets: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
+    for lat in laterals:
+        geom = lat["geom"]
+        if not hasattr(geom, "geom_type"):
+            continue
+        if geom.geom_type == "MultiLineString":
+            # Explode multilinestrings into their component lines so
+            # each gets its own azimuth bucket.
+            for line in list(geom.geoms):
+                theta = _lateral_azimuth_deg(line)
+                key = (lat["operator"].upper(), int(theta // INFILL_AZIMUTH_TOLERANCE_DEG))
+                buckets[key].append({**lat, "geom": line})
+            continue
+        theta = _lateral_azimuth_deg(geom)
+        key = (lat["operator"].upper(), int(theta // INFILL_AZIMUTH_TOLERANCE_DEG))
+        buckets[key].append({**lat, "geom": geom})
+
+    # For each bucket, project each lateral's midpoint onto a normal
+    # axis (perpendicular to the cluster's mean azimuth). Sort by
+    # projection, then check gaps between neighbors.
+    infill_corridors: list[LineString] = []
+    for (_operator, _bin), rows in buckets.items():
+        if len(rows) < 2:
+            continue
+        thetas = [_lateral_azimuth_deg(r["geom"]) for r in rows]
+        mean_theta = sum(thetas) / len(thetas)
+        # Unit vector perpendicular to the mean azimuth
+        perp_theta_rad = math.radians(mean_theta + 90.0)
+        nx = math.cos(perp_theta_rad)
+        ny = math.sin(perp_theta_rad)
+        with_proj: list[tuple[float, dict[str, Any]]] = []
+        for r in rows:
+            mx, my = _midpoint(r["geom"])
+            # Project the midpoint onto the perpendicular axis in
+            # degrees, then convert to feet via the lat conversion
+            # (close enough for a spacing gap flag).
+            proj_deg = mx * nx + my * ny
+            proj_ft = proj_deg * FEET_PER_DEGREE_LAT
+            with_proj.append((proj_ft, r))
+        with_proj.sort(key=lambda t: t[0])
+        for i in range(len(with_proj) - 1):
+            a_proj, a_row = with_proj[i]
+            b_proj, b_row = with_proj[i + 1]
+            gap_ft = abs(b_proj - a_proj)
+            if INFILL_GAP_MIN_FT < gap_ft < INFILL_GAP_MAX_FT:
+                # Build a "corridor" line running along the mean
+                # azimuth between the two midpoints. Intersecting this
+                # line with abstracts picks up the tracts that would
+                # accept an infill well between the two existing laterals.
+                (ax, ay) = _midpoint(a_row["geom"])
+                (bx, by) = _midpoint(b_row["geom"])
+                corridor = LineString([(ax, ay), (bx, by)])
+                if corridor.is_empty or corridor.length == 0:
+                    continue
+                infill_corridors.append(corridor)
+
+    if not infill_corridors:
+        return {}
+
+    geoms = [a["geom"] for a in abstracts]
+    labels = [a["abstract"] for a in abstracts]
+    tree = STRtree(geoms)
+    hits: Counter[str] = Counter()
+    for corridor in infill_corridors:
+        for idx in tree.query(corridor):
+            if geoms[idx].intersects(corridor):
+                hits[labels[idx]] += 1
+    return dict(hits)
+
+
 def assign_wells_to_abstracts(
     abstracts: list[dict[str, Any]],
     wells: list[dict[str, Any]],
@@ -437,6 +736,9 @@ def summarize_abstract(
     wells: list[dict[str, Any]],
     adjacency: dict[str, set[str]],
     permit_by_abstract: dict[str, list[dict[str, Any]]],
+    lease_memos: list[dict[str, Any]],
+    infill_hit_count: int,
+    operator_program_hit: bool,
     today: dt.date,
 ) -> dict[str, Any]:
     """Compute development_status, pud_score, and signal_detail for a
@@ -500,13 +802,30 @@ def summarize_abstract(
     approved_on_tract = permit_statuses.get("approved", 0)
     duc_on_tract = len(all_ducs) + permit_statuses.get("spud", 0)
 
-    # Status priority (highest wins)
+    fresh_lease_memos = []
+    for memo in lease_memos:
+        memo_date = parse_date(memo.get("memo_date") or memo.get("filed_date"))
+        if memo_date and month_diff(today, memo_date) <= LEASE_MEMO_AGE_MONTHS:
+            fresh_lease_memos.append({
+                "lessee": clean_text(memo.get("lessee")) or None,
+                "lessor": clean_text(memo.get("lessor")) or None,
+                "memo_date": clean_text(memo.get("memo_date")) or None,
+                "filed_date": clean_text(memo.get("filed_date")) or None,
+                "source_url": clean_text(memo.get("source_url")) or None,
+            })
+
+    # Status priority (highest wins) per spec:
+    #   PDP > PUD_DUC > PUD_PERMITTED > PUD_INFILL > LEASING_ACTIVE > FRONTIER
     if has_producing_well:
         status = "PDP"
     elif duc_on_tract > 0:
         status = "PUD_DUC"
     elif approved_on_tract > 0:
         status = "PUD_PERMITTED"
+    elif infill_hit_count > 0:
+        status = "PUD_INFILL"
+    elif fresh_lease_memos:
+        status = "LEASING_ACTIVE"
     else:
         status = "FRONTIER"
 
@@ -517,6 +836,12 @@ def summarize_abstract(
         score += 3
     if adjacent_permit_count > 0:
         score += 2
+    if infill_hit_count > 0:
+        score += 2
+    if fresh_lease_memos:
+        score += 1
+    if operator_program_hit:
+        score += 1
     score = min(score, 10)
 
     signal_detail = {
@@ -527,8 +852,9 @@ def summarize_abstract(
             for op, n in adjacent_permit_operators.most_common()
         ],
         "adjacent_permit_count": adjacent_permit_count,
-        "infill_gaps": 0,   # Phase 2
-        "leases": [],       # Phase 3
+        "infill_gaps": infill_hit_count,
+        "leases": fresh_lease_memos,
+        "operator_program_hit": operator_program_hit,
     }
 
     return {
@@ -561,6 +887,14 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
     wells = paginate_wells(client, wells_table)
     print(f"  {wells_table}: {len(wells):,} rows", flush=True)
 
+    lease_memos = paginate_lease_memoranda(client, county)
+    if lease_memos:
+        print(f"  lease_memoranda:   {len(lease_memos):,} rows", flush=True)
+
+    operator_programs = fetch_operator_dev_programs(client, county)
+    if operator_programs:
+        print(f"  operator_dev_programs: {len(operator_programs):,} active operator(s)", flush=True)
+
     adjacency = build_adjacency(abstracts)
     print(f"  computed adjacency for {len(adjacency):,} abstracts", flush=True)
 
@@ -569,17 +903,49 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
     print(f"  abstracts with permits: {len(permit_by_abstract):,}", flush=True)
     print(f"  abstracts with wells:   {len(well_by_abstract):,}", flush=True)
 
+    # Phase 2 spacing analysis — load the county's lateral shapefile
+    # from data/wellNNN.zip (already cached locally by the daily scraper
+    # / add_production_status.py). If the wells zip isn't around,
+    # infill_by_abstract stays empty and the compute degrades gracefully
+    # to Phase 1 signals.
+    fips = COUNTY_FIPS.get(county) if False else _resolve_fips(county)
+    lateral_zip = _resolve_wells_zip(county, fips, data_dir, client)
+    laterals = _load_lateral_lines(lateral_zip) if lateral_zip else []
+    if laterals:
+        print(f"  laterals loaded: {len(laterals):,}", flush=True)
+    infill_by_abstract = compute_infill_gaps(abstracts, laterals) if laterals else {}
+    if infill_by_abstract:
+        print(f"  abstracts with infill gap: {len(infill_by_abstract):,}", flush=True)
+
+    lease_by_abstract: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for memo in lease_memos:
+        abstract = normalize_abstract(memo.get("abstract_number"))
+        if abstract:
+            lease_by_abstract[abstract].append(memo)
+
     today = dt.date.today()
     payloads: list[dict[str, Any]] = []
     status_totals: Counter[str] = Counter()
     score_hist: Counter[int] = Counter()
     for a in abstracts:
+        permits_here = permit_by_abstract.get(a["abstract"], [])
+        # Operator hit: any permit / adjacent permit whose operator is
+        # tagged as active-development in the operator_dev_programs table.
+        operator_hit = False
+        for permit in permits_here:
+            op = clean_text(permit.get("operator_name")).upper()
+            if op and op in operator_programs:
+                operator_hit = True
+                break
         result = summarize_abstract(
             a["abstract"],
-            permit_by_abstract.get(a["abstract"], []),
+            permits_here,
             well_by_abstract.get(a["abstract"], []),
             adjacency,
             permit_by_abstract,
+            lease_by_abstract.get(a["abstract"], []),
+            infill_by_abstract.get(a["abstract"], 0),
+            operator_hit,
             today,
         )
         status_totals[result["development_status"]] += 1
