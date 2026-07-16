@@ -1697,25 +1697,6 @@ export default function Home() {
     }
   }
 
-  // `scope` decides which counties the CSV export pulls from.
-  // 'county' respects the currently-selected county; 'all' fans out
-  // across every county exposed by /api/export (KNOWN_COUNTIES).
-  const handleExportCsv = (scope: 'county' | 'all' = 'county') => {
-    const params = new URLSearchParams({
-      minScore: String(minScore),
-      motivatedOnly: String(motivatedOnly),
-      outOfStateOnly: String(outOfStateOnly),
-      ownerType: ownerTypeFilter,
-      countyId: scope === 'all' ? 'all' : selectedCounty,
-    })
-    window.open(`/api/export?${params.toString()}`, '_blank')
-    trackEvent('csv_exported', {
-      row_count: filteredOwnersList.length,
-      scope,
-      county_id: scope === 'all' ? 'all' : selectedCounty,
-    })
-  }
-
   // Rank order once the score-based sort was removed:
   //   1. PDP wells drilled (drilled + completed activity)
   //   2. PUD wells (permitted but not yet drilled)
@@ -3579,50 +3560,10 @@ export default function Home() {
         </div>
 
         {/* Bottom-toolbar "New permits" button was here; layer visibility
-            moved to the in-map toggle panel (top-right of the map). */}
-
-        {/* CSV export: default click pulls the currently-selected county
-            respecting all active filters; the ⌄ button next to it opens
-            an all-counties export. The all-counties variant hits every
-            county in KNOWN_COUNTIES server-side and includes
-            development_status + pud_score columns. */}
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' }}>
-          <button
-            onClick={() => handleExportCsv('county')}
-            style={{
-              fontSize: 11,
-              padding: '4px 12px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              background: '#0F172A',
-              border: '1px solid #0F172A',
-              color: '#F9FAFB',
-              fontWeight: 500,
-            }}
-            title={`Export ${county.displayName} owners as CSV`}
-          >
-            Export CSV
-          </button>
-          <button
-            onClick={() => handleExportCsv('all')}
-            style={{
-              fontSize: 11,
-              padding: '4px 8px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              background: 'transparent',
-              border: '1px solid #0F172A',
-              color: '#0F172A',
-              fontWeight: 500,
-              whiteSpace: 'nowrap',
-            }}
-            title="Export owners across every county"
-          >
-            + All counties
-          </button>
-        </div>
+            moved to the in-map toggle panel (top-right of the map).
+            CSV export was also here; removed intentionally — leads
+            must stay on-platform (see PLATFORM-SERVICES-AGREEMENT.md
+            non-circumvention clause). */}
       </div>
 
       {toast && (
