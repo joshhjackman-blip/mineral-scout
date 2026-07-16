@@ -859,10 +859,21 @@ function SectionCard({ title, action, children }: { title: string; action?: Reac
 }
 
 function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
+  // Label on the left, value on the right, both on one line. The
+  // 160px label column is fixed so field names line up across rows,
+  // and the value cell truncates rather than wrapping — otherwise
+  // long mailing addresses would still push the value down onto a
+  // second line and defeat the whole one-line-per-field layout the
+  // Contact snapshot / Lease context cards were redesigned for.
   return (
-    <div className="grid grid-cols-[140px_1fr] items-baseline gap-3">
-      <div className="text-xs text-gray-500">{k}</div>
-      <div className={`text-sm text-gray-900 ${mono ? 'font-mono' : ''}`}>{v}</div>
+    <div className="grid grid-cols-[160px_1fr] items-baseline gap-3">
+      <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
+      <div
+        className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'font-mono' : ''}`}
+        title={typeof v === 'string' ? v : undefined}
+      >
+        {v}
+      </div>
     </div>
   )
 }
@@ -907,7 +918,12 @@ function OverviewPanel({
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      {/* Contact snapshot and Lease context stacked full-width instead
+          of side-by-side. Two half-width columns squeezed each field's
+          value column so tightly that long mailing addresses / legal
+          descriptions wrapped onto a second line under the label —
+          full-width lets each field sit on one line. */}
+      <div className="flex flex-col gap-4">
         <SectionCard title="Contact snapshot">
           <KVRow k="Owner name" v={owner.owner_name} mono />
           <KVRow
