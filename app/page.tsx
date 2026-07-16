@@ -518,7 +518,8 @@ export default function Home() {
   const [ownerSort, setOwnerSort] = useState<'score' | 'interest' | 'nra'>('score')
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Min score slider; state kept so downstream filters/exports stay wired.
   const [minScore, setMinScore] = useState(0)
-  const [showPermits, setShowPermits] = useState(false)
+  // showPermits/setShowPermits removed with the bottom-toolbar button;
+  // layer toggles now live inside Map.tsx (LayerTogglePanel).
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Tier chips; state kept so the owner-list filter default-passes until it's migrated to activityFilter.
   const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
@@ -3228,7 +3229,6 @@ export default function Home() {
               selectedCounty={selectedCounty}
               mapFlyToRef={mapFlyToRef}
               mapLevel={mapLevel}
-              showPermits={showPermits}
               focusTarget={selected}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
@@ -3450,22 +3450,8 @@ export default function Home() {
           </select>
         </div>
 
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Layers:</span>
-        <button
-          onClick={() => setShowPermits((prev) => !prev)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: showPermits ? '#2563eb' : '#6B7280',
-            cursor: 'pointer',
-            fontSize: 11,
-            fontFamily: 'Inter, sans-serif',
-            padding: 0,
-          }}
-        >
-          ● New permits
-        </button>
-
+        {/* Bottom-toolbar "New permits" button was here; layer visibility
+            moved to the in-map toggle panel (top-right of the map). */}
       </div>
 
       {toast && (

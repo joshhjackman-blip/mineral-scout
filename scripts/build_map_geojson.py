@@ -16,6 +16,7 @@ The full files are still served to the rest of the app.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 # Property keys that the map cares about. Anything not in this set is
@@ -34,6 +35,14 @@ KEEP_PROPS = {
     # actually render on the map.
     'Block', 'Surv_Name', 'Surv_Sect', 'DESC_',
     'LEVEL1_SUR', 'LEVEL2_BLO', 'LEVEL3_SUR', 'LEVEL4_SUR', 'TEXTSTRING',
+    # Precomputed per-tract legal description string, e.g.
+    #   "T1N BLK 35 SEC 36 A-1013"  (Howard / Martin T&P)
+    #   "COOK, W H A-160"           (Gonzales survey abstracts)
+    # Rendered on the map at high zoom by parcels-labels-{countyId}.
+    # Precomputed here (rather than in Mapbox expressions) because
+    # extracting the township from a mixed "31 T2N" block string needs
+    # regex, which is not expressible in the paint DSL.
+    'legal_desc',
     # Geometry helpers
     'SHAPE_AREA', 'STArea__',
     # Paint inputs: parcel-level well activity classification. `production_status`
@@ -50,6 +59,62 @@ KEEP_PROPS = {
     'first_date', 'production_trend', 'est_lease_expiration',
 }
 
+
+def _clean(value) -> str:
+    """Strip a value and return '' for None / literal 'None' / 'nan'."""
+    if value is None:
+        return ''
+    text = str(value).strip()
+    if text.lower() in {'none', 'nan', ''}:
+        return ''
+    return text
+
+
+def build_legal_desc(props: dict) -> str:
+    """Assemble a compact legal description string per tract.
+
+    Mirrors buildLegalDescription() in app/page.tsx so the map label and
+    the sidebar carry the same identifier. Handles both:
+
+    * **T&P-style counties** (Howard, Martin, most Permian counties)
+      where Block is "31 T2N" (Howard) or "35 T1N" (Martin), and each
+      section number is stored in Surv_Sect or LEVEL3_SUR. Emits e.g.
+      "T2N BLK 31 SEC 20 A-543".
+
+    * **Non-T&P counties** (Gonzales) where blocks aren't part of the
+      identifier — emits "COOK, W H A-160" instead.
+    """
+    abstract_l = _clean(props.get('ABSTRACT_L'))
+    if abstract_l and not abstract_l.upper().startswith('A-'):
+        abstract_l = f'A-{abstract_l}'
+
+    block_raw = _clean(props.get('Block') or props.get('BLOCK') or props.get('LEVEL2_BLO'))
+    section = _clean(props.get('Surv_Sect') or props.get('LEVEL3_SUR'))
+    survey = _clean(props.get('Surv_Name') or props.get('LEVEL1_SUR') or props.get('DESC_'))
+
+    # T&P coordinate parsing: "31 T2N" -> block="31", township="T2N".
+    township = ''
+    block_number = block_raw
+    match = re.search(r'(T\d+[NS])', block_raw.upper()) if block_raw else None
+    if match:
+        township = match.group(1)
+        block_number = re.sub(r'\s*T\d+[NS]\s*', '', block_raw, flags=re.IGNORECASE).strip()
+
+    if township:
+        parts = [township]
+        if block_number:
+            parts.append(f'BLK {block_number}')
+        if section:
+            parts.append(f'SEC {section}')
+        if abstract_l:
+            parts.append(abstract_l)
+        return ' '.join(parts)
+
+    # Fallback (Gonzales-style): survey name + abstract label.
+    if survey and abstract_l:
+        return f'{survey} {abstract_l}'
+    return abstract_l or survey
+
 INPUT_OUTPUT_PAIRS = [
     ('public/gonzales_parcels_enriched.geojson', 'public/gonzales_parcels_map.geojson'),
     ('public/howard_parcels_enriched.geojson',   'public/howard_parcels_map.geojson'),
@@ -60,6 +125,7 @@ INPUT_OUTPUT_PAIRS = [
 def slim_feature(feature: dict) -> dict:
     props = feature.get('properties') or {}
     slim_props = {k: props[k] for k in KEEP_PROPS if k in props}
+    slim_props['legal_desc'] = build_legal_desc(props)
     return {
         'type': 'Feature',
         'geometry': feature.get('geometry'),

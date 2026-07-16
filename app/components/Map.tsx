@@ -130,7 +130,6 @@ type CountyOverviewHandlers = {
 }
 
 export default function Map({
-  showPermits,
   onOwnerClick,
   focusTarget,
   selectedCounty,
@@ -139,7 +138,6 @@ export default function Map({
   onCountySelect,
   onCountySwitch,
 }: {
-  showPermits: boolean
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
   selectedCounty: CountyKey
@@ -148,6 +146,17 @@ export default function Map({
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
 }) {
+  // In-map layer toggles (see LayerTogglePanel at the bottom of the file).
+  //   showPDP           colored PDP parcel fills (yellow)
+  //   showPermits       approved drilling permits (blue dots)
+  //   showPrePermits    pending / filed permit applications (pale blue dots)
+  //   showRigs          wells currently drilling (red dots, sourced from
+  //                     permit_type='Drilling' rows the RRC scraper writes)
+  // Toggles are local state — no need to lift them into app/page.tsx.
+  const [showPDP, setShowPDP] = useState(true)
+  const [showPermits, setShowPermits] = useState(true)
+  const [showPrePermits, setShowPrePermits] = useState(true)
+  const [showRigs, setShowRigs] = useState(true)
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapReady, setMapReady] = useState(false)
@@ -262,21 +271,29 @@ export default function Map({
       tractClickHandlerRef.current = null
     }
 
-    if (permitHandlersRef.current.clickHandler) {
-      mapInstance.off('click', 'permits-layer', permitHandlersRef.current.clickHandler)
-    }
-    if (permitHandlersRef.current.mouseEnterHandler) {
-      mapInstance.off('mouseenter', 'permits-layer', permitHandlersRef.current.mouseEnterHandler)
-    }
-    if (permitHandlersRef.current.mouseLeaveHandler) {
-      mapInstance.off('mouseleave', 'permits-layer', permitHandlersRef.current.mouseLeaveHandler)
+    // Detach the click/hover listeners attached to any of the three
+    // per-category permit sub-layers. permitHandlersRef only preserves the
+    // last-attached bundle; the others get wiped when the map removes the
+    // source below, which detaches all listeners on those layer ids.
+    for (const layerId of ['permits-approved-layer', 'permits-pending-layer', 'permits-rigs-layer']) {
+      if (permitHandlersRef.current.clickHandler) {
+        mapInstance.off('click', layerId, permitHandlersRef.current.clickHandler)
+      }
+      if (permitHandlersRef.current.mouseEnterHandler) {
+        mapInstance.off('mouseenter', layerId, permitHandlersRef.current.mouseEnterHandler)
+      }
+      if (permitHandlersRef.current.mouseLeaveHandler) {
+        mapInstance.off('mouseleave', layerId, permitHandlersRef.current.mouseLeaveHandler)
+      }
     }
     permitHandlersRef.current = {}
     // Layers are about to be removed — invalidate the cached "last styled"
     // marker so the next applyTractCountyStyles re-applies the full pass.
     lastStyledSelectedCountyRef.current = null
 
-    removeLayerIfExists(mapInstance, 'permits-layer')
+    removeLayerIfExists(mapInstance, 'permits-approved-layer')
+    removeLayerIfExists(mapInstance, 'permits-pending-layer')
+    removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
 
     countyEntries.forEach(([, countyConfig]) => {
@@ -323,25 +340,29 @@ export default function Map({
   // consistent when both are shown.
   const PRODUCTION_STATUS_DOT = '#2563EB'
 
+  // PDP fill / opacity swap to the neutral gray when `showPDP` is off so
+  // the "PDP" layer toggle actually hides the yellow tint without dropping
+  // the outline or the parcel shape. PUD keeps its green fill regardless
+  // (few enough tracts that a dedicated toggle isn't worth the UI).
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
     () => [
       'match',
       ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            PRODUCTION_STATUS_FILL.pdp,
+      'pdp',            showPDP ? PRODUCTION_STATUS_FILL.pdp : PRODUCTION_STATUS_FILL.none,
       'pud',            PRODUCTION_STATUS_FILL.pud,
       'new_permit',     PRODUCTION_STATUS_FILL.new_permit,
       'pending_permit', PRODUCTION_STATUS_FILL.pending_permit,
       PRODUCTION_STATUS_FILL.none,
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [showPDP]
   )
 
   const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
     () => [
       'match',
       ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            0.78, // solid enough to read against Mapbox streets tan basemap
+      'pdp',            showPDP ? 0.78 : 0.18,
       'pud',            0.72,
       // Permit-only parcels stay near-transparent so the blue centroid dot
       // is the visual cue, not the fill.
@@ -349,7 +370,7 @@ export default function Map({
       'pending_permit', 0.14,
       0.18,
     ],
-    []
+    [showPDP]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
@@ -474,8 +495,9 @@ export default function Map({
         .not('longitude', 'is', null)
 
       if (permitsResult.error) {
-        // Table may not exist for this county (e.g. howard_permits).
-        // Fail soft: render an empty layer so nothing misleading shows up.
+        // Table may not exist for this county (some Permian counties before
+        // their migration lands). Fail soft: empty layers so nothing
+        // misleading renders.
         console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
       } else {
         permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
@@ -494,6 +516,25 @@ export default function Map({
         )
       })
 
+      // Categorize each row into one of three activity layers. The RRC
+      // scraper (scripts/scrape_rrc_permits.py) tags rows so this maps 1:1:
+      //   permit_type contains 'Drill' -> rig    (wells currently drilling
+      //                                            via SYMNUM=21 fallback)
+      //   status contains 'PEND'/'FILED' -> pre_permit (application filed)
+      //   everything else               -> permit (approved permit or
+      //                                            unknown status)
+      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+        const type = String(row.permit_type ?? '').toUpperCase()
+        const status = String(row.status ?? '').toUpperCase()
+        if (type.includes('DRILL') || type.includes('RIG') || status.includes('DRILL')) {
+          return 'rig'
+        }
+        if (status.includes('PEND') || status.includes('FILED') || status.includes('HELD')) {
+          return 'pre_permit'
+        }
+        return 'permit'
+      }
+
       permitsGeoJSON = {
         type: 'FeatureCollection',
         features: permits.map((permit) => ({
@@ -508,6 +549,7 @@ export default function Map({
             date: String(permit.filed_date ?? permit.approved_date ?? ''),
             type: String(permit.permit_type ?? ''),
             status: String(permit.status ?? ''),
+            category: categorize(permit),
           },
         })),
       }
@@ -518,56 +560,119 @@ export default function Map({
       if (countyKey !== selectedCountyRef.current || !map.current) return
     }
 
+    // Three sub-layers, each filtered on `category`. Adds up to a single
+    // toggleable set of activity dots without duplicating the source.
+    const PERMIT_LAYERS: Array<{
+      id: string
+      category: 'permit' | 'pre_permit' | 'rig'
+      color: string
+      strokeColor: string
+      radius: number
+      visible: boolean
+      popupTitle: string
+      popupColor: string
+    }> = [
+      {
+        id: 'permits-approved-layer',
+        category: 'permit',
+        color: '#2563EB',
+        strokeColor: '#ffffff',
+        radius: 7,
+        visible: showPermits,
+        popupTitle: 'Approved Permit',
+        popupColor: '#1d4ed8',
+      },
+      {
+        id: 'permits-pending-layer',
+        category: 'pre_permit',
+        color: '#93C5FD',
+        strokeColor: '#ffffff',
+        radius: 6,
+        visible: showPrePermits,
+        popupTitle: 'Pre-Permit / Filed',
+        popupColor: '#1e40af',
+      },
+      {
+        id: 'permits-rigs-layer',
+        category: 'rig',
+        color: '#DC2626',
+        strokeColor: '#ffffff',
+        radius: 7,
+        visible: showRigs,
+        popupTitle: 'Rig — Currently Drilling',
+        popupColor: '#991b1b',
+      },
+    ]
+
     if (!mapInstance.getSource('permits')) {
       mapInstance.addSource('permits', { type: 'geojson', data: permitsGeoJSON })
-      mapInstance.addLayer({
-        id: 'permits-layer',
-        type: 'circle',
-        source: 'permits',
-        layout: { visibility: showPermits ? 'visible' : 'none' },
-        paint: {
-          'circle-radius': 7,
-          'circle-color': '#2563eb',
-          'circle-opacity': 0.85,
-          'circle-stroke-width': 2.5,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-opacity': 1,
-        },
-      })
-
-      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
-        const props = event.features?.[0]?.properties
-        if (!props || !map.current) return
-        new mapboxgl.Popup({ closeButton: false, offset: 10 })
-          .setLngLat((event.features?.[0]?.geometry as GeoJSON.Point).coordinates as [number, number])
-          .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
-            <div style="font-weight:600;color:#1d4ed8">New Permit Filed</div>
-            <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
-            <div style="color:#6b7280">${props.operator ?? ''}</div>
-            <div style="color:#6b7280;font-size:11px">Filed: ${props.date ?? ''}</div>
-          </div>`)
-          .addTo(map.current)
-      }
-      const mouseEnterHandler = () => {
-        map.current?.getCanvas().style.setProperty('cursor', 'pointer')
-      }
-      const mouseLeaveHandler = () => {
-        if (map.current) map.current.getCanvas().style.cursor = ''
+      for (const layer of PERMIT_LAYERS) {
+        mapInstance.addLayer({
+          id: layer.id,
+          type: 'circle',
+          source: 'permits',
+          filter: ['==', ['get', 'category'], layer.category],
+          layout: { visibility: layer.visible ? 'visible' : 'none' },
+          paint: {
+            'circle-radius': layer.radius,
+            'circle-color': layer.color,
+            'circle-opacity': 0.85,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': layer.strokeColor,
+            'circle-stroke-opacity': 1,
+          },
+        })
       }
 
-      permitHandlersRef.current = { clickHandler, mouseEnterHandler, mouseLeaveHandler }
-      mapInstance.on('click', 'permits-layer', clickHandler)
-      mapInstance.on('mouseenter', 'permits-layer', mouseEnterHandler)
-      mapInstance.on('mouseleave', 'permits-layer', mouseLeaveHandler)
+      // One popup + cursor handler per sub-layer. The popup color +
+      // heading text swap depending on which layer was clicked so users
+      // see "Rig", "Pre-Permit", or "Approved Permit" correctly.
+      const handlerBundles: Array<{ layerId: string; handlers: PermitLayerHandlers }> = []
+      for (const layer of PERMIT_LAYERS) {
+        const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+          const feature = event.features?.[0]
+          const props = feature?.properties
+          if (!props || !map.current) return
+          new mapboxgl.Popup({ closeButton: false, offset: 10 })
+            .setLngLat((feature.geometry as GeoJSON.Point).coordinates as [number, number])
+            .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+              <div style="font-weight:600;color:${layer.popupColor}">${layer.popupTitle}</div>
+              <div style="font-weight:500;margin-top:2px">${props.lease ?? ''}</div>
+              <div style="color:#6b7280">${props.operator ?? ''}</div>
+              <div style="color:#6b7280;font-size:11px">${props.date ? `Filed: ${props.date}` : ''}</div>
+            </div>`)
+            .addTo(map.current)
+        }
+        const mouseEnterHandler = () => {
+          map.current?.getCanvas().style.setProperty('cursor', 'pointer')
+        }
+        const mouseLeaveHandler = () => {
+          if (map.current) map.current.getCanvas().style.cursor = ''
+        }
+        mapInstance.on('click', layer.id, clickHandler)
+        mapInstance.on('mouseenter', layer.id, mouseEnterHandler)
+        mapInstance.on('mouseleave', layer.id, mouseLeaveHandler)
+        handlerBundles.push({
+          layerId: layer.id,
+          handlers: { clickHandler, mouseEnterHandler, mouseLeaveHandler },
+        })
+      }
+      // Preserve first bundle's handlers on the ref for backwards-compat
+      // cleanup. All handlers get wiped when clearTractLayers removes
+      // the source anyway; we only need this ref for the click/hover
+      // detach path in clearTractLayers (see the loop that follows).
+      permitHandlersRef.current = handlerBundles[0]?.handlers ?? {}
     } else {
       const source = mapInstance.getSource('permits') as mapboxgl.GeoJSONSource
       source.setData(permitsGeoJSON)
     }
 
-    if (mapInstance.getLayer('permits-layer')) {
-      mapInstance.setLayoutProperty('permits-layer', 'visibility', showPermits ? 'visible' : 'none')
+    for (const layer of PERMIT_LAYERS) {
+      if (mapInstance.getLayer(layer.id)) {
+        mapInstance.setLayoutProperty(layer.id, 'visibility', layer.visible ? 'visible' : 'none')
+      }
     }
-  }, [showPermits])
+  }, [showPermits, showPrePermits, showRigs])
 
   const setupCountyOverview = useCallback(async () => {
     const mapInstance = map.current
@@ -778,9 +883,17 @@ export default function Map({
       })
 
       if (!map.current) return
-      // Parcel labels: survey/grantee name on line 1, abstract label on
-      // line 2, centered inside each tract. Fades in between zoom 9–10 and
-      // scales from 8px at z10 to 13px at z14.
+      // Parcel labels. Two zoom bands so the user always sees enough
+      // context to place themselves without cluttering low-zoom views:
+      //   z9–z11: just the abstract label (e.g. "A-543"). Small, dense.
+      //   z11+  : full legal description
+      //           ("T2N BLK 31 SEC 20 A-543" for T&P counties,
+      //            "COOK, W H A-160" for Gonzales-style abstracts),
+      //           precomputed per-tract by scripts/build_map_geojson.py
+      //           into the `legal_desc` prop.
+      // `text-field` switches on zoom via a step expression rather than
+      // adding a second layer — Mapbox handles the swap without needing
+      // us to manage two symbol layers' visibility.
       map.current.addLayer({
         id: labelsId,
         type: 'symbol',
@@ -788,44 +901,42 @@ export default function Map({
         minzoom: 9,
         layout: {
           'text-field': [
-            'format',
-            [
-              'coalesce',
-              ['get', 'Surv_Name'],
-              ['get', 'LEVEL1_SUR'],
-              ['get', 'DESC_'],
-              '',
-            ],
-            {},
-            '\n',
-            {},
+            'step',
+            ['zoom'],
             [
               'coalesce',
               ['get', 'ABSTRACT_L'],
               ['concat', 'A-', ['to-string', ['get', 'ABSTRACT_N']]],
               '',
             ],
-            {},
+            11,
+            [
+              'coalesce',
+              ['get', 'legal_desc'],
+              ['get', 'ABSTRACT_L'],
+              '',
+            ],
           ],
           'text-size': [
             'interpolate',
             ['linear'],
             ['zoom'],
-            10, 8,
+            10, 9,
+            12, 11,
             14, 13,
           ],
           'text-anchor': 'center',
           'text-justify': 'center',
-          'text-max-width': 8,
+          'text-max-width': 10,
           'text-allow-overlap': false,
           'text-ignore-placement': false,
           'symbol-placement': 'point',
         },
         paint: {
           'text-color': '#ffffff',
-          'text-halo-color': '#000000',
-          'text-halo-width': 1,
-          'text-halo-blur': 0.5,
+          'text-halo-color': '#0f172a',
+          'text-halo-width': 1.4,
+          'text-halo-blur': 0.6,
           'text-opacity': [
             'interpolate',
             ['linear'],
@@ -1105,13 +1216,31 @@ export default function Map({
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
+  // When the PDP toggle flips, applyTractCountyStyles's own optimization
+  // ("same county — nothing to repaint") would swallow the update. Force a
+  // repaint by invalidating the last-styled ref before the effect above
+  // re-fires (which happens automatically because applyTractCountyStyles
+  // is memoized on the fill/opacity expressions, which depend on showPDP).
+  useEffect(() => {
+    lastStyledSelectedCountyRef.current = null
+  }, [showPDP])
+
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (!map.current) return
-    if (map.current.getLayer('permits-layer')) {
-      map.current.setLayoutProperty('permits-layer', 'visibility', mapLevel === 'tract' && showPermits ? 'visible' : 'none')
+    const mapInstance = map.current
+    const tractLevel = mapLevel === 'tract'
+    const layerVis: Array<[string, boolean]> = [
+      ['permits-approved-layer',  tractLevel && showPermits],
+      ['permits-pending-layer',   tractLevel && showPrePermits],
+      ['permits-rigs-layer',      tractLevel && showRigs],
+    ]
+    for (const [layerId, visible] of layerVis) {
+      if (mapInstance.getLayer(layerId)) {
+        mapInstance.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none')
+      }
     }
-  }, [mapLevel, showPermits])
+  }, [mapLevel, showPermits, showPrePermits, showRigs])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -1144,104 +1273,137 @@ export default function Map({
         />
       )}
       {mapReady && mapLevel === 'tract' && (
-        <ProductionStatusLegend
-          fill={PRODUCTION_STATUS_FILL}
-          dot={PRODUCTION_STATUS_DOT}
+        <LayerTogglePanel
+          pdpVisible={showPDP}
+          onPDP={setShowPDP}
+          permitsVisible={showPermits}
+          onPermits={setShowPermits}
+          prePermitsVisible={showPrePermits}
+          onPrePermits={setShowPrePermits}
+          rigsVisible={showRigs}
+          onRigs={setShowRigs}
+          pdpFill={PRODUCTION_STATUS_FILL.pdp}
         />
       )}
     </div>
   )
 }
 
-// Legend entry styles diverge because PDP / PUD render as filled polygons
-// while permit-only parcels render as a blue centroid dot. `swatch: 'fill'`
-// draws a colored square; `swatch: 'dot'` draws a blue bullet in place of
-// the square so what you see in the legend matches what you see on the map.
-type LegendEntry = {
-  key: 'pdp' | 'pud' | 'new_permit' | 'pending_permit'
-  label: string
-  swatch: 'fill' | 'dot'
-  opacity?: number
-}
-
-function ProductionStatusLegend({
-  fill,
-  dot,
+// In-map layer control. Fixed to the top-right of the map viewport. Each
+// row is a checkbox + color swatch + label so the user can read the
+// palette and toggle any layer independently.
+function LayerTogglePanel({
+  pdpVisible, onPDP,
+  permitsVisible, onPermits,
+  prePermitsVisible, onPrePermits,
+  rigsVisible, onRigs,
+  pdpFill,
 }: {
-  fill: Record<string, string>
-  dot: string
+  pdpVisible: boolean
+  onPDP: (v: boolean) => void
+  permitsVisible: boolean
+  onPermits: (v: boolean) => void
+  prePermitsVisible: boolean
+  onPrePermits: (v: boolean) => void
+  rigsVisible: boolean
+  onRigs: (v: boolean) => void
+  pdpFill: string
 }) {
-  const items: LegendEntry[] = [
-    { key: 'pdp',            label: 'PDP',            swatch: 'fill' },
-    { key: 'pud',            label: 'PUD',            swatch: 'fill' },
-    { key: 'new_permit',     label: 'New Permit',     swatch: 'dot' },
-    { key: 'pending_permit', label: 'Pending Permit', swatch: 'dot', opacity: 0.8 },
+  const rows: Array<{
+    label: string
+    swatch: 'fill' | 'dot'
+    color: string
+    checked: boolean
+    onChange: (v: boolean) => void
+  }> = [
+    { label: 'PDP',         swatch: 'fill', color: pdpFill,   checked: pdpVisible,       onChange: onPDP },
+    { label: 'Permits',     swatch: 'dot',  color: '#2563EB', checked: permitsVisible,   onChange: onPermits },
+    { label: 'Pre-permits', swatch: 'dot',  color: '#93C5FD', checked: prePermitsVisible, onChange: onPrePermits },
+    { label: 'Rigs',        swatch: 'dot',  color: '#DC2626', checked: rigsVisible,      onChange: onRigs },
   ]
   return (
     <div
       style={{
         position: 'absolute',
-        left: 12,
-        bottom: 12,
-        background: 'rgba(255,255,255,0.96)',
+        right: 12,
+        top: 12,
+        background: 'rgba(255,255,255,0.97)',
         border: '1px solid #E5E7EB',
         borderRadius: 8,
         padding: '10px 12px',
-        boxShadow: '0 2px 8px rgba(15,23,42,0.08)',
+        boxShadow: '0 4px 16px rgba(15,23,42,0.10)',
         fontFamily: 'Inter, system-ui, sans-serif',
-        fontSize: 11,
+        fontSize: 12,
         color: '#0F172A',
         zIndex: 5,
-        pointerEvents: 'none',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
-        minWidth: 150,
+        minWidth: 168,
       }}
     >
-      <div style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569', fontSize: 10 }}>
-        Well Activity
+      <div style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569', fontSize: 10, marginBottom: 2 }}>
+        Layers
       </div>
-      {items.map((item) => (
-        <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {item.swatch === 'fill' ? (
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: 2,
-                background: fill[item.key],
-                border: '1px solid rgba(15,23,42,0.25)',
-                flexShrink: 0,
-              }}
-            />
-          ) : (
-            <span
-              style={{
-                width: 12,
-                height: 12,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
+      {rows.map((row) => (
+        <label
+          key={row.label}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            cursor: 'pointer',
+            userSelect: 'none',
+            fontSize: 12.5,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={row.checked}
+            onChange={(e) => row.onChange(e.target.checked)}
+            style={{ margin: 0, accentColor: row.color, cursor: 'pointer', width: 14, height: 14 }}
+          />
+          <span
+            style={{
+              width: 14,
+              height: 14,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {row.swatch === 'fill' ? (
               <span
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: dot,
-                  border: '1px solid rgba(255,255,255,0.9)',
-                  boxShadow: '0 0 0 1px rgba(15,23,42,0.25)',
-                  opacity: item.opacity ?? 1,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 2,
+                  background: row.color,
+                  border: '1px solid rgba(15,23,42,0.25)',
+                  opacity: row.checked ? 1 : 0.35,
                 }}
               />
-            </span>
-          )}
-          <span>{item.label}</span>
-        </div>
+            ) : (
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  background: row.color,
+                  border: '1.5px solid #ffffff',
+                  boxShadow: '0 0 0 1px rgba(15,23,42,0.35)',
+                  opacity: row.checked ? 1 : 0.35,
+                }}
+              />
+            )}
+          </span>
+          <span style={{ color: row.checked ? '#0F172A' : '#94A3B8' }}>{row.label}</span>
+        </label>
       ))}
     </div>
   )
 }
+
+// (ProductionStatusLegend removed — its role has been merged into
+// LayerTogglePanel above so the swatches double as toggle controls.)
