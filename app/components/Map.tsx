@@ -291,50 +291,79 @@ export default function Map({
     currentParcelsByCountyRef.current = {}
   }, [countyEntries])
 
+  // Parcels are now colored by well-activity classification rather than by
+  // owner propensity score. The property `production_status` is written per
+  // tract by scripts/add_production_status.py:
+  //   pdp             — tract has ≥1 drilled + completed well (bottom-hole)
+  //   pud             — tract has wells but none with a bottom-hole record
+  //   new_permit      — no wells; approved permit in <county>_permits
+  //   pending_permit  — no wells; pending permit
+  //   none            — no wells and no permits
+  const PRODUCTION_STATUS_FILL: Record<string, string> = {
+    pdp:            '#166534', // deep green  — drilled + producing
+    pud:            '#F59E0B', // amber        — proved undeveloped
+    new_permit:     '#2563EB', // blue         — approved permit
+    pending_permit: '#93C5FD', // pale blue    — pending permit
+    none:           '#E5E7EB', // neutral gray — no activity
+  }
+  const PRODUCTION_STATUS_OUTLINE: Record<string, string> = {
+    pdp:            '#14532D',
+    pud:            '#B45309',
+    new_permit:     '#1D4ED8',
+    pending_permit: '#3B82F6',
+    none:           '#CBD5E1',
+  }
+
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
     () => [
-      'step',
-      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-      '#9E9E9E',
-      2, '#81C784',
-      5, '#FF9800',
-      8, '#F44336',
-      10, '#B71C1C',
+      'match',
+      ['coalesce', ['get', 'production_status'], 'none'],
+      'pdp',            PRODUCTION_STATUS_FILL.pdp,
+      'pud',            PRODUCTION_STATUS_FILL.pud,
+      'new_permit',     PRODUCTION_STATUS_FILL.new_permit,
+      'pending_permit', PRODUCTION_STATUS_FILL.pending_permit,
+      PRODUCTION_STATUS_FILL.none,
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   )
 
   const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
     () => [
-      'step',
-      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-      0.3,
-      2, 0.45,
-      5, 0.7,
-      8, 0.88,
-      10, 1.0,
+      'match',
+      ['coalesce', ['get', 'production_status'], 'none'],
+      'pdp',            0.72,
+      'pud',            0.65,
+      'new_permit',     0.55,
+      'pending_permit', 0.45,
+      0.28,
     ],
     []
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
     () => [
-      'step',
-      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-      '#2d6a2d',
-      5, '#FFC107',
-      8, '#F44336',
+      'match',
+      ['coalesce', ['get', 'production_status'], 'none'],
+      'pdp',            PRODUCTION_STATUS_OUTLINE.pdp,
+      'pud',            PRODUCTION_STATUS_OUTLINE.pud,
+      'new_permit',     PRODUCTION_STATUS_OUTLINE.new_permit,
+      'pending_permit', PRODUCTION_STATUS_OUTLINE.pending_permit,
+      PRODUCTION_STATUS_OUTLINE.none,
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   )
 
   const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
     () => [
-      'step',
-      ['to-number', ['coalesce', ['get', 'max_propensity_score'], 0]],
-      1.1,
-      6, 1.6,
-      8, 2.2,
+      'match',
+      ['coalesce', ['get', 'production_status'], 'none'],
+      'pdp',            1.8,
+      'pud',            1.6,
+      'new_permit',     1.4,
+      'pending_permit', 1.2,
+      0.9,
     ],
     []
   )
@@ -1049,6 +1078,62 @@ export default function Map({
           geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
         />
       )}
+      {mapReady && mapLevel === 'tract' && (
+        <ProductionStatusLegend
+          fill={PRODUCTION_STATUS_FILL}
+        />
+      )}
+    </div>
+  )
+}
+
+function ProductionStatusLegend({ fill }: { fill: Record<string, string> }) {
+  const items: Array<[keyof typeof fill & string, string]> = [
+    ['pdp',            'PDP'],
+    ['pud',            'PUD'],
+    ['new_permit',     'New Permit'],
+    ['pending_permit', 'Pending Permit'],
+  ]
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 12,
+        bottom: 12,
+        background: 'rgba(255,255,255,0.96)',
+        border: '1px solid #E5E7EB',
+        borderRadius: 8,
+        padding: '10px 12px',
+        boxShadow: '0 2px 8px rgba(15,23,42,0.08)',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: 11,
+        color: '#0F172A',
+        zIndex: 5,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        minWidth: 140,
+      }}
+    >
+      <div style={{ fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase', color: '#475569', fontSize: 10 }}>
+        Well Activity
+      </div>
+      {items.map(([key, label]) => (
+        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 2,
+              background: fill[key],
+              border: '1px solid rgba(15,23,42,0.15)',
+              flexShrink: 0,
+            }}
+          />
+          <span>{label}</span>
+        </div>
+      ))}
     </div>
   )
 }

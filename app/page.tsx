@@ -77,6 +77,8 @@ type TractSelection = {
   geometry?: GeoJSON.Geometry
 }
 
+type ProductionStatus = 'pdp' | 'pud' | 'new_permit' | 'pending_permit' | 'none'
+
 type TractRecord = {
   abstract_label: string
   level1_sur: string
@@ -95,6 +97,13 @@ type TractRecord = {
   first_60_month_oil?: number
   horizontal_well_count?: number
   vertical_well_count?: number
+  // Written by scripts/add_production_status.py into the slim map GeoJSON.
+  // Drives the sidebar activity badges and the top-tracts sort order.
+  production_status?: ProductionStatus
+  well_count?: number
+  pdp_well_count?: number
+  pud_well_count?: number
+  permit_count?: number
   SHAPE_AREA?: number
   surv_name?: string
   block?: string
@@ -154,8 +163,80 @@ const COUNTY_ORDER: CountyKey[] = Object.keys(COUNTIES) as CountyKey[]
 const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
 const TEXAS_OVERVIEW_ZOOM = 5.5
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- still referenced by owner-row badges elsewhere in this file; kept until the full score-removal follow-up.
 const scoreBadgeColor = (score: number) =>
   score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : '#FFC107'
+
+// Palette mirrors PRODUCTION_STATUS_FILL in app/components/Map.tsx so the
+// sidebar tract badge visually matches the parcel color on the map.
+const PRODUCTION_STATUS_LABEL: Record<string, string> = {
+  pdp: 'PDP',
+  pud: 'PUD',
+  new_permit: 'New Permit',
+  pending_permit: 'Pending Permit',
+  none: 'No activity',
+}
+const PRODUCTION_STATUS_COLOR: Record<string, { fg: string; bg: string; border: string }> = {
+  pdp:            { fg: '#14532D', bg: '#DCFCE7', border: '#166534' },
+  pud:            { fg: '#92400E', bg: '#FEF3C7', border: '#F59E0B' },
+  new_permit:     { fg: '#1D4ED8', bg: '#DBEAFE', border: '#2563EB' },
+  pending_permit: { fg: '#1E40AF', bg: '#EFF6FF', border: '#93C5FD' },
+  none:           { fg: '#6B7280', bg: '#F3F4F6', border: '#E5E7EB' },
+}
+
+function TractActivityBadge({
+  tract,
+}: {
+  tract: {
+    production_status?: string
+    well_count?: number
+    pdp_well_count?: number
+    pud_well_count?: number
+    permit_count?: number
+  }
+}) {
+  const status = (tract.production_status ?? 'none') as keyof typeof PRODUCTION_STATUS_COLOR
+  const swatch = PRODUCTION_STATUS_COLOR[status] ?? PRODUCTION_STATUS_COLOR.none
+  const label = PRODUCTION_STATUS_LABEL[status] ?? 'No activity'
+  const wells = Number(tract.well_count ?? 0)
+  const permits = Number(tract.permit_count ?? 0)
+  const detail = wells > 0
+    ? `${wells} well${wells === 1 ? '' : 's'}`
+    : permits > 0
+      ? `${permits} permit${permits === 1 ? '' : 's'}`
+      : null
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+        gap: 2,
+      }}
+    >
+      <span
+        style={{
+          background: swatch.bg,
+          border: `1px solid ${swatch.border}`,
+          borderRadius: 999,
+          padding: '2px 8px',
+          color: swatch.fg,
+          fontFamily: 'Inter, sans-serif',
+          fontSize: 11,
+          fontWeight: 600,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label}
+      </span>
+      {detail && (
+        <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'Inter, sans-serif' }}>
+          {detail}
+        </span>
+      )}
+    </div>
+  )
+}
 
 // Build the compact survey/legal description string used under each lead's
 // name for Howard / Martin (T&P RR coordinate system).
@@ -368,10 +449,17 @@ export default function Home() {
   const [largeInterestOnly, setLargeInterestOnly] = useState(false)
   const [minNRA, setMinNRA] = useState<number>(0)
   const [ownerSort, setOwnerSort] = useState<'score' | 'interest' | 'nra'>('score')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Min score slider; state kept so downstream filters/exports stay wired.
   const [minScore, setMinScore] = useState(0)
   const [showPermits, setShowPermits] = useState(false)
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- setter removed with the Tier chips; state kept so the owner-list filter default-passes until it's migrated to activityFilter.
   const [tierFilter, setTierFilter] = useState<'all' | 'hot' | 'motivated' | 'prospect' | 'low'>('all')
+  // Well-activity chip filter that replaced the score-based tier chips in
+  // the bottom toolbar. Currently only recolors its own chip; the toolbar
+  // comment near ActivityChip explains why it's not yet wired into Map.tsx
+  // as a layer filter.
+  const [activityFilter, setActivityFilter] = useState<'all' | 'pdp' | 'pud' | 'new_permit' | 'pending_permit'>('all')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
@@ -426,9 +514,9 @@ export default function Home() {
       }, 0)
     return [
       { val: sumStat('Total owners').toLocaleString(), lbl: 'Total owners' },
-      { val: sumStat('Hot (8-10)').toLocaleString(), lbl: 'Hot (8-10)' },
-      { val: sumStat('Motivated (5-7)').toLocaleString(), lbl: 'Motivated (5-7)' },
-      { val: sumStat('Prospect (2-4)').toLocaleString(), lbl: 'Prospect (2-4)' },
+      { val: sumStat('PDP tracts').toLocaleString(), lbl: 'PDP tracts' },
+      { val: sumStat('PUD tracts').toLocaleString(), lbl: 'PUD tracts' },
+      { val: sumStat('New permits').toLocaleString(), lbl: 'New permits' },
       { val: sumStat('Survey abstracts').toLocaleString(), lbl: 'Survey abstracts' },
       { val: sumStat('Active wells').toLocaleString(), lbl: 'Active wells' },
     ]
@@ -1125,6 +1213,15 @@ export default function Home() {
               first_60_month_oil: toNumber(props.first_60_month_oil),
               horizontal_well_count: toNumber(props.horizontal_well_count),
               vertical_well_count: toNumber(props.vertical_well_count),
+              production_status: (
+                ['pdp', 'pud', 'new_permit', 'pending_permit', 'none'].includes(String(props.production_status))
+                  ? props.production_status
+                  : 'none'
+              ) as ProductionStatus,
+              well_count: toNumber(props.well_count),
+              pdp_well_count: toNumber(props.pdp_well_count),
+              pud_well_count: toNumber(props.pud_well_count),
+              permit_count: toNumber(props.permit_count),
               SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area ?? props.STArea__),
               surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? props.DESC_ ?? ''),
               block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
@@ -1341,16 +1438,32 @@ export default function Home() {
     })
   }
 
+  // Rank order once the score-based sort was removed:
+  //   1. PDP wells drilled (drilled + completed activity)
+  //   2. PUD wells (permitted but not yet drilled)
+  //   3. Total permits (approved + pending)
+  //   4. Owner count as final tiebreaker so a tract with more mineral
+  //      leads still floats up when well activity is identical.
+  const PRODUCTION_STATUS_RANK: Record<ProductionStatus, number> = {
+    pdp: 4, pud: 3, new_permit: 2, pending_permit: 1, none: 0,
+  }
   const topTracts = useMemo(
     () =>
       [...tracts]
         .sort((a, b) => {
-          if (b.max_propensity_score !== a.max_propensity_score) {
-            return b.max_propensity_score - a.max_propensity_score
-          }
+          const rankA = PRODUCTION_STATUS_RANK[(a.production_status ?? 'none') as ProductionStatus] ?? 0
+          const rankB = PRODUCTION_STATUS_RANK[(b.production_status ?? 'none') as ProductionStatus] ?? 0
+          if (rankB !== rankA) return rankB - rankA
+          const pdpA = Number(a.pdp_well_count ?? 0)
+          const pdpB = Number(b.pdp_well_count ?? 0)
+          if (pdpB !== pdpA) return pdpB - pdpA
+          const wellsA = Number(a.well_count ?? 0)
+          const wellsB = Number(b.well_count ?? 0)
+          if (wellsB !== wellsA) return wellsB - wellsA
           return b.owner_count - a.owner_count
         })
         .slice(0, 10),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [tracts]
   )
 
@@ -2726,7 +2839,7 @@ export default function Home() {
               {mapLevel === 'tract' && (
               <>
               <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Inter, sans-serif' }}>
-                TOP 10 HOTTEST TRACTS
+                TOP 10 MOST ACTIVE TRACTS
               </div>
               <div
                 style={{
@@ -2747,7 +2860,8 @@ export default function Home() {
                       trackEvent('tract_clicked', {
                         abstract: tract.abstract_label,
                         owner_count: tract.owner_count,
-                        max_score: tract.max_propensity_score,
+                        production_status: tract.production_status ?? 'none',
+                        well_count: tract.well_count ?? 0,
                       })
                     }}
                     style={{
@@ -2778,20 +2892,7 @@ export default function Home() {
                           {tract.owner_count} owners · {tract.top_operator}
                         </div>
                       </div>
-                      <div
-                        style={{
-                          background: '#F3F4F6',
-                          border: '1px solid #E5E7EB',
-                          borderRadius: 999,
-                          padding: '2px 8px',
-                          color: scoreBadgeColor(tract.max_propensity_score),
-                          fontFamily: 'Inter, sans-serif',
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {tract.max_propensity_score}/10
-                      </div>
+                      <TractActivityBadge tract={tract} />
                     </div>
                   </div>
                 ))}
@@ -3088,40 +3189,37 @@ export default function Home() {
             </button>
           ))}
         </div>
+        {/* Well activity chips replace the old propensity-score tier filter.
+            Coloring on the map is driven by parcel-level production_status
+            (see Map.tsx). These chips just recolor the toolbar label — the
+            score-based `tierFilter` / `minScore` state variables are still
+            defined (and default to no-op values) because a few less-visible
+            code paths in this file still read them; they'll disappear in a
+            follow-up sweep once every downstream reference is migrated. */}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
-          <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Tier:</span>
-          {(['all', 'hot', 'motivated', 'prospect', 'low'] as const).map(tier => {
-            const colors: Record<string, string> = {
-              hot: '#F44336', motivated: '#FF9800', prospect: '#81C784', low: '#9E9E9E', all: '#EF9F27'
-            }
-            return (
-              <button
-                key={tier}
-                onClick={() => setTierFilter(tier)}
-                style={{
-                  fontSize: 10, padding: '3px 10px', borderRadius: 10, cursor: 'pointer',
-                  fontFamily: 'monospace',
-                  background: tierFilter === tier ? `${colors[tier]}20` : 'transparent',
-                  border: tierFilter === tier ? `0.5px solid ${colors[tier]}` : '0.5px solid #E5E7EB',
-                  color: tierFilter === tier ? colors[tier] : '#6B7280',
-                }}
-              >
-                {tier === 'all' ? 'All' : tier.charAt(0).toUpperCase() + tier.slice(1)}
-              </button>
-            )
-          })}
+          <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Activity:</span>
+          {([
+            { key: 'all',            label: 'All',    color: '#0F172A' },
+            { key: 'pdp',            label: 'PDP',    color: '#166534' },
+            { key: 'pud',            label: 'PUD',    color: '#F59E0B' },
+            { key: 'new_permit',     label: 'New',    color: '#2563EB' },
+            { key: 'pending_permit', label: 'Pending', color: '#93C5FD' },
+          ] as const).map((chip) => (
+            <button
+              key={chip.key}
+              onClick={() => setActivityFilter(chip.key)}
+              style={{
+                fontSize: 10, padding: '3px 10px', borderRadius: 10, cursor: 'pointer',
+                fontFamily: 'monospace',
+                background: activityFilter === chip.key ? `${chip.color}20` : 'transparent',
+                border: activityFilter === chip.key ? `0.5px solid ${chip.color}` : '0.5px solid #E5E7EB',
+                color: activityFilter === chip.key ? chip.color : '#6B7280',
+              }}
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
-
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Inter, sans-serif' }}>Min score</span>
-        <input
-          type="range"
-          min={0}
-          max={10}
-          value={minScore}
-          onChange={(event) => setMinScore(Number(event.target.value))}
-          style={{ width: 160, accentColor: '#EF9F27' }}
-        />
-        <span style={{ fontFamily: 'Inter, sans-serif', color: '#EF9F27', fontWeight: 600 }}>{minScore}</span>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 11, color: '#6B7280' }}>Min NRA:</span>
