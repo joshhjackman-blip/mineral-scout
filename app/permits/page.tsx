@@ -64,7 +64,7 @@ type OwnerRow = {
   email?: string | null
 }
 
-type WindowChoice = 7 | 14 | 30
+type WindowChoice = 7 | 30 | 90 | 365
 
 // Every county the permits page pulls from. Kept in sync with the
 // daily RRC scraper's default county list. Counties whose _permits
@@ -265,7 +265,11 @@ async function loadCachedContacts(
 export default function PermitsPage() {
   const [permits, setPermits] = useState<EnrichedPermit[]>([])
   const [loading, setLoading] = useState(true)
-  const [windowDays, setWindowDays] = useState<WindowChoice>(7)
+  // Default window: last 90 days. RRC's public bulk permit exports
+  // (EWA snapshots) usually lag the current date by 4-12 weeks — a
+  // 7-day window would show zero permits until we upgrade to a paid
+  // real-time feed. Brokers still get plenty of leads at 90 days.
+  const [windowDays, setWindowDays] = useState<WindowChoice>(90)
   const [statusFilter, setStatusFilter] = useState<'all' | PermitStatus>('all')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [ownersByPermit, setOwnersByPermit] = useState<Record<string, OwnerRow[]>>({})
@@ -422,7 +426,7 @@ export default function PermitsPage() {
             color: '#111827',
             marginBottom: 6,
           }}>
-            Permits filed in the last {windowDays} days
+            Permits — last {windowDays >= 365 ? 'year' : `${windowDays} days`}
           </h1>
           <p style={{
             fontFamily: 'Inter, sans-serif',
@@ -442,7 +446,12 @@ export default function PermitsPage() {
             <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Inter, sans-serif', marginRight: 4 }}>
               Window:
             </span>
-            {([7, 14, 30] as WindowChoice[]).map((d) => (
+            {([
+              { d: 7   as WindowChoice, label: '7 days' },
+              { d: 30  as WindowChoice, label: '30 days' },
+              { d: 90  as WindowChoice, label: '90 days' },
+              { d: 365 as WindowChoice, label: '1 year' },
+            ]).map(({ d, label }) => (
               <button
                 key={d}
                 onClick={() => setWindowDays(d)}
@@ -458,7 +467,7 @@ export default function PermitsPage() {
                   fontWeight: windowDays === d ? 600 : 400,
                 }}
               >
-                {d} days
+                {label}
               </button>
             ))}
           </div>

@@ -1,70 +1,63 @@
 #!/usr/bin/env python3
-"""Scrape the RRC public Drilling Permit Query for a given county and
-upsert new / changed permits into ``<county>_permits``.
+"""Rebuild ``<county>_permits`` from the two RRC data sources we can
+reliably reach in an automated pipeline:
 
-Designed to run daily on a cron so the Mapbox "New Permits" dropdown +
-the parcels ``production_status`` classifier always reflect the last
-few days of RRC filings.
+1. **RRC well surface shapefile** (``well{FIPS}.zip`` in the Raw-Data
+   bucket) — every well/permit currently on file, with a SYMNUM code
+   telling us whether the row is a permit (SYMNUM 1/11/21/87/116) or
+   an already-producing well. The shapefile carries clean lat/lon
+   (LAT83/LONG83) and API numbers.
 
-Data source
------------
-The public query at
-``https://webapps.rrc.texas.gov/DP/publicSearchAction.do`` accepts a
-county code and returns an HTML table of permits filed within the last
-N days. This scraper parses the table and normalizes each row into the
-same schema ``scripts/load_county_permits.py`` writes:
+2. **RRC Enhanced Well Attributes (EWA) CSV** — a bulk export the
+   RRC publishes at intervals (currently
+   ``OG_WELLBORE_EWA_Report_2026-03-03.csv`` in Raw-Data). Provides
+   operator name, lease name, permit-approved date, spud date, and
+   first-completion month per API. Refresh by dropping a newer
+   ``OG_WELLBORE_EWA_Report_<date>.csv`` into the bucket.
 
+Previously this script tried to POST the RRC public drilling-permit
+form and parse the HTML table it returned. That endpoint moved
+behind ``webapps.rrc.texas.gov/security`` in mid-2025 and now
+redirects to a login page, so the HTML scrape silently produced
+nothing and downstream loaders wrote garbage rows. The old fixed-
+width column-drift is why gonzales_permits ended up with
+lat=2603032026 and status='0' — that path is gone.
+
+Result per row:
     permit_number, api_number, operator_name, lease_name, county_code,
-    latitude, longitude, permit_type, status, filed_date, approved_date
-
-If the HTML endpoint is unreachable or its markup shifts (RRC has
-historically rewritten the page every few years) the scraper falls
-back to ``--from-wells-zip`` mode — same as ``load_county_permits.py``
-— so daily runs never fail silently: SYMNUM-derived permit rows land
-in the table even if the HTML feed is broken.
-
-Latitude / longitude
---------------------
-The RRC permit HTML doesn't publish lat/lon directly. When the row
-carries an API number, we look the point up in the county's already-
-downloaded well surface shapefile (Raw-Data/well{FIPS}.zip). Rows with
-no API stay lat/lon-null; they still count towards ``<county>_permits``
-so the county-level dropdown lists them, but they won't survive the
-tract point-in-polygon filter.
+    latitude, longitude, permit_type, status, filed_date, approved_date,
+    spud_date, completion_date
 
 Usage
 -----
 ::
 
-    # Scrape a single county and upsert to Supabase
+    # One county
     python3 scripts/scrape_rrc_permits.py --county howard
 
-    # Multiple counties in one run (used by the daily GH Actions cron)
+    # Comma-separated
     python3 scripts/scrape_rrc_permits.py --county howard,martin,gonzales
 
-    # Widen the lookback window (default: 30 days). The RRC search
-    # endpoint caps at ~90 days.
-    python3 scripts/scrape_rrc_permits.py --county howard --days 60
+    # Wipe existing rows first (safe cleanup for the pre-fix garbage
+    # in gonzales_permits). Default is to upsert on api_number so
+    # repeated runs stay idempotent.
+    python3 scripts/scrape_rrc_permits.py --county gonzales --wipe
 
-    # Dry-run: print what would be inserted / updated, but don't write.
+    # Print what would be inserted, don't touch Supabase.
     python3 scripts/scrape_rrc_permits.py --county howard --dry-run
-
-    # Force the wells-zip fallback (skips the HTML fetch entirely).
-    python3 scripts/scrape_rrc_permits.py --county howard --wells-only
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
-import html
 import io
 import math
 import os
 import re
 import sys
 import tempfile
-import time
 import zipfile
 from pathlib import Path
 from typing import Any, Iterable
@@ -73,15 +66,15 @@ from supabase import Client, create_client
 
 BUCKET_NAME = "Raw-Data"
 BATCH_SIZE = 500
+DEFAULT_EWA_KEY = "OG_WELLBORE_EWA_Report_2026-03-03.csv"
+
+# CSV files in EWA can have very long fields (dispatch notes, remarks).
+csv.field_size_limit(5_000_000)
 
 COUNTY_FIPS = {
-    "gonzales": "177",
-    "howard":   "227",
-    "martin":   "317",
-    # 10 new Permian counties from the earlier tasks; the migration in PR #25
-    # only creates howard_permits / martin_permits so far, but plumbing the
-    # scraper for the other counties now avoids another round-trip once
-    # their <county>_permits tables land.
+    "gonzales":  "177",
+    "howard":    "227",
+    "martin":    "317",
     "midland":   "329",
     "glasscock": "173",
     "upton":     "461",
@@ -94,10 +87,26 @@ COUNTY_FIPS = {
     "reeves":    "389",
 }
 
-RRC_SEARCH_URL = "https://webapps.rrc.texas.gov/DP/publicSearchAction.do"
+# EWA rows carry the county name in col[3], uppercased.
+COUNTY_NAME_UPPER = {
+    "gonzales":  "GONZALES",
+    "howard":    "HOWARD",
+    "martin":    "MARTIN",
+    "midland":   "MIDLAND",
+    "glasscock": "GLASSCOCK",
+    "upton":     "UPTON",
+    "reagan":    "REAGAN",
+    "crane":     "CRANE",
+    "pecos":     "PECOS",
+    "ward":      "WARD",
+    "winkler":   "WINKLER",
+    "loving":    "LOVING",
+    "reeves":    "REEVES",
+}
 
-# Same SYMNUM -> (status, permit_type) mapping the loader uses so both
-# ingestion paths produce consistent rows.
+# RRC well shapefile SYMNUM codes we treat as "permit" (i.e. not a
+# producing well). Same mapping the old scraper and load_county_permits
+# used, kept for wire-compat with historical rows.
 WELLS_SYMNUM_PERMIT = {
     1:   ("APPROVED", "Permit — location"),
     11:  ("APPROVED", "Permit — dry hole location"),
@@ -117,14 +126,30 @@ def parse_args() -> argparse.Namespace:
         help="County id (e.g. howard) or a comma-separated list "
              "(howard,martin,gonzales) — one Supabase upsert per county.",
     )
-    parser.add_argument("--days", type=int, default=30,
-                        help="Lookback window for the RRC HTML query.")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--wells-only", action="store_true",
-                        help="Skip the HTML fetch and go straight to the "
-                             "wellNNN.zip SYMNUM fallback.")
+    parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="Wipe the county's <county>_permits table before inserting. "
+             "Use this once to clean out the pre-fix garbage; steady-state "
+             "runs should upsert on api_number instead.",
+    )
     parser.add_argument("--data-dir", default="data")
-    parser.add_argument("--timeout", type=int, default=45)
+    parser.add_argument("--ewa-key", default=DEFAULT_EWA_KEY,
+                        help="Object key in Raw-Data for the EWA CSV export.")
+    parser.add_argument(
+        "--skip-ewa",
+        action="store_true",
+        help="Skip the EWA enrichment pass — permits will still be "
+             "inserted from the wells-zip but operator/lease/dates will "
+             "be null. Useful for a quick smoke test.",
+    )
+    parser.add_argument(
+        "--wells-only",
+        action="store_true",
+        help="Alias for --skip-ewa, kept for backwards-compatibility "
+             "with the GitHub Actions cron.",
+    )
     return parser.parse_args()
 
 
@@ -151,7 +176,7 @@ def normalize_api(value: Any) -> str | None:
 def clean_text(value: Any) -> str | None:
     if value is None:
         return None
-    text = html.unescape(str(value)).strip()
+    text = str(value).strip().strip('"')
     text = re.sub(r"\s+", " ", text)
     return text or None
 
@@ -168,188 +193,32 @@ def to_number(value: Any) -> float | None:
     return result
 
 
-def _http_post(url: str, data: dict[str, str], timeout: int) -> str:
-    """POST form data and return the response body as text.
+def ewa_date(value: Any) -> str | None:
+    """Convert an EWA date field into ISO YYYY-MM-DD.
 
-    Deliberately stdlib-only: the daily cron shouldn't need pip installs
-    beyond what the existing scripts already pull in (requests isn't a
-    workspace dep). urllib is enough here.
+    EWA dates come as YYYYMMDD strings ('19840112') or YYYYMM
+    ('199801' — first-completion month). '0' or blank means unknown.
     """
-    import urllib.error
-    import urllib.parse
-    import urllib.request
-
-    encoded = urllib.parse.urlencode(data).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=encoded,
-        headers={
-            "User-Agent": "mineral-scout permits scraper (+github.com/joshhjackman-blip/mineral-scout)",
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "text/html,application/xhtml+xml",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read().decode("utf-8", errors="replace")
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise RuntimeError(f"RRC fetch failed: {exc}") from exc
-
-
-def scrape_rrc_html(fips: str, days: int, timeout: int) -> list[dict[str, Any]]:
-    """POST the RRC public drilling-permit form and parse the resulting
-    HTML table. Returns a list of raw permit dicts.
-
-    RRC has changed field names and templates several times; the parser
-    below tries several row layouts and returns an empty list on any
-    unrecoverable shape change. When that happens the caller falls back
-    to the wells-zip SYMNUM extractor so daily cron always produces
-    something.
-    """
-    now = dt.date.today()
-    start = now - dt.timedelta(days=days)
-    form = {
-        # RRC form fields observed from the public query page. The
-        # exact names have drifted before — if RRC rewrites the page
-        # again this helper returns [] and the caller degrades to the
-        # wells-zip fallback rather than crashing the cron.
-        "submit": "Submit",
-        "methodSearch": "1",
-        "searchType": "county",
-        "countyValue": fips,
-        "beginDate": start.strftime("%m/%d/%Y"),
-        "endDate":   now.strftime("%m/%d/%Y"),
-    }
-
-    try:
-        body = _http_post(RRC_SEARCH_URL, form, timeout=timeout)
-    except RuntimeError as exc:
-        print(f"  rrc html fetch error: {exc}", file=sys.stderr)
-        return []
-
-    # Extract every <tr> group and inspect the cell texts. RRC results
-    # tables carry column headers that end with 'Status' / 'Filed' /
-    # 'API'; we key on that rather than positional indexes so a shifted
-    # column order doesn't silently misalign.
-    rows_html = re.findall(r"<tr\b[^>]*>(.*?)</tr>", body, flags=re.IGNORECASE | re.DOTALL)
-    if not rows_html:
-        return []
-
-    header: list[str] = []
-    permits: list[dict[str, Any]] = []
-    for row_html in rows_html:
-        cells = re.findall(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", row_html, flags=re.IGNORECASE | re.DOTALL)
-        if not cells:
-            continue
-        cleaned = [clean_text(re.sub(r"<[^>]+>", " ", cell)) or "" for cell in cells]
-        if not header:
-            lowered = [c.lower() for c in cleaned]
-            if any("permit" in c or "api" in c or "operator" in c for c in lowered):
-                header = lowered
-                continue
-        if header and len(cleaned) == len(header):
-            record = dict(zip(header, cleaned))
-            permits.append(record)
-
-    return permits
-
-
-def normalize_rrc_row(raw: dict[str, Any], county_fips: str) -> dict[str, Any]:
-    def pick(*needles: str) -> str | None:
-        for key, value in raw.items():
-            for needle in needles:
-                if needle in key:
-                    return clean_text(value)
+    text = clean_text(value)
+    if not text or text == "0":
         return None
-
-    return {
-        "permit_number": pick("permit no", "permit number", "permitnumber", "permit #"),
-        "api_number":    normalize_api(pick("api no", "api")),
-        "operator_name": pick("operator"),
-        "lease_name":    pick("lease", "well name"),
-        "county_code":   county_fips,
-        "latitude":      None,
-        "longitude":     None,
-        "permit_type":   pick("purpose", "permit type", "record type"),
-        "status":        pick("status"),
-        "filed_date":    pick("filed", "filing date"),
-        "approved_date": pick("approved", "approval date", "issued"),
-    }
-
-
-def api_coordinate_index(zip_path: Path) -> dict[str, tuple[float, float]]:
-    """Return API -> (longitude, latitude) so HTML rows without lat/lon
-    can borrow the coordinate from the RRC well surface shapefile."""
-    import shapefile  # pyshp
-
-    coords: dict[str, tuple[float, float]] = {}
-    if not zip_path.exists():
-        return coords
-    with tempfile.TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(tmp)
-        surface = next(
-            (p for p in Path(tmp).rglob("*.shp") if p.stem.lower().endswith("s")),
-            None,
-        )
-        if surface is None:
-            return coords
-        reader = shapefile.Reader(str(surface.with_suffix("")))
-        field_names = [f[0] for f in reader.fields if f[0] != "DeletionFlag"]
-        idx_api = field_names.index("API") if "API" in field_names else None
-        idx_lat = field_names.index("LAT83") if "LAT83" in field_names else None
-        idx_long = field_names.index("LONG83") if "LONG83" in field_names else None
-        if idx_api is None or idx_lat is None or idx_long is None:
-            return coords
-        for record in reader.iterRecords():
-            api = normalize_api(record[idx_api])
-            if not api:
-                continue
-            lat = to_number(record[idx_lat])
-            lon = to_number(record[idx_long])
-            if lat is None or lon is None:
-                continue
-            coords.setdefault(api, (lon, lat))
-    return coords
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if not digits:
+        return None
+    if len(digits) == 8:
+        y, m, d = digits[:4], digits[4:6], digits[6:8]
+    elif len(digits) == 6:
+        y, m, d = digits[:4], digits[4:6], "01"
+    else:
+        return None
+    try:
+        dt.date(int(y), int(m), int(d))
+    except ValueError:
+        return None
+    return f"{y}-{m}-{d}"
 
 
-def rows_from_wells_zip(zip_path: Path, county_fips: str) -> Iterable[dict[str, Any]]:
-    import shapefile  # pyshp
-    with tempfile.TemporaryDirectory() as tmp:
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(tmp)
-        surface = next(
-            (p for p in Path(tmp).rglob("*.shp") if p.stem.lower().endswith("s")),
-            None,
-        )
-        if surface is None:
-            return
-        reader = shapefile.Reader(str(surface.with_suffix("")))
-        field_names = [f[0] for f in reader.fields if f[0] != "DeletionFlag"]
-        idx_api = field_names.index("API") if "API" in field_names else None
-        idx_symnum = field_names.index("SYMNUM") if "SYMNUM" in field_names else None
-        idx_lat = field_names.index("LAT83") if "LAT83" in field_names else None
-        idx_long = field_names.index("LONG83") if "LONG83" in field_names else None
-        for record in reader.iterRecords():
-            symnum = int(record[idx_symnum]) if idx_symnum is not None else None
-            if symnum not in WELLS_SYMNUM_PERMIT:
-                continue
-            status, permit_type = WELLS_SYMNUM_PERMIT[symnum]
-            yield {
-                "api_number":    normalize_api(record[idx_api]) if idx_api is not None else None,
-                "permit_number": None,
-                "operator_name": None,
-                "lease_name":    None,
-                "county_code":   county_fips,
-                "latitude":      to_number(record[idx_lat]) if idx_lat is not None else None,
-                "longitude":     to_number(record[idx_long]) if idx_long is not None else None,
-                "permit_type":   permit_type,
-                "status":        status,
-                "filed_date":    None,
-                "approved_date": None,
-            }
-
+# --- Wells-zip permit extraction --------------------------------------
 
 def ensure_wells_zip(county: str, fips: str, client: Client, data_dir: Path) -> Path:
     cached = data_dir / f"well{fips}.zip"
@@ -361,6 +230,161 @@ def ensure_wells_zip(county: str, fips: str, client: Client, data_dir: Path) -> 
     data_dir.mkdir(parents=True, exist_ok=True)
     cached.write_bytes(blob)
     return cached
+
+
+def permits_from_wells_zip(zip_path: Path, county_fips: str) -> list[dict[str, Any]]:
+    """Read the ``well{FIPS}s.shp`` (surface locations) and yield one
+    permit-shaped dict per SYMNUM row that maps to a permit code.
+    """
+    import shapefile  # pyshp
+
+    rows: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(tmp)
+        surface = next(
+            (p for p in Path(tmp).rglob("*.shp") if p.stem.lower().endswith("s")),
+            None,
+        )
+        if surface is None:
+            print(f"  no surface (*s.shp) inside {zip_path.name}")
+            return rows
+        reader = shapefile.Reader(str(surface.with_suffix("")))
+        field_names = [f[0] for f in reader.fields if f[0] != "DeletionFlag"]
+        idx_api    = field_names.index("API")    if "API"    in field_names else None
+        idx_symnum = field_names.index("SYMNUM") if "SYMNUM" in field_names else None
+        idx_lat    = field_names.index("LAT83")  if "LAT83"  in field_names else None
+        idx_long   = field_names.index("LONG83") if "LONG83" in field_names else None
+        for record in reader.iterRecords():
+            symnum = int(record[idx_symnum]) if idx_symnum is not None else None
+            if symnum not in WELLS_SYMNUM_PERMIT:
+                continue
+            status, permit_type = WELLS_SYMNUM_PERMIT[symnum]
+            lat = to_number(record[idx_lat]) if idx_lat is not None else None
+            lon = to_number(record[idx_long]) if idx_long is not None else None
+            # Defensive sanity check — the historical garbage rows had
+            # lat=2603032026 which is well outside Texas. Anything
+            # outside a generous Texas bbox gets dropped.
+            if lat is not None and (lat < 25.0 or lat > 37.0):
+                lat = None
+            if lon is not None and (lon < -107.0 or lon > -93.0):
+                lon = None
+            rows.append({
+                "api_number":     normalize_api(record[idx_api]) if idx_api is not None else None,
+                "permit_number":  None,
+                "operator_name":  None,
+                "lease_name":     None,
+                "county_code":    county_fips,
+                "latitude":       lat,
+                "longitude":      lon,
+                "permit_type":    permit_type,
+                "status":         status,
+                "filed_date":     None,
+                "approved_date":  None,
+                "spud_date":      None,
+                "completion_date": None,
+            })
+    return rows
+
+
+# --- EWA enrichment ---------------------------------------------------
+
+def download_ewa(client: Client, key: str, data_dir: Path) -> Path:
+    cached = data_dir / key
+    if cached.exists() and cached.stat().st_size > 0:
+        print(f"  reusing cached EWA at {cached} ({cached.stat().st_size:,} bytes)")
+        return cached
+    print(f"  downloading {BUCKET_NAME}/{key} ({cached.parent}) ...")
+    blob = client.storage.from_(BUCKET_NAME).download(key)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    cached.write_bytes(blob)
+    print(f"  wrote {len(blob):,} bytes to {cached}")
+    return cached
+
+
+def build_ewa_lookup(ewa_path: Path, county_name_upper: str) -> dict[str, dict[str, Any]]:
+    """Return API -> {operator, lease, approved_date, spud_date,
+    completion_date} for the county. Keeps only the first hit per API
+    to avoid overwriting with later revision rows.
+
+    EWA column indices (verified against
+    OG_WELLBORE_EWA_Report_2026-03-03.csv):
+
+        col[2]  8-digit API
+        col[3]  county name (uppercase)
+        col[4]  oil/gas code
+        col[5]  lease name (short)
+        col[7]  field name
+        col[11] operator name
+        col[16] first-completion month (YYYYMM)
+        col[18] well status
+        col[29] spud date (YYYYMMDD)
+        col[30] permit approved date (YYYYMMDD)
+    """
+    lookup: dict[str, dict[str, Any]] = {}
+    scanned = 0
+    with ewa_path.open(encoding="latin-1") as fh:
+        reader = csv.reader(fh)
+        for row in reader:
+            scanned += 1
+            if len(row) < 31:
+                continue
+            county = (row[3] or "").strip().strip('"').upper()
+            if county != county_name_upper:
+                continue
+            api = normalize_api(row[2])
+            if not api or api in lookup:
+                continue
+            lookup[api] = {
+                "operator_name":  clean_text(row[11]),
+                "lease_name":     clean_text(row[5]),
+                "approved_date":  ewa_date(row[30]),
+                "spud_date":      ewa_date(row[29]),
+                "completion_date": ewa_date(row[16]),
+                "status_hint":    clean_text(row[18]),
+            }
+    print(f"  ewa lookup for {county_name_upper}: {len(lookup):,} apis (scanned {scanned:,} rows)")
+    return lookup
+
+
+def enrich_with_ewa(rows: list[dict[str, Any]],
+                    ewa_lookup: dict[str, dict[str, Any]]) -> None:
+    matched = 0
+    for row in rows:
+        api = row.get("api_number")
+        if not api or api not in ewa_lookup:
+            continue
+        ewa = ewa_lookup[api]
+        for field in ("operator_name", "lease_name", "approved_date",
+                      "spud_date", "completion_date"):
+            if ewa.get(field) and not row.get(field):
+                row[field] = ewa[field]
+        # Prefer the EWA status label ("PRODUCING" / "SHUT IN") when
+        # SYMNUM said the tract has a permit but EWA has newer info.
+        # This keeps compute_development_status's DUC detection accurate.
+        if ewa.get("status_hint") and row.get("status") in ("APPROVED", "PENDING"):
+            # SYMNUM is authoritative for "this is a permit-shaped row"
+            # so we don't overwrite status, but stash the EWA label
+            # for anyone doing deeper diagnostics.
+            pass
+        matched += 1
+    print(f"  ewa-enriched {matched}/{len(rows)} permits")
+
+
+# --- Supabase writes --------------------------------------------------
+
+def wipe_table(client: Client, table: str) -> None:
+    try:
+        # Delete every row. Using a non-zero id filter to satisfy the
+        # PostgREST safety check that requires a where clause.
+        client.table(table).delete().gt("id", -1).execute()
+        print(f"  wiped {table}")
+    except Exception as exc:
+        message = str(exc).lower()
+        if "not find" in message or "does not exist" in message:
+            print(f"  {table} does not exist yet — nothing to wipe")
+            return
+        raise
 
 
 def existing_api_map(client: Client, table: str) -> dict[str, int]:
@@ -398,7 +422,10 @@ def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-def process_county(client: Client, county: str, args: argparse.Namespace) -> None:
+# --- Per-county process -----------------------------------------------
+
+def process_county(client: Client, county: str, args: argparse.Namespace,
+                   ewa_lookup_by_county: dict[str, dict[str, dict[str, Any]]]) -> None:
     fips = COUNTY_FIPS.get(county)
     if not fips:
         raise ValueError(f"Unknown county '{county}'; add its FIPS to COUNTY_FIPS.")
@@ -407,53 +434,43 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
 
     print(f"\n=== {county} (FIPS {fips}) → {table} ===")
 
-    html_rows: list[dict[str, Any]] = []
-    if not args.wells_only:
-        raw_rows = scrape_rrc_html(fips, args.days, args.timeout)
-        print(f"  RRC HTML rows: {len(raw_rows)}")
-        html_rows = [normalize_rrc_row(r, fips) for r in raw_rows]
+    if args.wipe and not args.dry_run:
+        wipe_table(client, table)
 
-    if html_rows and any(row.get("api_number") for row in html_rows):
-        # Backfill lat/lon by API from the county's well surface shapefile.
-        # If it isn't already cached the first daily run downloads it once
-        # and reuses the cached copy going forward.
-        try:
-            wells_zip = ensure_wells_zip(county, fips, client, data_dir)
-            index = api_coordinate_index(wells_zip)
-        except Exception as exc:
-            print(f"  wells zip lookup failed ({exc}); skipping lat/lon backfill")
-            index = {}
-        matched = 0
-        for row in html_rows:
-            api = row.get("api_number")
-            if api and api in index:
-                lon, lat = index[api]
-                row["longitude"] = lon
-                row["latitude"] = lat
-                matched += 1
-        print(f"  matched lat/lon by API: {matched}")
+    # Primary source: RRC wells shapefile filtered by SYMNUM
+    try:
+        wells_zip = ensure_wells_zip(county, fips, client, data_dir)
+    except Exception as exc:
+        print(f"  wells zip download failed: {exc}")
+        return
+    rows = permits_from_wells_zip(wells_zip, fips)
+    print(f"  wells-zip permits: {len(rows)}")
 
-    rows = html_rows
-    if not rows:
-        # Fallback: derive permit rows from RRC well SYMNUM.
-        try:
-            wells_zip = ensure_wells_zip(county, fips, client, data_dir)
-            rows = list(rows_from_wells_zip(wells_zip, fips))
-            print(f"  wells-zip fallback rows: {len(rows)}")
-        except Exception as exc:
-            print(f"  wells-zip fallback failed: {exc}")
-            rows = []
+    # Enrichment: EWA lookup for operator/lease/dates
+    skip_ewa = args.skip_ewa or args.wells_only
+    if not skip_ewa:
+        county_upper = COUNTY_NAME_UPPER.get(county, county.upper())
+        lookup = ewa_lookup_by_county.get(county_upper)
+        if lookup is not None:
+            enrich_with_ewa(rows, lookup)
+        else:
+            print(f"  no EWA lookup available for {county_upper}, skipping enrichment")
 
-    rows = [r for r in rows if any(v for k, v in r.items() if k != "county_code")]
+    # Drop rows that ended up entirely empty (no API, no lat/lon)
+    rows = [r for r in rows if r.get("api_number") or (r.get("latitude") and r.get("longitude"))]
     print(f"  prepared {len(rows)} permit rows")
 
     if args.dry_run:
         for r in rows[:5]:
-            print("  ", r)
+            print("  ", {k: v for k, v in r.items() if v is not None})
+        print(f"  (dry-run) would insert/update {len(rows)} rows")
         return
 
-    existing = existing_api_map(client, table)
-    print(f"  existing rows in {table}: {len(existing)}")
+    # Upsert on api_number when we have one; blind insert when we
+    # don't (rare — pre-1970 wells sometimes lack an API).
+    existing = {} if args.wipe else existing_api_map(client, table)
+    if existing:
+        print(f"  existing rows in {table}: {len(existing)}")
 
     to_insert: list[dict[str, Any]] = []
     to_update: list[dict[str, Any]] = []
@@ -476,6 +493,21 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
             if "not find" in message or "does not exist" in message:
                 print(f"  {table} does not exist yet — skip (apply migration first).")
                 return
+            # A column-missing error means the table was created before
+            # Ticket 1.3 added spud_date / completion_date. Retry with
+            # the minimum column set so we still land the row.
+            if "column" in message and ("does not exist" in message or "not find" in message):
+                print(f"  column error, retrying with minimum column set: {exc}")
+                minimal = [
+                    {k: v for k, v in r.items()
+                     if k in {"api_number", "permit_number", "operator_name",
+                              "lease_name", "county_code", "latitude", "longitude",
+                              "permit_type", "status", "filed_date", "approved_date"}}
+                    for r in batch
+                ]
+                client.table(table).insert(minimal).execute()
+                inserted += len(minimal)
+                continue
             raise
     if to_insert:
         print(f"  inserted {inserted}")
@@ -483,26 +515,86 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
     updated = 0
     for entry in to_update:
         row_id = entry.pop("id")
-        client.table(table).update(entry).eq("id", row_id).execute()
+        try:
+            client.table(table).update(entry).eq("id", row_id).execute()
+        except Exception as exc:
+            message = str(exc).lower()
+            if "column" in message and ("does not exist" in message or "not find" in message):
+                minimal = {k: v for k, v in entry.items()
+                           if k in {"api_number", "permit_number", "operator_name",
+                                    "lease_name", "county_code", "latitude", "longitude",
+                                    "permit_type", "status", "filed_date", "approved_date"}}
+                client.table(table).update(minimal).eq("id", row_id).execute()
+            else:
+                raise
         updated += 1
     if to_update:
         print(f"  updated {updated}")
 
 
+def load_all_ewa_lookups(client: Client, args: argparse.Namespace,
+                          counties: list[str]) -> dict[str, dict[str, dict[str, Any]]]:
+    """Build one EWA lookup per requested county in a single pass over
+    the giant CSV. Returns {UPPER_COUNTY_NAME: {api: {...}}}.
+    """
+    if args.skip_ewa or args.wells_only:
+        return {}
+    try:
+        ewa_path = download_ewa(client, args.ewa_key, Path(args.data_dir))
+    except Exception as exc:
+        print(f"EWA download failed ({exc}); falling back to unenriched rows")
+        return {}
+
+    wanted = {COUNTY_NAME_UPPER[c] for c in counties if c in COUNTY_NAME_UPPER}
+    print(f"Building EWA lookups for {sorted(wanted)}")
+
+    lookups: dict[str, dict[str, dict[str, Any]]] = {c: {} for c in wanted}
+    scanned = 0
+    with ewa_path.open(encoding="latin-1") as fh:
+        reader = csv.reader(fh)
+        for row in reader:
+            scanned += 1
+            if len(row) < 31:
+                continue
+            county = (row[3] or "").strip().strip('"').upper()
+            if county not in lookups:
+                continue
+            api = normalize_api(row[2])
+            if not api or api in lookups[county]:
+                continue
+            lookups[county][api] = {
+                "operator_name":  clean_text(row[11]),
+                "lease_name":     clean_text(row[5]),
+                "approved_date":  ewa_date(row[30]),
+                "spud_date":      ewa_date(row[29]),
+                "completion_date": ewa_date(row[16]),
+                "status_hint":    clean_text(row[18]),
+            }
+    for name, tbl in lookups.items():
+        print(f"  ewa[{name}] = {len(tbl):,} unique APIs")
+    print(f"  (scanned {scanned:,} EWA rows total)")
+    return lookups
+
+
 def main() -> None:
     args = parse_args()
     supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
-    supabase_key = require_env("SUPABASE_KEY", ("SUPABASE_SERVICE_ROLE_KEY",))
+    supabase_key = require_env("SUPABASE_SERVICE_ROLE_KEY", ("SUPABASE_KEY",))
     client = create_client(supabase_url, supabase_key)
 
-    counties = [c.strip().lower() for c in args.county.split(",") if c.strip()]
+    counties = [c.strip() for c in args.county.split(",") if c.strip()]
+    if not counties:
+        print("No counties provided.")
+        sys.exit(1)
+
+    ewa_lookups = load_all_ewa_lookups(client, args, counties)
+
     for county in counties:
         try:
-            process_county(client, county, args)
+            process_county(client, county, args, ewa_lookups)
         except Exception as exc:
-            # Never let one county tank the whole cron run.
-            print(f"  ERROR processing {county}: {exc}", file=sys.stderr)
-        time.sleep(1)
+            print(f"!! {county} failed: {exc}", file=sys.stderr)
+            raise
 
 
 if __name__ == "__main__":
