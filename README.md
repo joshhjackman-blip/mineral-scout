@@ -1,3 +1,24 @@
+## Environment variables
+
+Copy `.env.local.example` to `.env.local` (or set them in Vercel /
+GitHub Actions secrets) before running any script that talks to
+Supabase or Anthropic.
+
+Key ones for Ticket 1.3 (PUD / development-status tracking):
+
+| Var | Where it's read | Notes |
+|---|---|---|
+| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | Every ingest + compute script + the app | project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Ingest + compute scripts, `/api/legal/*`, `/api/export` | required for tables under RLS |
+| `ANTHROPIC_API_KEY` | `scripts/agent_operator_dev_programs.py` (Phase 3 operator agent) | quarterly job — cron uses the Batch API |
+| `ANTHROPIC_MODEL` | Every Claude call in this repo | Defaults to `claude-haiku-4-5` per Ticket 1.3 §6 ("keep spend minimal"). Bump per-job with `--model` on the CLI when a specific run needs a stronger model. **Never hardcode a model string** in application code. |
+
+The operator agent's cron path forces the [Anthropic Batch API](https://docs.anthropic.com/en/docs/build-with-claude/batch-processing)
+for the 50% discount; pass `--realtime` locally when you need streamed
+completions during iteration.
+
+## Getting Started
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

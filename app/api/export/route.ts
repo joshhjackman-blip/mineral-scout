@@ -17,6 +17,16 @@ type OwnerRow = {
   prod_cumulative_sum_oil: number | null
   rrc_lease_id: string | null
   county_lease_name: string | null
+  // `abstract` is added to the select so we can join to
+  // tract_development_status client-side. Nullable for owners whose
+  // rows don't carry an abstract (rare, but Gonzales has a handful).
+  abstract: string | null
+}
+
+type DevStatusRow = {
+  abstract_number: string
+  development_status: string
+  pud_score: number
 }
 
 export async function GET(req: NextRequest) {
@@ -30,11 +40,13 @@ export async function GET(req: NextRequest) {
   const motivatedOnly = searchParams.get('motivatedOnly') === 'true'
   const outOfStateOnly = searchParams.get('outOfStateOnly') === 'true'
   const ownerType = searchParams.get('ownerType') ?? 'all'
+  const countyId = (searchParams.get('countyId') ?? 'gonzales').toLowerCase()
+  const ownershipTable = `${countyId}_mineral_ownership`
 
   let query = supabase
-    .from('gonzales_mineral_ownership')
+    .from(ownershipTable)
     .select(
-      'owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id, county_lease_name'
+      'owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, operator_name, propensity_score, motivated, out_of_state, acreage, prod_cumulative_sum_oil, rrc_lease_id, county_lease_name, abstract'
     )
     .gte('propensity_score', Number.isFinite(minScore) ? minScore : 0)
     .order('propensity_score', { ascending: false })
@@ -44,6 +56,23 @@ export async function GET(req: NextRequest) {
   if (outOfStateOnly) query = query.eq('out_of_state', true)
 
   const { data, error } = await query
+
+  // Ticket 1.3 §5: CSV export must carry development_status +
+  // pud_score. Fetched here rather than joined via Supabase because
+  // tract_development_status keys on the bare abstract and mineral
+  // ownership rows store it with variable normalization; doing the
+  // key normalization client-side is more forgiving.
+  let devStatusByAbstract: Record<string, DevStatusRow> = {}
+  const devResult = await supabase
+    .from('tract_development_status')
+    .select('abstract_number, development_status, pud_score')
+    .eq('county_id', countyId)
+    .limit(5000)
+  if (!devResult.error && devResult.data) {
+    devStatusByAbstract = Object.fromEntries(
+      (devResult.data as DevStatusRow[]).map((r) => [r.abstract_number, r]),
+    )
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -79,6 +108,11 @@ export async function GET(req: NextRequest) {
           classifyOwner(o.owner_name ?? '') === ownerType
         )
 
+  const normalizeAbstract = (raw: string | null | undefined) => {
+    const text = String(raw ?? '').trim().toUpperCase()
+    return text.startsWith('A-') ? text.slice(2).trim() : text
+  }
+
   const headers = [
     'Owner Name',
     'Mailing Address',
@@ -93,11 +127,16 @@ export async function GET(req: NextRequest) {
     'Cumulative Oil (BBL)',
     'Lease ID',
     'Lease Name',
+    'Abstract',
+    'Development Status',   // Ticket 1.3 §5
+    'PUD Score',            // Ticket 1.3 §5
   ]
 
   const rows =
-    filtered?.map((o) =>
-      [
+    filtered?.map((o) => {
+      const abstract = normalizeAbstract(o.abstract)
+      const dev = abstract ? devStatusByAbstract[abstract] : undefined
+      return [
         `"${(o.owner_name ?? '').replace(/"/g, '""')}"`,
         `"${(o.mailing_address ?? '').replace(/"/g, '""')}"`,
         `"${(o.mailing_city ?? '').replace(/"/g, '""')}"`,
@@ -111,15 +150,18 @@ export async function GET(req: NextRequest) {
         o.prod_cumulative_sum_oil ?? '',
         `"${(o.rrc_lease_id ?? '').toString().replace(/"/g, '""')}"`,
         `"${(o.county_lease_name ?? '').replace(/"/g, '""')}"`,
+        `"${abstract ? `A-${abstract}` : ''}"`,
+        `"${dev?.development_status ?? 'FRONTIER'}"`,
+        dev?.pud_score ?? 0,
       ].join(',')
-    ) ?? []
+    }) ?? []
 
   const csv = [headers.join(','), ...rows].join('\n')
 
   return new NextResponse(csv, {
     headers: {
       'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename="mineral-map-gonzales-${new Date().toISOString().split('T')[0]}.csv"`,
+      'Content-Disposition': `attachment; filename="mineral-map-${countyId}-${new Date().toISOString().split('T')[0]}.csv"`,
     },
   })
 }

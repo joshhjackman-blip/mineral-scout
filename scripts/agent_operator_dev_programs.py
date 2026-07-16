@@ -46,7 +46,13 @@ from typing import Any
 
 from supabase import Client, create_client
 
-DEFAULT_MODEL = "claude-sonnet-4-20250514"
+# Ticket 1.3 §6: model comes from ANTHROPIC_MODEL env var so we never
+# hardcode a Claude model string in application code. Default aligns
+# with the spec's "keep spend minimal" directive — Haiku is roughly
+# 5-10x cheaper than Sonnet for the messy-text-parse workload the
+# operator agent runs.
+DEFAULT_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
 DEFAULT_COUNTIES = [
     "gonzales", "howard", "martin",
     "crane", "glasscock", "loving", "midland", "pecos",
@@ -60,7 +66,24 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--county", default=",".join(DEFAULT_COUNTIES),
                         help="Comma-separated county ids the agent should analyze.")
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--model", default=DEFAULT_MODEL,
+        help="Claude model. Defaults to $ANTHROPIC_MODEL (falls back to "
+             "'claude-haiku-4-5' per Ticket 1.3 §6). Never pass a hardcoded "
+             "model in cron; leave the env var authoritative.",
+    )
+    parser.add_argument(
+        "--use-batch-api", action="store_true", default=True,
+        help="Submit the operator research via Anthropic's Batch API for "
+             "the 50%% discount (Ticket 1.3 §6 — the quarterly cron must "
+             "not use real-time completions). Turn off only for local "
+             "iteration where you want streaming output.",
+    )
+    parser.add_argument(
+        "--realtime", dest="use_batch_api", action="store_false",
+        help="Bypass the Batch API and stream real-time completions. "
+             "Development / debugging only — cron should never call this.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--input",
                         help="Optional path to a hand-curated JSON list "
@@ -89,7 +112,7 @@ def load_hand_curated(path: str) -> list[dict[str, Any]]:
     return payload
 
 
-def run_agent(county: str, model: str) -> list[dict[str, Any]]:
+def run_agent(county: str, model: str, use_batch_api: bool) -> list[dict[str, Any]]:
     """PLACEHOLDER Anthropic call.
 
     Real implementation should give Claude the following tool set:
@@ -106,11 +129,24 @@ def run_agent(county: str, model: str) -> list[dict[str, Any]]:
        press release / rule-37 exception filing, then call
        write_program(...) with a JSON tool-call."
 
-    The stub below returns [] so `--dry-run` and DB plumbing are
-    testable end-to-end without an Anthropic key. Ship the real
-    tool set as a follow-up.
+    Batch API path (Ticket 1.3 §6):
+      * When use_batch_api is True (default in cron), submit each
+        county+operator prompt as a batch request via
+        client.messages.batches.create(...). Poll status until the
+        batch settles, then read results and upsert.
+      * Batch results land at ~50% the cost of real-time completions.
+      * For local iteration, --realtime falls back to the streaming
+        API so you can watch the tool-use loop live.
+
+    Both paths must read the model name from `model` (which itself
+    comes from ANTHROPIC_MODEL). Never hardcode a model string in the
+    request payload.
+
+    The stub below returns [] so --dry-run and DB plumbing are testable
+    end-to-end without an Anthropic key. Ship the real tool set as
+    the next follow-up.
     """
-    del county, model
+    del county, model, use_batch_api
     return []
 
 
@@ -175,8 +211,9 @@ def main() -> None:
                       file=sys.stderr)
                 sys.exit(1)
         for county in counties:
-            print(f"agent :: {county} ...")
-            programs.extend(run_agent(county, args.model))
+            mode = "batch" if args.use_batch_api else "realtime"
+            print(f"agent :: {county} :: model={args.model} :: mode={mode}")
+            programs.extend(run_agent(county, args.model, args.use_batch_api))
         print(f"agent produced {len(programs)} program(s).")
 
     if args.dry_run:

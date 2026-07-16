@@ -520,6 +520,13 @@ def assign_permits_to_abstracts(
     return out
 
 
+# NOTE: the spacing / azimuth / gap detection logic is imported from
+# scripts/detect_infill_gaps.py so both the compute pipeline and the
+# standalone diagnostic CLI use the same code path (spec §PHASE 2).
+# Keeping a re-export here as _load_lateral_lines because
+# process_county still references it.
+
+
 def _load_lateral_lines(zip_path: Path):
     """Read the RRC lateral shapefile (wellNNNl.shp) out of a well
     bundle zip and return a list of dicts:
