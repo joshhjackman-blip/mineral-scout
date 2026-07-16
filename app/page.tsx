@@ -510,6 +510,22 @@ export default function Home() {
   )
   const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
+  // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
+  // from the same TractRecord[] the sidebar already loaded so the Leases
+  // tab of the OwnerDrawer can render full legal descriptions per lease
+  // without another network round-trip.
+  const tractLegalDescLookup = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const t of tracts) {
+      const label = String(t.abstract_label ?? '').trim()
+      if (!label) continue
+      const bare = label.replace(/^A-\s*/i, '').trim()
+      if (!bare) continue
+      const legal = buildLegalDescription(t as unknown as TractSelection)
+      out[bare] = legal || `A-${bare}`
+    }
+    return out
+  }, [tracts])
   const [selected, setSelected] = useState<TractSelection | null>(null)
   const [loading, setLoading] = useState(true)
   const [motivatedOnly, setMotivatedOnly] = useState(false)
@@ -2175,19 +2191,27 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Outer flex-column so the drawer at the bottom can be a real
+          sibling (not a fixed overlay). Top region is the classic
+          sidebar+map row; bottom region is the OwnerDrawer when open.
+          When the drawer is open we hide the sidebar so the map + drawer
+          both stay usable on a laptop-sized viewport. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: isMobile ? 'column' : 'row' }}>
         {/* Left panel */}
         <div
           style={{
-            width: isMobile ? '100%' : 'clamp(300px, 30vw, 420px)',
-            minWidth: isMobile ? 0 : 'clamp(300px, 30vw, 420px)',
+            width: drawerOwner ? 0 : (isMobile ? '100%' : 'clamp(300px, 30vw, 420px)'),
+            minWidth: drawerOwner ? 0 : (isMobile ? 0 : 'clamp(300px, 30vw, 420px)'),
             background: '#F8F8F8',
-            borderRight: isMobile ? 'none' : '1px solid #E5E7EB',
+            borderRight: drawerOwner ? 'none' : (isMobile ? 'none' : '1px solid #E5E7EB'),
             borderTop: isMobile ? '1px solid #E5E7EB' : 'none',
             overflowY: 'auto',
-            padding: 14,
+            padding: drawerOwner ? 0 : 14,
             order: isMobile ? 2 : 1,
             maxHeight: isMobile ? '52dvh' : 'none',
+            display: drawerOwner ? 'none' : undefined,
+            transition: 'width 0.2s ease',
           }}
         >
           {selected ? (
@@ -3203,6 +3227,50 @@ export default function Home() {
         </div>
       </div>
 
+      {/* OwnerDrawer sits as the second child of the outer flex-column
+          started above line 2178, right below the sidebar+map row. When
+          drawerOwner is null it renders nothing; when set it takes up
+          ~45vh at the bottom of the viewport and the map+sidebar row
+          above shrinks proportionally. */}
+      {drawerOwner && (
+        <div
+          style={{
+            height: isMobile ? '58vh' : '48vh',
+            minHeight: 320,
+            maxHeight: '75vh',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            background: '#FFFFFF',
+          }}
+        >
+          <OwnerDrawer
+            open={Boolean(drawerOwner)}
+            owner={drawerOwner}
+            tractLabel={drawerTractLabel}
+            tractLegalDescription={buildLegalDescription(selected) || null}
+            countyId={selectedCounty}
+            inPipeline={drawerOwner ? pipelineOwners.has(drawerOwner.owner_name) : false}
+            legalDescByAbstract={tractLegalDescLookup}
+            onClose={() => {
+              setDrawerOwner(null)
+              setDrawerTractLabel(null)
+              setExpandedOwner(null)
+            }}
+            onSkipTrace={(o) => handleSkipTrace(o as TractOwner)}
+            onAddToPipeline={(o) => handleAddToPipeline(o as TractOwner)}
+            onShowAllTracts={(o) => {
+              setDrawerOwner(null)
+              setDrawerTractLabel(null)
+              setExpandedOwner(null)
+              setOwnerTractsName(o.owner_name)
+            }}
+          />
+        </div>
+      )}
+      </div>{/* /outer flex-column that wraps sidebar+map row and drawer */}
+
       {/* Bottom bar */}
       <div
         style={{
@@ -3796,34 +3864,8 @@ export default function Home() {
         </div>
       )}
 
-      <OwnerDrawer
-        open={Boolean(drawerOwner)}
-        owner={drawerOwner}
-        tractLabel={drawerTractLabel}
-        countyId={selectedCounty}
-        inPipeline={drawerOwner ? pipelineOwners.has(drawerOwner.owner_name) : false}
-        isMobile={isMobile}
-        onClose={() => {
-          setDrawerOwner(null)
-          setDrawerTractLabel(null)
-          setExpandedOwner(null)
-        }}
-        onSkipTrace={(o) => {
-          handleSkipTrace(o as TractOwner)
-        }}
-        onAddToPipeline={(o) => {
-          handleAddToPipeline(o as TractOwner)
-        }}
-        onShowAllTracts={(o) => {
-          // Reuse the existing "show all tracts" flow attached to the
-          // sidebar's "Show all tracts" affordance. Closes the drawer
-          // so the user sees the resulting tract list.
-          setDrawerOwner(null)
-          setDrawerTractLabel(null)
-          setExpandedOwner(null)
-          setOwnerTractsName(o.owner_name)
-        }}
-      />
+      {/* OwnerDrawer moved into the outer flex-column above so it takes
+          real flex space and the map/sidebar shrink around it. */}
     </div>
   )
 }
