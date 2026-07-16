@@ -206,9 +206,8 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     const perCountyPromises = countyEntries.map(async ([countyKey, cfg]) => {
       const result = await supabase
         .from(cfg.ownershipTable)
-        .select('id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, decimal_interest, rrc_lease_id, interest_type, propensity_score')
+        .select('id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, decimal_interest, rrc_lease_id, interest_type')
         .eq('owner_name', owner.owner_name)
-        .order('propensity_score', { ascending: false })
         .order('acreage', { ascending: false })
         .limit(500)
       if (result.error) {
@@ -236,15 +235,13 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
         merged.push(...r.rows)
       }
       // Sort with the currently-active county first (broker's focus
-      // stays on-screen), then by propensity_score desc, then acreage.
+      // stays on-screen), then by acreage desc within each county so
+      // the largest holdings sit at the top.
       const activeCountyId = county.id as CountyKey
       merged.sort((a, b) => {
         const activeA = a.county_id === activeCountyId ? 0 : 1
         const activeB = b.county_id === activeCountyId ? 0 : 1
         if (activeA !== activeB) return activeA - activeB
-        const scoreA = Number(a.propensity_score ?? 0)
-        const scoreB = Number(b.propensity_score ?? 0)
-        if (scoreA !== scoreB) return scoreB - scoreA
         const acA = Number(a.acreage ?? 0)
         const acB = Number(b.acreage ?? 0)
         return acB - acA
@@ -300,7 +297,7 @@ function useOwnerWells(
     setLoading(true)
 
     const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
-    const requests = countyEntries.map(async ([countyKey, cfg]) => {
+    const requests = countyEntries.map(async ([countyKey]) => {
       const leaseIds = leaseIdsByCounty[countyKey] ?? []
       const body: Record<string, unknown> = {
         countyId: countyKey,
@@ -449,9 +446,6 @@ function ownerBadges(owner: OwnerLike): Array<{ label: string; classes: string }
   if (owner.out_of_state) {
     badges.push({ label: 'Out of state', classes: 'bg-amber-50 text-amber-700 border-amber-200' })
   }
-  if (owner.motivated) {
-    badges.push({ label: 'Motivated', classes: 'bg-lime-50 text-lime-700 border-lime-200' })
-  }
   if (name.includes('LIFE ESTATE')) {
     badges.push({ label: 'Life estate', classes: 'bg-amber-50 text-amber-800 border-amber-200' })
   } else if (name.includes('ESTATE')) {
@@ -534,9 +528,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     [clean(owner.mailing_city), clean(owner.mailing_state)].filter(Boolean).join(', '),
     clean(owner.mailing_zip),
   ].filter(Boolean).join(' · ')
-  const propensity = toNumber(owner.propensity_score) ?? 0
-  const scoreColor = propensity >= 8 ? 'text-red-600' : propensity >= 6 ? 'text-amber-600' : 'text-gray-500'
-
   return (
     <div
       className="flex flex-col bg-white border-t border-gray-200 shadow-[0_-8px_28px_rgba(15,23,42,0.10)]"
@@ -550,11 +541,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             <div className="text-2xl font-serif font-bold text-gray-900 truncate">
               {owner.owner_name}
             </div>
-            {propensity > 0 && (
-              <div className={`text-lg font-serif font-bold ${scoreColor}`}>
-                {propensity}<span className="text-sm text-gray-400 font-normal">/10</span>
-              </div>
-            )}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
             {tractLabel && (

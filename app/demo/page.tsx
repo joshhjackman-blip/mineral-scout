@@ -36,7 +36,7 @@ const FAKE_OPERATORS = [
 const FAKE_PHONES = ['(720)', '(602)', '(214)', '(713)', '(312)', '(615)']
 const FAKE_EMAIL_PREFIXES = ['jhar', 'mbro', 'rwil', 'smcg', 'dand', 'ptho']
 
-type OwnerSort = 'score' | 'interest' | 'nra'
+type OwnerSort = 'az' | 'za' | 'largest' | 'smallest'
 type SkipTraceState = 'idle' | 'loading' | 'result'
 
 type FakeWell = {
@@ -112,20 +112,10 @@ const getAcreageFromProps = (props: Record<string, unknown>): number => {
   return 160
 }
 
-const scoreTextColor = (score: number): string =>
-  score >= 8 ? '#F44336' : score >= 6 ? '#FF9800' : score >= 4 ? '#FFC107' : '#4CAF50'
-
 const typeBadgeStyle = (typeLabel: FakeOwner['typeLabel']) => {
   if (typeLabel === 'TRUST') return { color: '#7AB835', bg: 'rgba(122,184,53,0.15)', border: '0.5px solid rgba(122,184,53,0.3)' }
   if (typeLabel === 'CO') return { color: '#378ADD', bg: 'rgba(55,138,221,0.15)', border: '0.5px solid rgba(55,138,221,0.3)' }
   return { color: '#9CA3AF', bg: 'rgba(156,163,175,0.15)', border: '0.5px solid rgba(156,163,175,0.3)' }
-}
-
-const scoreBadgeStyle = (score: number) => {
-  if (score >= 8) return { bg: '#B91C1C', text: '#FCA5A5' }
-  if (score >= 5) return { bg: '#92400E', text: '#FCD34D' }
-  if (score >= 2) return { bg: '#2A3E1A', text: '#7EE787' }
-  return { bg: '#374151', text: '#9CA3AF' }
 }
 
 const makeSignals = (owner: { outOfState: boolean; typeLabel: FakeOwner['typeLabel']; nra: number; score: number }): string[] => {
@@ -230,7 +220,7 @@ export default function DemoPage() {
   const loadingTimersRef = useRef<Record<string, number>>({})
 
   const [selectedTract, setSelectedTract] = useState<SelectedTract | null>(null)
-  const [ownerSort, setOwnerSort] = useState<OwnerSort>('score')
+  const [ownerSort, setOwnerSort] = useState<OwnerSort>('az')
   const [expandedOwner, setExpandedOwner] = useState<number | null>(null)
   const [wellsExpanded, setWellsExpanded] = useState(false)
   const [skipTraceStates, setSkipTraceStates] = useState<Record<string, SkipTraceState>>({})
@@ -261,9 +251,19 @@ export default function DemoPage() {
         const parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
         if (!map.current) return
 
-        const scoreExpr = [
-          'to-number',
-          ['coalesce', ['get', 'max_propensity_score'], 0],
+        // Demo map coloring: mirrors the real product's PDP/PUD/permit
+        // palette from Map.tsx (yellow = PDP producing, green = PUD, blue
+        // = fresh permit). We synthesize a bucket for each parcel from
+        // its abstract label so the demo shows the full range of colors
+        // without needing production_status baked into the shipped
+        // GeoJSON. Any parcel that hashes to bucket 3 stays 'none'.
+        const bucketExpr = [
+          'match',
+          ['%', ['to-number', ['coalesce', ['get', 'ID'], ['get', 'OBJECTID'], 0]], 4],
+          0, 'pdp',
+          1, 'pud',
+          2, 'new_permit',
+          'none',
         ] as const
 
         if (map.current.getLayer('demo-outline')) map.current.removeLayer('demo-outline')
@@ -277,20 +277,18 @@ export default function DemoPage() {
           source: 'demo-parcels',
           paint: {
             'fill-color': [
-              'step', scoreExpr,
-              '#9E9E9E',
-              2, '#81C784',
-              5, '#FF9800',
-              8, '#F44336',
-              10, '#B71C1C',
+              'match', bucketExpr,
+              'pdp',        '#EAB308',
+              'pud',        '#16A34A',
+              'new_permit', '#2563EB',
+              '#F3F4F6',
             ],
             'fill-opacity': [
-              'step', scoreExpr,
-              0.3,
-              2, 0.45,
-              5, 0.7,
-              8, 0.88,
-              10, 1.0,
+              'match', bucketExpr,
+              'pdp', 0.55,
+              'pud', 0.55,
+              'new_permit', 0.35,
+              0.25,
             ],
           },
         })
@@ -304,9 +302,15 @@ export default function DemoPage() {
             'line-cap': 'round',
           },
           paint: {
-            'line-color': ['step', scoreExpr, '#2d6a2d', 5, '#FFC107', 8, '#F44336'],
-            'line-width': ['step', scoreExpr, 1.1, 6, 1.6, 8, 2.2],
-            'line-opacity': 0.92,
+            'line-color': [
+              'match', bucketExpr,
+              'pdp',        '#A16207',
+              'pud',        '#14532D',
+              'new_permit', '#1E3A8A',
+              '#D1D5DB',
+            ],
+            'line-width': 1.2,
+            'line-opacity': 0.85,
           },
         })
 
@@ -314,7 +318,13 @@ export default function DemoPage() {
           const props = (e.features?.[0]?.properties ?? {}) as Record<string, unknown>
           const abstractLabel = String(props.ABSTRACT_L ?? props.abstract_label ?? 'Unknown')
           const surveyName = String(props.LEVEL1_SUR ?? props.level1_sur ?? 'Unknown')
-          const tractScore = Number(props.max_propensity_score ?? 0)
+          // Score is no longer displayed anywhere in the demo; the
+          // FakeOwner shape still carries a numeric `score` internally
+          // because it drives NRA/interest variance in makeFakeOwners.
+          // We synthesize it deterministically from the abstract label
+          // so the demo doesn't depend on the score baked into the
+          // shipped geojson.
+          const tractScore = ((hashString(abstractLabel) % 8) + 3)
           const fakeAcreage = getAcreageFromProps(props)
           const operatorName = FAKE_OPERATORS[hashString(abstractLabel) % FAKE_OPERATORS.length]
           const fieldName = String(props.field_name ?? `${abstractLabel} UNIT`)
@@ -378,7 +388,7 @@ export default function DemoPage() {
   }, [])
 
   useEffect(() => {
-    setOwnerSort('score')
+    setOwnerSort('az')
     setExpandedOwner(null)
     setWellsExpanded(false)
     setSkipTraceStates({})
@@ -408,13 +418,11 @@ export default function DemoPage() {
   const sortedOwners = useMemo(() => {
     if (!selectedTract) return []
     const owners = [...selectedTract.owners]
-    if (ownerSort === 'interest') {
-      owners.sort((a, b) => b.ownershipPct - a.ownershipPct)
-    } else if (ownerSort === 'nra') {
-      owners.sort((a, b) => b.nra - a.nra)
-    } else {
-      owners.sort((a, b) => b.score - a.score)
-    }
+    const nameKey = (o: FakeOwner) => o.name.trim().toUpperCase()
+    if (ownerSort === 'az') owners.sort((a, b) => nameKey(a).localeCompare(nameKey(b)))
+    else if (ownerSort === 'za') owners.sort((a, b) => nameKey(b).localeCompare(nameKey(a)))
+    else if (ownerSort === 'largest') owners.sort((a, b) => b.nra - a.nra)
+    else if (ownerSort === 'smallest') owners.sort((a, b) => a.nra - b.nra)
     return owners
   }, [ownerSort, selectedTract])
 
@@ -501,9 +509,6 @@ export default function DemoPage() {
               <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(244,67,54,0.15)', color: '#F44336', border: '0.5px solid rgba(244,67,54,0.35)' }}>
-                  {selectedTract.score}/10 HOT
-                </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
                   {selectedTract.owners.length} owners
                 </span>
@@ -655,14 +660,15 @@ export default function DemoPage() {
                   All owners in tract ({sortedOwners.length})
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
-                  {[
-                    { key: 'score', label: 'Score' },
-                    { key: 'interest', label: '% Ownership' },
-                    { key: 'nra', label: 'NRA' },
-                  ].map((s) => (
+                  {([
+                    { key: 'az',       label: 'A–Z' },
+                    { key: 'za',       label: 'Z–A' },
+                    { key: 'largest',  label: 'Largest' },
+                    { key: 'smallest', label: 'Smallest' },
+                  ] as const).map((s) => (
                     <button
                       key={s.key}
-                      onClick={() => setOwnerSort(s.key as OwnerSort)}
+                      onClick={() => setOwnerSort(s.key)}
                       style={{
                         fontSize: 10,
                         padding: '3px 8px',
@@ -684,7 +690,6 @@ export default function DemoPage() {
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {sortedOwners.map((owner, i) => {
                   const isExpanded = expandedOwner === i
-                  const scoreBadge = scoreBadgeStyle(owner.score)
                   const typeBadge = typeBadgeStyle(owner.typeLabel)
                   const skipTraceState = skipTraceStates[owner.key] ?? 'idle'
                   const inPipeline = addedToPipeline.has(owner.key)
@@ -733,19 +738,6 @@ export default function DemoPage() {
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
                             <span
                               style={{
-                                fontSize: 10,
-                                fontWeight: 700,
-                                color: scoreBadge.text,
-                                background: scoreBadge.bg,
-                                borderRadius: 4,
-                                padding: '2px 7px',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {owner.score}/10
-                            </span>
-                            <span
-                              style={{
                                 fontSize: 9,
                                 padding: '1px 5px',
                                 borderRadius: 6,
@@ -765,25 +757,13 @@ export default function DemoPage() {
                         </div>
                         <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 3 }}>
                           <span style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', display: 'inline-block', transition: 'transform 0.15s' }}>▶</span>
-                          {isExpanded ? 'Hide score breakdown' : 'Why this score?'}
+                          {isExpanded ? 'Hide contact actions' : 'Contact this owner'}
                         </div>
                       </div>
 
                       {isExpanded && (
                         <div style={{ padding: '8px 16px 12px 28px', background: '#FFFBEB', borderTop: '1px solid #FDE68A' }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: '#92400E', letterSpacing: '0.08em', marginBottom: 6, textTransform: 'uppercase' }}>
-                            Score Signals
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                            {owner.signals.map((signal, si) => (
-                              <div key={si} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#EF9F27', flexShrink: 0 }} />
-                                <span style={{ fontSize: 11, color: '#374151' }}>{signal}</span>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div style={{ marginTop: 10 }}>
+                          <div style={{ marginTop: 0 }}>
                             {skipTraceState === 'idle' && (
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
@@ -877,9 +857,9 @@ export default function DemoPage() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 {[
-                  { value: '73,430', label: 'Mineral owners scored' },
+                  { value: '73,430', label: 'Mineral owners tracked' },
                   { value: '557', label: 'Survey abstracts' },
-                  { value: '9.2', label: 'Avg hot tract score' },
+                  { value: '12', label: 'Counties live today' },
                   { value: '4,217', label: 'Wells tracked' },
                 ].map((card) => (
                   <div
