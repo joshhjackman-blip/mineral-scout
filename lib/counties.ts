@@ -50,7 +50,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'gonzales_mineral_ownership',
     wellsTable: 'gonzales_wells',
     geoJsonPath: '/gonzales_parcels_enriched.geojson',
-    mapGeoJsonPath: '/gonzales_parcels_map.geojson',
+    mapGeoJsonPath: '/gonzales_parcels_map.geojson?v=pdp-2026-07-16',
     ownershipPctIsDecimal: false,
     abstractField: 'ABSTRACT_L',
     nriCode: 'XV',
@@ -88,7 +88,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'howard_mineral_ownership',
     wellsTable: 'howard_wells',
     geoJsonPath: '/howard_parcels_enriched.geojson',
-    mapGeoJsonPath: '/howard_parcels_map.geojson',
+    mapGeoJsonPath: '/howard_parcels_map.geojson?v=pdp-2026-07-16',
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
     nriCode: '',
@@ -128,7 +128,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'martin_mineral_ownership',
     wellsTable: 'martin_wells',
     geoJsonPath: '/martin_parcels_enriched.geojson',
-    mapGeoJsonPath: '/martin_parcels_map.geojson',
+    mapGeoJsonPath: '/martin_parcels_map.geojson?v=pdp-2026-07-16',
     // Mirrors Howard: CAD ownership rolls express interest as a 0–1 decimal
     // that gets multiplied by 100 for display.
     ownershipPctIsDecimal: true,

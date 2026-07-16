@@ -15,16 +15,32 @@ const nextConfig = {
     '/legal/agreement': ['./legal/**/*.md'],
   },
   async headers() {
-    // Aggressive caching for the parcel GeoJSON files. They're large and
-    // immutable per deploy; a year-long max-age + immutable hint keeps them
-    // out of the network path on every county switch after the first load.
+    // Parcel GeoJSONs (both the full enriched and the slim map variants)
+    // ship at unversioned URLs like /martin_parcels_map.geojson, and their
+    // content changes whenever we re-enrich or re-tag. The previous config
+    // set `max-age=31536000, immutable` on them, which pinned browsers to
+    // whatever version they first fetched — every existing user was stuck
+    // on the pre-production_status file forever, which is why parcels
+    // rendered gray after the paint swap even though main had fresh data.
+    //
+    // Trade-off after the fix:
+    //   * Browsers keep the file for 5 minutes without asking (`max-age=300`),
+    //   * then revalidate via If-None-Match / ETag (`must-revalidate`),
+    //   * so a fresh deploy propagates within ~5 minutes even if the URL
+    //     doesn't change. Vercel's CDN still caches per-deploy under the
+    //     hood, so origin load is unchanged.
+    //
+    // The county configs in lib/counties.ts additionally append a
+    // ?v=... query string that gets bumped when the schema changes, so
+    // major migrations (e.g. adding production_status) can force an
+    // instant refresh instead of waiting the 5-minute TTL.
     return [
       {
         source: '/:filename(.*_parcels(?:_enriched|_map)?\\.geojson)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: 'public, max-age=300, must-revalidate',
           },
         ],
       },

@@ -305,15 +305,15 @@ export default function Map({
   // (`parcels-permit-dots-{countyId}`) below. Users read PDP/PUD via fill
   // color and permits via the dot on top.
   const PRODUCTION_STATUS_FILL: Record<string, string> = {
-    pdp:            '#EAB308', // yellow — drilled + producing
-    pud:            '#22C55E', // green  — proved undeveloped
+    pdp:            '#FACC15', // saturated yellow — drilled + producing
+    pud:            '#16A34A', // saturated green — proved undeveloped
     new_permit:     '#E5E7EB', // no fill — permits render as a blue dot instead
     pending_permit: '#E5E7EB',
     none:           '#E5E7EB', // neutral gray — no activity
   }
   const PRODUCTION_STATUS_OUTLINE: Record<string, string> = {
-    pdp:            '#CA8A04', // yellow-600
-    pud:            '#15803D', // green-700
+    pdp:            '#A16207', // yellow-700, darker to read against #FACC15
+    pud:            '#166534', // green-800
     new_permit:     '#CBD5E1',
     pending_permit: '#CBD5E1',
     none:           '#CBD5E1',
@@ -341,9 +341,9 @@ export default function Map({
     () => [
       'match',
       ['coalesce', ['get', 'production_status'], 'none'],
-      'pdp',            0.55, // yellow reads harshly at high opacity — dial it back
-      'pud',            0.55,
-      // Permit-only parcels stay near-transparent so the blue dot on top
+      'pdp',            0.78, // solid enough to read against Mapbox streets tan basemap
+      'pud',            0.72,
+      // Permit-only parcels stay near-transparent so the blue centroid dot
       // is the visual cue, not the fill.
       'new_permit',     0.18,
       'pending_permit', 0.14,
