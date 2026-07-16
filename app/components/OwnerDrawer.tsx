@@ -44,8 +44,14 @@ export type OwnerLike = {
 export type OwnerDrawerHolding = {
   id?: string | number
   abstract?: string | null
+  // Gonzales stores the lease name in `county_lease_name`; Howard /
+  // Martin don't have that column at all, but they do have separate
+  // `block`, `section`, `survey` columns from their tax roll load.
   county_lease_name?: string | null
   field_name?: string | null
+  block?: string | null
+  section?: string | null
+  survey?: string | null
   operator_name?: string | null
   acreage?: number | null
   ownership_pct?: number | null
@@ -202,14 +208,64 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     setLoading(true)
     setErrorMessages([])
 
+    // Owner-name matching: use ilike() as a case-insensitive exact
+    // match (no wildcards). Some ownership rows land in the DB with
+    // slightly different casing / trailing whitespace than what the
+    // click captured (e.g. click came from a search result cast to
+    // Title Case, but the row is stored UPPERCASE). ilike() with a
+    // trimmed value covers both. Both `%` and `_` in the owner name
+    // are escaped so a legitimate name containing those characters
+    // still matches exactly.
+    const nameForMatch = String(owner.owner_name ?? '').trim()
+    const ilikePattern = nameForMatch.replace(/[%_]/g, (m) => `\\${m}`)
+
+    // Column set with a tiered fallback. County schemas drifted apart
+    // over time:
+    //   Gonzales:      county_lease_name, field_name, (no block/section/survey)
+    //   Howard/Martin: block, section, survey, field_name, (no county_lease_name)
+    //   Others (10 new Permian counties): tables don't exist yet, error is
+    //     ignored downstream.
+    // The single-shape query the drawer used to run would fail with
+    // "column does not exist" against Howard/Martin because it asked
+    // for county_lease_name, so those rows silently vanished. Now we
+    // try the Howard-style select first (block/section/survey), fall
+    // back to the Gonzales-style select (county_lease_name), and
+    // finally to a minimum common set if both fail. `interest_type`
+    // and `decimal_interest` are dropped because they aren't real
+    // columns anywhere yet — they only live in the TS type as a
+    // future-schema placeholder.
+    const HOWARD_COLS =
+      'id, abstract, block, section, survey, field_name, operator_name, acreage, ownership_pct, rrc_lease_id'
+    const GONZALES_COLS =
+      'id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, rrc_lease_id'
+    const MIN_COLS =
+      'id, abstract, operator_name, acreage, ownership_pct, rrc_lease_id'
+
+    const isMissingColumnError = (msg: string): boolean => {
+      const m = msg.toLowerCase()
+      return m.includes('column') && (m.includes('does not exist') || m.includes('not find'))
+    }
+
     const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
     const perCountyPromises = countyEntries.map(async ([countyKey, cfg]) => {
-      const result = await supabase
-        .from(cfg.ownershipTable)
-        .select('id, abstract, county_lease_name, field_name, operator_name, acreage, ownership_pct, decimal_interest, rrc_lease_id, interest_type')
-        .eq('owner_name', owner.owner_name)
-        .order('acreage', { ascending: false })
-        .limit(500)
+      const runQuery = async (cols: string) =>
+        supabase
+          .from(cfg.ownershipTable)
+          .select(cols)
+          .ilike('owner_name', ilikePattern)
+          .order('acreage', { ascending: false })
+          .limit(500)
+
+      // Prefer the shape that carries block/section/survey when we can,
+      // because that's what the Leases table actually renders. Fall
+      // through on column errors.
+      let result = await runQuery(HOWARD_COLS)
+      if (result.error && isMissingColumnError(result.error.message)) {
+        result = await runQuery(GONZALES_COLS)
+      }
+      if (result.error && isMissingColumnError(result.error.message)) {
+        result = await runQuery(MIN_COLS)
+      }
       if (result.error) {
         return { countyKey, rows: [] as OwnerDrawerHolding[], error: result.error.message }
       }
@@ -438,6 +494,55 @@ function useOwnerNote(county: County, owner: OwnerLike | null, open: boolean) {
   }
 
   return { note, setNote, loading, saving, savedAt, error, save }
+}
+
+// Parse a compact legal description string into its parts. Handles both
+// the T&P railroad grid style used by Howard / Martin
+//   "T2N BLK 31 SEC 20 A-543"
+// and the named-survey style used by Gonzales / CSL leagues
+//   "COOK, W H Survey A-160"
+// Also opportunistically pulls a PLSS-style Range ("R30E") if the string
+// contains one — Texas T&P doesn't use Range, but some Permian county
+// data sets ship with a PLSS-derived description we can surface without
+// making the caller do the parsing.
+type LegalParts = {
+  township: string
+  block: string
+  section: string
+  range: string
+  survey: string
+  abstract: string
+}
+
+function parseLegalDescription(raw: string | null | undefined): LegalParts {
+  const s = String(raw ?? '').trim()
+  const empty: LegalParts = {
+    township: '', block: '', section: '', range: '', survey: '', abstract: '',
+  }
+  if (!s) return empty
+
+  const townshipMatch = s.match(/\bT\d+[NS]\b/i)
+  const rangeMatch = s.match(/\bR\d+[EW]\b/i)
+  const blockMatch = s.match(/\bBLK\s+(\S+)/i)
+  const sectionMatch = s.match(/\bSEC\s+(\S+)/i)
+  const abstractMatch = s.match(/\bA-\s*\S+/i)
+
+  // "SURVEY_NAME Survey [A-\d+]" — treat everything before " Survey" or
+  // ", Abstract" as the survey grantee.
+  let survey = ''
+  const surveyIdx = s.search(/\s+Survey\b/i)
+  const abstractIdx = s.search(/\s+Abstract\b/i)
+  if (surveyIdx > 0) survey = s.slice(0, surveyIdx).trim()
+  else if (abstractIdx > 0) survey = s.slice(0, abstractIdx).trim()
+
+  return {
+    township: townshipMatch ? townshipMatch[0].toUpperCase() : '',
+    block:    blockMatch    ? blockMatch[1] : '',
+    section:  sectionMatch  ? sectionMatch[1] : '',
+    range:    rangeMatch    ? rangeMatch[0].toUpperCase() : '',
+    survey,
+    abstract: abstractMatch ? abstractMatch[0].replace(/\s+/g, '') : '',
+  }
 }
 
 function ownerBadges(owner: OwnerLike): Array<{ label: string; classes: string }> {
@@ -855,23 +960,20 @@ function HoldingsPanel({
     )
   }
 
-  // Group holdings by county so the drawer surfaces "3 leases in Howard,
-  // 1 in Martin" at a glance. Currently-active county comes first.
-  const byCounty: Partial<Record<CountyKey, OwnerDrawerHolding[]>> = {}
-  for (const h of holdings) {
-    const key = (h.county_id ?? (county.id as CountyKey)) as CountyKey
-    if (!byCounty[key]) byCounty[key] = []
-    byCounty[key]!.push(h)
-  }
   const activeCountyId = county.id as CountyKey
-  const orderedCountyKeys: CountyKey[] = [
-    activeCountyId,
-    ...Object.keys(byCounty).filter((k) => k !== activeCountyId) as CountyKey[],
-  ].filter((k, i, arr) => arr.indexOf(k) === i && byCounty[k])
-
-  const totalCounties = orderedCountyKeys.length
   const totalLeases = holdings.length
+  const countiesRepresented = new Set(
+    holdings.map((h) => h.county_id ?? activeCountyId),
+  )
+  const totalCounties = countiesRepresented.size
 
+  // Compact table view. Columns follow the on-call spec:
+  //   Unit | Legal | Sec | Township | Block | Range | Operator | County
+  // Sec / Township / Block / Range are parsed from the legal
+  // description we already computed for the active county's tracts
+  // via legalDescByAbstract. For cross-county rows we don't have a
+  // pre-computed legal description, so those columns show "—" and
+  // the Legal column falls back to the bare abstract label.
   return (
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
@@ -887,102 +989,148 @@ function HoldingsPanel({
         </div>
       )}
 
-      {orderedCountyKeys.map((countyKey) => {
-        const rows = byCounty[countyKey] ?? []
-        const cfg = COUNTIES[countyKey]
-        const isActive = countyKey === activeCountyId
-        // Legal descriptions in the current tract's county come from
-        // legalDescByAbstract (built by the parent from the loaded
-        // TractRecord[]); other counties don't have that pre-built
-        // lookup, so we fall back to the bare abstract label.
-        return (
-          <div key={countyKey} className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div
-              className={`flex items-center justify-between border-b border-gray-100 px-4 py-2 ${
-                isActive ? 'bg-amber-50/60' : ''
-              }`}
-            >
-              <div className="text-xs font-bold uppercase tracking-widest text-gray-700">
-                {cfg.displayName}
-                {isActive && (
-                  <span className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-amber-900">
-                    Active
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] text-gray-500">
-                {rows.length} lease{rows.length === 1 ? '' : 's'}
-              </div>
-            </div>
-            <div className="flex flex-col gap-2 p-3">
-              {rows.map((h, i) => {
-                const bareAbstract = abstractKey(h.abstract)
-                const abstractLabel = bareAbstract ? `A-${bareAbstract}` : ''
-                const legalDesc = isActive && bareAbstract
-                  ? (legalDescByAbstract?.[bareAbstract] || '')
-                  : ''
-                const ownershipPct = ownershipPctValue(
-                  h.ownership_pct ?? h.decimal_interest,
-                  cfg.ownershipPctIsDecimal,
-                )
-                const acres = displayNumber(h.acreage)
-                const nra = (ownershipPct != null && h.acreage != null)
-                  ? Number(h.acreage) * (ownershipPct / 100)
-                  : null
-                return (
-                  <div
-                    key={`${countyKey}-${h.id ?? h.rrc_lease_id ?? i}`}
-                    className="rounded-lg border border-gray-200 bg-gray-50 p-3"
-                  >
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.5fr_1fr_0.9fr_1.1fr] md:items-center">
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Legal description</div>
-                        <div className="mt-1 font-mono text-sm font-semibold text-gray-900">
-                          {legalDesc || abstractLabel || 'Unmatched abstract'}
-                        </div>
-                        {legalDesc && legalDesc !== abstractLabel && abstractLabel && (
-                          <div className="mt-0.5 font-mono text-[11px] text-gray-400">{abstractLabel}</div>
-                        )}
-                        {clean(h.county_lease_name) && (
-                          <div className="mt-1 text-xs text-gray-500">Lease: {clean(h.county_lease_name)}</div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Operator</div>
-                        <div className="mt-1 text-sm text-gray-900">{clean(h.operator_name) || '—'}</div>
-                        {clean(h.field_name) && (
-                          <div className="text-xs text-gray-500">{clean(h.field_name)}</div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Interest</div>
-                        <div className="mt-1 font-mono text-sm text-gray-900">
-                          {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-                        </div>
-                        {h.interest_type && (
-                          <div className="text-xs text-gray-500">{h.interest_type}</div>
-                        )}
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Acres / NRA</div>
-                        <div className="mt-1 font-mono text-sm text-gray-900">
-                          {acres ?? '—'}
-                          {nra != null && (
-                            <span className="ml-2 text-gray-500">({nra.toFixed(nra < 1 ? 3 : 2)} NRA)</span>
-                          )}
-                        </div>
-                        {h.rrc_lease_id != null && (
-                          <div className="text-xs text-gray-500">Lease #{h.rrc_lease_id}</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
+      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            <tr>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Unit</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Legal</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Sec</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Township</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Block</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Range</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">Operator</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-left">County</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-right">Interest</th>
+              <th className="border-b border-gray-200 px-3 py-2 text-right">Acres / NRA</th>
+            </tr>
+          </thead>
+          <tbody>
+            {holdings.map((h, i) => {
+              const rowCountyId = (h.county_id ?? activeCountyId) as CountyKey
+              const cfg = COUNTIES[rowCountyId]
+              const isActive = rowCountyId === activeCountyId
+              const bare = abstractKey(h.abstract)
+              const abstractLabel = bare ? `A-${bare}` : ''
+              // Only the active county has a pre-computed legal
+              // description available — legalDescByAbstract is built
+              // from the tracts currently loaded on the map.
+              const legalDesc = isActive && bare
+                ? (legalDescByAbstract?.[bare] || '')
+                : ''
+
+              // Prefer the real columns from the ownership row over
+              // regex-parsing the composed legal description. Howard /
+              // Martin ship block+section+survey natively (loaded from
+              // the county tax roll); Gonzales rows don't have them,
+              // so parseLegalDescription() fills gaps from whatever
+              // legal string the parent computed.
+              const parsed = parseLegalDescription(legalDesc)
+              const rawBlock   = clean(h.block)
+              const rawSection = clean(h.section)
+              const rawSurvey  = clean(h.survey)
+              // The tax-roll `block` column often has "35 T1N" stuffed
+              // into it — split off the township token so the Block
+              // column shows only "35" and Township shows "T1N".
+              const blockTownshipMatch = rawBlock.match(/T\d+[NS]/i)
+              const townshipFromBlock = blockTownshipMatch
+                ? blockTownshipMatch[0].toUpperCase()
+                : ''
+              const blockOnly = townshipFromBlock
+                ? rawBlock.replace(blockTownshipMatch![0], '').trim()
+                : rawBlock
+              const parts = {
+                section:  rawSection || parsed.section,
+                township: townshipFromBlock || parsed.township,
+                block:    blockOnly || parsed.block,
+                range:    parsed.range,
+                survey:   rawSurvey || parsed.survey,
+              }
+
+              const ownershipPct = ownershipPctValue(
+                h.ownership_pct ?? h.decimal_interest,
+                cfg.ownershipPctIsDecimal,
+              )
+              const acres = displayNumber(h.acreage)
+              const nra = (ownershipPct != null && h.acreage != null)
+                ? Number(h.acreage) * (ownershipPct / 100)
+                : null
+
+              const unitLabel = clean(h.county_lease_name)
+                || clean(h.field_name)
+                || (h.rrc_lease_id != null ? `Lease #${h.rrc_lease_id}` : '—')
+
+              // Compose a legal string when the parent didn't hand us
+              // one (i.e. for cross-county rows). Uses whichever raw
+              // columns the ownership row carried: block/section for
+              // Howard/Martin, survey name for named-grantee tracts.
+              const composedLegal = (() => {
+                if (legalDesc) return legalDesc
+                const bits: string[] = []
+                if (parts.township) bits.push(parts.township)
+                if (parts.block) bits.push(`BLK ${parts.block}`)
+                if (parts.section) bits.push(`SEC ${parts.section}`)
+                if (abstractLabel) bits.push(abstractLabel)
+                if (bits.length > 0) return bits.join(' ')
+                if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
+                return abstractLabel
+              })()
+
+              return (
+                <tr
+                  key={`${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`}
+                  className={`text-gray-800 ${
+                    isActive ? 'bg-amber-50/40' : ''
+                  } ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
+                >
+                  <td className="border-b border-gray-100 px-3 py-2 align-top">
+                    <div className="font-medium text-gray-900">{unitLabel}</div>
+                    {clean(h.field_name) && clean(h.county_lease_name) && (
+                      <div className="text-[11px] text-gray-500">{clean(h.field_name)}</div>
+                    )}
+                  </td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono text-[13px]">
+                    {composedLegal || '—'}
+                    {composedLegal && abstractLabel && composedLegal !== abstractLabel && (
+                      <div className="text-[10px] text-gray-400">{abstractLabel}</div>
+                    )}
+                  </td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.section || '—'}</td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.township || '—'}</td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.block || '—'}</td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.range || '—'}</td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top">
+                    {clean(h.operator_name) || '—'}
+                  </td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top">
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                        isActive
+                          ? 'border-amber-300 bg-amber-100 text-amber-900'
+                          : 'border-slate-200 bg-slate-50 text-slate-700'
+                      }`}
+                    >
+                      {cfg.displayName}
+                    </span>
+                  </td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top text-right font-mono">
+                    {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
+                    {h.interest_type && (
+                      <div className="text-[10px] text-gray-500">{h.interest_type}</div>
+                    )}
+                  </td>
+                  <td className="border-b border-gray-100 px-3 py-2 align-top text-right font-mono">
+                    {acres ?? '—'}
+                    {nra != null && (
+                      <div className="text-[10px] text-gray-500">{nra.toFixed(nra < 1 ? 3 : 2)} NRA</div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
