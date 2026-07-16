@@ -45,7 +45,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
+          # No pip cache: this repo has no requirements.txt / pyproject.toml
+          # for setup-python to hash, and the install below is only two
+          # small wheels — caching would save ~3s and add setup complexity.
 
       - name: Install dependencies
         run: |
