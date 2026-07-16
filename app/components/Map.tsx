@@ -823,8 +823,13 @@ export default function Map({
       })
 
       if (!map.current) return
-      // Per-tract section number rendered from Surv_Sect. Only shown at z10+
-      // so we don't clutter the overview zooms.
+      // Per-tract section number. Only shown at z10+ so we don't clutter
+      // the overview zooms. Field-name convention varies by county:
+      //   Howard   → Surv_Sect ("20", "25", "26", …)
+      //   Martin   → LEVEL3_SUR ("131", "36", …)
+      //   Gonzales → no section number in the source shapefile
+      // `coalesce` picks the first non-null so the same paint spec works
+      // for every county.
       const sectionsId = `parcels-sections-${countyConfig.id}`
       map.current.addLayer({
         id: sectionsId,
@@ -832,7 +837,12 @@ export default function Map({
         source: sourceId,
         minzoom: 10,
         layout: {
-          'text-field': ['coalesce', ['get', 'Surv_Sect'], ''],
+          'text-field': [
+            'coalesce',
+            ['get', 'Surv_Sect'],
+            ['get', 'LEVEL3_SUR'],
+            '',
+          ],
           'text-size': 11,
           'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
           'text-anchor': 'center',

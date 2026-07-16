@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 from collections import Counter, defaultdict
@@ -292,6 +293,74 @@ def main() -> None:
     fallback_name_hits = 0
     print(
         f"After direct abstract matching: {len(owner_id_to_abstract)} owners mapped to abstracts"
+    )
+
+    # Spatial fallback: ~10% of Martin owners either carry `abstract='SEC'`
+    # (a broken ingest sentinel from the source vendor), a null abstract,
+    # or an abstract that doesn't exist in the county's Abstracts.shp
+    # ("orphan" abstracts — the shapefile predates a re-plat). About half
+    # of those rows do carry a real lat/lon inside `raw_record`, so we
+    # can point-in-polygon them into the containing tract as a second
+    # pass. Same code path helps Howard / Gonzales too whenever an owner
+    # lands in the same bucket.
+    def _owner_coords(row: dict[str, Any]) -> tuple[float, float] | None:
+        rr = row.get("raw_record")
+        if not isinstance(rr, dict):
+            return None
+        try:
+            lat = float(rr.get("lat"))
+            lon = float(rr.get("long"))
+        except (TypeError, ValueError):
+            return None
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            return None
+        if abs(lat) < 1 or abs(lon) < 1:
+            return None
+        if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+            return None
+        return lon, lat
+
+    unmapped_with_coords: list[tuple[str, float, float]] = []
+    for owner in all_owners:
+        owner_id = str(owner.get("id", ""))
+        if not owner_id or owner_id in owner_id_to_abstract:
+            continue
+        coords = _owner_coords(owner)
+        if coords is None:
+            continue
+        unmapped_with_coords.append((owner_id, coords[0], coords[1]))
+
+    spatial_hits = 0
+    if unmapped_with_coords:
+        try:
+            from shapely.geometry import Point
+            from shapely.strtree import STRtree
+
+            geoms = list(parcels_gdf.geometry.values)
+            labels = [
+                code_to_abstract_label.get(
+                    to_abstract_code(parcels_gdf.at[idx, "ABSTRACT_N"]),
+                    "",
+                )
+                for idx in parcels_gdf.index
+            ]
+            tree = STRtree(geoms)
+            for owner_id, lon, lat in unmapped_with_coords:
+                point = Point(lon, lat)
+                for i in tree.query(point):
+                    if geoms[i].contains(point) and labels[i]:
+                        owner_id_to_abstract[owner_id] = labels[i]
+                        spatial_hits += 1
+                        break
+        except ImportError:
+            print(
+                "  shapely not available; skipping spatial-fallback pass "
+                "(pip install shapely to enable)."
+            )
+    print(
+        f"After spatial fallback: {len(owner_id_to_abstract)} owners mapped "
+        f"(+{spatial_hits} via lat/lon; {len(unmapped_with_coords) - spatial_hits} "
+        f"coord-carrying rows still outside every parcel)."
     )
 
     # Final dictionary: abstract identifier -> list[owners]

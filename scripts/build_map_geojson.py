@@ -23,9 +23,17 @@ from pathlib import Path
 KEEP_PROPS = {
     # Identifiers / labels
     'ABSTRACT_L', 'ABSTRACT_N', 'CODE',
-    # Survey/legal description (Howard + Gonzales variants)
+    # Survey/legal description. Field-name convention varies by county:
+    #   Howard   — Surv_Name / Block / Surv_Sect / DESC_
+    #   Martin   — LEVEL1_SUR / LEVEL2_BLO / LEVEL3_SUR / LEVEL4_SUR
+    #   Gonzales — LEVEL1_SUR / LEVEL2_BLO / TEXTSTRING (abstract label)
+    # LEVEL3_SUR carries Martin's per-tract section number ("131", "36",
+    # etc.) — the same role Surv_Sect plays for Howard. The section
+    # labels layer in app/components/Map.tsx coalesces the two, so
+    # keeping LEVEL3_SUR here is what makes Martin's section numbers
+    # actually render on the map.
     'Block', 'Surv_Name', 'Surv_Sect', 'DESC_',
-    'LEVEL1_SUR', 'LEVEL2_BLO', 'TEXTSTRING',
+    'LEVEL1_SUR', 'LEVEL2_BLO', 'LEVEL3_SUR', 'LEVEL4_SUR', 'TEXTSTRING',
     # Geometry helpers
     'SHAPE_AREA', 'STArea__',
     # Paint inputs: parcel-level well activity classification. `production_status`
