@@ -655,27 +655,118 @@ export default function Home() {
   const countyRef = useRef(county)
   const ownershipTable = county.ownershipTable
   const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
-  const countyStats = county.stats
   const countyBreakdown = county.breakdown
-  const combinedStats = useMemo(() => {
-    const allCounties = Object.values(COUNTIES)
-    const sumStat = (label: string) =>
-      allCounties.reduce((sum, c) => {
-        const val = c.stats.find((s) => s.lbl === label)?.val ?? '0'
-        return sum + Number(val.replace(/,/g, ''))
-      }, 0)
-    return [
-      { val: sumStat('Total owners').toLocaleString(), lbl: 'Total owners' },
-      { val: sumStat('PDP tracts').toLocaleString(), lbl: 'PDP tracts' },
-      { val: sumStat('PUD tracts').toLocaleString(), lbl: 'PUD tracts' },
-      { val: sumStat('New permits').toLocaleString(), lbl: 'New permits' },
-      { val: sumStat('Survey abstracts').toLocaleString(), lbl: 'Survey abstracts' },
-      { val: sumStat('Active wells').toLocaleString(), lbl: 'Active wells' },
-    ]
+  // Live per-county stat counts fetched from Supabase. Replaces the
+  // static county.stats values baked in lib/counties.ts, which
+  // drifted out of date whenever we added a county or ran a fresh
+  // scrape. Each county contributes six counts (owners, pdp, pud,
+  // permits24mo, abstracts, wells); the whole grid loads in one
+  // fan-out that finishes in ~200ms.
+  type CountyLiveStats = {
+    totalOwners: number | null
+    pdpTracts:   number | null
+    pudTracts:   number | null
+    newPermits:  number | null
+    abstracts:   number | null
+    wells:       number | null
+  }
+  const [liveCountyStats, setLiveCountyStats] = useState<Partial<Record<CountyKey, CountyLiveStats>>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    const cutoff = (() => {
+      const d = new Date()
+      d.setMonth(d.getMonth() - 24)
+      return d.toISOString().slice(0, 10)
+    })()
+
+    const perCounty = async (countyId: CountyKey): Promise<[CountyKey, CountyLiveStats]> => {
+      const cfg = COUNTIES[countyId]
+      const empty: CountyLiveStats = {
+        totalOwners: null, pdpTracts: null, pudTracts: null,
+        newPermits: null, abstracts: null, wells: null,
+      }
+      if (!cfg) return [countyId, empty]
+      const table = cfg.ownershipTable
+      const wellsTable = cfg.wellsTable
+      const permitsTable = `${cfg.id}_permits`
+      // `.limit(1)` + `count: 'exact'` gives us the count without pulling rows.
+      const [owners, wells, permits, pdp, pud, abstracts] = await Promise.all([
+        supabase.from(table).select('id', { count: 'exact', head: true }),
+        supabase.from(wellsTable).select('id', { count: 'exact', head: true }),
+        supabase.from(permitsTable).select('id', { count: 'exact', head: true })
+          .gte('approved_date', cutoff),
+        supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
+          .eq('county_id', cfg.id).eq('development_status', 'PDP'),
+        supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
+          .eq('county_id', cfg.id).in('development_status', ['PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL']),
+        supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
+          .eq('county_id', cfg.id),
+      ])
+      return [countyId, {
+        totalOwners: owners.error ? null : (owners.count ?? 0),
+        pdpTracts:   pdp.error    ? null : (pdp.count ?? 0),
+        pudTracts:   pud.error    ? null : (pud.count ?? 0),
+        newPermits:  permits.error ? null : (permits.count ?? 0),
+        abstracts:   abstracts.error ? null : (abstracts.count ?? 0),
+        wells:       wells.error  ? null : (wells.count ?? 0),
+      }]
+    }
+
+    const countyIds = Object.keys(COUNTIES) as CountyKey[]
+    void Promise.all(countyIds.map(perCounty)).then((entries) => {
+      if (cancelled) return
+      setLiveCountyStats(Object.fromEntries(entries))
+    })
+    return () => { cancelled = true }
   }, [])
-  const countyStatsByLabel = Object.fromEntries(
-    county.stats.map((entry) => [entry.lbl, entry.val])
-  ) as Record<string, string>
+
+  const combinedStats = useMemo(() => {
+    // Sum whatever's loaded; unloaded counties contribute 0. Once all
+    // 12 counties have responded, the totals reflect real DB counts.
+    const sum = (pick: (s: CountyLiveStats) => number | null) =>
+      Object.values(liveCountyStats).reduce(
+        (acc: number, s) => acc + (s ? (pick(s) ?? 0) : 0),
+        0,
+      )
+    return [
+      { val: sum((s) => s.totalOwners).toLocaleString(), lbl: 'Total owners' },
+      { val: sum((s) => s.pdpTracts).toLocaleString(),   lbl: 'PDP tracts' },
+      { val: sum((s) => s.pudTracts).toLocaleString(),   lbl: 'PUD tracts' },
+      { val: sum((s) => s.newPermits).toLocaleString(),  lbl: 'New permits' },
+      { val: sum((s) => s.abstracts).toLocaleString(),   lbl: 'Survey abstracts' },
+      { val: sum((s) => s.wells).toLocaleString(),       lbl: 'Active wells' },
+    ]
+  }, [liveCountyStats])
+
+  const countyStatsByLabel = useMemo(() => {
+    const live = liveCountyStats[selectedCounty]
+    if (!live) return {} as Record<string, string>
+    const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString())
+    return {
+      'Total owners':      fmt(live.totalOwners),
+      'PDP tracts':        fmt(live.pdpTracts),
+      'PUD tracts':        fmt(live.pudTracts),
+      'New permits':       fmt(live.newPermits),
+      'Survey abstracts':  fmt(live.abstracts),
+      'Active wells':      fmt(live.wells),
+    } as Record<string, string>
+  }, [liveCountyStats, selectedCounty])
+
+  // Same values as countyStatsByLabel but shaped as an array for the
+  // stat-card grid renderer (each card reads .val and .lbl).
+  const liveCountyStatEntries = useMemo(() => {
+    const live = liveCountyStats[selectedCounty]
+    const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString())
+    return [
+      { val: fmt(live?.totalOwners), lbl: 'Total owners' },
+      { val: fmt(live?.pdpTracts),   lbl: 'PDP tracts' },
+      { val: fmt(live?.pudTracts),   lbl: 'PUD tracts' },
+      { val: fmt(live?.newPermits),  lbl: 'New permits' },
+      { val: fmt(live?.abstracts),   lbl: 'Survey abstracts' },
+      { val: fmt(live?.wells),       lbl: 'Active wells' },
+    ]
+  }, [liveCountyStats, selectedCounty])
   const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
   const showCountyArrows = mapLevel === 'tract'
   const desktopPanelWidth = Math.min(420, Math.max(300, windowWidth * 0.3))
@@ -2990,7 +3081,7 @@ export default function Home() {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {(mapLevel === 'county' ? combinedStats : countyStats).map((card) => (
+                {(mapLevel === 'county' ? combinedStats : liveCountyStatEntries).map((card) => (
                   <div
                     key={card.lbl}
                     style={{
@@ -3026,6 +3117,14 @@ export default function Home() {
                   </div>
                   <div>
                     {Object.values(COUNTIES).map((c) => {
+                      const live = liveCountyStats[c.id as CountyKey]
+                      const owners = live?.totalOwners
+                      const permits24mo = live?.newPermits
+                      // Line 2 shows live counts. While the initial
+                      // load is in-flight (live undefined), we hide
+                      // the second line rather than showing a hard-
+                      // coded fallback that might disagree with the
+                      // real number once it arrives.
                       return (
                         <div
                           key={c.id}
@@ -3057,9 +3156,18 @@ export default function Home() {
                             <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                               {c.displayName}
                             </div>
-                            <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                              ~{c.totalLeads.toLocaleString()} total leads
-                            </div>
+                            {live ? (
+                              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                                {owners != null ? owners.toLocaleString() : '—'} owners
+                                {permits24mo != null && permits24mo > 0 && (
+                                  <>{' · '}<span style={{ color: '#1D4ED8', fontWeight: 500 }}>{permits24mo.toLocaleString()} new permits</span></>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 11, color: '#D1D5DB', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                                Loading…
+                              </div>
+                            )}
                           </div>
                         </div>
                       )

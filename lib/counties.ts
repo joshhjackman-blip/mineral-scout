@@ -6,7 +6,6 @@ export type County = {
   mapCenter: [number, number]
   mapZoom: number
   fips: string
-  totalLeads: number
   fipsCode: string
   ownershipTable: string
   wellsTable: string
@@ -17,9 +16,8 @@ export type County = {
   // the side panel, but Mapbox doesn't need them and was choking on the
   // 24/53 MB FeatureCollections during low/medium-zoom tile generation.
   mapGeoJsonPath: string
-  stats: { val: string; lbl: string }[]
   breakdown: { operator: string; pct: number }[]
-  ownershipPctIsDecimal: boolean  // true = Howard style, false = Gonzales style
+  ownershipPctIsDecimal: boolean  // true = Howard style
   abstractField: string           // field name in GeoJSON for abstract label
   nriCode: string                 // sptb_code value that means NRI (skip NRA calc)
   // Lowercased substrings used by the CRM to derive a deal's county from
@@ -53,7 +51,6 @@ export const COUNTIES: Record<string, County> = {
     mapCenter: [-101.45, 32.30],
     mapZoom: 10,
     fips: '48227',
-    totalLeads: 216000,
     fipsCode: '227',
     ownershipTable: 'howard_mineral_ownership',
     wellsTable: 'howard_wells',
@@ -68,14 +65,6 @@ export const COUNTIES: Record<string, County> = {
       'surge operating',
     ],
     wellsJoinStrategy: 'abstract',
-    stats: [
-      { val: '215,592', lbl: 'Total owners' },
-      { val: '936', lbl: 'PDP tracts' },
-      { val: '0', lbl: 'PUD tracts' },
-      { val: '0', lbl: 'New permits' },
-      { val: '987', lbl: 'Survey abstracts' },
-      { val: '17,483', lbl: 'Active wells' },
-    ],
     breakdown: [
       { operator: 'Apache Corporation', pct: 31 },
       { operator: 'Diamondback E&P', pct: 28 },
@@ -93,7 +82,6 @@ export const COUNTIES: Record<string, County> = {
     mapCenter: [-101.95, 32.30],
     mapZoom: 10,
     fips: '48317',
-    totalLeads: 204978,
     fipsCode: '317',
     ownershipTable: 'martin_mineral_ownership',
     wellsTable: 'martin_wells',
@@ -115,14 +103,6 @@ export const COUNTIES: Record<string, County> = {
       'permian resources', 'apache', 'concho', 'conoco',
     ],
     wellsJoinStrategy: 'abstract',
-    stats: [
-      { val: '204,978', lbl: 'Total owners' },
-      { val: '992', lbl: 'PDP tracts' },
-      { val: '0', lbl: 'PUD tracts' },
-      { val: '0', lbl: 'New permits' },
-      { val: '1,040', lbl: 'Survey abstracts' },
-      { val: '17,309', lbl: 'Active wells' },
-    ],
     breakdown: [
       { operator: 'Diamondback E&P', pct: 35 },
       { operator: 'Pioneer / ExxonMobil', pct: 29 },
