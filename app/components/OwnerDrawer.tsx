@@ -997,13 +997,28 @@ function HoldingsPanel({
   // via legalDescByAbstract. For cross-county rows we don't have a
   // pre-computed legal description, so those columns show "—" and
   // the Legal column falls back to the bare abstract label.
+  //
+  // Sticky top strip + sticky table header: the count / counties
+  // summary and every column label stay pinned to the top of the
+  // drawer's scroll area as the broker scrolls through a long
+  // holdings list (700+ rows is common for a large owner). Uses
+  // `position: sticky` inside the drawer's overflow-y-auto container
+  // so no extra scroll-position tracking is needed.
   return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
-        <span className="font-semibold">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
-        {' '}across{' '}
-        <span className="font-semibold">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}.
-        Offer on all of them, not just the one from the map click.
+    <div className="flex flex-col gap-2">
+      {/* Compact sticky counter — replaces the preachy amber banner. */}
+      <div
+        className="sticky z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 backdrop-blur"
+        style={{ top: '-20px' }}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
+          Leases
+        </div>
+        <div className="font-mono text-xs text-gray-700">
+          <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
+          {' · '}
+          <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
+        </div>
       </div>
 
       {errorMessages && errorMessages.length > 0 && (
@@ -1012,30 +1027,25 @@ function HoldingsPanel({
         </div>
       )}
 
-      {/* Compact 10-column table. Every cell is whitespace-nowrap +
-          text-[11px] so a full row fits on one line even inside the
-          drawer's ~600px width. Secondary details (abstract label
-          under Legal, NRA under Acres, field name under Unit) that
-          used to sit on a second line are now in `title` tooltips
-          instead — they'd otherwise stack the row two-tall and
-          defeat the "everything on one line" ask. If the table is
-          somehow still wider than the drawer, overflow-x-auto lets
-          the whole row scroll horizontally rather than wrapping. */}
+      {/* Compact 10-column table with a sticky <thead>. Column labels
+          stay pinned to the top of the scrolling drawer as the user
+          scrolls through 700+ rows so they never lose orientation.
+          `top: 28px` accounts for the sticky Leases counter above. */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="min-w-full border-collapse text-[11px]">
-          <thead className="bg-gray-50 text-[9px] font-bold uppercase tracking-widest text-gray-500">
-            <tr>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Unit</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Legal</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Sec</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Twp</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Block</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Range</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Operator</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">County</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Interest</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Acres</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">NMA</th>
+          <thead className="text-[9px] font-bold uppercase tracking-widest text-gray-500">
+            <tr className="sticky z-10 bg-gray-50" style={{ top: '11px' }}>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Unit</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Legal</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Sec</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Twp</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Block</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Range</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Operator</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">County</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Interest</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Acres</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">NMA</th>
             </tr>
           </thead>
           <tbody>
