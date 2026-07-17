@@ -103,9 +103,12 @@
    body-level default below, so the app picks up the new fonts even
    before every hard-coded call site is updated. */
 :root {
-  --font-display: 'Libre Baskerville', 'Times New Roman', Georgia, serif;
-  --font-body: 'Public Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+  /* Geist for everything, per de-minimis.ai reference. Display and
+     body point at the same family; weight distinguishes them. Falls
+     back to Inter -> system sans if the Google Fonts request fails. */
+  --font-display: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-body: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 }
 
 body {
@@ -122,10 +125,11 @@ body {
    tighter than default. */
 h1, h2, h3, h4, .font-display {
   font-family: var(--font-display);
-  /* Baskerville reads well at its default metrics; no negative
-     letter-spacing (that would push it back toward the "modern
-     display serif" look we're intentionally moving away from). */
-  letter-spacing: 0;
+  /* Geist looks best at display sizes with a hair of negative
+     letter-spacing. Weight defaults to 600 (semi-bold) for headings;
+     specific components can override. */
+  letter-spacing: -0.015em;
+  font-weight: 600;
 }
 
 /* Any legacy inline styles specifying 'Georgia, serif' still land on

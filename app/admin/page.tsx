@@ -199,7 +199,7 @@ export default function AdminDashboard() {
                   color: refreshing ? '#9CA3AF' : '#fff',
                   border: 'none',
                   cursor: refreshing ? 'default' : 'pointer',
-                  fontFamily: 'Public Sans, system-ui, sans-serif',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   fontWeight: 500,
                 }}
               >

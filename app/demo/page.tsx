@@ -496,13 +496,13 @@ export default function DemoPage() {
                   cursor: 'pointer',
                   padding: '12px 16px',
                   marginBottom: 4,
-                  fontFamily: 'Public Sans, system-ui, sans-serif',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
                 }}
               >
                 ← Back
               </button>
 
-              <div style={{ fontSize: 18, fontFamily: 'Libre Baskerville, Georgia, serif', color: '#111827', fontWeight: 700 }}>
+              <div style={{ fontSize: 18, fontFamily: 'Geist, Inter, system-ui, sans-serif', color: '#111827', fontWeight: 700 }}>
                 {selectedTract.abstractLabel}
               </div>
               <div style={{ color: '#6B7280', marginTop: 4 }}>{selectedTract.surveyName} Survey</div>
@@ -674,7 +674,7 @@ export default function DemoPage() {
                         padding: '3px 8px',
                         borderRadius: 6,
                         cursor: 'pointer',
-                        fontFamily: 'Public Sans, system-ui, sans-serif',
+                        fontFamily: 'Geist, Inter, system-ui, sans-serif',
                         fontWeight: ownerSort === s.key ? 600 : 400,
                         background: ownerSort === s.key ? '#EF9F27' : 'transparent',
                         border: ownerSort === s.key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
@@ -844,14 +844,14 @@ export default function DemoPage() {
               </div>
 
               <div style={{ display: 'flex', marginTop: 14 }}>
-                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Public Sans, system-ui, sans-serif' }}>
+                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   Add all to pipeline
                 </button>
               </div>
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Libre Baskerville, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
+              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
                 County Overview
               </div>
 

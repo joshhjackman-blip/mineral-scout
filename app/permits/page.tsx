@@ -399,8 +399,8 @@ export default function PermitsPage() {
         <Link href="/" style={{ textDecoration: 'none' }}>
           <AppLogo width={150} />
         </Link>
-        <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Public Sans, system-ui, sans-serif' }}>·</span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', fontFamily: 'Public Sans, system-ui, sans-serif' }}>
+        <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>·</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: '#111827', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
           Recent Permits
         </span>
         <div style={{ flex: 1 }} />
@@ -413,7 +413,7 @@ export default function PermitsPage() {
             padding: '6px 12px',
             borderRadius: 6,
             border: '1px solid #E5E7EB',
-            fontFamily: 'Public Sans, system-ui, sans-serif',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
           }}
         >
           ← Map
@@ -423,7 +423,7 @@ export default function PermitsPage() {
       <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', padding: '24px 20px 40px', flex: 1 }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{
-            fontFamily: 'Libre Baskerville, Georgia, serif',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
             fontSize: 28,
             fontWeight: 700,
             color: '#111827',
@@ -432,7 +432,7 @@ export default function PermitsPage() {
             Permits — last {windowDays >= 365 ? 'year' : `${windowDays} days`}
           </h1>
           <p style={{
-            fontFamily: 'Public Sans, system-ui, sans-serif',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
             fontSize: 14,
             color: '#6B7280',
             marginBottom: 0,
@@ -446,7 +446,7 @@ export default function PermitsPage() {
         {/* Filter row */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Public Sans, system-ui, sans-serif', marginRight: 4 }}>
+            <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginRight: 4 }}>
               Window:
             </span>
             {([
@@ -463,7 +463,7 @@ export default function PermitsPage() {
                   padding: '4px 10px',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  fontFamily: 'Public Sans, system-ui, sans-serif',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   background: windowDays === d ? '#0F172A' : '#FFFFFF',
                   border: windowDays === d ? '1px solid #0F172A' : '1px solid #E5E7EB',
                   color: windowDays === d ? '#FFFFFF' : '#6B7280',
@@ -476,7 +476,7 @@ export default function PermitsPage() {
           </div>
 
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Public Sans, system-ui, sans-serif', marginRight: 4 }}>
+            <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginRight: 4 }}>
               Status:
             </span>
             {([
@@ -492,7 +492,7 @@ export default function PermitsPage() {
                   padding: '4px 10px',
                   borderRadius: 6,
                   cursor: 'pointer',
-                  fontFamily: 'Public Sans, system-ui, sans-serif',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   background: statusFilter === s.key ? `${s.color}15` : '#FFFFFF',
                   border: statusFilter === s.key ? `1px solid ${s.color}` : '1px solid #E5E7EB',
                   color: statusFilter === s.key ? s.color : '#6B7280',
@@ -512,7 +512,7 @@ export default function PermitsPage() {
             textAlign: 'center',
             fontSize: 14,
             color: '#6B7280',
-            fontFamily: 'Public Sans, system-ui, sans-serif',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
           }}>
             Fetching permits from all counties…
           </div>
@@ -522,7 +522,7 @@ export default function PermitsPage() {
             textAlign: 'center',
             fontSize: 14,
             color: '#6B7280',
-            fontFamily: 'Public Sans, system-ui, sans-serif',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
             background: '#FFFFFF',
             borderRadius: 8,
             border: '1px solid #E5E7EB',
@@ -565,7 +565,7 @@ export default function PermitsPage() {
                       border: 'none',
                       cursor: 'pointer',
                       textAlign: 'left',
-                      fontFamily: 'Public Sans, system-ui, sans-serif',
+                      fontFamily: 'Geist, Inter, system-ui, sans-serif',
                     }}
                   >
                     <StatusBadge status={permit.status_bucket} />
@@ -608,15 +608,15 @@ export default function PermitsPage() {
                       padding: '14px 18px',
                     }}>
                       {!permit.abstract ? (
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Public Sans, system-ui, sans-serif' }}>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                           Couldn&apos;t match this permit to a tract (missing lat/lon).
                         </div>
                       ) : loadingOwners ? (
-                        <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Public Sans, system-ui, sans-serif' }}>
+                        <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                           Loading owners on {permit.abstract}…
                         </div>
                       ) : owners.length === 0 ? (
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Public Sans, system-ui, sans-serif' }}>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                           No owners recorded on {permit.abstract} yet.
                         </div>
                       ) : (
@@ -628,7 +628,7 @@ export default function PermitsPage() {
                             letterSpacing: '0.08em',
                             textTransform: 'uppercase',
                             marginBottom: 8,
-                            fontFamily: 'Public Sans, system-ui, sans-serif',
+                            fontFamily: 'Geist, Inter, system-ui, sans-serif',
                           }}>
                             {owners.length} lead{owners.length === 1 ? '' : 's'} on this tract
                           </div>
@@ -674,7 +674,7 @@ function StatusBadge({ status }: { status: PermitStatus }) {
         fontSize: 10,
         fontWeight: 700,
         letterSpacing: '0.06em',
-        fontFamily: 'Public Sans, system-ui, sans-serif',
+        fontFamily: 'Geist, Inter, system-ui, sans-serif',
         whiteSpace: 'nowrap',
       }}
     >
@@ -708,7 +708,7 @@ function OwnerRowCard({
         background: '#FFFFFF',
         border: '1px solid #E5E7EB',
         borderRadius: 8,
-        fontFamily: 'Public Sans, system-ui, sans-serif',
+        fontFamily: 'Geist, Inter, system-ui, sans-serif',
       }}
     >
       <div style={{ minWidth: 0 }}>

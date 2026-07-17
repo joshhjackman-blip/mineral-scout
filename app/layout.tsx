@@ -25,19 +25,18 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Type stack (2026-07-17 second refinement — toned down for
-              a Texas oil-and-gas B2B audience):
-              - Libre Baskerville: classical Baskerville revival.
-                Reads like a newspaper / law-firm letterhead — solid,
-                trustworthy, not showy. Replaces Cormorant which
-                felt slightly literary for the audience.
-              - Public Sans: US federal design system font (used by
-                usa.gov and Fed sites). Institutional, neutral, no
-                startup edge. Replaces Instrument Sans's humanist warmth.
-              - JetBrains Mono: kept for tabular numbers.
+        {/* Type stack (2026-07-17 third refinement — matches
+              de-minimis.ai's Geist pairing per user reference):
+              - Geist: Vercel's variable sans. Used for BOTH body
+                and display. Modern geometric feel, highly legible,
+                works at every size from a 10px table cell to a
+                48px landing hero.
+              - Geist Mono: paired variable mono for tabular numbers
+                and code-like values (abstract labels, permit APIs,
+                RRC lease IDs).
         */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap"
           rel="stylesheet"
         />
       </head>

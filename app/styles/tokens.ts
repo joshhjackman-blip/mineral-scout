@@ -51,7 +51,7 @@ export const tokens = {
   },
   font: {
     sans: '"DM Sans", system-ui, sans-serif',
-    serif: 'Libre Baskerville, Georgia, serif',
+    serif: 'Geist, Inter, system-ui, sans-serif',
     mono: '"JetBrains Mono", monospace',
   }
 }

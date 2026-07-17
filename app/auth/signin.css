@@ -17,8 +17,8 @@
   --si-amber-dim:    rgba(239,159,39,0.12);
   --si-amber-glow:   rgba(239,159,39,0.22);
   --si-teal:         #2ec4b6;
-  --si-font-serif:   'Libre Baskerville', Georgia, serif;
-  --si-font-sans:    'Public Sans', system-ui, sans-serif;
+  --si-font-serif:   'Geist', Inter, system-ui, sans-serif;
+  --si-font-sans:    'Geist', Inter, system-ui, sans-serif;
 
   background: var(--si-bg);
   color: var(--si-text);
@@ -118,9 +118,12 @@
 }
 
 .si-left-headline em {
-  font-style: italic;
-  color: var(--si-text); /* white / off-white to match main headline */
-  font-weight: 500;
+  /* Geist has no true italic; use weight + opacity to differentiate
+     the callout instead. Matches the landing hero treatment. */
+  font-style: normal;
+  color: var(--si-text);
+  font-weight: 400;
+  opacity: 0.85;
 }
 
 .si-left-sub {
