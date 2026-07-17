@@ -788,28 +788,54 @@ export default function Map({
       // Try the full column set first (Ticket 1.3 schema with
       // spud_date/completion_date). Fall back to the pre-1.3 minimal
       // column set if the migration hasn't landed for this county.
-      const permitsResult = await supabase
-        .from(permitsTable)
-        .select(
-          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date'
-        )
-        .not('latitude', 'is', null)
-        .not('longitude', 'is', null)
-
-      if (permitsResult.error) {
-        const msg = permitsResult.error.message || ''
-        if (/column .* does not exist/i.test(msg)) {
-          const fallback = await supabase
+      //
+      // IMPORTANT: Supabase's JS client silently caps a single SELECT
+      // at 1000 rows (PGRST_MAX_ROWS default). Howard has 1,188 rows
+      // with valid lat/lon; a plain `.select()` returned only the
+      // first 1000 — sorted implicitly by primary key ascending,
+      // which put the OLDEST permits first and dropped the 188
+      // newest, which is where 8 of the 10 active rigs live. The
+      // map ended up drawing 2 red dots on Howard vs Baker Hughes'
+      // published ~10. We now page in 1000-row chunks via .range()
+      // and stop when a partial page arrives.
+      const paginatedSelect = async (cols: string): Promise<{ data: Array<Record<string, unknown>> | null; error: unknown }> => {
+        const out: Array<Record<string, unknown>> = []
+        let offset = 0
+        while (true) {
+          const res = await supabase
             .from(permitsTable)
-            .select(
-              'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
-            )
+            .select(cols)
             .not('latitude', 'is', null)
             .not('longitude', 'is', null)
+            .range(offset, offset + 999)
+          if (res.error) return { data: null, error: res.error }
+          const chunk = (res.data ?? []) as unknown as Array<Record<string, unknown>>
+          out.push(...chunk)
+          if (chunk.length < 1000) break
+          offset += 1000
+          // Safety net: no county should ever have more than 20k
+          // permit rows, but guard anyway so a bad table doesn't
+          // spin forever.
+          if (offset >= 20_000) break
+        }
+        return { data: out, error: null }
+      }
+
+      const permitsResult = await paginatedSelect(
+        'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date'
+      )
+
+      if (permitsResult.error) {
+        const msg = (permitsResult.error as { message?: string })?.message ?? ''
+        if (/column .* does not exist/i.test(msg)) {
+          const fallback = await paginatedSelect(
+            'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+          )
           if (fallback.error) {
-            console.warn(`[permits] ${permitsTable} unavailable:`, fallback.error.message)
+            const emsg = (fallback.error as { message?: string })?.message ?? ''
+            console.warn(`[permits] ${permitsTable} unavailable:`, emsg)
           } else {
-            permitRows = (fallback.data ?? []) as Array<Record<string, unknown>>
+            permitRows = fallback.data ?? []
           }
         } else {
           // Table may not exist for this county (some Permian counties before
@@ -818,7 +844,7 @@ export default function Map({
           console.warn(`[permits] ${permitsTable} unavailable:`, msg)
         }
       } else {
-        permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
+        permitRows = permitsResult.data ?? []
       }
 
       const permits = permitRows.filter((row) => {
