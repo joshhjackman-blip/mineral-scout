@@ -52,28 +52,51 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # requests + bs4 + lxml drive the real-time EWA HTML scraper.
           # geopandas + shapely are needed by compute_development_status.py
           # for the adjacency + point-in-polygon logic. pyshp remains for
-          # the scraper's SYMNUM fallback path.
-          pip install supabase pyshp geopandas shapely
+          # the historical wells-zip SYMNUM fallback path.
+          pip install supabase pyshp geopandas shapely requests beautifulsoup4 lxml
 
-      - name: Scrape and upsert permits
+      - name: Scrape real-time permits from RRC EWA
+        # Primary data path — hits the public RRC drilling-permit web
+        # query and upserts fresh permits into <county>_permits on
+        # api_number. This is what makes the sidebar "New Permits"
+        # feed reflect filings from the last 24 hours; the historical
+        # wells-zip / EWA CSV path below only refreshes when the RRC
+        # publishes a new bulk snapshot (roughly monthly).
         env:
-          # Supabase creds must be set as repo secrets before the cron
-          # is enabled. Service role is required so the scraper can
-          # write to <county>_permits under RLS.
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
-          DAYS="${{ github.event.inputs.days || '30' }}"
+          # 90-day window catches anything the previous 30-day run
+          # might have missed (holiday backlogs, RRC processing lags).
+          python scripts/scrape_rrc_permits_realtime.py \
+            --county "$COUNTIES" \
+            --days 90
+
+      - name: Refresh historical permits (wells-zip + EWA CSV)
+        # Secondary data path — pulls the RRC wells shapefile (surface
+        # locations, SYMNUM-driven permit identification) plus the
+        # bulk EWA CSV. The EWA CSV in the Raw-Data bucket is
+        # refreshed roughly monthly, so this pass mostly re-verifies
+        # historical rows and fills in spud/completion dates on
+        # older APIs. Non-fatal on failure so the real-time step
+        # above already gave us fresh data.
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        continue-on-error: true
+        run: |
+          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           WELLS_ONLY_FLAG=""
           if [ "${{ github.event.inputs.wells_only }}" = "true" ]; then
             WELLS_ONLY_FLAG="--wells-only"
           fi
           python scripts/scrape_rrc_permits.py \
             --county "$COUNTIES" \
-            --days "$DAYS" \
+            --days 30 \
             $WELLS_ONLY_FLAG
 
       - name: Recompute tract_development_status
