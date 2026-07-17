@@ -63,7 +63,7 @@ function injectDevStatusIntoFeatures(
     development_status?: string
     pud_score?: number
     signal_detail?: {
-      permits?: unknown[]
+      permits?: Array<{ approved_date?: string | null }>
       ducs?: unknown[]
       adjacent_permit_count?: number
       infill_gaps?: number
@@ -71,16 +71,33 @@ function injectDevStatusIntoFeatures(
   }>,
 ): void {
   const hasLookup = lookup && Object.keys(lookup).length > 0
+
+  // Recent-permit cutoff for the blue-glow overlay: 24 months back.
+  // Any tract whose signal_detail carries a permit approved after
+  // this date gets `has_recent_permit=true` and lights up with the
+  // permit halo regardless of its primary map_status.
+  const cutoff = (() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - 24)
+    return d.toISOString().slice(0, 10)
+  })()
+
   for (const feature of collection.features) {
     const props = feature.properties ?? {}
     const key = bareAbstract(props.ABSTRACT_L ?? props.ABSTRACT_N)
     const entry = hasLookup && key ? lookup[key] : undefined
     const mapStatus = deriveMapStatus(props, entry)
+    const permits = entry?.signal_detail?.permits ?? []
+    const hasRecentPermit = permits.some((p) => {
+      const d = String(p?.approved_date ?? '').slice(0, 10)
+      return d && d >= cutoff
+    })
     feature.properties = {
       ...props,
       development_status: entry?.development_status ?? 'FRONTIER',
       pud_score: entry?.pud_score ?? 0,
       map_status: mapStatus,
+      has_recent_permit: hasRecentPermit,
     }
   }
 }
@@ -422,6 +439,8 @@ export default function Map({
       // Left in the cleanup list so a mid-deploy source swap can tear
       // it down without a `getLayer` guard.
       removeLayerIfExists(mapInstance, `parcels-permit-dots-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-permit-glow-outer-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-permit-glow-core-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-sections-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
@@ -612,12 +631,20 @@ export default function Map({
     const ids = [
       `parcels-fill-${selectedConfig.id}`,
       `parcels-outline-${selectedConfig.id}`,
+      `parcels-permit-glow-outer-${selectedConfig.id}`,
+      `parcels-permit-glow-core-${selectedConfig.id}`,
       `parcels-labels-${selectedConfig.id}`,
       `parcels-sections-${selectedConfig.id}`,
       `block-labels-${selectedConfig.id}`,
     ]
     for (const id of ids) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+    }
+    // Rigs always sit on top of everything else so they're visible
+    // against any tract fill and above the permit glow. Was
+    // previously painted under the parcel layers.
+    if (mapInstance.getLayer('permits-rigs-layer')) {
+      mapInstance.moveLayer('permits-rigs-layer')
     }
 
     lastStyledSelectedCountyRef.current = newSelected
@@ -805,6 +832,12 @@ export default function Map({
     for (const layer of PERMIT_LAYERS) {
       if (mapInstance.getLayer(layer.id)) {
         mapInstance.setLayoutProperty(layer.id, 'visibility', layer.visible ? 'visible' : 'none')
+        // Push to the top of the render stack so rig dots draw over
+        // the tract fills / outlines / permit glow / labels. Without
+        // this the rigs painted under whichever parcel layers were
+        // added after them, which made red rig markers invisible on
+        // colored tracts.
+        mapInstance.moveLayer(layer.id)
       }
     }
   }, [showRigs])
@@ -1037,6 +1070,45 @@ export default function Map({
           'line-color': '#CBD5E1',
           'line-width': 0.8,
           'line-opacity': 1,
+        },
+      })
+
+      if (!map.current) return
+      // New-permit glow. Any tract whose signal_detail carries a
+      // permit approved in the last 24 months lights up with a
+      // saturated blue outline that renders ABOVE the tract fill
+      // and the neutral gray outline. This surfaces fresh drilling
+      // activity without collapsing the primary map_status color —
+      // a PDP tract with a fresh infill permit stays yellow underneath,
+      // but the blue halo tells the broker "someone just filed a
+      // new W-1 here".
+      // We use two stacked line layers to fake a glow: an outer,
+      // wider, semi-transparent blue underneath a narrow bright core.
+      const glowGlowId = `parcels-permit-glow-outer-${countyConfig.id}`
+      const glowCoreId = `parcels-permit-glow-core-${countyConfig.id}`
+      map.current.addLayer({
+        id: glowGlowId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', ['coalesce', ['get', 'has_recent_permit'], false], true],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#2563EB',
+          'line-width': 6,
+          'line-opacity': 0.35,
+          'line-blur': 2,
+        },
+      })
+      map.current.addLayer({
+        id: glowCoreId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', ['coalesce', ['get', 'has_recent_permit'], false], true],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#1D4ED8',
+          'line-width': 2,
+          'line-opacity': 0.9,
         },
       })
 
