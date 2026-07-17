@@ -625,6 +625,12 @@ export default function Home() {
   const [ownerWells, setOwnerWells] = useState<Record<string, WellSummary[]>>({})
   const [ownerWellsLoading, setOwnerWellsLoading] = useState<Record<string, boolean>>({})
   const [selectedTractGeometry, setSelectedTractGeometry] = useState<GeoJSON.Geometry | null>(null)
+  // Abstract-label (bare, e.g. "543") -> geometry lookup. Populated once
+  // per county load from the parcels GeoJSON. Used as a fallback source
+  // for the selected tract's geometry when setSelected() was called
+  // from a code path that doesn't propagate geometry (sidebar top-tracts
+  // list, owner-tracts list, search result).
+  const [tractGeometryByAbstract, setTractGeometryByAbstract] = useState<Record<string, GeoJSON.Geometry>>({})
   const [isMobile, setIsMobile] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<OwnerSearchResult[]>([])
@@ -919,17 +925,47 @@ export default function Home() {
     }
   }, [county.id])
 
+  // Effective geometry for the currently-selected tract. Uses whichever
+  // source resolves first:
+  //   1. `selectedTractGeometry` state — set by the on-map click handler
+  //      because it has the exact geometry mapbox rendered.
+  //   2. `tractGeometryByAbstract[abstract]` lookup — populated at load
+  //      time from the parcels GeoJSON. Covers every non-map click path
+  //      (sidebar top-tracts, owner tracts list, search results).
+  // Falling back to the lookup makes the New Permits filter update
+  // every time the selected tract changes, regardless of where the
+  // click came from.
+  const activeTractGeometry = useMemo<GeoJSON.Geometry | null>(() => {
+    if (!selected) return null
+    const currentAbstract = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '')
+      .replace(/^A-\s*/i, '')
+      .replace(/^\d{5}-/, '')
+      .trim()
+      .toUpperCase()
+    // Prefer the state-provided geometry when it matches the current
+    // selection, otherwise fall through to the lookup so stale
+    // geometry from a previous click never leaks into the permit
+    // filter for a different tract.
+    if (selectedTractGeometry && currentAbstract && tractGeometryByAbstract[currentAbstract] === selectedTractGeometry) {
+      return selectedTractGeometry
+    }
+    if (currentAbstract && tractGeometryByAbstract[currentAbstract]) {
+      return tractGeometryByAbstract[currentAbstract]
+    }
+    return selectedTractGeometry
+  }, [selected, selectedTractGeometry, tractGeometryByAbstract])
+
   const visiblePermits = useMemo(() => {
     const sorted = [...countyPermits].sort(permitSortByFiledDesc)
-    if (!selectedTractGeometry) return sorted
+    if (!activeTractGeometry) return sorted
     return sorted.filter((permit) =>
       isPointInGeometry(
         Number(permit.longitude),
         Number(permit.latitude),
-        selectedTractGeometry,
+        activeTractGeometry,
       )
     )
-  }, [countyPermits, selectedTractGeometry])
+  }, [countyPermits, activeTractGeometry])
 
   const tractOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
@@ -1352,7 +1388,35 @@ export default function Home() {
 
         if (!mounted) return
 
-        const rows: TractRecord[] = (((parcelsData as { features?: unknown[] })?.features ?? []) as Array<{ properties?: Record<string, unknown> }>)
+        // Build an abstract -> geometry lookup alongside the flat
+        // TractRecord[] so downstream code (New Permits point-in-
+        // polygon filter, sidebar map focus) can resolve a tract's
+        // geometry no matter where the click originated — map,
+        // sidebar top-tracts list, owner tracts list, or search.
+        // Before this, setSelectedTractGeometry was only ever called
+        // from the on-map click handler, so clicking a tract from
+        // any sidebar list left the permit filter stuck on the last
+        // map-clicked polygon.
+        const featureList = (
+          ((parcelsData as { features?: unknown[] })?.features ?? []) as Array<{
+            properties?: Record<string, unknown>
+            geometry?: GeoJSON.Geometry
+          }>
+        )
+        const nextGeometryLookup: Record<string, GeoJSON.Geometry> = {}
+        for (const feature of featureList) {
+          const props = feature.properties ?? {}
+          const label = String(
+            props[county.abstractField] ?? props.ABSTRACT_L ?? '',
+          ).trim()
+          const bare = label.replace(/^A-\s*/i, '').replace(/^\d{5}-/, '').trim().toUpperCase()
+          if (bare && feature.geometry && !nextGeometryLookup[bare]) {
+            nextGeometryLookup[bare] = feature.geometry
+          }
+        }
+        setTractGeometryByAbstract(nextGeometryLookup)
+
+        const rows: TractRecord[] = featureList
           .map((feature) => {
             const props = feature.properties ?? {}
             const ownersJsonRaw = props.owners_json
