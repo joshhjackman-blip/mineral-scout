@@ -806,6 +806,11 @@ def summarize_abstract(
             "status": classified,
             "approved_date": clean_text(permit.get("approved_date")) or None,
             "spud_date": clean_text(permit.get("spud_date")) or None,
+            # Added 2026-07-17 so the drawer's Development Timeline
+            # widget can render "Completed MMM YYYY" (or an
+            # "overdue by N mo" callout) instead of a stale
+            # 6-12mo expected-completion range that never updates.
+            "completion_date": clean_text(permit.get("completion_date")) or None,
         }
         permit_records.append(record)
         if classified == "spud":

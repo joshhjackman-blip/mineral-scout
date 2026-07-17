@@ -96,12 +96,14 @@ export type DevStatusSignalDetail = {
     status?: string | null
     approved_date?: string | null
     spud_date?: string | null
+    completion_date?: string | null
   }>
   ducs?: Array<{
     api?: string | null
     operator?: string | null
     lease?: string | null
     spud_date?: string | null
+    completion_date?: string | null
     status?: string | null
     source?: string | null
   }>
@@ -956,7 +958,6 @@ function OverviewPanel({
 
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
       {tractDevStatus && <DevTimeline status={tractDevStatus} />}
-      {tractDevStatus && <OutreachTemplateCard owner={owner} status={tractDevStatus} county={county} />}
     </div>
   )
 }
@@ -1467,11 +1468,15 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
   const permits = status.signal_detail?.permits ?? []
   const ducs = status.signal_detail?.ducs ?? []
 
-  // Prefer the permit with the freshest approved_date, since that's the
-  // one whose spud/completion timeline is most actionable. If no permit
-  // has an approved_date, fall back to any spud date on a DUC row.
+  // Prefer the permit with the freshest approved_date, since that's
+  // the one whose spud/completion timeline is most actionable.
   const primaryPermit = permits
-    .map((p) => ({ raw: p, approved: parseDrawerDate(p.approved_date), spud: parseDrawerDate(p.spud_date) }))
+    .map((p) => ({
+      raw: p,
+      approved: parseDrawerDate(p.approved_date),
+      spud: parseDrawerDate(p.spud_date),
+      completion: parseDrawerDate(p.completion_date),
+    }))
     .filter((p) => p.approved || p.spud)
     .sort((a, b) => (b.approved?.getTime() ?? 0) - (a.approved?.getTime() ?? 0))[0]
 
@@ -1480,20 +1485,65 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
     primaryPermit?.spud ??
     ducs.map((d) => parseDrawerDate(d.spud_date)).find(Boolean) ??
     null
-
-  // Expected completion window: spec calls out spud + 6–12 mo typical.
-  const expectedCompletionRange: [Date, Date] | null =
-    spudDate
-      ? [
-          new Date(spudDate.getTime() + 6 * 30 * 24 * 3600 * 1000),
-          new Date(spudDate.getTime() + 12 * 30 * 24 * 3600 * 1000),
-        ]
-      : null
+  const completionDate =
+    primaryPermit?.completion ??
+    ducs.map((d) => parseDrawerDate(d.completion_date)).find(Boolean) ??
+    null
 
   // Don't render a timeline when there's nothing to show.
   if (!approvedDate && !spudDate) return null
 
-  const nodes: Array<{ label: string; date: string; active: boolean; color: string }> = [
+  // Timeline math. Once we know the spud date, three outcomes for the
+  // "Completion" node:
+  //   1. completion_date on file      -> "Completed MMM YYYY", green + active
+  //   2. spud + 12 months still ahead -> show the 6-12 month window, gray
+  //   3. spud + 12 months in the past -> "Overdue by N months", amber
+  //
+  // The old widget always showed case 2, which is why a 2023-spud
+  // well showed "Expected completion Jan 2024 – Jul 2024" three years
+  // after the fact — misleading.
+  const MONTH_MS = 30 * 24 * 3600 * 1000
+  const now = new Date()
+
+  let completionLabel = 'Completion'
+  let completionDateStr = 'awaiting spud'
+  let completionActive = false
+  let completionColor = '#16A34A' // green
+  let completionSub: string | null = null
+
+  if (completionDate) {
+    completionLabel = 'Completed'
+    completionDateStr = formatShortDate(completionDate)
+    completionActive = true
+  } else if (spudDate) {
+    const windowStart = new Date(spudDate.getTime() + 6 * MONTH_MS)
+    const windowEnd = new Date(spudDate.getTime() + 12 * MONTH_MS)
+    if (windowEnd.getTime() >= now.getTime()) {
+      completionLabel = 'Expected completion'
+      completionDateStr = `${formatShortDate(windowStart)} – ${formatShortDate(windowEnd)}`
+    } else {
+      const monthsPast = Math.round(
+        (now.getTime() - windowEnd.getTime()) / MONTH_MS,
+      )
+      completionLabel = 'Completion overdue'
+      completionColor = '#DC2626' // red
+      completionActive = true
+      // > 24 months: read as years to make the number less loud.
+      completionDateStr = monthsPast >= 24
+        ? `${(monthsPast / 12).toFixed(monthsPast >= 60 ? 0 : 1)} yrs late`
+        : `${monthsPast} mo late`
+      completionSub =
+        'Long-hold DUC — spud on file but no completion report yet. Common when operators wait on prices or spacing decisions.'
+    }
+  }
+
+  const nodes: Array<{
+    label: string
+    date: string
+    active: boolean
+    color: string
+    sub?: string | null
+  }> = [
     {
       label: 'Approved',
       date: approvedDate ? formatShortDate(approvedDate) : '—',
@@ -1507,12 +1557,11 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
       color: '#A855F7', // purple
     },
     {
-      label: 'Expected completion',
-      date: expectedCompletionRange
-        ? `${formatShortDate(expectedCompletionRange[0])} – ${formatShortDate(expectedCompletionRange[1])}`
-        : 'unknown',
-      active: false,
-      color: '#16A34A', // green
+      label: completionLabel,
+      date: completionDateStr,
+      active: completionActive,
+      color: completionColor,
+      sub: completionSub,
     },
   ]
 
@@ -1533,7 +1582,7 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
           aria-hidden
           className="absolute left-4 right-4 top-3 h-0.5 bg-gray-200"
         />
-        {nodes.map((n, idx) => (
+        {nodes.map((n) => (
           <div
             key={n.label}
             className="relative flex flex-1 flex-col items-center px-1 text-center"
@@ -1555,104 +1604,26 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
             <div className={`mt-0.5 text-xs ${n.active ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>
               {n.date}
             </div>
-            {idx === 2 && !expectedCompletionRange && (
-              <div className="mt-0.5 text-[10px] text-gray-400">
-                Needs spud date
-              </div>
-            )}
           </div>
         ))}
       </div>
-      <div className="mt-3 text-[11px] text-gray-500">
-        Typical Eagle Ford / Permian well takes 6–12 months from spud to first sales.
-      </div>
-    </div>
-  )
-}
-
-// ── Honest-broker outreach template card (spec §HONEST-BROKER NOTE) ──
-
-function firstName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/)
-  if (parts.length === 0) return ''
-  const first = parts[0]
-  // Capitalize LAST-FIRST vendor formats like "SMITH JOHN" -> "John"
-  if (first.length > 2 && first === first.toUpperCase() && parts.length >= 2) {
-    return parts[1].charAt(0) + parts[1].slice(1).toLowerCase()
-  }
-  return first
-}
-
-function OutreachTemplateCard({
-  owner,
-  status,
-  county,
-}: {
-  owner: OwnerLike
-  status: TractDevStatus
-  county: County
-}) {
-  const shouldRender = status.development_status === 'PUD_DUC' || status.development_status === 'PUD_PERMITTED'
-  const [copied, setCopied] = useState(false)
-  if (!shouldRender) return null
-
-  const permit = status.signal_detail?.permits?.[0]
-  const approvedDate = permit?.approved_date ? parseDrawerDate(permit.approved_date) : null
-  const operator = clean(permit?.operator) || clean(owner.operator_name) || 'the operator on your tract'
-  const monthLabel = approvedDate
-    ? approvedDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long' })
-    : 'in the past year'
-
-  const disclosureLine = status.development_status === 'PUD_DUC'
-    ? `Public RRC records show ${operator} has already spud a well on your tract; a completion filing is expected in the next 6–12 months.`
-    : `Public RRC records show ${operator} filed an approved drilling permit on your tract in ${monthLabel}. Development typically follows within 6–18 months of an approved permit.`
-
-  const template = [
-    `Hi ${firstName(owner.owner_name) || 'there'} —`,
-    ``,
-    `I wanted to reach out regarding your mineral interest in ${county.displayName}. ${disclosureLine}`,
-    ``,
-    `We help mineral owners in your situation evaluate whether to hold, monetize, or negotiate ahead of an operator's timeline. There's no obligation and we can put together a comp-backed valuation for you at no cost.`,
-    ``,
-    `Happy to send over the public records I referenced above so you can verify everything I mentioned before we talk.`,
-    ``,
-    `— [Your name]`,
-  ].join('\n')
-
-  const copyToClipboard = async () => {
-    try {
-      await navigator.clipboard.writeText(template)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1800)
-    } catch {
-      // silent — some browsers block clipboard without permission
-    }
-  }
-
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between border-b border-amber-200 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-amber-800">
-          Honest-broker outreach template
+      {nodes[2].sub && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50/60 px-3 py-2 text-[11px] leading-relaxed text-red-800">
+          {nodes[2].sub}
         </div>
-        <button
-          onClick={copyToClipboard}
-          className="rounded-md border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100"
-        >
-          {copied ? '✓ Copied' : 'Copy template'}
-        </button>
-      </div>
-      <p className="mb-3 text-xs text-amber-900/80">
-        Owners on tracts with a pending permit or DUC have a legally-material change in their asset value coming.
-        This template discloses the public-record signal up front — both the defensible-business posture and
-        protection against deceptive-mineral-solicitation statutes (spec §HONEST-BROKER NOTE).
-      </p>
-      <pre className="whitespace-pre-wrap rounded-lg border border-amber-200 bg-white p-3 text-xs leading-relaxed text-gray-900">
-        {template}
-      </pre>
+      )}
+      {!nodes[2].sub && (
+        <div className="mt-3 text-[11px] text-gray-500">
+          Typical Eagle Ford / Permian well takes 6–12 months from spud to first sales.
+        </div>
+      )}
     </div>
   )
 }
+
+// (OutreachTemplateCard + firstName() removed 2026-07-17. The card
+//  was crowding the Overview panel and its copy was tied to a
+//  broker-outreach workflow the platform doesn't offer anyway.)
 
 function NotesPanel({
   value, loading, saving, savedAt, error, onChange, onBlur,
