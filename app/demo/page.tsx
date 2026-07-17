@@ -723,7 +723,7 @@ export default function DemoPage() {
                             <div
                               style={{ fontSize: 10, color: '#374151', fontFamily: 'monospace', fontWeight: 600, marginTop: 2 }}
                             >
-                              {owner.nra.toFixed(3)} NRA
+                              {owner.nra.toFixed(3)} NMA
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
                               <span style={{ color: '#9CA3AF' }}>DO Interest:</span>

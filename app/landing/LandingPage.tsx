@@ -378,7 +378,7 @@ function ValuationsBand() {
           <dl className="lp-valuations-panel-dl">
             <div><dt>Tract</dt><dd>A‑543 · Howard County</dd></div>
             <div><dt>Gross acres</dt><dd>160.0</dd></div>
-            <div><dt>Owner NRA</dt><dd>16.25</dd></div>
+            <div><dt>Owner NMA</dt><dd>16.25</dd></div>
             <div><dt>Active wells</dt><dd>3 PDP · 1 PUD</dd></div>
             <div><dt>Recent comps</dt><dd>$12,400 – $16,800 / NRA</dd></div>
             <div className="lp-valuations-panel-highlight">

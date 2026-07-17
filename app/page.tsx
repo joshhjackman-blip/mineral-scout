@@ -410,7 +410,7 @@ const ONBOARDING_STEPS = [
   {
     step: '03',
     title: 'Click any tract',
-    body: 'Clicking a tract opens the full list of fractional owners. Sort them A to Z, Z to A, largest by NRA, or smallest, and open any row to see holdings across every county on one screen.',
+    body: 'Clicking a tract opens the full list of fractional owners. Sort them A to Z, Z to A, largest by NMA, or smallest, and open any row to see holdings across every county on one screen.',
   },
   {
     step: '04',
@@ -569,8 +569,9 @@ export default function Home() {
   // Sort model was previously score-based ('score' | 'interest' | 'nra').
   // Proprietary scoring was removed from the UI; owners are ranked
   // alphabetically by default and can be flipped to Z-A or sorted by
-  // NRA (Net Royalty Acres) largest/smallest, which is the real
-  // size signal brokers care about.
+  // NMA (Net Mineral Acres = gross_acres × mineral_interest, the
+  // number the platform actually computes; industry-standard NRA
+  // would require a per-lease royalty rate we don't yet have).
   type OwnerSortKey = 'az' | 'za' | 'largest' | 'smallest'
   const [ownerSort, setOwnerSort] = useState<OwnerSortKey>('az')
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<'all' | 'individual' | 'trust' | 'company'>('all')
@@ -2580,8 +2581,8 @@ export default function Home() {
                   {([
                     { key: 'az',       label: 'A–Z',    title: 'Sort owners A to Z' },
                     { key: 'za',       label: 'Z–A',    title: 'Sort owners Z to A' },
-                    { key: 'largest',  label: 'Largest', title: 'Largest to smallest by NRA' },
-                    { key: 'smallest', label: 'Smallest', title: 'Smallest to largest by NRA' },
+                    { key: 'largest',  label: 'Largest', title: 'Largest to smallest by NMA' },
+                    { key: 'smallest', label: 'Smallest', title: 'Smallest to largest by NMA' },
                   ] as const).map((s) => (
                     <button
                       key={s.key}
@@ -2706,10 +2707,10 @@ export default function Home() {
                                 title={royaltyEstimate ? `Est. royalty: ${royaltyEstimate}` : undefined}
                               >
                                 {nra < 0.01
-                                  ? `${nra.toFixed(4)} NRA`
+                                  ? `${nra.toFixed(4)} NMA`
                                   : nra < 1
-                                    ? `${nra.toFixed(3)} NRA`
-                                    : `${nra.toFixed(2)} NRA`}
+                                    ? `${nra.toFixed(3)} NMA`
+                                    : `${nra.toFixed(2)} NMA`}
                                 {!Number(owner.acreage) && (
                                   <span style={{ fontSize: 9, color: '#9CA3AF', marginLeft: 3 }}>est.</span>
                                 )}
@@ -3386,7 +3387,7 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, color: '#6B7280' }}>Min NRA:</span>
+          <span style={{ fontSize: 11, color: '#6B7280' }}>Min NMA:</span>
           <select
             value={minNRA}
             onChange={(e) => setMinNRA(Number(e.target.value))}

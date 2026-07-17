@@ -720,7 +720,7 @@ function OwnerRowCard({
             ? `${owner.mailing_city}, ${owner.mailing_state}${owner.mailing_zip ? ' ' + owner.mailing_zip : ''}`
             : 'Address on file'}
           {nra != null && nra > 0 && (
-            <> · <span style={{ fontFamily: 'monospace', color: '#374151' }}>{nra.toFixed(nra < 1 ? 3 : 2)} NRA</span></>
+            <> · <span style={{ fontFamily: 'monospace', color: '#374151' }}>{nra.toFixed(nra < 1 ? 3 : 2)} NMA</span></>
           )}
         </div>
       </div>

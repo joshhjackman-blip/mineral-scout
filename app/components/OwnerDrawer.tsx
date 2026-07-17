@@ -910,8 +910,9 @@ function OverviewPanel({
           hint={owner.interest_type ? `Interest: ${owner.interest_type}` : undefined}
         />
         <StatCard
-          label="Net royalty acres"
+          label="Net mineral acres"
           value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
+          hint="gross acres × mineral interest"
         />
         <StatCard
           label="Est. royalty"
@@ -1034,7 +1035,7 @@ function HoldingsPanel({
               <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">County</th>
               <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Interest</th>
               <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Acres</th>
-              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">NRA</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">NMA</th>
             </tr>
           </thead>
           <tbody>
@@ -1163,7 +1164,7 @@ function HoldingsPanel({
                   </td>
                   <td
                     className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono text-gray-600"
-                    title={nra != null ? `${nra.toFixed(3)} NRA` : undefined}
+                    title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
                   >
                     {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
                   </td>

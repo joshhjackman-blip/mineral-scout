@@ -28,8 +28,8 @@ const DEMO_STEPS = [
     description: 'Top owner rationale expands for quick review.',
   },
   {
-    title: 'NRA Context',
-    description: 'NRA values are emphasized for sizing.',
+    title: 'Size at a glance',
+    description: 'Net mineral acres are emphasized for sizing.',
   },
   {
     title: 'Skip Trace Ready',
@@ -42,10 +42,10 @@ const DEMO_STEPS = [
 ]
 
 const OWNER_ROWS: OwnerDemoRow[] = [
-  { name: 'HAR██████ J.T.', location: 'Denver CO', score: 9, nra: '0.192 NRA', estMonthly: '~$847/mo' },
-  { name: 'BRO██████ M.K.', location: 'Phoenix AZ', score: 7, nra: '0.096 NRA', estMonthly: '~$421/mo' },
-  { name: 'WIL████ TRUST', location: 'Dallas TX', score: 5, nra: '0.048 NRA' },
-  { name: 'FRONTIER MINERALS LLC', location: 'San Antonio TX', score: 2, nra: '62.500 NRA' },
+  { name: 'HAR██████ J.T.', location: 'Denver CO', score: 9, nra: '0.192 NMA', estMonthly: '~$847/mo' },
+  { name: 'BRO██████ M.K.', location: 'Phoenix AZ', score: 7, nra: '0.096 NMA', estMonthly: '~$421/mo' },
+  { name: 'WIL████ TRUST', location: 'Dallas TX', score: 5, nra: '0.048 NMA' },
+  { name: 'FRONTIER MINERALS LLC', location: 'San Antonio TX', score: 2, nra: '62.500 NMA' },
 ]
 
 const TRACTS = [
