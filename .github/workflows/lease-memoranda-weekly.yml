@@ -16,7 +16,7 @@ on:
       counties:
         description: 'Comma-separated county ids to scrape (default: all 13)'
         required: false
-        default: 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
+        default: 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
       days:
         description: 'Lookback window in days'
         required: false
@@ -47,7 +47,7 @@ jobs:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
+          COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           DAYS="${{ github.event.inputs.days || '90' }}"
           python scripts/scrape_lease_memoranda.py \
             --county "$COUNTIES" \

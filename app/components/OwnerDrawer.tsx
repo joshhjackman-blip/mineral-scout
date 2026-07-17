@@ -1645,7 +1645,7 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
       )}
       {!nodes[2].sub && (
         <div className="mt-3 text-[11px] text-gray-500">
-          Typical Eagle Ford / Permian well takes 6–12 months from spud to first sales.
+          Typical Permian well takes 6–12 months from spud to first sales.
         </div>
       )}
     </div>

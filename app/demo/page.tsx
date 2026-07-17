@@ -248,7 +248,7 @@ export default function DemoPage() {
       }
 
       try {
-        const parcelsData = await fetch('/gonzales_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
+        const parcelsData = await fetch('/howard_parcels_enriched.geojson', { cache: 'no-store' }).then((res) => res.json())
         if (!map.current) return
 
         // Demo map coloring: mirrors the real product's PDP/PUD/permit
@@ -449,7 +449,7 @@ export default function DemoPage() {
           <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#EF9F27', display: 'inline-block' }} />
           <span style={{ fontSize: 11, letterSpacing: '0.09em', fontWeight: 700, color: '#111827' }}>MINERAL MAP</span>
           <span style={{ color: '#9CA3AF', fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 11, color: '#6B7280' }}>Gonzales County, TX</span>
+          <span style={{ fontSize: 11, color: '#6B7280' }}>Howard County, TX</span>
         </div>
         <span style={{ fontSize: 11, color: '#9CA3AF' }}>Demo Mode</span>
       </div>

@@ -321,7 +321,7 @@ function PricingBand() {
         </div>
         <div className="lp-pricing-card-divider" />
         <ul className="lp-pricing-card-list">
-          <li>Every county we cover: Gonzales, Howard, Martin, and the 10‑county Permian expansion</li>
+          <li>Every county we cover across the 12‑county Permian footprint</li>
           <li>Unlimited seats for your whole team</li>
           <li>Skip tracing included, no per‑lookup fees</li>
           <li>Dedicated Mineral Map phone number &amp; SMS</li>

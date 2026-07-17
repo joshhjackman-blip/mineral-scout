@@ -222,7 +222,7 @@ export default function Account() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <div className="font-serif text-base font-bold text-gray-900 mb-1">Mineral Map · $300/mo</div>
-                  <div className="text-sm text-gray-400">Eagle Ford Basin · Gonzales County</div>
+                  <div className="text-sm text-gray-400">Permian Basin · 12 counties</div>
                 </div>
                 <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${statusColor}`}>
                   {subscription.status === 'active'

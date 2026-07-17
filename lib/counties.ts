@@ -36,45 +36,15 @@ export type County = {
 
 export type CountyKey = keyof typeof COUNTIES
 
+// Gonzales was archived 2026-07-17. All its Supabase tables
+// (gonzales_mineral_ownership, gonzales_wells, gonzales_permits,
+// tract_development_status rows), public geojson files, and load
+// scripts remain in place; only the UI + cron references were
+// removed to reduce compute and focus the product on West Texas.
+// To reactivate, re-add the Gonzales block from git history at
+// commit 9afe6ef^ and re-enable it in the cron workflows.
+
 export const COUNTIES: Record<string, County> = {
-  gonzales: {
-    id: 'gonzales',
-    name: 'Gonzales',
-    state: 'TX',
-    displayName: 'Gonzales County, TX',
-    mapCenter: [-97.45, 29.45],
-    mapZoom: 10,
-    fips: '48177',
-    totalLeads: 73000,
-    fipsCode: '177',
-    ownershipTable: 'gonzales_mineral_ownership',
-    wellsTable: 'gonzales_wells',
-    geoJsonPath: '/gonzales_parcels_enriched.geojson',
-    mapGeoJsonPath: '/gonzales_parcels_map.geojson?v=pdp-2026-07-16b',
-    ownershipPctIsDecimal: false,
-    abstractField: 'ABSTRACT_L',
-    nriCode: 'XV',
-    operatorPatterns: ['eog', 'baytex', 'marathon', 'auterra'],
-    wellsJoinStrategy: 'rrc_lease_id',
-    // Stat cards render in order. PDP/PUD/permit counts are computed live
-    // from the loaded parcels GeoJSON (see combinedStats in app/page.tsx);
-    // the numbers baked in here are static fallbacks for pre-hydration
-    // and for the CRM sidebar which still reads from lib/counties.ts.
-    stats: [
-      { val: '73,430', lbl: 'Total owners' },
-      { val: '329', lbl: 'PDP tracts' },
-      { val: '6', lbl: 'PUD tracts' },
-      { val: '0', lbl: 'New permits' },
-      { val: '207', lbl: 'Survey abstracts' },
-      { val: '4,512', lbl: 'Active wells' },
-    ],
-    breakdown: [
-      { operator: 'EOG Resources', pct: 68 },
-      { operator: 'Baytex Energy', pct: 21 },
-      { operator: 'Marathon Oil', pct: 7 },
-      { operator: 'Other', pct: 4 },
-    ],
-  },
   howard: {
     id: 'howard',
     name: 'Howard',

@@ -24,12 +24,12 @@ const tiers: Tier[] = [
     description: 'For individual landmen and acquisition professionals',
     seats: '1 seat',
     features: [
-      '207 survey abstracts — Gonzales County',
-      '73,000+ scored mineral owners',
-      'Propensity scoring — 12 signals',
+      '2,000+ survey abstracts — Permian Basin',
+      '400,000+ mineral owners across 12 counties',
+      'PDP / PUD / permit activity mapping',
       'Built-in CRM and pipeline',
-      '200 skip traces per month',
-      'CSV export',
+      'Unlimited skip traces',
+      'One-click PSA generation',
       'Comp calculator',
     ],
     cta: 'Start free trial',
@@ -225,7 +225,7 @@ export default function Pricing() {
           })}
         </div>
 
-        <div style={{ textAlign: 'center', paddingBottom: 48, fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>mineralmap.io · Eagle Ford Basin</div>
+        <div style={{ textAlign: 'center', paddingBottom: 48, fontSize: 12, color: 'rgba(255,255,255,0.15)' }}>mineralmap.io · Permian Basin</div>
       </div>
     </>
   )

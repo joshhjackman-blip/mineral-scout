@@ -17,7 +17,7 @@ on:
       counties:
         description: 'Comma-separated county ids to scrape (default: all 12 counties on file)'
         required: false
-        default: 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
+        default: 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
       days:
         description: 'Lookback window in days (max ~90)'
         required: false
@@ -69,7 +69,7 @@ jobs:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
+          COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           # 90-day window catches anything the previous 30-day run
           # might have missed (holiday backlogs, RRC processing lags).
           python scripts/scrape_rrc_permits_realtime.py \
@@ -89,7 +89,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         continue-on-error: true
         run: |
-          COUNTIES="${{ github.event.inputs.counties || 'gonzales,howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
+          COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           WELLS_ONLY_FLAG=""
           if [ "${{ github.event.inputs.wells_only }}" = "true" ]; then
             WELLS_ONLY_FLAG="--wells-only"
@@ -111,4 +111,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/compute_development_status.py \
-            --county gonzales,howard,martin
+            --county howard,martin

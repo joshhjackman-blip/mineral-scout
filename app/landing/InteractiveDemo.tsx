@@ -230,7 +230,7 @@ export default function InteractiveDemo() {
               <div style={{ fontSize: 10, color: 'rgba(239,159,39,0.82)', letterSpacing: '0.08em', fontWeight: 700 }}>
                 SELECTED TRACT
               </div>
-              <div style={{ fontSize: 14, color: '#fff', marginTop: 2 }}>AB 266 · Gonzales County</div>
+              <div style={{ fontSize: 14, color: '#fff', marginTop: 2 }}>A‑543 · Howard County</div>
             </div>
 
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>

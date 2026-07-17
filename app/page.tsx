@@ -400,7 +400,7 @@ const ONBOARDING_STEPS = [
   {
     step: '01',
     title: 'Welcome to Mineral Map',
-    body: 'The complete mineral rights prospecting platform for the Eagle Ford and Permian basins. Every owner, mapped, and ready to contact. This tour takes about 60 seconds.',
+    body: 'The complete mineral rights prospecting platform for the Permian Basin. Every owner, mapped, and ready to contact. This tour takes about 60 seconds.',
   },
   {
     step: '02',
@@ -538,7 +538,7 @@ const estimateMonthlyRoyalty = (
 }
 
 export default function Home() {
-  const [selectedCounty, setSelectedCounty] = useState<CountyKey>('gonzales')
+  const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
