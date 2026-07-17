@@ -920,7 +920,7 @@ export default function Map({
       markerElement.style.padding = '6px 12px'
       markerElement.style.borderRadius = '999px'
       markerElement.style.pointerEvents = 'none'
-      markerElement.style.fontFamily = 'Instrument Sans, system-ui, sans-serif'
+      markerElement.style.fontFamily = 'Public Sans, system-ui, sans-serif'
       markerElement.style.color = '#111827'
       markerElement.style.whiteSpace = 'nowrap'
       markerElement.style.lineHeight = '1.2'

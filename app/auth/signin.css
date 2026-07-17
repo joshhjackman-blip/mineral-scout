@@ -17,8 +17,8 @@
   --si-amber-dim:    rgba(239,159,39,0.12);
   --si-amber-glow:   rgba(239,159,39,0.22);
   --si-teal:         #2ec4b6;
-  --si-font-serif:   'Cormorant Garamond', Georgia, serif;
-  --si-font-sans:    'Instrument Sans', system-ui, sans-serif;
+  --si-font-serif:   'Libre Baskerville', Georgia, serif;
+  --si-font-sans:    'Public Sans', system-ui, sans-serif;
 
   background: var(--si-bg);
   color: var(--si-text);

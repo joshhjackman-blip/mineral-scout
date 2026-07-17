@@ -88,16 +88,15 @@ function Hero() {
       {/* Removed 2026-07-17: the OilFieldSVG grid + two glow blobs that
           used to sit on top of the Permian photo. Photo is the whole
           visual now — no illustration overlay. */}
-      <div className="lp-hero-eyebrow reveal">Built for mineral brokers &amp; acquisition shops</div>
+      <div className="lp-hero-eyebrow reveal">For Texas mineral brokers &amp; acquisition shops</div>
       <h1 className="reveal reveal-delay-1">
-        Every tool your acquisition desk needs.<br />
+        The tools your acquisition desk actually uses.<br />
         <em>Free until you close.</em>
       </h1>
       <p className="lp-hero-sub reveal reveal-delay-2">
-        Whether you&apos;re running a two-person brokerage or an in-house
-        acquisition team, get county ownership data, a CRM, click-to-call, and
-        one-click PSAs in one place. You pay nothing upfront. We only take a fee
-        post close.
+        County ownership rolls, well activity, a CRM, click-to-call, and
+        one-click PSAs — in one place. No monthly fee, no per-seat charge.
+        We&apos;re paid a percentage on the deals we help you close.
       </p>
       <div className="lp-hero-actions reveal reveal-delay-3">
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary">
@@ -121,14 +120,13 @@ function ModelBand() {
     <section className="lp-model-band">
       <div className="lp-model-inner">
         <div className="reveal">
-          <span className="lp-section-label">The pitch</span>
+          <span className="lp-section-label">How we&apos;re different</span>
           <h2 className="lp-model-heading">
             Stop paying <em>thousands a month</em> just to run acquisitions.
           </h2>
           <p className="lp-model-sub">
-            The stack a mid-market brokerage or acquisition shop stitches
-            together costs almost as much as a junior analyst, before a single
-            deal closes.
+            The tooling a mid-market brokerage stitches together costs almost as
+            much as a junior analyst — before a single deal closes.
           </p>
         </div>
         <div className="lp-model-cols">
@@ -144,10 +142,10 @@ function ModelBand() {
           <div className="lp-model-col lp-model-col-good reveal reveal-delay-2">
             <div className="lp-model-col-tag">Mineral Map</div>
             <ul>
-              <li><strong>$0</strong> to sign up and start prospecting</li>
+              <li><strong>$0</strong> to sign up and start working leads</li>
               <li><strong>$0</strong> for seat charges on your team</li>
               <li><strong>$0</strong> for every tool, every county</li>
-              <li><strong>% fee on closed deals.</strong> That&apos;s the whole model.</li>
+              <li><strong>Percentage fee</strong> on the deals we help close</li>
             </ul>
           </div>
         </div>

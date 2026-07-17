@@ -15,8 +15,8 @@
   --lp-amber-dim: rgba(239,159,39,0.12);
   --lp-amber-glow: rgba(239,159,39,0.25);
   --lp-teal: #2ec4b6;
-  --lp-font-serif: 'Cormorant Garamond', Georgia, serif;
-  --lp-font-sans: 'Instrument Sans', system-ui, sans-serif;
+  --lp-font-serif: 'Libre Baskerville', Georgia, serif;
+  --lp-font-sans: 'Public Sans', system-ui, sans-serif;
 
   background: var(--lp-bg);
   color: var(--lp-text);

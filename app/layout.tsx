@@ -25,16 +25,19 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Type stack (2026-07-17 refinement):
-              - Cormorant Garamond: classical old-style serif for
-                headings + display type. Genuinely reads like a
-                Garamond, not a modern-serif interpretation. Italic
-                variant carries the "Free until you close" callout.
-              - Instrument Sans: humanist sans for body / UI copy.
+        {/* Type stack (2026-07-17 second refinement — toned down for
+              a Texas oil-and-gas B2B audience):
+              - Libre Baskerville: classical Baskerville revival.
+                Reads like a newspaper / law-firm letterhead — solid,
+                trustworthy, not showy. Replaces Cormorant which
+                felt slightly literary for the audience.
+              - Public Sans: US federal design system font (used by
+                usa.gov and Fed sites). Institutional, neutral, no
+                startup edge. Replaces Instrument Sans's humanist warmth.
               - JetBrains Mono: kept for tabular numbers.
         */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Public+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>
