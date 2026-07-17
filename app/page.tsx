@@ -2829,7 +2829,7 @@ export default function Home() {
               </button>
 
               <div style={{ padding: '0 16px 12px' }}>
-                <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
                   {ownerTractsName}
                 </div>
                 <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, fontFamily: 'Instrument Sans, system-ui, sans-serif' }}>
@@ -2896,7 +2896,7 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
+              <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
                 {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
               </div>
               {mapLevel === 'county' && (
@@ -3479,7 +3479,7 @@ export default function Home() {
 
               <h2
                 style={{
-                  fontFamily: 'Fraunces, Georgia, serif',
+                  fontFamily: 'Cormorant Garamond, Georgia, serif',
                   fontSize: 24,
                   fontWeight: 700,
                   color: '#111827',
@@ -3765,7 +3765,7 @@ export default function Home() {
             background: '#FFFFFF', borderRadius: 12, padding: '28px 32px',
             width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+            <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
               Skip Trace Complete
             </div>
             <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>

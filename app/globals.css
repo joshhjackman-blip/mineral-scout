@@ -103,7 +103,7 @@
    body-level default below, so the app picks up the new fonts even
    before every hard-coded call site is updated. */
 :root {
-  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-display: 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
   --font-body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 }
@@ -122,9 +122,10 @@ body {
    tighter than default. */
 h1, h2, h3, h4, .font-display {
   font-family: var(--font-display);
-  letter-spacing: -0.01em;
-  font-optical-sizing: auto;
-  font-variation-settings: 'opsz' 60;
+  letter-spacing: -0.005em;
+  /* Cormorant renders best a hair heavier than default at display
+     sizes. It's a static font (not variable), so no variation
+     settings — a plain font-weight controls it. */
 }
 
 /* Any legacy inline styles specifying 'Georgia, serif' still land on

@@ -25,17 +25,16 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Type stack (2026-07-16 redesign):
-              - Fraunces: variable serif for headings + display type.
-                Slightly newspaper-feeling, has warmth. Falls back to
-                Georgia so a slow font-server doesn't strip the vibe.
+        {/* Type stack (2026-07-17 refinement):
+              - Cormorant Garamond: classical old-style serif for
+                headings + display type. Genuinely reads like a
+                Garamond, not a modern-serif interpretation. Italic
+                variant carries the "Free until you close" callout.
               - Instrument Sans: humanist sans for body / UI copy.
-                Warmer + a little chunkier than Inter — pulls the app
-                away from the generic 'startup Inter' look.
-              - JetBrains Mono: unchanged, kept for tabular numbers.
+              - JetBrains Mono: kept for tabular numbers.
         */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
           rel="stylesheet"
         />
       </head>

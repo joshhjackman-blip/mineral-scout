@@ -423,7 +423,7 @@ export default function PermitsPage() {
       <div style={{ maxWidth: 1200, width: '100%', margin: '0 auto', padding: '24px 20px 40px', flex: 1 }}>
         <div style={{ marginBottom: 24 }}>
           <h1 style={{
-            fontFamily: 'Fraunces, Georgia, serif',
+            fontFamily: 'Cormorant Garamond, Georgia, serif',
             fontSize: 28,
             fontWeight: 700,
             color: '#111827',

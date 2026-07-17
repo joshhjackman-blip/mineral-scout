@@ -502,7 +502,7 @@ export default function DemoPage() {
                 ← Back
               </button>
 
-              <div style={{ fontSize: 18, fontFamily: 'Fraunces, Georgia, serif', color: '#111827', fontWeight: 700 }}>
+              <div style={{ fontSize: 18, fontFamily: 'Cormorant Garamond, Georgia, serif', color: '#111827', fontWeight: 700 }}>
                 {selectedTract.abstractLabel}
               </div>
               <div style={{ color: '#6B7280', marginTop: 4 }}>{selectedTract.surveyName} Survey</div>
@@ -851,7 +851,7 @@ export default function DemoPage() {
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
+              <div style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 16 }}>
                 County Overview
               </div>
 

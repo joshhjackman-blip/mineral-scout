@@ -56,57 +56,9 @@ function Counter({ target, duration = 1800 }: { target: number; duration?: numbe
 // Exported for reuse if we add hero stats later. Keeps unused-vars quiet.
 export { Counter }
 
-// ── Oil Field SVG ─────────────────────────────────────────────────────────────
-
-function OilFieldSVG() {
-  const parcels: [number, number, number, number][] = [
-    [80,60,220,180],[300,60,460,220],[500,80,680,240],
-    [60,200,260,360],[280,220,500,400],[520,250,720,420],
-    [80,380,300,540],[320,420,560,580],[580,440,760,600],
-    [100,560,320,680],[340,580,600,700],
-  ]
-  const wells: [number, number][] = [
-    [160,60],[320,140],[480,80],[640,160],
-    [130,300],[400,280],[600,320],[200,480],[500,500],[700,440],
-  ]
-  const dots: [number, number, number, number][] = [
-    [200,130,8,0.9],[420,200,6,0.75],[560,150,7,0.85],
-    [150,320,5,0.6],[380,340,8,0.9],[650,380,6,0.7],
-    [240,500,7,0.8],[520,520,5,0.55],[720,480,6,0.65],
-    [340,620,8,0.9],[600,640,5,0.6],
-  ]
-  return (
-    <svg viewBox="0 0 800 700" fill="none" xmlns="http://www.w3.org/2000/svg" color="#EF9F27">
-      {[0,1,2,3,4,5].map(i => (
-        <line key={`v${i}`} x1={i*160} y1="0" x2={i*160} y2="700"
-          stroke="currentColor" strokeWidth="0.4" strokeDasharray="3 9" opacity="0.6" />
-      ))}
-      {[0,1,2,3,4].map(i => (
-        <line key={`h${i}`} x1="0" y1={i*160+30} x2="800" y2={i*160+30}
-          stroke="currentColor" strokeWidth="0.4" strokeDasharray="3 9" opacity="0.6" />
-      ))}
-      {parcels.map(([x1,y1,x2,y2],i) => (
-        <rect key={`p${i}`} x={x1} y={y1} width={x2-x1} height={y2-y1}
-          stroke="currentColor" strokeWidth="0.6" fill="none" opacity="0.25" />
-      ))}
-      {wells.map(([x,y],i) => (
-        <g key={`w${i}`}>
-          <line x1={x} y1={y} x2={x} y2={y+80} stroke="currentColor" strokeWidth="1.2" opacity="0.5" />
-          <polygon points={`${x},${y} ${x-6},${y+14} ${x+6},${y+14}`} fill="currentColor" opacity="0.6" />
-          <line x1={x} y1={y+80} x2={x + (i%2===0?90:-90)} y2={y+80}
-            stroke="currentColor" strokeWidth="0.8" strokeDasharray="4 4" opacity="0.35" />
-        </g>
-      ))}
-      {dots.map(([x,y,r,op],i) => (
-        <circle key={`d${i}`} cx={x} cy={y} r={r} fill="currentColor" opacity={op} />
-      ))}
-      <path d="M160,140 Q280,200 400,280 Q520,360 640,380"
-        stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.2" strokeDasharray="8 4"/>
-      <path d="M480,80 Q540,200 600,320 Q660,440 700,480"
-        stroke="currentColor" strokeWidth="1.5" fill="none" opacity="0.2" strokeDasharray="8 4"/>
-    </svg>
-  )
-}
+// (OilFieldSVG removed 2026-07-17 alongside the same-named component
+//  in app/auth/SignInPage.tsx. Design intent is now "photo + type",
+//  no schematic overlay.)
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 
@@ -133,11 +85,9 @@ function Nav() {
 function Hero() {
   return (
     <section className="lp-hero">
-      <div className="lp-hero-bg">
-        <div className="lp-hero-glow" />
-        <div className="lp-hero-glow2" />
-        <OilFieldSVG />
-      </div>
+      {/* Removed 2026-07-17: the OilFieldSVG grid + two glow blobs that
+          used to sit on top of the Permian photo. Photo is the whole
+          visual now — no illustration overlay. */}
       <div className="lp-hero-eyebrow reveal">Built for mineral brokers &amp; acquisition shops</div>
       <h1 className="reveal reveal-delay-1">
         Every tool your acquisition desk needs.<br />
