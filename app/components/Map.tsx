@@ -469,6 +469,10 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
 
+    // Removing the layer detaches every listener attached to that
+    // layer id, so we don't need to explicitly `off()` the
+    // tract-inactive-fill click / hover handlers registered in
+    // setupTractLevel — they die with the layer.
     removeLayerIfExists(mapInstance, 'tract-overlay-sub-labels')
     removeLayerIfExists(mapInstance, 'tract-overlay-labels')
     removeLayerIfExists(mapInstance, 'tract-upcoming-outline')
@@ -1326,13 +1330,26 @@ export default function Map({
         buffer: 256,
       })
       if (!map.current) return
+      // Bake the classification-driven paint expressions directly
+      // into the layer definition. Previously we added the layer
+      // with a static #9E9E9E gray and then swapped it to the
+      // expression via setPaintProperty inside applyTractCountyStyles.
+      // That worked, but on the very first tract-mode entry the
+      // source is still loading tiles when setPaintProperty runs,
+      // and Mapbox occasionally rendered the initial gray on the
+      // first frame — the user reported this as "Martin coloring
+      // doesn't populate when you click on it first". Adding the
+      // expression at layer-creation time avoids that race.
+      // applyTractCountyStyles still runs afterwards, but its job
+      // shrinks to visibility toggles + layer ordering, not paint
+      // property swaps.
       map.current.addLayer({
         id: fillId,
         type: 'fill',
         source: sourceId,
         paint: {
-          'fill-color': '#9E9E9E',
-          'fill-opacity': 0.25,
+          'fill-color': selectedFillColorExpr,
+          'fill-opacity': selectedFillOpacityExpr,
         },
       })
       if (!map.current) return
@@ -1342,9 +1359,9 @@ export default function Map({
         source: sourceId,
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#CBD5E1',
-          'line-width': 0.8,
-          'line-opacity': 1,
+          'line-color': selectedOutlineColorExpr,
+          'line-width': selectedOutlineWidthExpr,
+          'line-opacity': 0.92,
         },
       })
 
@@ -1772,6 +1789,40 @@ export default function Map({
       } else {
         map.current.setFilter('tract-overlay-labels', ['!=', ['get', 'fips'], currentFips])
       }
+      // Click-to-switch: tapping an inactive county's orange block
+      // switches the map into that county's tract view. Wires up
+      // activeCountyByFipsRef so the click handler can look up the
+      // countyKey from the clicked feature's FIPS, then defers to
+      // the same onCountySwitch callback the county overview uses.
+      // Cursor style is set on hover so the block reads as clickable.
+      const activeCountyByFips: Record<string, CountyKey> = {}
+      countyEntries.forEach(([countyKey, cfg]) => {
+        activeCountyByFips[cfg.fips] = countyKey
+      })
+      activeCountyByFipsRef.current = activeCountyByFips
+      const inactiveClickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+        const feature = event.features?.[0]
+        const fips = String(
+          ((feature?.properties ?? {}) as Record<string, unknown>).__fips ??
+          feature?.id ?? '',
+        ).trim()
+        const countyKey = activeCountyByFipsRef.current[fips]
+        if (!countyKey || !map.current) return
+        onCountySwitchRef.current(countyKey)
+      }
+      const inactiveHoverEnter = () => {
+        if (map.current) map.current.getCanvas().style.cursor = 'pointer'
+      }
+      const inactiveHoverLeave = () => {
+        if (map.current) map.current.getCanvas().style.cursor = ''
+      }
+      // Detach any previous handlers before re-registering (safe if
+      // absent — off() is a no-op on unknown listeners).
+      map.current.off('click', 'tract-inactive-fill', inactiveClickHandler)
+      map.current.on('click', 'tract-inactive-fill', inactiveClickHandler)
+      map.current.on('mouseenter', 'tract-inactive-fill', inactiveHoverEnter)
+      map.current.on('mouseleave', 'tract-inactive-fill', inactiveHoverLeave)
+
       if (!map.current.getLayer('tract-overlay-sub-labels')) {
         map.current.addLayer({
           id: 'tract-overlay-sub-labels',
@@ -1912,9 +1963,16 @@ export default function Map({
       }
     }
     if (updated > 0) {
+      // The source's paint expressions will re-evaluate against
+      // the new map_status automatically, but visibility toggles
+      // and layer-ordering (rig on top, orange overlay above
+      // muted parcels, etc.) still need one pass to line up. Force
+      // a full first-pass repaint by nulling the ref before the
+      // sync applyTractCountyStyles call below.
       lastStyledSelectedCountyRef.current = null
+      applyTractCountyStyles()
     }
-  }, [devStatusByAbstract])
+  }, [devStatusByAbstract, applyTractCountyStyles])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
