@@ -1,4 +1,8 @@
 /** @type {import('next').NextConfig} */
+// Build stamp: 2026-07-17 — force a fresh Vercel build so the UI
+// redesign (Fraunces + Instrument Sans + Permian hero photo)
+// actually ships. Vercel's GitHub webhook missed the earlier pushes,
+// and reconnecting the integration doesn't retro-trigger a build.
 const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
