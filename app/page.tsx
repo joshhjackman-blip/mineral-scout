@@ -955,17 +955,36 @@ export default function Home() {
     return selectedTractGeometry
   }, [selected, selectedTractGeometry, tractGeometryByAbstract])
 
+  // Only permits filed / approved in the last 24 months qualify as
+  // "new". Prior to this filter the sidebar's NEW PERMITS list showed
+  // permits going back to 2008 because the wells-zip + EWA pipeline
+  // pulls every permit ever on file (SYMNUM 1/11/21/87/116), not just
+  // recent activity. 24 months is the industry-standard window for
+  // "an operator is actively developing this acreage" — matches what
+  // compute_development_status.py uses for the PUD_PERMITTED classification.
+  const RECENT_PERMIT_MONTHS = 24
+  const recentPermitCutoffIso = useMemo(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - RECENT_PERMIT_MONTHS)
+    return d.toISOString().slice(0, 10)
+  }, [])
+
   const visiblePermits = useMemo(() => {
     const sorted = [...countyPermits].sort(permitSortByFiledDesc)
-    if (!activeTractGeometry) return sorted
-    return sorted.filter((permit) =>
+    const recent = sorted.filter((permit) => {
+      const dateStr = String(permit.filed_date ?? permit.approved_date ?? '').slice(0, 10)
+      // Missing date -> exclude. Loud old approved_date/filed_date -> exclude.
+      return dateStr && dateStr >= recentPermitCutoffIso
+    })
+    if (!activeTractGeometry) return recent
+    return recent.filter((permit) =>
       isPointInGeometry(
         Number(permit.longitude),
         Number(permit.latitude),
         activeTractGeometry,
       )
     )
-  }, [countyPermits, activeTractGeometry])
+  }, [countyPermits, activeTractGeometry, recentPermitCutoffIso])
 
   const tractOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
@@ -2404,7 +2423,7 @@ export default function Home() {
                       {countyPermitsLoading ? '…' : visiblePermits.length}
                     </span>
                     <span style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                      in this tract
+                      last 24 months
                     </span>
                   </div>
                   <span
@@ -2426,7 +2445,7 @@ export default function Home() {
                       </div>
                     ) : visiblePermits.length === 0 ? (
                       <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                        No new permits in this tract.
+                        No permits filed on this tract in the last 24 months.
                       </div>
                     ) : (
                       <div style={{ maxHeight: 260, overflowY: 'auto' }}>
