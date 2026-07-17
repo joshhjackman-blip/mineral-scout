@@ -703,19 +703,38 @@ export default function Map({
 
     if (!permitsGeoJSON) {
       let permitRows: Array<Record<string, unknown>> = []
+      // Try the full column set first (Ticket 1.3 schema with
+      // spud_date/completion_date). Fall back to the pre-1.3 minimal
+      // column set if the migration hasn't landed for this county.
       const permitsResult = await supabase
         .from(permitsTable)
         .select(
-          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date'
         )
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
 
       if (permitsResult.error) {
-        // Table may not exist for this county (some Permian counties before
-        // their migration lands). Fail soft: empty layers so nothing
-        // misleading renders.
-        console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
+        const msg = permitsResult.error.message || ''
+        if (/column .* does not exist/i.test(msg)) {
+          const fallback = await supabase
+            .from(permitsTable)
+            .select(
+              'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+            )
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null)
+          if (fallback.error) {
+            console.warn(`[permits] ${permitsTable} unavailable:`, fallback.error.message)
+          } else {
+            permitRows = (fallback.data ?? []) as Array<Record<string, unknown>>
+          }
+        } else {
+          // Table may not exist for this county (some Permian counties before
+          // their migration lands). Fail soft: empty layers so nothing
+          // misleading renders.
+          console.warn(`[permits] ${permitsTable} unavailable:`, msg)
+        }
       } else {
         permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
       }
@@ -733,19 +752,62 @@ export default function Map({
         )
       })
 
-      // Categorize each row into one of three activity layers. The RRC
-      // scraper (scripts/scrape_rrc_permits.py) tags rows so this maps 1:1:
-      //   permit_type contains 'Drill' -> rig    (wells currently drilling
-      //                                            via SYMNUM=21 fallback)
-      //   status contains 'PEND'/'FILED' -> pre_permit (application filed)
-      //   everything else               -> permit (approved permit or
-      //                                            unknown status)
-      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+      // Categorize each row into one of three activity layers.
+      //
+      // Prior versions of this function pattern-matched "DRILL" on
+      // permit_type/status, which flagged every historical drilling
+      // permit ever issued as a rig — Howard produced 560 "rig" dots
+      // vs Baker Hughes' actual ~10-15 rig weekly count. Fixed by
+      // switching to the industry-standard definition:
+      //
+      //   rig        = spud_date within the last RIG_LOOKBACK_DAYS AND
+      //                no completion_date on file AND not a
+      //                disposal/injection well
+      //   pre_permit = pending / filed / held applications
+      //   permit     = approved permit or unknown, everything else
+      //
+      // SWD/disposal/injection wells are excluded because Baker
+      // Hughes reports oil & gas rigs only. A 365-day lookback is
+      // wider than the ~30-day drilling cycle, but our data source
+      // (RRC EWA snapshots) has 3-6 month lag on completions, so
+      // narrower windows undercount. Once the real-time scraper
+      // catches up we can tighten to 90 days.
+      const RIG_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+
+      const parseIsoDate = (s: unknown): number | null => {
+        if (s === null || s === undefined) return null
+        const str = String(s).trim()
+        if (!str) return null
+        const t = Date.parse(str.slice(0, 10))
+        return Number.isFinite(t) ? t : null
+      }
+
+      const isDisposalWell = (row: Record<string, unknown>): boolean => {
+        const lease = String(row.lease_name ?? '').toUpperCase()
         const type = String(row.permit_type ?? '').toUpperCase()
-        const status = String(row.status ?? '').toUpperCase()
-        if (type.includes('DRILL') || type.includes('RIG') || status.includes('DRILL')) {
+        return (
+          /(^|\s)SWD(\s|$)/.test(lease) ||
+          lease.includes('DISPOSAL') ||
+          lease.includes('INJECTION') ||
+          lease.includes('WATER GATHERING') ||
+          type.includes('DISPOSAL') ||
+          type.includes('INJECTION')
+        )
+      }
+
+      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+        const spud = parseIsoDate(row.spud_date)
+        const completion = parseIsoDate(row.completion_date)
+        if (
+          spud !== null &&
+          completion === null &&
+          (now - spud) <= RIG_LOOKBACK_MS &&
+          !isDisposalWell(row)
+        ) {
           return 'rig'
         }
+        const status = String(row.status ?? '').toUpperCase()
         if (status.includes('PEND') || status.includes('FILED') || status.includes('HELD')) {
           return 'pre_permit'
         }
@@ -763,7 +825,10 @@ export default function Map({
           properties: {
             operator: String(permit.operator_name ?? ''),
             lease: String(permit.lease_name ?? ''),
-            date: String(permit.filed_date ?? permit.approved_date ?? ''),
+            // Prefer spud_date for the rig popup (that's what "active"
+            // means); fall back to filed/approved for the plain
+            // permit popups.
+            date: String(permit.spud_date ?? permit.filed_date ?? permit.approved_date ?? ''),
             type: String(permit.permit_type ?? ''),
             status: String(permit.status ?? ''),
             category: categorize(permit),
@@ -1744,8 +1809,9 @@ function LayerTogglePanel({
           />
         </div>
         <div style={{ marginTop: 6, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
-          Blue halo on tracts with a permit filed in the last 24
-          months; red dot per well currently drilling.
+          Blue halo: permit filed in the last 24 months.
+          Red dot: oil/gas well spudded in the last 12 months with
+          no completion on file (SWDs excluded).
         </div>
       </div>
     </div>
