@@ -15,6 +15,7 @@ import { COUNTIES } from '@/lib/counties'
 
 import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
+import BasinActivityWidget from './components/BasinActivityWidget'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // 10 Permian counties whose data hasn't shipped yet. Rendered in
@@ -3125,6 +3126,13 @@ export default function Home() {
                      have live market context before they scan the
                      county list below. */}
                   <MarketPricesWidget />
+
+                  {/* Basin-wide drilling activity — rigs drilling,
+                     permits filed (30d), wells completed (30d).
+                     Aggregated from every active county's permits
+                     table by /api/basin/activity and expandable to
+                     show per-county contributions. */}
+                  <BasinActivityWidget />
 
                   <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     ACTIVE COUNTIES
