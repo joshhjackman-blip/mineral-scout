@@ -262,6 +262,17 @@ export default function Map({
   const [statusVisible, setStatusVisible] = useState<Record<UnifiedStatus, boolean>>({
     PDP: true,
     PUD_DUC: true,
+    // PUD_PERMITTED and LEASING_ACTIVE are still valid dev-status
+    // classifications the compute pipeline may emit, but they've been
+    // dropped from the visible legend:
+    //   - PUD_PERMITTED never fires in mature Permian data because
+    //     the classifier promotes producing tracts with fresh permits
+    //     to PUD_INFILL. Permits are now surfaced as a blue GLOW
+    //     overlay on top of whatever the tract's primary color is —
+    //     see `showPermitGlow` below.
+    //   - LEASING_ACTIVE has zero tracts and doesn't add signal for
+    //     the current buyer workflow.
+    // Both statuses paint as FRONTIER gray when they somehow appear.
     PUD_PERMITTED: true,
     PUD_INFILL: true,
     LEASING_ACTIVE: true,
@@ -270,6 +281,11 @@ export default function Map({
   const setStatus = useCallback((key: UnifiedStatus, v: boolean) => {
     setStatusVisible((prev) => ({ ...prev, [key]: v }))
   }, [])
+  // Blue glow overlay showing tracts with a permit approved in the
+  // last 24 months. Renders on top of the tract's primary color
+  // rather than replacing it, so a PDP tract with a fresh permit
+  // stays yellow underneath but pulses blue on its edge.
+  const [showPermitGlow, setShowPermitGlow] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
   // Latest devStatusByAbstract in a ref so the setupTractLevel closure
   // (memoized on countyEntries only) still sees fresh data.
@@ -314,6 +330,25 @@ export default function Map({
   const PERMIAN_OVERVIEW_ZOOM = 7.0
   const TEXAS_OVERVIEW_CENTER = PERMIAN_OVERVIEW_CENTER
   const TEXAS_OVERVIEW_ZOOM = PERMIAN_OVERVIEW_ZOOM
+
+  // Permian counties whose data hasn't shipped yet. Painted as grey
+  // "COMING SOON" squares in the county overview so the finished
+  // basin footprint is visible from day one. FIPS codes match the
+  // ones in scripts/scrape_rrc_permits_realtime.py; mapCenter
+  // coordinates are the county centroids (used for the "COMING
+  // SOON" label anchor).
+  const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = [
+    { name: 'MIDLAND',   fips: '48329', mapCenter: [-102.08, 31.87] },
+    { name: 'GLASSCOCK', fips: '48173', mapCenter: [-101.52, 31.87] },
+    { name: 'UPTON',     fips: '48461', mapCenter: [-102.05, 31.37] },
+    { name: 'REAGAN',    fips: '48383', mapCenter: [-101.53, 31.37] },
+    { name: 'CRANE',     fips: '48103', mapCenter: [-102.55, 31.40] },
+    { name: 'PECOS',     fips: '48371', mapCenter: [-102.72, 30.87] },
+    { name: 'WARD',      fips: '48475', mapCenter: [-103.10, 31.53] },
+    { name: 'WINKLER',   fips: '48495', mapCenter: [-103.05, 31.85] },
+    { name: 'LOVING',    fips: '48301', mapCenter: [-103.58, 31.85] },
+    { name: 'REEVES',    fips: '48389', mapCenter: [-103.68, 31.30] },
+  ]
 
   const countyEntries = useMemo(
     () => Object.entries(COUNTIES) as Array<[CountyKey, County]>,
@@ -382,7 +417,10 @@ export default function Map({
     countyOverviewHandlersRef.current = { hoveredFips: null }
     activeCountyByFipsRef.current = {}
 
+    removeLayerIfExists(mapInstance, 'tx-counties-upcoming-sub-labels')
     removeLayerIfExists(mapInstance, 'tx-counties-active-labels')
+    removeLayerIfExists(mapInstance, 'tx-counties-upcoming-outline')
+    removeLayerIfExists(mapInstance, 'tx-counties-upcoming-fill')
     removeLayerIfExists(mapInstance, 'tx-counties-active-outline')
     removeLayerIfExists(mapInstance, 'tx-counties-active-fill')
     removeLayerIfExists(mapInstance, 'tx-counties-outline')
@@ -469,17 +507,20 @@ export default function Map({
   const STATUS_FILL: Record<UnifiedStatus, string> = {
     PDP:            '#EAB308', // yellow — producing today
     PUD_DUC:        '#A855F7', // purple — drilled, awaiting completion
-    PUD_PERMITTED:  '#2563EB', // blue — approved permit, not drilled
+    // PUD_PERMITTED + LEASING_ACTIVE paint as FRONTIER gray because
+    // permits are surfaced by the blue glow overlay and leasing has
+    // been dropped from the visible palette (2026-07-17).
+    PUD_PERMITTED:  '#E5E7EB',
     PUD_INFILL:     '#F97316', // orange — spacing-gap infill candidate
-    LEASING_ACTIVE: '#16A34A', // green — fresh lease memo
+    LEASING_ACTIVE: '#E5E7EB',
     FRONTIER:       '#E5E7EB', // gray — no signals yet
   }
   const STATUS_OUTLINE: Record<UnifiedStatus, string> = {
     PDP:            '#A16207',
     PUD_DUC:        '#6B21A8',
-    PUD_PERMITTED:  '#1D4ED8',
+    PUD_PERMITTED:  '#CBD5E1',
     PUD_INFILL:     '#C2410C',
-    LEASING_ACTIVE: '#166534',
+    LEASING_ACTIVE: '#CBD5E1',
     FRONTIER:       '#CBD5E1',
   }
   const STATUS_LABEL: Record<UnifiedStatus, string> = {
@@ -491,21 +532,20 @@ export default function Map({
     FRONTIER:       'Frontier',
   }
   // Baseline opacities per status (before per-status toggle is applied).
-  // Classified tracts sit around 0.70; Frontier is dim so it recedes.
   const STATUS_OPACITY: Record<UnifiedStatus, number> = {
     PDP:            0.72,
     PUD_DUC:        0.82,
-    PUD_PERMITTED:  0.78,
+    PUD_PERMITTED:  0.18, // treated as frontier
     PUD_INFILL:     0.75,
-    LEASING_ACTIVE: 0.65,
+    LEASING_ACTIVE: 0.18, // treated as frontier
     FRONTIER:       0.18,
   }
   const STATUS_OUTLINE_WIDTH: Record<UnifiedStatus, number> = {
     PDP:            1.6,
     PUD_DUC:        2.0,
-    PUD_PERMITTED:  1.8,
+    PUD_PERMITTED:  0.9,
     PUD_INFILL:     1.5,
-    LEASING_ACTIVE: 1.4,
+    LEASING_ACTIVE: 0.9,
     FRONTIER:       0.9,
   }
 
@@ -663,19 +703,38 @@ export default function Map({
 
     if (!permitsGeoJSON) {
       let permitRows: Array<Record<string, unknown>> = []
+      // Try the full column set first (Ticket 1.3 schema with
+      // spud_date/completion_date). Fall back to the pre-1.3 minimal
+      // column set if the migration hasn't landed for this county.
       const permitsResult = await supabase
         .from(permitsTable)
         .select(
-          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+          'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date'
         )
         .not('latitude', 'is', null)
         .not('longitude', 'is', null)
 
       if (permitsResult.error) {
-        // Table may not exist for this county (some Permian counties before
-        // their migration lands). Fail soft: empty layers so nothing
-        // misleading renders.
-        console.warn(`[permits] ${permitsTable} unavailable:`, permitsResult.error.message)
+        const msg = permitsResult.error.message || ''
+        if (/column .* does not exist/i.test(msg)) {
+          const fallback = await supabase
+            .from(permitsTable)
+            .select(
+              'permit_number,api_number,operator_name,lease_name,latitude,longitude,permit_type,status,filed_date,approved_date'
+            )
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null)
+          if (fallback.error) {
+            console.warn(`[permits] ${permitsTable} unavailable:`, fallback.error.message)
+          } else {
+            permitRows = (fallback.data ?? []) as Array<Record<string, unknown>>
+          }
+        } else {
+          // Table may not exist for this county (some Permian counties before
+          // their migration lands). Fail soft: empty layers so nothing
+          // misleading renders.
+          console.warn(`[permits] ${permitsTable} unavailable:`, msg)
+        }
       } else {
         permitRows = (permitsResult.data ?? []) as Array<Record<string, unknown>>
       }
@@ -693,19 +752,62 @@ export default function Map({
         )
       })
 
-      // Categorize each row into one of three activity layers. The RRC
-      // scraper (scripts/scrape_rrc_permits.py) tags rows so this maps 1:1:
-      //   permit_type contains 'Drill' -> rig    (wells currently drilling
-      //                                            via SYMNUM=21 fallback)
-      //   status contains 'PEND'/'FILED' -> pre_permit (application filed)
-      //   everything else               -> permit (approved permit or
-      //                                            unknown status)
-      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+      // Categorize each row into one of three activity layers.
+      //
+      // Prior versions of this function pattern-matched "DRILL" on
+      // permit_type/status, which flagged every historical drilling
+      // permit ever issued as a rig — Howard produced 560 "rig" dots
+      // vs Baker Hughes' actual ~10-15 rig weekly count. Fixed by
+      // switching to the industry-standard definition:
+      //
+      //   rig        = spud_date within the last RIG_LOOKBACK_DAYS AND
+      //                no completion_date on file AND not a
+      //                disposal/injection well
+      //   pre_permit = pending / filed / held applications
+      //   permit     = approved permit or unknown, everything else
+      //
+      // SWD/disposal/injection wells are excluded because Baker
+      // Hughes reports oil & gas rigs only. A 365-day lookback is
+      // wider than the ~30-day drilling cycle, but our data source
+      // (RRC EWA snapshots) has 3-6 month lag on completions, so
+      // narrower windows undercount. Once the real-time scraper
+      // catches up we can tighten to 90 days.
+      const RIG_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000
+      const now = Date.now()
+
+      const parseIsoDate = (s: unknown): number | null => {
+        if (s === null || s === undefined) return null
+        const str = String(s).trim()
+        if (!str) return null
+        const t = Date.parse(str.slice(0, 10))
+        return Number.isFinite(t) ? t : null
+      }
+
+      const isDisposalWell = (row: Record<string, unknown>): boolean => {
+        const lease = String(row.lease_name ?? '').toUpperCase()
         const type = String(row.permit_type ?? '').toUpperCase()
-        const status = String(row.status ?? '').toUpperCase()
-        if (type.includes('DRILL') || type.includes('RIG') || status.includes('DRILL')) {
+        return (
+          /(^|\s)SWD(\s|$)/.test(lease) ||
+          lease.includes('DISPOSAL') ||
+          lease.includes('INJECTION') ||
+          lease.includes('WATER GATHERING') ||
+          type.includes('DISPOSAL') ||
+          type.includes('INJECTION')
+        )
+      }
+
+      const categorize = (row: Record<string, unknown>): 'permit' | 'pre_permit' | 'rig' => {
+        const spud = parseIsoDate(row.spud_date)
+        const completion = parseIsoDate(row.completion_date)
+        if (
+          spud !== null &&
+          completion === null &&
+          (now - spud) <= RIG_LOOKBACK_MS &&
+          !isDisposalWell(row)
+        ) {
           return 'rig'
         }
+        const status = String(row.status ?? '').toUpperCase()
         if (status.includes('PEND') || status.includes('FILED') || status.includes('HELD')) {
           return 'pre_permit'
         }
@@ -723,7 +825,10 @@ export default function Map({
           properties: {
             operator: String(permit.operator_name ?? ''),
             lease: String(permit.lease_name ?? ''),
-            date: String(permit.filed_date ?? permit.approved_date ?? ''),
+            // Prefer spud_date for the rig popup (that's what "active"
+            // means); fall back to filed/approved for the plain
+            // permit popups.
+            date: String(permit.spud_date ?? permit.filed_date ?? permit.approved_date ?? ''),
             type: String(permit.permit_type ?? ''),
             status: String(permit.status ?? ''),
             category: categorize(permit),
@@ -918,6 +1023,37 @@ export default function Map({
       paint: { 'line-color': '#D97706', 'line-width': 1.5 },
     })
 
+    // "Coming soon" grey squares for the 10 Permian counties whose
+    // data hasn't shipped yet — Midland, Glasscock, Upton, Reagan,
+    // Crane, Pecos, Ward, Winkler, Loving, Reeves. Painted as
+    // subtle grey fills with a "COMING SOON" label so the map
+    // visually communicates the roadmap without the polygons
+    // being clickable. Their FIPS codes come from UPCOMING_COUNTIES.
+    const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
+    if (!map.current) return
+    map.current.addLayer({
+      id: 'tx-counties-upcoming-fill',
+      type: 'fill',
+      source: 'tx-counties',
+      filter: ['in', ['get', '__fips'], ['literal', Array.from(upcomingFipsSet)]],
+      paint: {
+        'fill-color': '#94A3B8',
+        'fill-opacity': 0.28,
+      },
+    })
+    if (!map.current) return
+    map.current.addLayer({
+      id: 'tx-counties-upcoming-outline',
+      type: 'line',
+      source: 'tx-counties',
+      filter: ['in', ['get', '__fips'], ['literal', Array.from(upcomingFipsSet)]],
+      paint: {
+        'line-color': '#64748B',
+        'line-width': 1,
+        'line-dasharray': [3, 3],
+      },
+    })
+
     const moveHandler = (event: mapboxgl.MapLayerMouseEvent) => {
       if (!map.current) return
       map.current.getCanvas().style.cursor = 'pointer'
@@ -963,15 +1099,38 @@ export default function Map({
     // outline is. A generous halo keeps the text readable on top of
     // the amber active-county fill.
     if (map.current) {
-      const labelFeatures: GeoJSON.Feature[] = countyEntries.map(([, cfg]) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: cfg.mapCenter },
-        properties: { name: cfg.name.toUpperCase() },
-      }))
+      // Active-county label features (rendered dark on the amber
+      // fill) share the same source as the upcoming-county labels;
+      // an `active` boolean on each feature drives the text
+      // formatter so the layer paints both types in one pass.
+      const labelFeatures: GeoJSON.Feature[] = [
+        ...countyEntries.map(([, cfg]) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: cfg.mapCenter },
+          properties: {
+            name: cfg.name.toUpperCase(),
+            active: true,
+            sub: '',
+          },
+        })),
+        ...UPCOMING_COUNTIES.map((cfg) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: cfg.mapCenter },
+          properties: {
+            name: cfg.name,
+            active: false,
+            sub: 'COMING SOON',
+          },
+        })),
+      ]
       map.current.addSource('tx-counties-labels', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: labelFeatures },
       })
+      // Two symbol layers stacked: primary county name (active
+      // counties in dark, upcoming counties in a muted slate), and
+      // an offset "COMING SOON" subtitle that only renders on
+      // upcoming counties.
       map.current.addLayer({
         id: 'tx-counties-active-labels',
         type: 'symbol',
@@ -990,10 +1149,39 @@ export default function Map({
           'text-ignore-placement': true,
         },
         paint: {
-          'text-color': '#0F172A',
+          'text-color': [
+            'case',
+            ['==', ['coalesce', ['get', 'active'], false], true], '#0F172A',
+            '#64748B',
+          ],
           'text-halo-color': '#FFFFFF',
           'text-halo-width': 2,
           'text-halo-blur': 0.5,
+        },
+      })
+      map.current.addLayer({
+        id: 'tx-counties-upcoming-sub-labels',
+        type: 'symbol',
+        source: 'tx-counties-labels',
+        filter: ['==', ['coalesce', ['get', 'active'], false], false],
+        layout: {
+          'text-field': ['get', 'sub'],
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            5, 7,
+            7, 9,
+            9, 11,
+          ],
+          'text-letter-spacing': 0.15,
+          'text-offset': [0, 1.4],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#64748B',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.5,
         },
       })
     }
@@ -1093,10 +1281,13 @@ export default function Map({
         filter: ['==', ['coalesce', ['get', 'has_recent_permit'], false], true],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#2563EB',
-          'line-width': 6,
-          'line-opacity': 0.35,
-          'line-blur': 2,
+          // Wide bright-blue halo. Reads through yellow (PDP) and
+          // orange (PUD Infill) fills because both those hues are
+          // warm and low-contrast against #3B82F6.
+          'line-color': '#3B82F6',
+          'line-width': 12,
+          'line-opacity': 0.55,
+          'line-blur': 3,
         },
       })
       map.current.addLayer({
@@ -1106,9 +1297,11 @@ export default function Map({
         filter: ['==', ['coalesce', ['get', 'has_recent_permit'], false], true],
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#1D4ED8',
-          'line-width': 2,
-          'line-opacity': 0.9,
+          // Bright electric-blue core, thicker than before so the
+          // permit signal reads at low zoom too.
+          'line-color': '#60A5FA',
+          'line-width': 3.5,
+          'line-opacity': 1,
         },
       })
 
@@ -1453,9 +1646,9 @@ export default function Map({
     if (!map.current) return
     const mapInstance = map.current
     const tractLevel = mapLevel === 'tract'
-    // Only the rigs overlay remains as an independent dot layer.
-    // Approved / pre-permits used to be here but they're now expressed
-    // as PUD (Permitted) tract fills via the unified legend.
+    // Rigs overlay + permit glow layers are the two toggle-driven
+    // overlays. Both stay hidden when mapLevel is 'county' (no
+    // parcel-level layers to sit on top of).
     if (mapInstance.getLayer('permits-rigs-layer')) {
       mapInstance.setLayoutProperty(
         'permits-rigs-layer',
@@ -1463,7 +1656,19 @@ export default function Map({
         tractLevel && showRigs ? 'visible' : 'none',
       )
     }
-  }, [mapLevel, showRigs])
+    for (const [, countyConfig] of countyEntries) {
+      for (const suffix of ['permit-glow-outer', 'permit-glow-core']) {
+        const layerId = `parcels-${suffix}-${countyConfig.id}`
+        if (mapInstance.getLayer(layerId)) {
+          mapInstance.setLayoutProperty(
+            layerId,
+            'visibility',
+            tractLevel && showPermitGlow ? 'visible' : 'none',
+          )
+        }
+      }
+    }
+  }, [mapLevel, showRigs, showPermitGlow, countyEntries])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -1503,6 +1708,8 @@ export default function Map({
           statusLabels={STATUS_LABEL}
           rigsVisible={showRigs}
           onRigs={setShowRigs}
+          permitGlowVisible={showPermitGlow}
+          onPermitGlow={setShowPermitGlow}
         />
       )}
     </div>
@@ -1520,6 +1727,7 @@ function LayerTogglePanel({
   statusVisible, onStatus,
   statusPalette, statusLabels,
   rigsVisible, onRigs,
+  permitGlowVisible, onPermitGlow,
 }: {
   statusVisible: Record<UnifiedStatus, boolean>
   onStatus: (key: UnifiedStatus, v: boolean) => void
@@ -1527,9 +1735,17 @@ function LayerTogglePanel({
   statusLabels: Record<UnifiedStatus, string>
   rigsVisible: boolean
   onRigs: (v: boolean) => void
+  permitGlowVisible: boolean
+  onPermitGlow: (v: boolean) => void
 }) {
+  // Legend row order for the four surviving primary classifications
+  // (PDP / PUD_DUC / PUD_INFILL / FRONTIER). PUD_PERMITTED and
+  // LEASING_ACTIVE were pulled off the visible legend on
+  // 2026-07-17 — the first because permits are surfaced via the
+  // blue glow overlay now, the second because zero tracts land in
+  // that status anyway.
   const statusKeys: UnifiedStatus[] = [
-    'PDP', 'PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL', 'LEASING_ACTIVE', 'FRONTIER',
+    'PDP', 'PUD_DUC', 'PUD_INFILL', 'FRONTIER',
   ]
   const legendRows = statusKeys.map((key) => ({
     label: statusLabels[key],
@@ -1572,17 +1788,30 @@ function LayerTogglePanel({
 
       <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
         <div style={sectionHeadingStyle}>Overlays</div>
-        <ToggleRow
-          row={{
-            label: 'Active rigs',
-            swatch: 'dot',
-            color: '#DC2626',
-            checked: rigsVisible,
-            onChange: onRigs,
-          }}
-        />
-        <div style={{ marginTop: 4, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
-          Red dot per well currently drilling.
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <ToggleRow
+            row={{
+              label: 'Permits',
+              swatch: 'ring',
+              color: '#3B82F6',
+              checked: permitGlowVisible,
+              onChange: onPermitGlow,
+            }}
+          />
+          <ToggleRow
+            row={{
+              label: 'Active rigs',
+              swatch: 'dot',
+              color: '#DC2626',
+              checked: rigsVisible,
+              onChange: onRigs,
+            }}
+          />
+        </div>
+        <div style={{ marginTop: 6, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
+          Blue halo: permit filed in the last 24 months.
+          Red dot: oil/gas well spudded in the last 12 months with
+          no completion on file (SWDs excluded).
         </div>
       </div>
     </div>
@@ -1603,7 +1832,7 @@ function ToggleRow({
 }: {
   row: {
     label: string
-    swatch: 'fill' | 'dot'
+    swatch: 'fill' | 'dot' | 'ring'
     color: string
     checked: boolean
     onChange: (v: boolean) => void
@@ -1644,6 +1873,21 @@ function ToggleRow({
               borderRadius: 2,
               background: row.color,
               border: '1px solid rgba(15,23,42,0.25)',
+              opacity: row.checked ? 1 : 0.35,
+            }}
+          />
+        ) : row.swatch === 'ring' ? (
+          // Blue-glow permit swatch — hollow rectangle with a thick
+          // colored border that mimics the tract-outline halo on the
+          // map.
+          <span
+            style={{
+              width: 13,
+              height: 13,
+              borderRadius: 3,
+              background: 'transparent',
+              border: `2.5px solid ${row.color}`,
+              boxShadow: `0 0 6px ${row.color}80`,
               opacity: row.checked ? 1 : 0.35,
             }}
           />
