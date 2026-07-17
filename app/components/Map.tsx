@@ -318,6 +318,10 @@ export default function Map({
   // Cache permit GeoJSON by county id so flipping between counties doesn't
   // re-issue a Supabase round-trip every time.
   const permitsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
+  // Cache the Texas-counties FIPS GeoJSON (fetched from plotly's public
+  // dataset) once per session. Reused by both the county-overview
+  // renderer and the tract-mode inactive-county overlay.
+  const txCountiesCacheRef = useRef<GeoJSON.Feature[] | null>(null)
 
   // Permian-focused initial view. The 12 active counties span roughly
   // -103.5° to -101.0° lon and 30.7° to 32.5° lat; centering at
@@ -464,6 +468,15 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'permits-pending-layer')
     removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
+
+    removeLayerIfExists(mapInstance, 'tract-overlay-sub-labels')
+    removeLayerIfExists(mapInstance, 'tract-overlay-labels')
+    removeLayerIfExists(mapInstance, 'tract-upcoming-outline')
+    removeLayerIfExists(mapInstance, 'tract-upcoming-fill')
+    removeLayerIfExists(mapInstance, 'tract-inactive-outline')
+    removeLayerIfExists(mapInstance, 'tract-inactive-fill')
+    removeSourceIfExists(mapInstance, 'tract-mode-overlay-labels')
+    removeSourceIfExists(mapInstance, 'tract-mode-overlay')
 
     countyEntries.forEach(([, countyConfig]) => {
       removeLayerIfExists(mapInstance, `block-labels-${countyConfig.id}`)
@@ -619,6 +632,18 @@ export default function Map({
     const newSelected = selectedCountyRef.current
     const previouslySelected = lastStyledSelectedCountyRef.current
 
+    // All per-county parcel-related layer ids. Inactive counties get
+    // every one of these hidden so no parcel data (fills, outlines,
+    // abstract labels, section labels, block labels, permit halos)
+    // bleeds through into the tract view of a different county.
+    // The tract-inactive-fill / tract-overlay-labels layers added
+    // in setupTractLevel take over as the visible representation.
+    const parcelLayerSuffixes = [
+      'parcels-fill', 'parcels-outline', 'parcels-labels', 'parcels-sections',
+      'parcels-permit-glow-outer', 'parcels-permit-glow-core',
+      'block-labels',
+    ]
+
     const stylePair = (
       countyKey: CountyKey,
       mode: 'active' | 'muted'
@@ -635,12 +660,19 @@ export default function Map({
         mapInstance.setPaintProperty(outlineId, 'line-color', selectedOutlineColorExpr)
         mapInstance.setPaintProperty(outlineId, 'line-width', selectedOutlineWidthExpr)
         mapInstance.setPaintProperty(outlineId, 'line-opacity', 0.92)
+        for (const suffix of parcelLayerSuffixes) {
+          const layerId = `${suffix}-${countyConfig.id}`
+          if (mapInstance.getLayer(layerId)) {
+            mapInstance.setLayoutProperty(layerId, 'visibility', 'visible')
+          }
+        }
       } else {
-        mapInstance.setPaintProperty(fillId, 'fill-color', '#9E9E9E')
-        mapInstance.setPaintProperty(fillId, 'fill-opacity', 0.25)
-        mapInstance.setPaintProperty(outlineId, 'line-color', '#CBD5E1')
-        mapInstance.setPaintProperty(outlineId, 'line-width', 0.8)
-        mapInstance.setPaintProperty(outlineId, 'line-opacity', 1)
+        for (const suffix of parcelLayerSuffixes) {
+          const layerId = `${suffix}-${countyConfig.id}`
+          if (mapInstance.getLayer(layerId)) {
+            mapInstance.setLayoutProperty(layerId, 'visibility', 'none')
+          }
+        }
       }
       return true
     }
@@ -683,6 +715,52 @@ export default function Map({
     // Rigs always sit on top of everything else so they're visible
     // against any tract fill and above the permit glow. Was
     // previously painted under the parcel layers.
+    if (mapInstance.getLayer('permits-rigs-layer')) {
+      mapInstance.moveLayer('permits-rigs-layer')
+    }
+
+    // Refresh the tract-mode inactive-county overlay so the newly
+    // selected county drops out of the orange-block set and the
+    // previously selected county picks it up. The overlay source
+    // itself is rebuilt when the filter changes.
+    const currentFips = selectedConfig.fips
+    if (mapInstance.getSource('tract-mode-overlay')) {
+      const texasFeatures = txCountiesCacheRef.current
+      if (texasFeatures) {
+        const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
+        const allActiveFipsSet = new Set(countyEntries.map(([, cfg]) => cfg.fips))
+        const overlayFeatures = texasFeatures
+          .filter((feat) => {
+            const fips = String(((feat.properties ?? {}) as Record<string, unknown>).__fips ?? feat.id ?? '')
+            return upcomingFipsSet.has(fips) || (allActiveFipsSet.has(fips) && fips !== currentFips)
+          })
+          .map((feat) => {
+            const fips = String(((feat.properties ?? {}) as Record<string, unknown>).__fips ?? feat.id ?? '')
+            return {
+              ...feat,
+              properties: {
+                ...(feat.properties ?? {}),
+                __fips: fips,
+                __role: upcomingFipsSet.has(fips) ? 'upcoming' : 'inactive',
+              },
+            } as GeoJSON.Feature
+          })
+        const src = mapInstance.getSource('tract-mode-overlay') as mapboxgl.GeoJSONSource
+        src.setData({ type: 'FeatureCollection', features: overlayFeatures })
+      }
+    }
+    if (mapInstance.getLayer('tract-overlay-labels')) {
+      mapInstance.setFilter('tract-overlay-labels', ['!=', ['get', 'fips'], currentFips])
+    }
+    // Push overlay layers below the rig dots but above the base
+    // parcel layers, so labels and orange blocks stay visible.
+    for (const overlayLayerId of [
+      'tract-inactive-fill', 'tract-inactive-outline',
+      'tract-upcoming-fill', 'tract-upcoming-outline',
+      'tract-overlay-labels', 'tract-overlay-sub-labels',
+    ]) {
+      if (mapInstance.getLayer(overlayLayerId)) mapInstance.moveLayer(overlayLayerId)
+    }
     if (mapInstance.getLayer('permits-rigs-layer')) {
       mapInstance.moveLayer('permits-rigs-layer')
     }
@@ -947,29 +1025,15 @@ export default function Map({
     }
   }, [showRigs])
 
-  const setupCountyOverview = useCallback(async () => {
-    const mapInstance = map.current
-    if (!mapInstance) return
-
-    const renderToken = ++renderTokenRef.current
-    clearTractLayers(mapInstance)
-    clearCountyOverviewLayers(mapInstance)
-    clearCountyMarkers()
-
+  // Fetch + memoize the Texas county polygons (from plotly's public
+  // FIPS dataset). Returns Texas-only features tagged with a __fips
+  // string property. Cached in a ref so we don't re-fetch when
+  // toggling between county overview and tract mode.
+  const loadTexasCountiesGeoJSON = useCallback(async (): Promise<GeoJSON.Feature[] | null> => {
+    if (txCountiesCacheRef.current) return txCountiesCacheRef.current
     const response = await fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
-    if (!response.ok || renderToken !== renderTokenRef.current || !map.current) return
-
+    if (!response.ok) return null
     const geojson = await response.json() as GeoJSON.FeatureCollection
-    if (renderToken !== renderTokenRef.current || !map.current) return
-
-    const activeFipsSet = new Set<string>()
-    const activeCountyByFips: Record<string, CountyKey> = {}
-    countyEntries.forEach(([countyKey, countyConfig]) => {
-      activeFipsSet.add(countyConfig.fips)
-      activeCountyByFips[countyConfig.fips] = countyKey
-    })
-    activeCountyByFipsRef.current = activeCountyByFips
-
     const texasFeatures = (geojson.features ?? [])
       .map((feature) => {
         const properties = (feature.properties ?? {}) as Record<string, unknown>
@@ -982,6 +1046,29 @@ export default function Map({
         } as GeoJSON.Feature
       })
       .filter(Boolean) as GeoJSON.Feature[]
+    txCountiesCacheRef.current = texasFeatures
+    return texasFeatures
+  }, [])
+
+  const setupCountyOverview = useCallback(async () => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+
+    const renderToken = ++renderTokenRef.current
+    clearTractLayers(mapInstance)
+    clearCountyOverviewLayers(mapInstance)
+    clearCountyMarkers()
+
+    const texasFeatures = await loadTexasCountiesGeoJSON()
+    if (!texasFeatures || renderToken !== renderTokenRef.current || !map.current) return
+
+    const activeFipsSet = new Set<string>()
+    const activeCountyByFips: Record<string, CountyKey> = {}
+    countyEntries.forEach(([countyKey, countyConfig]) => {
+      activeFipsSet.add(countyConfig.fips)
+      activeCountyByFips[countyConfig.fips] = countyKey
+    })
+    activeCountyByFipsRef.current = activeCountyByFips
 
     if (!map.current) return
     map.current.addSource('tx-counties', {
@@ -1187,7 +1274,7 @@ export default function Map({
     }
 
     map.current.flyTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, duration: 800 })
-  }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries])
+  }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadTexasCountiesGeoJSON])
 
   const setupTractLevel = useCallback(async () => {
     const mapInstance = map.current
@@ -1526,10 +1613,198 @@ export default function Map({
     if (!map.current) return
     map.current.on('click', handler)
 
+    // Inactive-county overlay: when zoomed into one county's tract
+    // view, paint the OTHER 11 active counties as clean orange
+    // blocks with just the county name — same visual as the county
+    // overview. Without this, Howard's tract data (labels, permit
+    // halos, muted parcel outlines) bleeds through when the user is
+    // looking at Martin next door and the map is clearly cluttered.
+    // Upcoming counties render as grey COMING SOON squares in this
+    // mode too so the Permian footprint is always intact.
+    const texasFeatures = await loadTexasCountiesGeoJSON()
+    if (renderToken !== renderTokenRef.current || !map.current) return
+    if (texasFeatures) {
+      const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
+      const allActiveFipsSet = new Set(countyEntries.map(([, cfg]) => cfg.fips))
+      const currentFips = COUNTIES[selectedCountyRef.current].fips
+      // All active counties EXCEPT the one currently open — those
+      // get the orange overlay to hide their parcel data.
+      const inactiveActiveFips = Array.from(allActiveFipsSet).filter((f) => f !== currentFips)
+
+      const overlayFeatures = texasFeatures
+        .filter((feat) => {
+          const fips = String(((feat.properties ?? {}) as Record<string, unknown>).__fips ?? feat.id ?? '')
+          return upcomingFipsSet.has(fips) || (allActiveFipsSet.has(fips) && fips !== currentFips)
+        })
+        .map((feat) => {
+          const fips = String(((feat.properties ?? {}) as Record<string, unknown>).__fips ?? feat.id ?? '')
+          return {
+            ...feat,
+            properties: {
+              ...(feat.properties ?? {}),
+              __fips: fips,
+              __role: upcomingFipsSet.has(fips) ? 'upcoming' : 'inactive',
+            },
+          } as GeoJSON.Feature
+        })
+
+      // Same tx-counties-labels source as county-overview, so
+      // county names sit on the polygon centers. Both active and
+      // upcoming labels are added.
+      const labelFeatures: GeoJSON.Feature[] = [
+        ...countyEntries.map(([, cfg]) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: cfg.mapCenter },
+          properties: {
+            name: cfg.name.toUpperCase(),
+            fips: cfg.fips,
+            role: 'active',
+            sub: '',
+          },
+        })),
+        ...UPCOMING_COUNTIES.map((cfg) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: cfg.mapCenter },
+          properties: {
+            name: cfg.name,
+            fips: cfg.fips,
+            role: 'upcoming',
+            sub: 'COMING SOON',
+          },
+        })),
+      ]
+
+      if (!map.current.getSource('tract-mode-overlay')) {
+        map.current.addSource('tract-mode-overlay', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: overlayFeatures },
+        })
+      } else {
+        const src = map.current.getSource('tract-mode-overlay') as mapboxgl.GeoJSONSource
+        src.setData({ type: 'FeatureCollection', features: overlayFeatures })
+      }
+      if (!map.current.getSource('tract-mode-overlay-labels')) {
+        map.current.addSource('tract-mode-overlay-labels', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: labelFeatures },
+        })
+      } else {
+        const src = map.current.getSource('tract-mode-overlay-labels') as mapboxgl.GeoJSONSource
+        src.setData({ type: 'FeatureCollection', features: labelFeatures })
+      }
+
+      // Orange block for inactive active counties.
+      if (!map.current.getLayer('tract-inactive-fill')) {
+        map.current.addLayer({
+          id: 'tract-inactive-fill',
+          type: 'fill',
+          source: 'tract-mode-overlay',
+          filter: ['==', ['get', '__role'], 'inactive'],
+          paint: { 'fill-color': '#EF9F27', 'fill-opacity': 0.75 },
+        })
+      }
+      if (!map.current.getLayer('tract-inactive-outline')) {
+        map.current.addLayer({
+          id: 'tract-inactive-outline',
+          type: 'line',
+          source: 'tract-mode-overlay',
+          filter: ['==', ['get', '__role'], 'inactive'],
+          paint: { 'line-color': '#D97706', 'line-width': 1.5 },
+        })
+      }
+      // Grey COMING SOON block for the 10 upcoming counties.
+      if (!map.current.getLayer('tract-upcoming-fill')) {
+        map.current.addLayer({
+          id: 'tract-upcoming-fill',
+          type: 'fill',
+          source: 'tract-mode-overlay',
+          filter: ['==', ['get', '__role'], 'upcoming'],
+          paint: { 'fill-color': '#94A3B8', 'fill-opacity': 0.28 },
+        })
+      }
+      if (!map.current.getLayer('tract-upcoming-outline')) {
+        map.current.addLayer({
+          id: 'tract-upcoming-outline',
+          type: 'line',
+          source: 'tract-mode-overlay',
+          filter: ['==', ['get', '__role'], 'upcoming'],
+          paint: {
+            'line-color': '#64748B',
+            'line-width': 1,
+            'line-dasharray': [3, 3],
+          },
+        })
+      }
+      // County name label — dark for inactive active counties,
+      // muted slate for upcoming. Filtered to hide the label for
+      // whichever county is currently open (its own parcel-labels
+      // and detail take over the visual).
+      if (!map.current.getLayer('tract-overlay-labels')) {
+        map.current.addLayer({
+          id: 'tract-overlay-labels',
+          type: 'symbol',
+          source: 'tract-mode-overlay-labels',
+          filter: ['!=', ['get', 'fips'], currentFips],
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+            'text-size': [
+              'interpolate', ['linear'], ['zoom'],
+              6, 10,
+              8, 14,
+              10, 18,
+            ],
+            'text-letter-spacing': 0.06,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': [
+              'case',
+              ['==', ['get', 'role'], 'active'], '#0F172A',
+              '#64748B',
+            ],
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2,
+            'text-halo-blur': 0.5,
+          },
+        })
+      } else {
+        map.current.setFilter('tract-overlay-labels', ['!=', ['get', 'fips'], currentFips])
+      }
+      if (!map.current.getLayer('tract-overlay-sub-labels')) {
+        map.current.addLayer({
+          id: 'tract-overlay-sub-labels',
+          type: 'symbol',
+          source: 'tract-mode-overlay-labels',
+          filter: ['==', ['get', 'role'], 'upcoming'],
+          layout: {
+            'text-field': ['get', 'sub'],
+            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+            'text-size': [
+              'interpolate', ['linear'], ['zoom'],
+              6, 7,
+              8, 9,
+              10, 11,
+            ],
+            'text-letter-spacing': 0.15,
+            'text-offset': [0, 1.4],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': '#64748B',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5,
+          },
+        })
+      }
+    }
+
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
     applyTractCountyStyles()
-  }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits])
+  }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadTexasCountiesGeoJSON])
 
   const renderForCurrentLevel = useCallback(async () => {
     if (!map.current) return
