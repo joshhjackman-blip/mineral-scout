@@ -14,7 +14,25 @@ import { identifyUser, trackEvent } from '@/lib/posthog'
 import { COUNTIES } from '@/lib/counties'
 
 import OwnerDrawer from './components/OwnerDrawer'
+import MarketPricesWidget from './components/MarketPricesWidget'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
+
+// 10 Permian counties whose data hasn't shipped yet. Rendered in
+// the "All Counties" sidebar under a COMING SOON section so
+// prospective users see the full basin roadmap. Names match the
+// UPCOMING_COUNTIES list in app/components/Map.tsx.
+const UPCOMING_PERMIAN_COUNTIES = [
+  'Midland County, TX',
+  'Glasscock County, TX',
+  'Upton County, TX',
+  'Reagan County, TX',
+  'Crane County, TX',
+  'Pecos County, TX',
+  'Ward County, TX',
+  'Winkler County, TX',
+  'Loving County, TX',
+  'Reeves County, TX',
+]
 
 type TractOwner = {
   id?: string
@@ -721,24 +739,11 @@ export default function Home() {
     return () => { cancelled = true }
   }, [])
 
-  const combinedStats = useMemo(() => {
-    // Sum whatever's loaded; unloaded counties contribute 0. Once all
-    // 12 counties have responded, the totals reflect real DB counts.
-    const sum = (pick: (s: CountyLiveStats) => number | null) =>
-      Object.values(liveCountyStats).reduce(
-        (acc: number, s) => acc + (s ? (pick(s) ?? 0) : 0),
-        0,
-      )
-    return [
-      { val: sum((s) => s.totalOwners).toLocaleString(), lbl: 'Total owners' },
-      { val: sum((s) => s.pdpTracts).toLocaleString(),   lbl: 'PDP tracts' },
-      { val: sum((s) => s.pudTracts).toLocaleString(),   lbl: 'PUD tracts' },
-      { val: sum((s) => s.newPermits).toLocaleString(),  lbl: 'New permits' },
-      { val: sum((s) => s.abstracts).toLocaleString(),   lbl: 'Survey abstracts' },
-      { val: sum((s) => s.wells).toLocaleString(),       lbl: 'Active wells' },
-    ]
-  }, [liveCountyStats])
-
+  // combinedStats (sum of live stats across all counties) used to
+  // sit above the ACTIVE COUNTIES list in the sidebar. Removed
+  // when the widget-driven "All Counties" redesign shipped; the
+  // per-county numbers on each row cover the same ground and the
+  // MarketPricesWidget occupies that visual real estate now.
   const countyStatsByLabel = useMemo(() => {
     const live = liveCountyStats[selectedCounty]
     if (!live) return {} as Record<string, string>
@@ -3080,39 +3085,48 @@ export default function Home() {
                 </div>
               )}
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                {(mapLevel === 'county' ? combinedStats : liveCountyStatEntries).map((card) => (
-                  <div
-                    key={card.lbl}
-                    style={{
-                      background: '#FFFFFF',
-                      borderRadius: 8,
-                      border: '1px solid #E5E7EB',
-                      padding: '14px 16px',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                    }}
-                  >
+              {mapLevel === 'tract' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {liveCountyStatEntries.map((card) => (
                     <div
+                      key={card.lbl}
                       style={{
-                        color: '#111827',
-                        fontFamily: '"Times New Roman", Georgia, serif',
-                        fontSize: 24,
-                        fontWeight: 700,
-                        letterSpacing: '0.02em',
-                        fontVariantNumeric: 'tabular-nums lining-nums',
-                        fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                        background: '#FFFFFF',
+                        borderRadius: 8,
+                        border: '1px solid #E5E7EB',
+                        padding: '14px 16px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                       }}
                     >
-                      {card.val}
+                      <div
+                        style={{
+                          color: '#111827',
+                          fontFamily: '"Times New Roman", Georgia, serif',
+                          fontSize: 24,
+                          fontWeight: 700,
+                          letterSpacing: '0.02em',
+                          fontVariantNumeric: 'tabular-nums lining-nums',
+                          fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                        }}
+                      >
+                        {card.val}
+                      </div>
+                      <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
                     </div>
-                    <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
 
               {mapLevel === 'county' && (
                 <>
-                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                  {/* Real-time commodity prices — WTI Crude + Henry Hub
+                     Natural Gas. Polled from /api/market/prices every
+                     60s. Sits at the top of the sidebar so brokers
+                     have live market context before they scan the
+                     county list below. */}
+                  <MarketPricesWidget />
+
+                  <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     ACTIVE COUNTIES
                   </div>
                   <div>
@@ -3120,11 +3134,6 @@ export default function Home() {
                       const live = liveCountyStats[c.id as CountyKey]
                       const owners = live?.totalOwners
                       const permits24mo = live?.newPermits
-                      // Line 2 shows live counts. While the initial
-                      // load is in-flight (live undefined), we hide
-                      // the second line rather than showing a hard-
-                      // coded fallback that might disagree with the
-                      // real number once it arrives.
                       return (
                         <div
                           key={c.id}
@@ -3172,6 +3181,49 @@ export default function Home() {
                         </div>
                       )
                     })}
+                  </div>
+
+                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                    Coming Soon
+                  </div>
+                  <div>
+                    {UPCOMING_PERMIAN_COUNTIES.map((name) => (
+                      <div
+                        key={name}
+                        style={{
+                          background: '#F8FAFC',
+                          border: '1px dashed #CBD5E1',
+                          borderRadius: 8,
+                          padding: '10px 12px',
+                          marginBottom: 6,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          gap: 10,
+                          cursor: 'not-allowed',
+                        }}
+                        title="Data ships soon — check back in a few weeks"
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#64748B', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                          {name}
+                        </div>
+                        <div style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          color: '#94A3B8',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                          background: '#FFFFFF',
+                          border: '1px solid #E2E8F0',
+                          borderRadius: 999,
+                          padding: '3px 8px',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                        }}>
+                          Coming soon
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
