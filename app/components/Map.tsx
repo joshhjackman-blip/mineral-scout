@@ -286,8 +286,17 @@ export default function Map({
   // re-issue a Supabase round-trip every time.
   const permitsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
 
-  const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
-  const TEXAS_OVERVIEW_ZOOM = 5.5
+  // Permian-focused initial view. The 12 active counties span roughly
+  // -103.5° to -101.0° lon and 30.7° to 32.5° lat; centering at
+  // (-102.3, 31.7) puts Martin/Howard near the top and Loving/Reeves
+  // near the bottom-left with the whole basin visible at zoom 7.
+  // Renamed from TEXAS_OVERVIEW_* to reflect the archive of Gonzales
+  // (2026-07-17). Old constant name kept as an alias so external
+  // callers that referenced it don't need to change.
+  const PERMIAN_OVERVIEW_CENTER: [number, number] = [-102.3, 31.7]
+  const PERMIAN_OVERVIEW_ZOOM = 7.0
+  const TEXAS_OVERVIEW_CENTER = PERMIAN_OVERVIEW_CENTER
+  const TEXAS_OVERVIEW_ZOOM = PERMIAN_OVERVIEW_ZOOM
 
   const countyEntries = useMemo(
     () => Object.entries(COUNTIES) as Array<[CountyKey, County]>,
@@ -356,10 +365,12 @@ export default function Map({
     countyOverviewHandlersRef.current = { hoveredFips: null }
     activeCountyByFipsRef.current = {}
 
+    removeLayerIfExists(mapInstance, 'tx-counties-active-labels')
     removeLayerIfExists(mapInstance, 'tx-counties-active-outline')
     removeLayerIfExists(mapInstance, 'tx-counties-active-fill')
     removeLayerIfExists(mapInstance, 'tx-counties-outline')
     removeLayerIfExists(mapInstance, 'tx-counties-fill')
+    removeSourceIfExists(mapInstance, 'tx-counties-labels')
     removeSourceIfExists(mapInstance, 'tx-counties')
   }, [])
 
@@ -911,26 +922,48 @@ export default function Map({
     map.current.on('mouseleave', 'tx-counties-active-fill', leaveHandler)
     map.current.on('click', 'tx-counties-active-fill', clickHandler)
 
-    countyEntries.forEach(([, countyConfig]) => {
-      const markerElement = document.createElement('div')
-      markerElement.style.background = '#FFFFFF'
-      markerElement.style.border = '1px solid #E5E7EB'
-      markerElement.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)'
-      markerElement.style.fontSize = '11px'
-      markerElement.style.padding = '6px 12px'
-      markerElement.style.borderRadius = '999px'
-      markerElement.style.pointerEvents = 'none'
-      markerElement.style.fontFamily = 'Geist, Inter, system-ui, sans-serif'
-      markerElement.style.color = '#111827'
-      markerElement.style.whiteSpace = 'nowrap'
-      markerElement.style.lineHeight = '1.2'
-      markerElement.innerHTML = `<div style="font-weight:700">${countyConfig.name} County</div><div style="color:#6B7280">~${(countyConfig.totalLeads / 1000).toFixed(0)},000 leads</div>`
-
-      const marker = new mapboxgl.Marker({ element: markerElement, anchor: 'center' })
-        .setLngLat(countyConfig.mapCenter)
-        .addTo(map.current as mapboxgl.Map)
-      countyMarkersRef.current.push(marker)
-    })
+    // County names as an in-map symbol layer painted directly on the
+    // county polygons — replaces the old white pill-shaped HTML
+    // Marker with owner count. Uses each county's mapCenter (already
+    // configured per-county in lib/counties.ts) so labels sit inside
+    // the polygon body regardless of how oddly-shaped the county
+    // outline is. A generous halo keeps the text readable on top of
+    // the amber active-county fill.
+    if (map.current) {
+      const labelFeatures: GeoJSON.Feature[] = countyEntries.map(([, cfg]) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: cfg.mapCenter },
+        properties: { name: cfg.name.toUpperCase() },
+      }))
+      map.current.addSource('tx-counties-labels', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: labelFeatures },
+      })
+      map.current.addLayer({
+        id: 'tx-counties-active-labels',
+        type: 'symbol',
+        source: 'tx-counties-labels',
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+          'text-size': [
+            'interpolate', ['linear'], ['zoom'],
+            5, 10,
+            7, 14,
+            9, 18,
+          ],
+          'text-letter-spacing': 0.06,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#0F172A',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 2,
+          'text-halo-blur': 0.5,
+        },
+      })
+    }
 
     map.current.flyTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, duration: 800 })
   }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries])
