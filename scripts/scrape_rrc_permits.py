@@ -127,6 +127,19 @@ def parse_args() -> argparse.Namespace:
              "(howard,martin,gonzales) — one Supabase upsert per county.",
     )
     parser.add_argument("--dry-run", action="store_true")
+    # --days is a no-op after the 2026-07-17 rewrite (the old HTML
+    # scraper used it as the RRC form's lookback window; the new
+    # wells-zip + EWA path always ingests the full snapshot). Kept
+    # so the GitHub Actions cron can keep passing --days N without
+    # crashing, and so anyone reading the workflow doesn't have to
+    # be told the flag went away.
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="[deprecated, kept for cron compatibility] Ignored — the "
+             "current data path always ingests the full snapshot.",
+    )
     parser.add_argument(
         "--wipe",
         action="store_true",
