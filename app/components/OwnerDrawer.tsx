@@ -1011,20 +1011,30 @@ function HoldingsPanel({
         </div>
       )}
 
+      {/* Compact 10-column table. Every cell is whitespace-nowrap +
+          text-[11px] so a full row fits on one line even inside the
+          drawer's ~600px width. Secondary details (abstract label
+          under Legal, NRA under Acres, field name under Unit) that
+          used to sit on a second line are now in `title` tooltips
+          instead — they'd otherwise stack the row two-tall and
+          defeat the "everything on one line" ask. If the table is
+          somehow still wider than the drawer, overflow-x-auto lets
+          the whole row scroll horizontally rather than wrapping. */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full border-collapse text-sm">
-          <thead className="bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-500">
+        <table className="min-w-full border-collapse text-[11px]">
+          <thead className="bg-gray-50 text-[9px] font-bold uppercase tracking-widest text-gray-500">
             <tr>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Unit</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Legal</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Sec</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Township</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Block</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Range</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">Operator</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-left">County</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">Interest</th>
-              <th className="border-b border-gray-200 px-3 py-2 text-right">Acres / NRA</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Unit</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Legal</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Sec</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Twp</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Block</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Range</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">Operator</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-left">County</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Interest</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">Acres</th>
+              <th className="whitespace-nowrap border-b border-gray-200 px-2 py-1.5 text-right">NRA</th>
             </tr>
           </thead>
           <tbody>
@@ -1098,6 +1108,8 @@ function HoldingsPanel({
                 return abstractLabel
               })()
 
+              const fieldName = clean(h.field_name)
+              const countyLabelShort = cfg.displayName.replace(/\s+County,\s+TX$/i, '')
               return (
                 <tr
                   key={`${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`}
@@ -1105,47 +1117,55 @@ function HoldingsPanel({
                     isActive ? 'bg-amber-50/40' : ''
                   } ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
                 >
-                  <td className="border-b border-gray-100 px-3 py-2 align-top">
-                    <div className="font-medium text-gray-900">{unitLabel}</div>
-                    {clean(h.field_name) && clean(h.county_lease_name) && (
-                      <div className="text-[11px] text-gray-500">{clean(h.field_name)}</div>
-                    )}
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-medium text-gray-900"
+                    title={fieldName && clean(h.county_lease_name) ? `${unitLabel} · ${fieldName}` : unitLabel}
+                  >
+                    {unitLabel}
                   </td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono text-[13px]">
-                    {composedLegal || '—'}
-                    {composedLegal && abstractLabel && composedLegal !== abstractLabel && (
-                      <div className="text-[10px] text-gray-400">{abstractLabel}</div>
-                    )}
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono"
+                    title={composedLegal && abstractLabel && composedLegal !== abstractLabel
+                      ? `${composedLegal} · ${abstractLabel}`
+                      : composedLegal || abstractLabel || undefined}
+                  >
+                    {composedLegal || abstractLabel || '—'}
                   </td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.section || '—'}</td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.township || '—'}</td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.block || '—'}</td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top font-mono">{parts.range || '—'}</td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top">
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.section || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.township || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.block || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.range || '—'}</td>
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5"
+                    title={clean(h.operator_name) || undefined}
+                  >
                     {clean(h.operator_name) || '—'}
                   </td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top">
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5" title={cfg.displayName}>
                     <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                      className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
                         isActive
                           ? 'border-amber-300 bg-amber-100 text-amber-900'
                           : 'border-slate-200 bg-slate-50 text-slate-700'
                       }`}
                     >
-                      {cfg.displayName}
+                      {countyLabelShort}
                     </span>
                   </td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top text-right font-mono">
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono"
+                    title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
+                  >
                     {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-                    {h.interest_type && (
-                      <div className="text-[10px] text-gray-500">{h.interest_type}</div>
-                    )}
                   </td>
-                  <td className="border-b border-gray-100 px-3 py-2 align-top text-right font-mono">
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono">
                     {acres ?? '—'}
-                    {nra != null && (
-                      <div className="text-[10px] text-gray-500">{nra.toFixed(nra < 1 ? 3 : 2)} NRA</div>
-                    )}
+                  </td>
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono text-gray-600"
+                    title={nra != null ? `${nra.toFixed(3)} NRA` : undefined}
+                  >
+                    {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
                   </td>
                 </tr>
               )
