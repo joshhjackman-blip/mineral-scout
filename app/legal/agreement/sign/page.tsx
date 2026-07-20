@@ -290,7 +290,6 @@ export default function SignAgreementPage() {
           <div className="lp-footer-copy">© 2026 Mineral Map</div>
         </div>
         <div className="lp-footer-links">
-          <Link href="/landing#pricing">Pricing</Link>
           <Link href="/legal/agreement">Agreement</Link>
           <a href="https://getmineralmap.com/auth">Sign in</a>
           <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
