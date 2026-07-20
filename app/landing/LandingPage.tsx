@@ -70,9 +70,13 @@ function Nav() {
         <img src="/mineral-map-logo-light.svg" alt="Mineral Map" />
       </a>
       <div className="lp-nav-links">
-        <a href="#platform">Platform</a>
-        <a href="#pricing">Pricing</a>
-        <a href="#valuations">Valuations</a>
+        {/* Platform / Pricing / Valuations were archived 2026-07-20
+            (user ask). The corresponding sections on the landing page
+            were removed at the same time, so leaving these nav links
+            behind would create dead anchors. If a future ask brings
+            those sections back, just re-add the nav links and the
+            component tags in LandingPage() below. */}
+        <a href="#how">How it works</a>
         <a href="/legal/agreement">Agreement</a>
         <a href="https://getmineralmap.com/auth" className="lp-nav-cta">Get started free →</a>
       </div>
@@ -102,7 +106,7 @@ function Hero() {
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary">
           Get started free →
         </a>
-        <a href="#platform" className="lp-btn-secondary">See what&apos;s included</a>
+        <a href="#how" className="lp-btn-secondary">See how it works</a>
       </div>
       <ul className="lp-hero-checks reveal reveal-delay-4">
         <li><span aria-hidden>✓</span> No monthly fee</li>
@@ -221,6 +225,7 @@ const FEATURES = [
   },
 ]
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- archived 2026-07-20; kept for easy revival
 function Features() {
   return (
     <section id="platform" className="lp-section">
@@ -296,6 +301,7 @@ function HowItWorks() {
 
 // ── Pricing / Model ───────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- archived 2026-07-20; kept for easy revival
 function PricingBand() {
   return (
     <section id="pricing" className="lp-section lp-pricing-band">
@@ -343,6 +349,7 @@ function PricingBand() {
 
 // ── Valuations Callout ────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- archived 2026-07-20; kept for easy revival
 function ValuationsBand() {
   return (
     <section id="valuations" className="lp-valuations-band">
@@ -407,8 +414,8 @@ function CTABand() {
         <a href="https://getmineralmap.com/auth" className="lp-btn-primary lp-btn-large">
           Get started free →
         </a>
-        <a href="#pricing" className="lp-btn-secondary">
-          See how we get paid
+        <a href="/legal/agreement" className="lp-btn-secondary">
+          Read the agreement
         </a>
       </div>
     </section>
@@ -425,8 +432,9 @@ function Footer() {
         <div className="lp-footer-copy">© 2026 Mineral Map · Built for mineral brokers &amp; acquisition shops</div>
       </div>
       <div className="lp-footer-links">
-        <a href="#pricing">Pricing</a>
-        <a href="#valuations">Valuations</a>
+        {/* Pricing / Valuations links dropped 2026-07-20 with the
+            archive of those landing-page sections. */}
+        <a href="#how">How it works</a>
         <a href="/legal/agreement">Agreement</a>
         <a href="https://getmineralmap.com/auth">Sign in</a>
         <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
@@ -444,10 +452,13 @@ export default function LandingPage() {
       <Nav />
       <Hero />
       <ModelBand />
-      <Features />
+      {/* Archived 2026-07-20 at user's request: <Features />,
+          <PricingBand />, and <ValuationsBand />. Their function
+          definitions are preserved above so re-enabling any of the
+          three is a one-line JSX addition here. Nav + Hero anchors
+          that pointed at these sections were rewritten to target
+          #how (HowItWorks) instead so no dead anchors get shipped. */}
       <HowItWorks />
-      <PricingBand />
-      <ValuationsBand />
       <CTABand />
       <Footer />
     </div>

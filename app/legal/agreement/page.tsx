@@ -31,9 +31,11 @@ export default function AgreementPage() {
           <img src="/mineral-map-logo-light.svg" alt="Mineral Map" />
         </a>
         <div className="lp-nav-links">
+          {/* Pricing / Valuations were archived on the landing page
+              2026-07-20; drop these two links so the legal-page nav
+              doesn't ship dead anchors. */}
           <a href="/landing">Home</a>
-          <a href="/landing#pricing">Pricing</a>
-          <a href="/landing#valuations">Valuations</a>
+          <a href="/landing#how">How it works</a>
           <Link href="/legal/agreement/sign" className="lp-nav-cta">
             Sign the agreement →
           </Link>
@@ -76,7 +78,6 @@ export default function AgreementPage() {
           <div className="lp-footer-copy">© 2026 Mineral Map · Built for mineral brokers &amp; acquisition shops</div>
         </div>
         <div className="lp-footer-links">
-          <Link href="/landing#pricing">Pricing</Link>
           <Link href="/legal/agreement">Agreement</Link>
           <a href="https://getmineralmap.com/auth">Sign in</a>
           <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
