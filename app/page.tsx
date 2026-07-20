@@ -687,7 +687,6 @@ export default function Home() {
     pudTracts:   number | null
     newPermits:  number | null
     abstracts:   number | null
-    wells:       number | null
   }
   const [liveCountyStats, setLiveCountyStats] = useState<Partial<Record<CountyKey, CountyLiveStats>>>({})
 
@@ -703,22 +702,22 @@ export default function Home() {
       const cfg = COUNTIES[countyId]
       const empty: CountyLiveStats = {
         totalOwners: null, pdpTracts: null, pudTracts: null,
-        newPermits: null, abstracts: null, wells: null,
+        newPermits: null, abstracts: null,
       }
       if (!cfg) return [countyId, empty]
       const table = cfg.ownershipTable
-      const wellsTable = cfg.wellsTable
       const permitsTable = `${cfg.id}_permits`
       // `count: 'exact', head: true` gives us the count without pulling
       // rows. Note: RLS-blocked reads return `count = 0` with NO error
       // — PostgREST reports the count PostgreSQL saw after row-level
       // filtering, and RLS filters silently. So if a table has RLS on
       // but no policy for anon, the sidebar just shows 0 forever.
-      // See supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql
-      // and 20260720150000_allow_anon_read_wells.sql for the fix.
-      const [owners, wells, permits, pdp, pud, abstracts] = await Promise.all([
+      // See supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql.
+      // The "Active wells" stat card was removed from the sidebar on
+      // 2026-07-20 (user asked for it out — the county wells count
+      // didn't drive any decisions and hit the RLS trap on Martin).
+      const [owners, permits, pdp, pud, abstracts] = await Promise.all([
         supabase.from(table).select('id', { count: 'exact', head: true }),
-        supabase.from(wellsTable).select('id', { count: 'exact', head: true }),
         supabase.from(permitsTable).select('id', { count: 'exact', head: true })
           .gte('approved_date', cutoff),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
@@ -731,10 +730,9 @@ export default function Home() {
       // Diagnostic logging for the sidebar. Two failure modes:
       //   1. .error is set — the query blew up (typo, network, etc).
       //   2. .count === 0 for a table we KNOW is populated — almost
-      //      always an RLS policy missing for anon. This is the "0
-      //      Active wells on Martin" trap. Surface both to the console
-      //      so the source of a suspicious zero is one click into
-      //      DevTools away.
+      //      always an RLS policy missing for anon. Surface both to
+      //      the console so the source of a suspicious zero is one
+      //      click into DevTools away.
       const logIfSus = (label: string, res: { error: unknown; count: number | null }, populated: boolean) => {
         const err = (res.error as { message?: string } | null | undefined)?.message
         if (err) {
@@ -744,11 +742,10 @@ export default function Home() {
         }
       }
       // Howard + Martin are known-populated; the other 10 Permian
-      // counties may legitimately show 0 for wells/permits/ownership
-      // until their data ships.
+      // counties may legitimately show 0 for permits/ownership until
+      // their data ships.
       const isPopulated = countyId === 'howard' || countyId === 'martin' || countyId === 'gonzales'
       logIfSus('totalOwners', owners, isPopulated)
-      logIfSus('wells', wells, isPopulated)
       logIfSus('permits', permits, isPopulated)
       logIfSus('pdp', pdp, isPopulated)
       logIfSus('pud', pud, isPopulated)
@@ -759,7 +756,6 @@ export default function Home() {
         pudTracts:   pud.error    ? null : (pud.count ?? 0),
         newPermits:  permits.error ? null : (permits.count ?? 0),
         abstracts:   abstracts.error ? null : (abstracts.count ?? 0),
-        wells:       wells.error  ? null : (wells.count ?? 0),
       }]
     }
 
@@ -786,12 +782,13 @@ export default function Home() {
       'PUD tracts':        fmt(live.pudTracts),
       'New permits':       fmt(live.newPermits),
       'Survey abstracts':  fmt(live.abstracts),
-      'Active wells':      fmt(live.wells),
     } as Record<string, string>
   }, [liveCountyStats, selectedCounty])
 
   // Same values as countyStatsByLabel but shaped as an array for the
-  // stat-card grid renderer (each card reads .val and .lbl).
+  // stat-card grid renderer (each card reads .val and .lbl). "Active
+  // wells" was removed on 2026-07-20 — it wasn't influencing any
+  // broker decisions and it hit the RLS silent-zero trap on Martin.
   const liveCountyStatEntries = useMemo(() => {
     const live = liveCountyStats[selectedCounty]
     const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString())
@@ -801,7 +798,6 @@ export default function Home() {
       { val: fmt(live?.pudTracts),   lbl: 'PUD tracts' },
       { val: fmt(live?.newPermits),  lbl: 'New permits' },
       { val: fmt(live?.abstracts),   lbl: 'Survey abstracts' },
-      { val: fmt(live?.wells),       lbl: 'Active wells' },
     ]
   }, [liveCountyStats, selectedCounty])
   const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
@@ -3119,33 +3115,42 @@ export default function Home() {
 
               {mapLevel === 'tract' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  {liveCountyStatEntries.map((card) => (
-                    <div
-                      key={card.lbl}
-                      style={{
-                        background: '#FFFFFF',
-                        borderRadius: 8,
-                        border: '1px solid #E5E7EB',
-                        padding: '14px 16px',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-                      }}
-                    >
+                  {liveCountyStatEntries.map((card, idx, arr) => {
+                    // If the total count is odd, stretch the last card
+                    // across both columns so we don't leave a lone card
+                    // hanging in the second row. With the "Active wells"
+                    // card removed we're at 5 stat cards, so the 5th
+                    // (Survey abstracts) spans the row.
+                    const isLastOdd = idx === arr.length - 1 && arr.length % 2 === 1
+                    return (
                       <div
+                        key={card.lbl}
                         style={{
-                          color: '#111827',
-                          fontFamily: '"Times New Roman", Georgia, serif',
-                          fontSize: 24,
-                          fontWeight: 700,
-                          letterSpacing: '0.02em',
-                          fontVariantNumeric: 'tabular-nums lining-nums',
-                          fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                          background: '#FFFFFF',
+                          borderRadius: 8,
+                          border: '1px solid #E5E7EB',
+                          padding: '14px 16px',
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                          gridColumn: isLastOdd ? 'span 2' : undefined,
                         }}
                       >
-                        {card.val}
+                        <div
+                          style={{
+                            color: '#111827',
+                            fontFamily: '"Times New Roman", Georgia, serif',
+                            fontSize: 24,
+                            fontWeight: 700,
+                            letterSpacing: '0.02em',
+                            fontVariantNumeric: 'tabular-nums lining-nums',
+                            fontFeatureSettings: '"tnum" 1, "lnum" 1',
+                          }}
+                        >
+                          {card.val}
+                        </div>
+                        <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
                       </div>
-                      <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
