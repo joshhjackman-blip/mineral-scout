@@ -709,7 +709,13 @@ export default function Home() {
       const table = cfg.ownershipTable
       const wellsTable = cfg.wellsTable
       const permitsTable = `${cfg.id}_permits`
-      // `.limit(1)` + `count: 'exact'` gives us the count without pulling rows.
+      // `count: 'exact', head: true` gives us the count without pulling
+      // rows. Note: RLS-blocked reads return `count = 0` with NO error
+      // — PostgREST reports the count PostgreSQL saw after row-level
+      // filtering, and RLS filters silently. So if a table has RLS on
+      // but no policy for anon, the sidebar just shows 0 forever.
+      // See supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql
+      // and 20260720150000_allow_anon_read_wells.sql for the fix.
       const [owners, wells, permits, pdp, pud, abstracts] = await Promise.all([
         supabase.from(table).select('id', { count: 'exact', head: true }),
         supabase.from(wellsTable).select('id', { count: 'exact', head: true }),
@@ -722,6 +728,31 @@ export default function Home() {
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
           .eq('county_id', cfg.id),
       ])
+      // Diagnostic logging for the sidebar. Two failure modes:
+      //   1. .error is set — the query blew up (typo, network, etc).
+      //   2. .count === 0 for a table we KNOW is populated — almost
+      //      always an RLS policy missing for anon. This is the "0
+      //      Active wells on Martin" trap. Surface both to the console
+      //      so the source of a suspicious zero is one click into
+      //      DevTools away.
+      const logIfSus = (label: string, res: { error: unknown; count: number | null }, populated: boolean) => {
+        const err = (res.error as { message?: string } | null | undefined)?.message
+        if (err) {
+          console.warn(`[liveStats] ${countyId}.${label} query error:`, err)
+        } else if (populated && (res.count ?? 0) === 0) {
+          console.warn(`[liveStats] ${countyId}.${label} returned 0 — check RLS policy on the anon role for this table.`)
+        }
+      }
+      // Howard + Martin are known-populated; the other 10 Permian
+      // counties may legitimately show 0 for wells/permits/ownership
+      // until their data ships.
+      const isPopulated = countyId === 'howard' || countyId === 'martin' || countyId === 'gonzales'
+      logIfSus('totalOwners', owners, isPopulated)
+      logIfSus('wells', wells, isPopulated)
+      logIfSus('permits', permits, isPopulated)
+      logIfSus('pdp', pdp, isPopulated)
+      logIfSus('pud', pud, isPopulated)
+      logIfSus('abstracts', abstracts, isPopulated)
       return [countyId, {
         totalOwners: owners.error ? null : (owners.count ?? 0),
         pdpTracts:   pdp.error    ? null : (pdp.count ?? 0),
