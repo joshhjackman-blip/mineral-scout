@@ -282,10 +282,23 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
       for (const r of results) {
         if (r.error) {
           const msg = r.error.toLowerCase()
-          // Ignore "table does not exist" errors for counties whose
-          // ownership table hasn't landed yet (e.g., the 10 new
-          // Permian counties). Any other error surfaces in the UI.
-          if (!msg.includes('not find') && !msg.includes('does not exist')) {
+          // Ignore three classes of failure the drawer already
+          // handles gracefully upstream:
+          //   1. Missing table — the 10 upcoming Permian counties
+          //      whose ownership tables haven't shipped yet.
+          //   2. Missing column — schema drift; the tiered fallback
+          //      above already retried with a smaller column set.
+          //   3. Empty owner_name match — legitimate "owner holds
+          //      nothing in this county" case, which comes back
+          //      with no error at all so it never lands here.
+          // Everything else lands in the UI banner AND the console
+          // so a broker can screenshot the real Postgres message.
+          const isIgnorable =
+            msg.includes('not find') ||
+            msg.includes('does not exist') ||
+            msg.includes('relation') && msg.includes('not exist')
+          if (!isIgnorable) {
+            console.error(`[OwnerDrawer] ${r.countyKey}_mineral_ownership query failed:`, r.error)
             errs.push({ county: r.countyKey, message: r.error })
           }
           continue
@@ -1023,7 +1036,23 @@ function HoldingsPanel({
 
       {errorMessages && errorMessages.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
-          Some counties errored: {errorMessages.map((e) => `${e.county}`).join(', ')}. Retry or check RLS.
+          <div className="font-semibold">
+            Couldn&apos;t load leases from: {errorMessages.map((e) => e.county).join(', ')}
+          </div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[10.5px] leading-snug">
+            {errorMessages.map((e) => (
+              <li key={e.county}>
+                <span className="uppercase">{e.county}</span>: {e.message}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-1.5 text-[10.5px] font-normal text-red-700">
+            Usually an RLS policy (browser uses the anon key). Check that
+            <code className="mx-1 rounded bg-red-100 px-1">public.&lt;county&gt;_mineral_ownership</code>
+            has a <code className="rounded bg-red-100 px-1">FOR SELECT USING (true)</code> policy for anon;
+            see <code className="rounded bg-red-100 px-1">supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql</code>.
+            Full error is in the browser console.
+          </div>
         </div>
       )}
 
