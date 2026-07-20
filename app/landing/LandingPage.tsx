@@ -90,7 +90,7 @@ function Hero() {
           visual now — no illustration overlay. */}
       <div className="lp-hero-eyebrow reveal">For Texas mineral brokers &amp; acquisition shops</div>
       <h1 className="reveal reveal-delay-1">
-        The tools your acquisition desk actually uses.<br />
+        Mineral Map fronts you everything you need to broker or acquire mineral rights.<br />
         <em>Free until you close.</em>
       </h1>
       <p className="lp-hero-sub reveal reveal-delay-2">
