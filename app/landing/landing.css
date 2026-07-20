@@ -157,12 +157,17 @@
   font-family: var(--lp-font-serif);
   /* Geist reads best at a slightly tighter display size than the
      serif this used to be. Weight lifted from 400 -> 600 since Geist
-     is a sans and needs more visual weight at hero size. */
-  font-size: clamp(48px, 6.5vw, 92px);
+     is a sans and needs more visual weight at hero size.
+     Sized down 2026-07-20 to accommodate the longer "Mineral Map
+     fronts you everything..." headline; the old 92px top end was
+     spilling to 4-5 lines. Line-height loosened slightly for the
+     same reason so descenders don't collide when the line breaks
+     naturally. */
+  font-size: clamp(40px, 5.4vw, 76px);
   font-weight: 600;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  max-width: 1000px;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  max-width: 1100px;
   margin-bottom: 28px;
   position: relative;
   z-index: 2;
