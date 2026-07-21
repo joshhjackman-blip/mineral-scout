@@ -63,7 +63,14 @@ function injectDevStatusIntoFeatures(
     development_status?: string
     pud_score?: number
     signal_detail?: {
-      permits?: Array<{ approved_date?: string | null }>
+      permits?: Array<{
+        approved_date?: string | null
+        // filed_date exposed by compute_development_status.py as of
+        // 2026-07-21 so we can distinguish submitted permits (blue
+        // has_recent_permit === approved) from filed-but-not-yet-
+        // approved ones (teal has_recent_permit_submitted).
+        filed_date?: string | null
+      }>
       ducs?: unknown[]
       adjacent_permit_count?: number
       infill_gaps?: number
@@ -72,10 +79,17 @@ function injectDevStatusIntoFeatures(
 ): void {
   const hasLookup = lookup && Object.keys(lookup).length > 0
 
-  // Recent-permit cutoff for the blue-glow overlay: 24 months back.
-  // Any tract whose signal_detail carries a permit approved after
-  // this date gets `has_recent_permit=true` and lights up with the
-  // permit halo regardless of its primary map_status.
+  // Recent-permit cutoff for the halo overlays: 24 months back.
+  //   has_recent_permit           -> tract has a permit APPROVED
+  //                                  in the last 24 months (blue halo)
+  //   has_recent_permit_submitted -> tract has a permit FILED in the
+  //                                  last 24 months but NOT yet
+  //                                  approved (teal halo)
+  //
+  // Approved wins if both apply: the blue halo takes precedence
+  // and the teal one is suppressed. Otherwise a tract with a
+  // permit that got filed AND approved recently would show a
+  // double halo (blue on top of teal) which looks noisy.
   const cutoff = (() => {
     const d = new Date()
     d.setMonth(d.getMonth() - 24)
@@ -92,12 +106,25 @@ function injectDevStatusIntoFeatures(
       const d = String(p?.approved_date ?? '').slice(0, 10)
       return d && d >= cutoff
     })
+    // A permit counts as "submitted only" for the teal halo when
+    // it has a filed_date within the window AND doesn't ALSO have
+    // a recent approved_date. The second condition avoids
+    // double-tagging a permit that landed in the last 24mo as
+    // both submitted and approved.
+    const hasRecentPermitSubmitted = !hasRecentPermit && permits.some((p) => {
+      const filed = String(p?.filed_date ?? '').slice(0, 10)
+      const approved = String(p?.approved_date ?? '').slice(0, 10)
+      if (!filed || filed < cutoff) return false
+      if (approved && approved >= cutoff) return false
+      return true
+    })
     feature.properties = {
       ...props,
       development_status: entry?.development_status ?? 'FRONTIER',
       pud_score: entry?.pud_score ?? 0,
       map_status: mapStatus,
       has_recent_permit: hasRecentPermit,
+      has_recent_permit_submitted: hasRecentPermitSubmitted,
     }
   }
 }
@@ -286,6 +313,10 @@ export default function Map({
   // rather than replacing it, so a PDP tract with a fresh permit
   // stays yellow underneath but pulses blue on its edge.
   const [showPermitGlow, setShowPermitGlow] = useState(true)
+  // Independent toggle for the teal submitted-permit halo (2026-07-21).
+  // Kept separate from showPermitGlow so a broker who only wants to see
+  // APPROVED permits (blue) can hide the teal noise, and vice versa.
+  const [showSubmittedGlow, setShowSubmittedGlow] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
   // Latest devStatusByAbstract in a ref so the setupTractLevel closure
   // (memoized on countyEntries only) still sees fresh data.
@@ -496,6 +527,9 @@ export default function Map({
       removeLayerIfExists(mapInstance, `parcels-permit-dots-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-permit-glow-outer-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-permit-glow-core-${countyConfig.id}`)
+      // Submitted-permit teal halo (2026-07-21).
+      removeLayerIfExists(mapInstance, `parcels-permit-submitted-outer-${countyConfig.id}`)
+      removeLayerIfExists(mapInstance, `parcels-permit-submitted-core-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-sections-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-labels-${countyConfig.id}`)
       removeLayerIfExists(mapInstance, `parcels-outline-${countyConfig.id}`)
@@ -645,6 +679,10 @@ export default function Map({
     const parcelLayerSuffixes = [
       'parcels-fill', 'parcels-outline', 'parcels-labels', 'parcels-sections',
       'parcels-permit-glow-outer', 'parcels-permit-glow-core',
+      // Submitted-permit teal halo (2026-07-21). Hidden along with
+      // the rest of the parcel machinery when a county is muted
+      // by applyTractCountyStyles.
+      'parcels-permit-submitted-outer', 'parcels-permit-submitted-core',
       'block-labels',
     ]
 
@@ -709,6 +747,13 @@ export default function Map({
       `parcels-outline-${selectedConfig.id}`,
       `parcels-permit-glow-outer-${selectedConfig.id}`,
       `parcels-permit-glow-core-${selectedConfig.id}`,
+      // Submitted-permit teal halo — sits ABOVE approved-permit
+      // blue when both would apply (they can't for the same
+      // tract because the injectDevStatusIntoFeatures suppresses
+      // teal when blue is present, but keeping the order stable
+      // makes future edits obvious).
+      `parcels-permit-submitted-outer-${selectedConfig.id}`,
+      `parcels-permit-submitted-core-${selectedConfig.id}`,
       `parcels-labels-${selectedConfig.id}`,
       `parcels-sections-${selectedConfig.id}`,
       `block-labels-${selectedConfig.id}`,
@@ -1435,6 +1480,43 @@ export default function Map({
         },
       })
 
+      // Submitted-permit teal halo (added 2026-07-21). Same
+      // two-layer glow trick as the blue halo above, but keyed on
+      // has_recent_permit_submitted (filed_date within 24 months
+      // AND no recent approved_date). Teal is deliberately far
+      // from every other palette color we ship:
+      //   PDP yellow, PUD_DUC purple, PUD_INFILL orange, frontier
+      //   gray, approved-permit blue, active-rig red. Teal
+      //   (#14B8A6 outer, #5EEAD4 core) is the only cool-desat
+      //   color that doesn't collide.
+      const submittedOuterId = `parcels-permit-submitted-outer-${countyConfig.id}`
+      const submittedCoreId = `parcels-permit-submitted-core-${countyConfig.id}`
+      map.current.addLayer({
+        id: submittedOuterId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', ['coalesce', ['get', 'has_recent_permit_submitted'], false], true],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#14B8A6',
+          'line-width': 12,
+          'line-opacity': 0.55,
+          'line-blur': 3,
+        },
+      })
+      map.current.addLayer({
+        id: submittedCoreId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', ['coalesce', ['get', 'has_recent_permit_submitted'], false], true],
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': '#5EEAD4',
+          'line-width': 3.5,
+          'line-opacity': 1,
+        },
+      })
+
       if (!map.current) return
       // Parcel labels. Two zoom bands so the user always sees enough
       // context to place themselves without cluttering low-zoom views:
@@ -2016,6 +2098,7 @@ export default function Map({
       )
     }
     for (const [, countyConfig] of countyEntries) {
+      // Approved-permit blue halo (existing).
       for (const suffix of ['permit-glow-outer', 'permit-glow-core']) {
         const layerId = `parcels-${suffix}-${countyConfig.id}`
         if (mapInstance.getLayer(layerId)) {
@@ -2026,8 +2109,19 @@ export default function Map({
           )
         }
       }
+      // Submitted-permit teal halo (2026-07-21). Independent toggle.
+      for (const suffix of ['permit-submitted-outer', 'permit-submitted-core']) {
+        const layerId = `parcels-${suffix}-${countyConfig.id}`
+        if (mapInstance.getLayer(layerId)) {
+          mapInstance.setLayoutProperty(
+            layerId,
+            'visibility',
+            tractLevel && showSubmittedGlow ? 'visible' : 'none',
+          )
+        }
+      }
     }
-  }, [mapLevel, showRigs, showPermitGlow, countyEntries])
+  }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -2069,6 +2163,8 @@ export default function Map({
           onRigs={setShowRigs}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
+          submittedGlowVisible={showSubmittedGlow}
+          onSubmittedGlow={setShowSubmittedGlow}
         />
       )}
     </div>
@@ -2087,6 +2183,7 @@ function LayerTogglePanel({
   statusPalette, statusLabels,
   rigsVisible, onRigs,
   permitGlowVisible, onPermitGlow,
+  submittedGlowVisible, onSubmittedGlow,
 }: {
   statusVisible: Record<UnifiedStatus, boolean>
   onStatus: (key: UnifiedStatus, v: boolean) => void
@@ -2096,6 +2193,8 @@ function LayerTogglePanel({
   onRigs: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
+  submittedGlowVisible: boolean
+  onSubmittedGlow: (v: boolean) => void
 }) {
   // Legend row order for the four surviving primary classifications
   // (PDP / PUD_DUC / PUD_INFILL / FRONTIER). PUD_PERMITTED and
@@ -2150,11 +2249,20 @@ function LayerTogglePanel({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <ToggleRow
             row={{
-              label: 'Permits',
+              label: 'Permits (approved)',
               swatch: 'ring',
               color: '#3B82F6',
               checked: permitGlowVisible,
               onChange: onPermitGlow,
+            }}
+          />
+          <ToggleRow
+            row={{
+              label: 'Permits (submitted)',
+              swatch: 'ring',
+              color: '#14B8A6',
+              checked: submittedGlowVisible,
+              onChange: onSubmittedGlow,
             }}
           />
           <ToggleRow
@@ -2168,9 +2276,10 @@ function LayerTogglePanel({
           />
         </div>
         <div style={{ marginTop: 6, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
-          Blue halo: permit filed in the last 24 months.
-          Red dot: oil/gas well spudded in the last 12 months with
-          no completion on file (SWDs excluded).
+          Blue halo: permit APPROVED in the last 24 months.
+          Teal halo: permit FILED but not yet approved.
+          Red dot: oil/gas well spudded in the last 12 months
+          with no completion on file (SWDs excluded).
         </div>
       </div>
     </div>

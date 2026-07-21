@@ -557,13 +557,48 @@ const estimateMonthlyRoyalty = (
 }
 
 export default function Home() {
-  const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
+  // Deep-link support: `/?county=<key>&abstract=<label>` from
+  // /permits (and eventually other pages). Read URL params inside
+  // the initial useState factories so the first render already
+  // shows the requested county at tract level — no flash of the
+  // default Martin county-overview view before jumping.
+  //
+  // Guarded on `typeof window` so the SSR / static-export pass
+  // gets the plain default. useSearchParams() from next/navigation
+  // would also work but requires a Suspense boundary in some
+  // Next.js versions, and the URL params are stable across renders
+  // anyway (they're only read once at mount) so raw window.location
+  // is simpler.
+  const urlParams = (typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams()
+  )
+  const urlCounty = urlParams.get('county') as CountyKey | null
+  const urlAbstractRaw = urlParams.get('abstract') || ''
+
+  const [selectedCounty, setSelectedCounty] = useState<CountyKey>(() =>
+    urlCounty && urlCounty in COUNTIES ? urlCounty : 'martin'
+  )
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
-  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
+  // Jump straight into tract mode when the URL asked for a
+  // specific county — deep-links from /permits skip the county
+  // overview and go directly to the tract-detail view.
+  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>(() =>
+    urlCounty && urlCounty in COUNTIES ? 'tract' : 'county'
+  )
   const [tracts, setTracts] = useState<TractRecord[]>([])
+  // Pending focus target: when the URL carries an `abstract` param,
+  // stash it here. Once the county's tracts finish loading below,
+  // a one-shot useEffect resolves this to a TractSelection and
+  // fires setSelected() + clears the pending state. Cleared after
+  // one successful match so subsequent Y-Z navigation doesn't
+  // re-trigger it.
+  const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(
+    urlAbstractRaw ? urlAbstractRaw.replace(/^A-\s*/i, '').trim() : null
+  )
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
   // tab of the OwnerDrawer can render full legal descriptions per lease
@@ -1621,6 +1656,33 @@ export default function Home() {
       mounted = false
     }
   }, [county])
+
+  // One-shot deep-link resolver: once tracts finish loading for
+  // the URL-requested county, find the tract whose abstract_label
+  // matches ?abstract=X (case-insensitive, "A-" prefix optional)
+  // and hand it to setSelected. That triggers the map's focus /
+  // fly-to logic just like clicking a tract from the sidebar.
+  // Clears pendingUrlAbstract on success so it never re-fires.
+  useEffect(() => {
+    if (!pendingUrlAbstract) return
+    if (tracts.length === 0) return
+    const wanted = pendingUrlAbstract.toUpperCase().trim()
+    const match = tracts.find((t) => {
+      const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim().toUpperCase()
+      return label === wanted
+    })
+    if (match) {
+      setSelected(toTractSelection(match))
+      setPendingUrlAbstract(null)
+    }
+    // If no match, we keep pendingUrlAbstract set so a subsequent
+    // county switch (or the same county finishing a re-load)
+    // could still resolve it. But we intentionally don't clear it
+    // so we don't silently swallow an invalid abstract; the user
+    // just stays at the county's tract-overview level, which is
+    // still a better place to land than the county-overview map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracts, pendingUrlAbstract])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,

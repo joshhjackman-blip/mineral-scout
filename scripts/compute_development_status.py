@@ -805,6 +805,12 @@ def summarize_abstract(
             "lease": clean_text(permit.get("lease_name")) or None,
             "status": classified,
             "approved_date": clean_text(permit.get("approved_date")) or None,
+            # Added 2026-07-21 so the map can render a distinct
+            # "submitted permit" halo (teal) on tracts where a
+            # permit has been FILED but not yet APPROVED. The
+            # existing blue halo keys on approved_date; the teal
+            # halo keys on filed_date.
+            "filed_date": clean_text(permit.get("filed_date")) or None,
             "spud_date": clean_text(permit.get("spud_date")) or None,
             # Added 2026-07-17 so the drawer's Development Timeline
             # widget can render "Completed MMM YYYY" (or an
