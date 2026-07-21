@@ -158,10 +158,40 @@ class HttpSession:
 
     def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 120):
         if self._sb:
+            # ScrapingBee POST needs three extra params vs GET to
+            # forward RRC's form-encoded body reliably:
+            #   forward_headers=True   pass client headers through
+            #                          to target (Content-Type,
+            #                          Accept, Cookie set by the
+            #                          preceding GET, etc.). Without
+            #                          it, ScrapingBee strips
+            #                          everything and RRC's J2EE
+            #                          layer 500s trying to parse an
+            #                          empty Content-Type POST body.
+            #   spb_cookies_jar=True   preserve the Set-Cookie
+            #                          jar across requests keyed on
+            #                          session_id. session_id alone
+            #                          gives IP stickiness; this
+            #                          extends it to cookie
+            #                          continuity.
+            # Adding these on the POST path only so GETs stay cheap.
+            post_params = {
+                **self._proxy_params,
+                "forward_headers": True,
+                # Note: some proxy plans don't support this key; if
+                # it's rejected we'll see it in the log and can drop
+                # it. The base premium_proxy=True is what really
+                # matters.
+                "spb_cookies_jar": True,
+            }
             return self._sb.post(
                 url,
-                params=self._proxy_params,
+                params=post_params,
                 data=data or {},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                },
                 timeout=timeout,
             )
         assert self._sess is not None
@@ -520,6 +550,17 @@ def process_county(client: Client, sess: HttpSession, action: str,
         html = query_county(sess, action, fips, args.days)
     except requests.RequestException as exc:
         print(f"  RRC EWA fetch failed: {exc}", file=sys.stderr)
+        # Response body diagnostic — ScrapingBee returns JSON with an
+        # error message when it 500s, but requests's raise_for_status
+        # drops the body. Retrieve it from the exception's .response
+        # attribute so we can see what actually broke.
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            try:
+                body = resp.text[:500]
+                print(f"  response body: {body}", file=sys.stderr)
+            except Exception:
+                pass
         return
 
     rows = parse_permit_rows(html, fips)
