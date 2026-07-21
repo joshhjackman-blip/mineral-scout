@@ -156,33 +156,38 @@ class HttpSession:
         assert self._sess is not None
         return self._sess.get(url, timeout=timeout)
 
-    def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 120):
+    def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 180):
         if self._sb:
-            # ScrapingBee POST needs three extra params vs GET to
-            # forward RRC's form-encoded body reliably:
-            #   forward_headers=True   pass client headers through
-            #                          to target (Content-Type,
-            #                          Accept, Cookie set by the
-            #                          preceding GET, etc.). Without
-            #                          it, ScrapingBee strips
-            #                          everything and RRC's J2EE
-            #                          layer 500s trying to parse an
-            #                          empty Content-Type POST body.
-            #   spb_cookies_jar=True   preserve the Set-Cookie
-            #                          jar across requests keyed on
-            #                          session_id. session_id alone
-            #                          gives IP stickiness; this
-            #                          extends it to cookie
-            #                          continuity.
-            # Adding these on the POST path only so GETs stay cheap.
-            post_params = {
+            # ScrapingBee POST via the raw Python-requests-style
+            # proxy path was 500ing with "HTTPSConnectionPool ...
+            # SSLError" — their upstream proxy's requests/urllib3
+            # client can't complete a TLS handshake with RRC's
+            # server. ScrapingBee's own error-message hint was
+            # "try render_js=True (5 credits per request)".
+            # render_js routes through a full Chrome instance
+            # which handles TLS (and cookies + form encoding)
+            # natively.
+            #
+            # Kept forward_headers=True + a Content-Type header for
+            # good measure — the browser handles most of this, but
+            # having the client-side hint reduces ambiguity when
+            # ScrapingBee decides how to encode the outbound POST
+            # body from Chrome's request object.
+            #
+            # Cost impact: premium_proxy + render_js is 75 credits
+            # per POST (vs 25 for premium-only). At 12 counties x
+            # 1 run/day x 30 days = ~27k credits/month per POST
+            # dimension. Well under the $49 tier's 250k credits.
+            post_params: dict[str, Any] = {
                 **self._proxy_params,
+                "render_js": True,
                 "forward_headers": True,
-                # Note: some proxy plans don't support this key; if
-                # it's rejected we'll see it in the log and can drop
-                # it. The base premium_proxy=True is what really
-                # matters.
-                "spb_cookies_jar": True,
+                # Chrome sits and waits for the results table to
+                # render after form submission. RRC's server is
+                # slow — 5s is enough for the round trip in normal
+                # conditions but not so long that we burn credits
+                # on stalled pages.
+                "wait": 5000,
             }
             return self._sb.post(
                 url,
