@@ -28,6 +28,7 @@ const bareAbstract = (raw: unknown): string =>
 type UnifiedStatus =
   | 'PDP'
   | 'PUD_DUC'
+  | 'TRUE_PUD'
   | 'PUD_PERMITTED'
   | 'PUD_INFILL'
   | 'LEASING_ACTIVE'
@@ -249,6 +250,7 @@ type CountyOverviewHandlers = {
 export type DevelopmentStatusKey =
   | 'PDP'
   | 'PUD_DUC'
+  | 'TRUE_PUD'
   | 'PUD_PERMITTED'
   | 'PUD_INFILL'
   | 'LEASING_ACTIVE'
@@ -289,6 +291,11 @@ export default function Map({
   const [statusVisible, setStatusVisible] = useState<Record<UnifiedStatus, boolean>>({
     PDP: true,
     PUD_DUC: true,
+    // True PUD (2026-07-21): SEC-style proved undeveloped —
+    // adjacent PDPs prove the geology + operator has committed
+    // via dev programs or nearby permits. Distinct from Infill
+    // (spacing-math only, no commitment signal).
+    TRUE_PUD: true,
     // PUD_PERMITTED and LEASING_ACTIVE are still valid dev-status
     // classifications the compute pipeline may emit, but they've been
     // dropped from the visible legend:
@@ -558,6 +565,11 @@ export default function Map({
   const STATUS_FILL: Record<UnifiedStatus, string> = {
     PDP:            '#EAB308', // yellow — producing today
     PUD_DUC:        '#A855F7', // purple — drilled, awaiting completion
+    // True PUD (2026-07-21): no PDP, no DUC, offset PDP within 1
+    // mile + operator commitment. SEC 10b-style proved undeveloped.
+    // Emerald picks it out of the palette (no collision with
+    // yellow / purple / orange / gray / blue / teal / red).
+    TRUE_PUD:       '#10B981',
     // PUD_PERMITTED + LEASING_ACTIVE paint as FRONTIER gray because
     // permits are surfaced by the blue glow overlay and leasing has
     // been dropped from the visible palette (2026-07-17).
@@ -569,6 +581,7 @@ export default function Map({
   const STATUS_OUTLINE: Record<UnifiedStatus, string> = {
     PDP:            '#A16207',
     PUD_DUC:        '#6B21A8',
+    TRUE_PUD:       '#047857', // deep emerald
     PUD_PERMITTED:  '#CBD5E1',
     PUD_INFILL:     '#C2410C',
     LEASING_ACTIVE: '#CBD5E1',
@@ -577,6 +590,7 @@ export default function Map({
   const STATUS_LABEL: Record<UnifiedStatus, string> = {
     PDP:            'PDP',
     PUD_DUC:        'DUC',
+    TRUE_PUD:       'True PUD',
     PUD_PERMITTED:  'PUD (Permitted)',
     PUD_INFILL:     'Infill',
     LEASING_ACTIVE: 'Leasing active',
@@ -586,6 +600,7 @@ export default function Map({
   const STATUS_OPACITY: Record<UnifiedStatus, number> = {
     PDP:            0.72,
     PUD_DUC:        0.82,
+    TRUE_PUD:       0.78,
     PUD_PERMITTED:  0.18, // treated as frontier
     PUD_INFILL:     0.75,
     LEASING_ACTIVE: 0.18, // treated as frontier
@@ -594,6 +609,7 @@ export default function Map({
   const STATUS_OUTLINE_WIDTH: Record<UnifiedStatus, number> = {
     PDP:            1.6,
     PUD_DUC:        2.0,
+    TRUE_PUD:       1.8,
     PUD_PERMITTED:  0.9,
     PUD_INFILL:     1.5,
     LEASING_ACTIVE: 0.9,
@@ -606,6 +622,7 @@ export default function Map({
       ['coalesce', ['get', 'map_status'], 'FRONTIER'],
       'PDP',            STATUS_FILL.PDP,
       'PUD_DUC',        STATUS_FILL.PUD_DUC,
+      'TRUE_PUD',       STATUS_FILL.TRUE_PUD,
       'PUD_PERMITTED',  STATUS_FILL.PUD_PERMITTED,
       'PUD_INFILL',     STATUS_FILL.PUD_INFILL,
       'LEASING_ACTIVE', STATUS_FILL.LEASING_ACTIVE,
@@ -624,6 +641,7 @@ export default function Map({
       ['coalesce', ['get', 'map_status'], 'FRONTIER'],
       'PDP',            statusVisible.PDP            ? STATUS_OPACITY.PDP            : 0,
       'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OPACITY.PUD_DUC        : 0,
+      'TRUE_PUD',       statusVisible.TRUE_PUD       ? STATUS_OPACITY.TRUE_PUD       : 0,
       'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OPACITY.PUD_PERMITTED  : 0,
       'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OPACITY.PUD_INFILL     : 0,
       'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
@@ -639,6 +657,7 @@ export default function Map({
       ['coalesce', ['get', 'map_status'], 'FRONTIER'],
       'PDP',            STATUS_OUTLINE.PDP,
       'PUD_DUC',        STATUS_OUTLINE.PUD_DUC,
+      'TRUE_PUD',       STATUS_OUTLINE.TRUE_PUD,
       'PUD_PERMITTED',  STATUS_OUTLINE.PUD_PERMITTED,
       'PUD_INFILL',     STATUS_OUTLINE.PUD_INFILL,
       'LEASING_ACTIVE', STATUS_OUTLINE.LEASING_ACTIVE,
@@ -654,6 +673,7 @@ export default function Map({
       ['coalesce', ['get', 'map_status'], 'FRONTIER'],
       'PDP',            statusVisible.PDP            ? STATUS_OUTLINE_WIDTH.PDP            : 0,
       'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OUTLINE_WIDTH.PUD_DUC        : 0,
+      'TRUE_PUD',       statusVisible.TRUE_PUD       ? STATUS_OUTLINE_WIDTH.TRUE_PUD       : 0,
       'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OUTLINE_WIDTH.PUD_PERMITTED  : 0,
       'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OUTLINE_WIDTH.PUD_INFILL     : 0,
       'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OUTLINE_WIDTH.LEASING_ACTIVE : 0,
@@ -2203,7 +2223,7 @@ function LayerTogglePanel({
   // blue glow overlay now, the second because zero tracts land in
   // that status anyway.
   const statusKeys: UnifiedStatus[] = [
-    'PDP', 'PUD_DUC', 'PUD_INFILL', 'FRONTIER',
+    'PDP', 'PUD_DUC', 'TRUE_PUD', 'PUD_INFILL', 'FRONTIER',
   ]
   const legendRows = statusKeys.map((key) => ({
     label: statusLabels[key],

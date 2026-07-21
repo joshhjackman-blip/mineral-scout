@@ -82,6 +82,7 @@ export type OwnerDrawerWell = {
 export type DevelopmentStatusValue =
   | 'PDP'
   | 'PUD_DUC'
+  | 'TRUE_PUD'
   | 'PUD_PERMITTED'
   | 'PUD_INFILL'
   | 'LEASING_ACTIVE'
@@ -1340,8 +1341,13 @@ function WellsPanel({
 // ── Development-status (Ticket 1.3) ────────────────────────────────────
 
 const DEV_STATUS_STYLE: Record<DevelopmentStatusValue, { label: string; classes: string; dotBg: string }> = {
-  PDP:            { label: 'PDP',              classes: 'border-emerald-300 bg-emerald-50 text-emerald-800', dotBg: '#16A34A' },
+  PDP:            { label: 'PDP',              classes: 'border-yellow-300 bg-yellow-50 text-yellow-900',    dotBg: '#EAB308' },
   PUD_DUC:        { label: 'DUC',              classes: 'border-purple-300 bg-purple-50 text-purple-800',    dotBg: '#A855F7' },
+  // True PUD (2026-07-21): SEC-style proved undeveloped. Emerald
+  // to match the map fill; reuses the emerald border/bg Tailwind
+  // ramp that used to belong to PDP (moved PDP to yellow above so
+  // the drawer + map palettes stay in sync).
+  TRUE_PUD:       { label: 'True PUD',         classes: 'border-emerald-300 bg-emerald-50 text-emerald-800', dotBg: '#10B981' },
   PUD_PERMITTED:  { label: 'PUD · Permitted',  classes: 'border-orange-300 bg-orange-50 text-orange-800',    dotBg: '#F97316' },
   PUD_INFILL:     { label: 'Infill',           classes: 'border-blue-300 bg-blue-50 text-blue-800',          dotBg: '#3B82F6' },
   LEASING_ACTIVE: { label: 'Leasing active',   classes: 'border-yellow-300 bg-yellow-50 text-yellow-800',    dotBg: '#EAB308' },
