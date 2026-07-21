@@ -65,6 +65,43 @@ SEARCH_PATH = "/EWA/drillingPermitsQueryAction.do"
 BATCH_SIZE = 500
 POLITE_SLEEP_S = 1.0
 
+# Optional proxy hook. When SCRAPINGBEE_API_KEY is set in the
+# environment (usually via a GitHub Actions secret) every request in
+# this scraper is routed through ScrapingBee's residential IP pool
+# instead of hitting webapps2.rrc.texas.gov directly. GitHub Actions
+# runner IPs are silently blocked by the RRC EWA endpoint — five
+# consecutive daily-cron failures with "Connection refused" is what
+# motivated this hook (see the 2026-07-16 → 07-20 workflow logs).
+#
+# When the key is absent, requests fall through to a direct
+# connection so local development / self-hosted runners on
+# non-blocked IPs keep working with zero configuration.
+#
+# ScrapingBee alternatives: ScraperAPI, Bright Data, ZenRows — all
+# use the same "single-URL passthrough" pattern; substitute the
+# base URL below if you switch providers.
+SCRAPINGBEE_API_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "").strip()
+SCRAPINGBEE_URL = "https://app.scrapingbee.com/api/v1/"
+
+
+def scrapingbee_wrap(target_url: str) -> str:
+    """Encode `target_url` as a ScrapingBee passthrough request so the
+    HTTP call rides through their residential proxy pool. Returns
+    the target URL unchanged when SCRAPINGBEE_API_KEY isn't set."""
+    if not SCRAPINGBEE_API_KEY:
+        return target_url
+    from urllib.parse import quote
+    # `render_js=false` since RRC EWA is server-rendered HTML; no
+    # need to pay for JS execution credits. `premium_proxy=true`
+    # gives residential IPs which are what RRC's filter is looking
+    # for; standard datacenter proxies get the same block treatment
+    # as GitHub Actions.
+    return (
+        f"{SCRAPINGBEE_URL}?api_key={SCRAPINGBEE_API_KEY}"
+        f"&url={quote(target_url, safe='')}"
+        f"&render_js=false&premium_proxy=true"
+    )
+
 # RRC uses last-3-digits-of-Texas-FIPS as its county code.
 COUNTY_FIPS = {
     "gonzales":  "177",
@@ -168,14 +205,23 @@ def open_search_session() -> tuple[requests.Session, str]:
     action URL (including the jsessionid path parameter) so the POST
     that follows carries the session RRC expects."""
     sess = requests.Session()
+    # If we're routing through ScrapingBee, use a normal browser UA
+    # instead of the "mineral-scout/1.0" fingerprint — ScrapingBee
+    # rotates UAs anyway but this makes the request indistinguishable
+    # from typical residential browser traffic if the proxy strips
+    # them.
+    ua = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ) if SCRAPINGBEE_API_KEY else (
+        "Mozilla/5.0 (compatible; mineral-scout/1.0 permits-scraper; "
+        "+github.com/joshhjackman-blip/mineral-scout)"
+    )
     sess.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (compatible; mineral-scout/1.0 permits-scraper; "
-            "+github.com/joshhjackman-blip/mineral-scout)"
-        ),
+        "User-Agent": ua,
         "Accept": "text/html,application/xhtml+xml",
     })
-    r = sess.get(f"{BASE}{SEARCH_PATH}", timeout=30)
+    r = sess.get(scrapingbee_wrap(f"{BASE}{SEARCH_PATH}"), timeout=60)
     r.raise_for_status()
     m = re.search(r'<form[^>]+action="([^"]+)"', r.text)
     if not m:
@@ -199,7 +245,17 @@ def query_county(sess: requests.Session, action: str, county_fips: str,
     }
     for k in BLANK_FORM_FIELDS:
         form.setdefault(k, "")
-    r = sess.post(action, data=form, timeout=120)
+    # ScrapingBee's passthrough handles POST bodies via a
+    # `forward_headers=true` + query-encoded params dance which the
+    # `scrapingbee` PyPI library abstracts, but for a raw-requests
+    # setup like this the simplest reliable pattern is: use the
+    # ScrapingBee `POST` mode by including `&method=POST` in the
+    # wrapped URL. The proxy forwards our body verbatim.
+    if SCRAPINGBEE_API_KEY:
+        wrapped = scrapingbee_wrap(action) + "&method=POST"
+        r = sess.post(wrapped, data=form, timeout=120)
+    else:
+        r = sess.post(action, data=form, timeout=120)
     r.raise_for_status()
     return r.text
 

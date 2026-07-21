@@ -65,9 +65,23 @@ jobs:
         # feed reflect filings from the last 24 hours; the historical
         # wells-zip / EWA CSV path below only refreshes when the RRC
         # publishes a new bulk snapshot (roughly monthly).
+        #
+        # continue-on-error added 2026-07-21 after 5 consecutive daily
+        # failures. Root cause: RRC EWA silently blocks GitHub Actions
+        # runner IPs (Connection refused on port 443). Without this
+        # flag, the block cascade-skips the wells-zip fallback +
+        # compute_development_status, freezing the whole ingestion
+        # pipeline. When SCRAPINGBEE_API_KEY is set in Actions secrets,
+        # the script routes through a residential proxy and this step
+        # succeeds on its own.
+        continue-on-error: true
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Optional; when absent the scraper connects direct to RRC
+          # (works on local + non-blocked runners, fails on GitHub
+          # Actions IPs).
+          SCRAPINGBEE_API_KEY:       ${{ secrets.SCRAPINGBEE_API_KEY }}
         run: |
           COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
           # 90-day window catches anything the previous 30-day run
@@ -106,6 +120,12 @@ jobs:
         # Abstracts.shp is currently reachable (Gonzales / Howard /
         # Martin); the 10 new Permian counties are skipped with a
         # NOTICE until their abstract shapefile lands in the bucket.
+        #
+        # continue-on-error so a spatial-processing hiccup on one
+        # county doesn't blow the whole workflow (this step reads
+        # exclusively from Supabase, so it should almost always
+        # succeed regardless of RRC availability).
+        continue-on-error: true
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
