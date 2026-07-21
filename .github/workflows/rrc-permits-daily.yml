@@ -55,8 +55,12 @@ jobs:
           # requests + bs4 + lxml drive the real-time EWA HTML scraper.
           # geopandas + shapely are needed by compute_development_status.py
           # for the adjacency + point-in-polygon logic. pyshp remains for
-          # the historical wells-zip SYMNUM fallback path.
-          pip install supabase pyshp geopandas shapely requests beautifulsoup4 lxml
+          # the historical wells-zip SYMNUM fallback path. scrapingbee is
+          # only imported when SCRAPINGBEE_API_KEY is set (see
+          # scripts/scrape_rrc_permits_realtime.py:HttpSession) — the
+          # wheel is ~30 KB and pulls no transitive deps, so we install
+          # it unconditionally to keep the workflow one-shot.
+          pip install supabase pyshp geopandas shapely requests beautifulsoup4 lxml scrapingbee
 
       - name: Scrape real-time permits from RRC EWA
         # Primary data path — hits the public RRC drilling-permit web
