@@ -158,37 +158,41 @@ class HttpSession:
 
     def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 180):
         if self._sb:
-            # ScrapingBee POST saga so far:
-            #   Round 3 (raw proxy): SSLError from urllib3 -> RRC
-            #   Round 4 (render_js=True): same SSLError, so the
-            #                             failure is in the proxy
-            #                             layer, not the client.
+            # ScrapingBee POST saga:
+            #   R3 (raw premium)             -> SSLError
+            #   R4 (render_js + premium)     -> same SSLError
+            #   R5 (render_js + datacenter)  -> same SSLError,
+            #                                   BUT ScrapingBee's
+            #                                   error hint now
+            #                                   suggested
+            #                                   stealth_proxy=True
+            #                                   as an option we
+            #                                   hadn't tried.
             #
-            # Round 5 theory: it's `premium_proxy=True` (residential
-            # IPs) that has the SSL config issue with RRC, not
-            # ScrapingBee's default datacenter proxies. RRC's
-            # original block was on GitHub Actions IP ranges —
-            # ScrapingBee's datacenter proxies use a different IP
-            # pool that may not be on the same block-list, so
-            # they might succeed where premium fails.
+            # Round 6: stealth_proxy=True. ScrapingBee's advanced
+            # anti-bot tier — different residential IP pool than
+            # premium_proxy, Chrome browser fingerprint applied
+            # consistently, distinct TLS config on the exit side.
+            # Explicitly recommended by ScrapingBee's own error
+            # response as the escalation from premium.
             #
-            # Config for this attempt:
-            #   - No premium_proxy on the POST path
-            #   - render_js=True: use Chrome for TLS handling
-            #     (independent from premium_proxy's SSL issues)
-            #   - session_id still there to keep the JSESSIONID
-            #     cookie continuous with the initial GET
+            # Cost: 75 credits/request (same as premium+render_js
+            # was). At 12 counties x 1 run/day x 30 days = ~27k
+            # credits/mo, well within the $49 tier.
             #
-            # If datacenter IPs are blocked by RRC we'll see a 403
-            # or a "block page" HTML in the response body. The
-            # existing response-body diagnostic will show that
-            # clearly. If it works we save 74 credits per request
-            # (1 credit for render_js-only vs 75 for premium+
-            # render_js).
+            # If this STILL 500s, the response-body diagnostic will
+            # spell out the specific reason and the only remaining
+            # play from ScrapingBee's side is js_scenario. If
+            # ScrapingBee never works with RRC period, we pivot to
+            # RRC's alternative bulk-data downloads (MFT server)
+            # entirely.
             post_params: dict[str, Any] = {
-                # Drop premium_proxy for POST — keep session_id so
-                # the JSESSIONID cookie replays.
                 "session_id": self._session_id,
+                "stealth_proxy": True,
+                # render_js implicitly on for stealth_proxy per
+                # their docs, but keeping the flag explicit so
+                # future readers of this code don't have to look
+                # it up.
                 "render_js": True,
                 "forward_headers": True,
                 "wait": 5000,
