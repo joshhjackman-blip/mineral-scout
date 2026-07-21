@@ -756,7 +756,7 @@ export default function Home() {
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
           .eq('county_id', cfg.id).eq('development_status', 'PDP'),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
-          .eq('county_id', cfg.id).in('development_status', ['PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL']),
+          .eq('county_id', cfg.id).in('development_status', ['PUD_DUC', 'TRUE_PUD', 'PUD_PERMITTED', 'PUD_INFILL']),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
           .eq('county_id', cfg.id),
       ])

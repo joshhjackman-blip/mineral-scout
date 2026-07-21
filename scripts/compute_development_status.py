@@ -785,9 +785,11 @@ def summarize_abstract(
     wells: list[dict[str, Any]],
     adjacency: dict[str, set[str]],
     permit_by_abstract: dict[str, list[dict[str, Any]]],
+    well_by_abstract: dict[str, list[dict[str, Any]]],
     lease_memos: list[dict[str, Any]],
     infill_hit_count: int,
     operator_program_hit: bool,
+    operator_programs: set[str],
     today: dt.date,
 ) -> dict[str, Any]:
     """Compute development_status, pud_score, and signal_detail for a
@@ -862,6 +864,54 @@ def summarize_abstract(
     approved_on_tract = permit_statuses.get("approved", 0)
     duc_on_tract = len(all_ducs) + permit_statuses.get("spud", 0)
 
+    # True PUD scan (2026-07-21). For a tract to qualify as SEC 10b-
+    # style Proved Undeveloped:
+    #   1. No PDP on the tract       (checked below via has_producing_well)
+    #   2. No DUC on the tract       (checked below via duc_on_tract)
+    #   3. >=1 offset PDP producer within ~1 mile
+    #   4. Operator commitment       (dev program OR recent adjacent permit)
+    #
+    # Adjacency here is boundary-touching (build_adjacency). Texas
+    # oil & gas abstracts are ~640 acres = ~1 mi x 1 mi, so
+    # boundary neighbors' PDPs are within 1 mile of every point on
+    # the current tract. Good enough proxy for the SEC 1-mile
+    # spacing-rule PUD criterion without needing a proper spatial
+    # buffer.
+    adjacent_pdp_count = 0
+    adjacent_pdp_operators: Counter[str] = Counter()
+    for neighbor in adjacency.get(abstract, set()):
+        neighbor_has_pdp = False
+        for well in well_by_abstract.get(neighbor, []):
+            completion = parse_date(well.get("completion_date"))
+            well_status = (clean_text(well.get("well_status")) or "").upper()
+            if completion or well_status in {"PRODUCING", "ACTIVE"}:
+                neighbor_has_pdp = True
+                op = clean_text(well.get("operator_name"))
+                if op:
+                    adjacent_pdp_operators[op] += 1
+                # Break once we know this neighbor is a PDP — one
+                # producing well per neighbor is enough to prove
+                # geology; more of them don't tighten the
+                # classification.
+                break
+        if neighbor_has_pdp:
+            adjacent_pdp_count += 1
+
+    # Operator commitment for True PUD:
+    #   a. Any operator with an active dev program appears near this
+    #      tract (adjacent PDPs OR adjacent permits).
+    #   b. Fallback — any operator has an approved-or-spud permit on
+    #      an adjacent tract. Revealed-preference signal: rigs are
+    #      already moving in the area, so this tract is next.
+    operator_committed = False
+    if operator_programs:
+        for op in list(adjacent_pdp_operators.keys()) + list(adjacent_permit_operators.keys()):
+            if op and op.upper() in operator_programs:
+                operator_committed = True
+                break
+    if not operator_committed and adjacent_permit_count > 0:
+        operator_committed = True
+
     fresh_lease_memos = []
     for memo in lease_memos:
         memo_date = parse_date(memo.get("memo_date") or memo.get("filed_date"))
@@ -875,19 +925,21 @@ def summarize_abstract(
             })
 
     # Status priority (highest wins). Revised 2026-07-16 after the
-    # Martin all-yellow feedback: the original spec put PDP first, but
-    # in mature basins (Midland / Delaware) every tract has a producing
-    # well, so PDP swallowed every other signal and the map went
-    # monolithic yellow. The rules below now surface fresh drilling
-    # activity ON TOP of production as PUD_INFILL — the "royalty about
-    # to jump" cohort brokers actually care about — before falling
-    # through to a plain PDP classification.
+    # Martin all-yellow feedback and again on 2026-07-21 to split
+    # True PUD out from Infill (SEC 10b-style proved undeveloped is
+    # a distinct concept from spacing-gap analytics).
     #
     #   PUD_DUC        drilled + no completion (most urgent — royalty
     #                  hits when completion crews finish)
     #   PUD_INFILL     PDP tract with fresh permits OR spacing-gap
     #                  detection hit (infill drilling on producing acreage)
-    #   PUD_PERMITTED  approved permit on a non-producing tract
+    #   PUD_PERMITTED  approved permit on a non-producing tract (the
+    #                  permit filing IS the commitment signal — no
+    #                  need to demote to True PUD)
+    #   TRUE_PUD       non-producing + no permit here + offset PDP +
+    #                  operator committed. Emerald on the map.
+    #   PUD_INFILL     spacing-math on an empty tract without True
+    #                  PUD's stronger commitment signal
     #   PDP            producing wells, no fresh activity
     #   LEASING_ACTIVE fresh lease memo but no drilling
     #   FRONTIER       nothing
@@ -897,6 +949,10 @@ def summarize_abstract(
         status = "PUD_INFILL"
     elif approved_on_tract > 0:
         status = "PUD_PERMITTED"
+    elif (not has_producing_well
+          and adjacent_pdp_count > 0
+          and operator_committed):
+        status = "TRUE_PUD"
     elif infill_hit_count > 0:
         status = "PUD_INFILL"
     elif has_producing_well:
@@ -915,9 +971,17 @@ def summarize_abstract(
         score += 2
     if infill_hit_count > 0:
         score += 2
+    if not has_producing_well and adjacent_pdp_count > 0:
+        # True PUD signal — adjacent producing acreage on an empty
+        # tract is a strong development-hint. Bump score even if
+        # the tract ends up classified as Infill because operator
+        # commitment isn't met yet.
+        score += 2
     if fresh_lease_memos:
         score += 1
     if operator_program_hit:
+        score += 1
+    if operator_committed:
         score += 1
     score = min(score, 10)
 
@@ -929,6 +993,14 @@ def summarize_abstract(
             for op, n in adjacent_permit_operators.most_common()
         ],
         "adjacent_permit_count": adjacent_permit_count,
+        # True PUD evidence — surfaced in the drawer's "Why this
+        # status?" panel.
+        "adjacent_pdp_count": adjacent_pdp_count,
+        "adjacent_pdp_operators": [
+            {"operator": op, "count": n}
+            for op, n in adjacent_pdp_operators.most_common()
+        ],
+        "operator_committed": operator_committed,
         "infill_gaps": infill_hit_count,
         "leases": fresh_lease_memos,
         "operator_program_hit": operator_program_hit,
@@ -1020,9 +1092,14 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
             well_by_abstract.get(a["abstract"], []),
             adjacency,
             permit_by_abstract,
+            # Added 2026-07-21: True PUD needs the well-by-abstract
+            # index to scan neighbors for offset PDPs, and the
+            # operator_programs set to gate the commitment check.
+            well_by_abstract,
             lease_by_abstract.get(a["abstract"], []),
             infill_by_abstract.get(a["abstract"], 0),
             operator_hit,
+            operator_programs,
             today,
         )
         status_totals[result["development_status"]] += 1
