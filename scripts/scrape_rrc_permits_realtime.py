@@ -77,30 +77,86 @@ POLITE_SLEEP_S = 1.0
 # connection so local development / self-hosted runners on
 # non-blocked IPs keep working with zero configuration.
 #
-# ScrapingBee alternatives: ScraperAPI, Bright Data, ZenRows — all
-# use the same "single-URL passthrough" pattern; substitute the
-# base URL below if you switch providers.
+# Implementation history: the first attempt (2026-07-21 evening) hand-
+# rolled URL wrapping via `?api_key=&url=&method=POST` on the raw
+# ScrapingBee REST endpoint. That worked for GETs but every POST came
+# back HTTP 500 — turns out `method=POST` + `premium_proxy=true` +
+# session-cookied J2EE URLs (RRC bakes JSESSIONID into the URL path
+# via `;jsessionid=...`) doesn't play nicely with the raw endpoint.
+# Switched to the official `scrapingbee` Python SDK which handles
+# POST + cookie forwarding + IP-sticky sessions in the same call
+# and both request types now succeed.
 SCRAPINGBEE_API_KEY = os.environ.get("SCRAPINGBEE_API_KEY", "").strip()
-SCRAPINGBEE_URL = "https://app.scrapingbee.com/api/v1/"
 
 
-def scrapingbee_wrap(target_url: str) -> str:
-    """Encode `target_url` as a ScrapingBee passthrough request so the
-    HTTP call rides through their residential proxy pool. Returns
-    the target URL unchanged when SCRAPINGBEE_API_KEY isn't set."""
-    if not SCRAPINGBEE_API_KEY:
-        return target_url
-    from urllib.parse import quote
-    # `render_js=false` since RRC EWA is server-rendered HTML; no
-    # need to pay for JS execution credits. `premium_proxy=true`
-    # gives residential IPs which are what RRC's filter is looking
-    # for; standard datacenter proxies get the same block treatment
-    # as GitHub Actions.
-    return (
-        f"{SCRAPINGBEE_URL}?api_key={SCRAPINGBEE_API_KEY}"
-        f"&url={quote(target_url, safe='')}"
-        f"&render_js=false&premium_proxy=true"
-    )
+class HttpSession:
+    """Thin wrapper that hides whether we're going through ScrapingBee
+    or hitting RRC directly. Exposes just the two verbs the scraper
+    needs: `get(url)` and `post(url, data)`. Both return objects with
+    `.status_code` / `.text` / `.raise_for_status()` — same shape as
+    `requests.Response` so downstream parsing code doesn't care.
+
+    - Direct mode (no API key): a plain `requests.Session` with an
+      RRC-friendly UA + Accept header.
+    - Proxy mode (key present): a `ScrapingBeeClient` with a stable
+      `session_id` so ScrapingBee holds the same exit IP and the
+      RRC JSESSIONID cookie across the GET-form / POST-search
+      sequence. `premium_proxy=True` selects residential IPs which
+      is what RRC's filter is actually looking for; standard
+      datacenter proxies get the same block as GitHub Actions.
+    """
+
+    def __init__(self):
+        if SCRAPINGBEE_API_KEY:
+            # Deferred import so `pip install scrapingbee` can be
+            # skipped entirely on machines that don't proxy.
+            from scrapingbee import ScrapingBeeClient
+            self._sb = ScrapingBeeClient(api_key=SCRAPINGBEE_API_KEY)
+            # Sticky session so a single ScrapingBee residential IP
+            # + cookie jar handles the whole run. RRC JSESSIONID
+            # cookies are only valid for the exit IP that received
+            # them; without a sticky session, ScrapingBee would
+            # rotate exit IPs between requests and every POST would
+            # 500 with "invalid session".
+            self._session_id = f"rrc-permits-{int(time.time())}"
+            self._sess = None
+            self._proxy_params = {
+                "premium_proxy": "true",
+                "render_js": "false",
+                "session_id": self._session_id,
+            }
+        else:
+            self._sb = None
+            self._sess = requests.Session()
+            self._sess.headers.update({
+                "User-Agent": (
+                    "Mozilla/5.0 (compatible; mineral-scout/1.0 permits-scraper; "
+                    "+github.com/joshhjackman-blip/mineral-scout)"
+                ),
+                "Accept": "text/html,application/xhtml+xml",
+            })
+            self._proxy_params = {}
+
+    @property
+    def via_proxy(self) -> bool:
+        return self._sb is not None
+
+    def get(self, url: str, timeout: int = 60):
+        if self._sb:
+            return self._sb.get(url, params=self._proxy_params, timeout=timeout)
+        assert self._sess is not None
+        return self._sess.get(url, timeout=timeout)
+
+    def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 120):
+        if self._sb:
+            return self._sb.post(
+                url,
+                params=self._proxy_params,
+                data=data or {},
+                timeout=timeout,
+            )
+        assert self._sess is not None
+        return self._sess.post(url, data=data, timeout=timeout)
 
 # RRC uses last-3-digits-of-Texas-FIPS as its county code.
 COUNTY_FIPS = {
@@ -200,28 +256,14 @@ def parse_us_date(raw: str) -> str | None:
     return f"{yyyy}-{mm}-{dd}"
 
 
-def open_search_session() -> tuple[requests.Session, str]:
-    """GET the query form to grab a jsessionid, then return the full
-    action URL (including the jsessionid path parameter) so the POST
-    that follows carries the session RRC expects."""
-    sess = requests.Session()
-    # If we're routing through ScrapingBee, use a normal browser UA
-    # instead of the "mineral-scout/1.0" fingerprint — ScrapingBee
-    # rotates UAs anyway but this makes the request indistinguishable
-    # from typical residential browser traffic if the proxy strips
-    # them.
-    ua = (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    ) if SCRAPINGBEE_API_KEY else (
-        "Mozilla/5.0 (compatible; mineral-scout/1.0 permits-scraper; "
-        "+github.com/joshhjackman-blip/mineral-scout)"
-    )
-    sess.headers.update({
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml",
-    })
-    r = sess.get(scrapingbee_wrap(f"{BASE}{SEARCH_PATH}"), timeout=60)
+def open_search_session() -> tuple[HttpSession, str]:
+    """GET the query form to grab a JSESSIONID (either in URL path or
+    as a cookie), then return the full action URL for the follow-up
+    POST. Works over both the direct-connection path and the
+    ScrapingBee proxy path (session cookie is preserved via
+    ScrapingBee's `session_id` parameter in the latter case)."""
+    sess = HttpSession()
+    r = sess.get(f"{BASE}{SEARCH_PATH}")
     r.raise_for_status()
     m = re.search(r'<form[^>]+action="([^"]+)"', r.text)
     if not m:
@@ -230,10 +272,11 @@ def open_search_session() -> tuple[requests.Session, str]:
     return sess, f"{BASE}{action}"
 
 
-def query_county(sess: requests.Session, action: str, county_fips: str,
+def query_county(sess: HttpSession, action: str, county_fips: str,
                  days: int) -> str:
     """POST a single-county date-window query and return the results
-    HTML body."""
+    HTML body. HttpSession handles proxy routing + session cookies
+    transparently."""
     today = dt.date.today()
     since = today - dt.timedelta(days=days)
     form = {
@@ -245,17 +288,7 @@ def query_county(sess: requests.Session, action: str, county_fips: str,
     }
     for k in BLANK_FORM_FIELDS:
         form.setdefault(k, "")
-    # ScrapingBee's passthrough handles POST bodies via a
-    # `forward_headers=true` + query-encoded params dance which the
-    # `scrapingbee` PyPI library abstracts, but for a raw-requests
-    # setup like this the simplest reliable pattern is: use the
-    # ScrapingBee `POST` mode by including `&method=POST` in the
-    # wrapped URL. The proxy forwards our body verbatim.
-    if SCRAPINGBEE_API_KEY:
-        wrapped = scrapingbee_wrap(action) + "&method=POST"
-        r = sess.post(wrapped, data=form, timeout=120)
-    else:
-        r = sess.post(action, data=form, timeout=120)
+    r = sess.post(action, data=form)
     r.raise_for_status()
     return r.text
 
@@ -448,7 +481,7 @@ def upsert_permits(client: Client, table: str, rows: list[dict[str, Any]]) -> tu
 
 # --- Per-county process ---------------------------------------------
 
-def process_county(client: Client, sess: requests.Session, action: str,
+def process_county(client: Client, sess: HttpSession, action: str,
                    county: str, args: argparse.Namespace) -> None:
     fips = COUNTY_FIPS.get(county)
     if not fips:
