@@ -1,42 +1,34 @@
-name: RRC permits daily scrape
+name: RRC permits daily (compute pass only)
 
-# Pulls the last ~30 days of drilling permits from the RRC public search
-# for each active county and upserts them into <county>_permits so the
-# tract sidebar's New Permits dropdown + the parcels production_status
-# classifier reflect the latest RRC filings.
+# The RRC EWA scrape that used to live here moved to a Vercel Cron
+# endpoint on 2026-07-21 (see app/api/cron/scrape-permits/route.ts
+# + vercel.json). Root cause: RRC's public EWA server blocks
+# GitHub Actions IP ranges, and 8 rounds of ScrapingBee proxy
+# tuning all failed at the TLS handshake layer. Vercel's
+# serverless IPs aren't on RRC's block-list, so scraping from
+# there works directly with zero proxy cost.
 #
-# Cron: 22:00 UTC daily = 5:00 PM CDT (America/Chicago summer) or
-# 4:00 PM CST (winter). GitHub Actions cron doesn't support timezones,
-# so we accept the ~1-hour drift twice a year rather than run two
-# scheduled entries. Manual dispatch is enabled for ad-hoc catch-up.
+# This workflow now only runs compute_development_status.py —
+# which reads Supabase and doesn't need to talk to RRC. Timing
+# nudged 30 minutes past the Vercel Cron (22:00 UTC) so we
+# reclassify against the freshest permit data:
+#
+#   22:00 UTC   Vercel Cron scrapes RRC -> upserts permits table
+#   22:30 UTC   This workflow recomputes tract_development_status
+#
+# Manual dispatch still supported for ad-hoc reruns.
+
 on:
   schedule:
-    - cron: '0 22 * * *'
-  workflow_dispatch:
-    inputs:
-      counties:
-        description: 'Comma-separated county ids to scrape (default: all 12 counties on file)'
-        required: false
-        default: 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler'
-      days:
-        description: 'Lookback window in days (max ~90)'
-        required: false
-        default: '30'
-      wells_only:
-        description: 'Skip the HTML fetch and use only the SYMNUM fallback'
-        required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'false'
-          - 'true'
+    - cron: '30 22 * * *'
+  workflow_dispatch: {}
 
 concurrency:
   group: rrc-permits-daily
   cancel-in-progress: false
 
 jobs:
-  scrape:
+  compute:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -45,91 +37,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          # No pip cache: this repo has no requirements.txt / pyproject.toml
-          # for setup-python to hash, and the install below is only two
-          # small wheels — caching would save ~3s and add setup complexity.
 
       - name: Install dependencies
+        # compute_development_status.py needs geopandas + shapely
+        # for the adjacency + point-in-polygon logic. supabase-py
+        # for DB writes. pyshp so the wells-zip lateral loader can
+        # feed the infill-gap detection. No requests / bs4 /
+        # scrapingbee any more — the RRC scrape moved to Vercel
+        # Cron.
         run: |
           python -m pip install --upgrade pip
-          # requests + bs4 + lxml drive the real-time EWA HTML scraper.
-          # geopandas + shapely are needed by compute_development_status.py
-          # for the adjacency + point-in-polygon logic. pyshp remains for
-          # the historical wells-zip SYMNUM fallback path. scrapingbee is
-          # only imported when SCRAPINGBEE_API_KEY is set (see
-          # scripts/scrape_rrc_permits_realtime.py:HttpSession) — the
-          # wheel is ~30 KB and pulls no transitive deps, so we install
-          # it unconditionally to keep the workflow one-shot.
-          pip install supabase pyshp geopandas shapely requests beautifulsoup4 lxml scrapingbee
-
-      - name: Scrape real-time permits from RRC EWA
-        # Primary data path — hits the public RRC drilling-permit web
-        # query and upserts fresh permits into <county>_permits on
-        # api_number. This is what makes the sidebar "New Permits"
-        # feed reflect filings from the last 24 hours; the historical
-        # wells-zip / EWA CSV path below only refreshes when the RRC
-        # publishes a new bulk snapshot (roughly monthly).
-        #
-        # continue-on-error added 2026-07-21 after 5 consecutive daily
-        # failures. Root cause: RRC EWA silently blocks GitHub Actions
-        # runner IPs (Connection refused on port 443). Without this
-        # flag, the block cascade-skips the wells-zip fallback +
-        # compute_development_status, freezing the whole ingestion
-        # pipeline. When SCRAPINGBEE_API_KEY is set in Actions secrets,
-        # the script routes through a residential proxy and this step
-        # succeeds on its own.
-        continue-on-error: true
-        env:
-          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          # Optional; when absent the scraper connects direct to RRC
-          # (works on local + non-blocked runners, fails on GitHub
-          # Actions IPs).
-          SCRAPINGBEE_API_KEY:       ${{ secrets.SCRAPINGBEE_API_KEY }}
-        run: |
-          COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
-          # 90-day window catches anything the previous 30-day run
-          # might have missed (holiday backlogs, RRC processing lags).
-          python scripts/scrape_rrc_permits_realtime.py \
-            --county "$COUNTIES" \
-            --days 90
-
-      - name: Refresh historical permits (wells-zip + EWA CSV)
-        # Secondary data path — pulls the RRC wells shapefile (surface
-        # locations, SYMNUM-driven permit identification) plus the
-        # bulk EWA CSV. The EWA CSV in the Raw-Data bucket is
-        # refreshed roughly monthly, so this pass mostly re-verifies
-        # historical rows and fills in spud/completion dates on
-        # older APIs. Non-fatal on failure so the real-time step
-        # above already gave us fresh data.
-        env:
-          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        continue-on-error: true
-        run: |
-          COUNTIES="${{ github.event.inputs.counties || 'howard,martin,crane,glasscock,loving,midland,pecos,reagan,reeves,upton,ward,winkler' }}"
-          WELLS_ONLY_FLAG=""
-          if [ "${{ github.event.inputs.wells_only }}" = "true" ]; then
-            WELLS_ONLY_FLAG="--wells-only"
-          fi
-          python scripts/scrape_rrc_permits.py \
-            --county "$COUNTIES" \
-            --days 30 \
-            $WELLS_ONLY_FLAG
+          pip install supabase pyshp geopandas shapely
 
       - name: Recompute tract_development_status
-        # Ticket 1.3 Phase 1: after the daily scrape lands new W-1s,
-        # reclassify every abstract into PDP / PUD_DUC / PUD_PERMITTED /
-        # FRONTIER and refresh pud_score. Only runs for counties whose
-        # Abstracts.shp is currently reachable (Gonzales / Howard /
-        # Martin); the 10 new Permian counties are skipped with a
-        # NOTICE until their abstract shapefile lands in the bucket.
-        #
-        # continue-on-error so a spatial-processing hiccup on one
-        # county doesn't blow the whole workflow (this step reads
-        # exclusively from Supabase, so it should almost always
-        # succeed regardless of RRC availability).
-        continue-on-error: true
+        # Reclassifies every abstract into PDP / PUD_DUC /
+        # TRUE_PUD / PUD_PERMITTED / PUD_INFILL / LEASING_ACTIVE /
+        # FRONTIER after the fresh permits landed via Vercel Cron
+        # 30 minutes ago.
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
