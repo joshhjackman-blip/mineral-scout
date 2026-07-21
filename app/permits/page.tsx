@@ -64,7 +64,13 @@ type OwnerRow = {
   email?: string | null
 }
 
-type WindowChoice = 7 | 30 | 90 | 365
+// 3-day window added 2026-07-21 (user ask): brokers want to
+// grab freshly-approved-in-the-last-72-hours permits before
+// their competitors call the mineral owners. 3d is realistic
+// now that the real-time ScrapingBee-backed scrape refreshes
+// nightly; before that, the bulk EWA CSV lagged 4-12 weeks and
+// a 3-day filter would have always returned zero rows.
+type WindowChoice = 3 | 7 | 30 | 90 | 365
 
 // Every county the permits page pulls from. Kept in sync with the
 // daily RRC scraper's default county list. Counties whose _permits
@@ -450,6 +456,7 @@ export default function PermitsPage() {
               Window:
             </span>
             {([
+              { d: 3   as WindowChoice, label: '3 days' },
               { d: 7   as WindowChoice, label: '7 days' },
               { d: 30  as WindowChoice, label: '30 days' },
               { d: 90  as WindowChoice, label: '90 days' },
@@ -552,54 +559,99 @@ export default function PermitsPage() {
                     boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
                   }}
                 >
-                  <button
-                    onClick={() => toggleExpand(permitKey, permit)}
+                  <div
                     style={{
-                      width: '100%',
                       display: 'grid',
-                      gridTemplateColumns: 'auto 1fr auto',
+                      gridTemplateColumns: 'auto 1fr auto auto',
                       gap: 14,
                       alignItems: 'center',
                       padding: '14px 18px',
-                      background: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
                       fontFamily: 'Geist, Inter, system-ui, sans-serif',
                     }}
                   >
-                    <StatusBadge status={permit.status_bucket} />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: '#111827',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
+                    {/* The card header is split into two clickable
+                        surfaces so the "View on map" pin doesn't
+                        collide with the expand-toggle. Left button
+                        toggles the owners dropdown; right button is
+                        a plain Link that navigates to the map. */}
+                    <button
+                      onClick={() => toggleExpand(permitKey, permit)}
+                      style={{
+                        display: 'contents',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontFamily: 'inherit',
+                      }}
+                    >
+                      <StatusBadge status={permit.status_bucket} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: '#111827',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {permit.lease_name || permit.permit_number || 'Unnamed permit'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                          {permit.operator_name || 'Unknown operator'}
+                          {' · '}
+                          {permit.county_display}
+                          {permit.abstract && (
+                            <> · <span style={{ fontFamily: 'monospace' }}>{permit.abstract}</span></>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                        <span style={{ fontSize: 11, color: '#6B7280' }}>{dayLabel}</span>
+                        <span style={{
+                          display: 'inline-block',
+                          transform: isOpen ? 'rotate(180deg)' : 'none',
+                          transition: 'transform 0.15s',
+                          color: '#94A3B8',
+                          fontSize: 12,
+                        }}>▼</span>
+                      </div>
+                    </button>
+                    {/* View on map button. Deep-links to `/` (the
+                        map) with ?county=X&abstract=Y so the map
+                        can fly directly to the tract this permit
+                        landed on. Falls back to just the county
+                        deep-link (?county=X) when we couldn't
+                        resolve an abstract (permit had no lat/lon,
+                        or its coordinates didn't land inside any
+                        known tract polygon). */}
+                    <Link
+                      href={
+                        permit.abstract
+                          ? `/?county=${permit.county_id}&abstract=${encodeURIComponent(permit.abstract)}`
+                          : `/?county=${permit.county_id}`
+                      }
+                      title={permit.abstract
+                        ? `Open ${permit.abstract} in ${permit.county_display} on the map`
+                        : `Open ${permit.county_display} on the map`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        padding: '6px 12px',
+                        borderRadius: 8,
+                        background: '#2563EB',
+                        color: '#FFFFFF',
+                        textDecoration: 'none',
+                        fontSize: 11,
+                        fontWeight: 600,
                         whiteSpace: 'nowrap',
-                      }}>
-                        {permit.lease_name || permit.permit_number || 'Unnamed permit'}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
-                        {permit.operator_name || 'Unknown operator'}
-                        {' · '}
-                        {permit.county_display}
-                        {permit.abstract && (
-                          <> · <span style={{ fontFamily: 'monospace' }}>{permit.abstract}</span></>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-                      <span style={{ fontSize: 11, color: '#6B7280' }}>{dayLabel}</span>
-                      <span style={{
-                        display: 'inline-block',
-                        transform: isOpen ? 'rotate(180deg)' : 'none',
-                        transition: 'transform 0.15s',
-                        color: '#94A3B8',
-                        fontSize: 12,
-                      }}>▼</span>
-                    </div>
-                  </button>
+                        flexShrink: 0,
+                      }}
+                    >
+                      📍 Map
+                    </Link>
+                  </div>
 
                   {isOpen && (
                     <div style={{
