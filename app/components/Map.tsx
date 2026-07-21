@@ -576,9 +576,9 @@ export default function Map({
   }
   const STATUS_LABEL: Record<UnifiedStatus, string> = {
     PDP:            'PDP',
-    PUD_DUC:        'PUD (DUC)',
+    PUD_DUC:        'DUC',
     PUD_PERMITTED:  'PUD (Permitted)',
-    PUD_INFILL:     'PUD (Infill)',
+    PUD_INFILL:     'Infill',
     LEASING_ACTIVE: 'Leasing active',
     FRONTIER:       'Frontier',
   }
