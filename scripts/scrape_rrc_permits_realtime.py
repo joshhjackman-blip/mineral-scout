@@ -158,35 +158,39 @@ class HttpSession:
 
     def post(self, url: str, data: dict[str, str] | None = None, timeout: int = 180):
         if self._sb:
-            # ScrapingBee POST via the raw Python-requests-style
-            # proxy path was 500ing with "HTTPSConnectionPool ...
-            # SSLError" — their upstream proxy's requests/urllib3
-            # client can't complete a TLS handshake with RRC's
-            # server. ScrapingBee's own error-message hint was
-            # "try render_js=True (5 credits per request)".
-            # render_js routes through a full Chrome instance
-            # which handles TLS (and cookies + form encoding)
-            # natively.
+            # ScrapingBee POST saga so far:
+            #   Round 3 (raw proxy): SSLError from urllib3 -> RRC
+            #   Round 4 (render_js=True): same SSLError, so the
+            #                             failure is in the proxy
+            #                             layer, not the client.
             #
-            # Kept forward_headers=True + a Content-Type header for
-            # good measure — the browser handles most of this, but
-            # having the client-side hint reduces ambiguity when
-            # ScrapingBee decides how to encode the outbound POST
-            # body from Chrome's request object.
+            # Round 5 theory: it's `premium_proxy=True` (residential
+            # IPs) that has the SSL config issue with RRC, not
+            # ScrapingBee's default datacenter proxies. RRC's
+            # original block was on GitHub Actions IP ranges —
+            # ScrapingBee's datacenter proxies use a different IP
+            # pool that may not be on the same block-list, so
+            # they might succeed where premium fails.
             #
-            # Cost impact: premium_proxy + render_js is 75 credits
-            # per POST (vs 25 for premium-only). At 12 counties x
-            # 1 run/day x 30 days = ~27k credits/month per POST
-            # dimension. Well under the $49 tier's 250k credits.
+            # Config for this attempt:
+            #   - No premium_proxy on the POST path
+            #   - render_js=True: use Chrome for TLS handling
+            #     (independent from premium_proxy's SSL issues)
+            #   - session_id still there to keep the JSESSIONID
+            #     cookie continuous with the initial GET
+            #
+            # If datacenter IPs are blocked by RRC we'll see a 403
+            # or a "block page" HTML in the response body. The
+            # existing response-body diagnostic will show that
+            # clearly. If it works we save 74 credits per request
+            # (1 credit for render_js-only vs 75 for premium+
+            # render_js).
             post_params: dict[str, Any] = {
-                **self._proxy_params,
+                # Drop premium_proxy for POST — keep session_id so
+                # the JSESSIONID cookie replays.
+                "session_id": self._session_id,
                 "render_js": True,
                 "forward_headers": True,
-                # Chrome sits and waits for the results table to
-                # render after form submission. RRC's server is
-                # slow — 5s is enough for the round trip in normal
-                # conditions but not so long that we burn credits
-                # on stalled pages.
                 "wait": 5000,
             }
             return self._sb.post(
