@@ -40,6 +40,13 @@ type RawPermit = {
   status: string | null
   filed_date: string | null
   approved_date: string | null
+  // abstract_number is populated by scripts/compute_development_status.py
+  // when it runs the spatial join. New permits from tonight's scrape
+  // won't have it set until the next compute pass runs. Used as a
+  // fallback in abstractForPermit() when lat/lon is missing (which is
+  // the case for every permit the RRC EWA HTML scraper delivers —
+  // that page has no coordinate column).
+  abstract_number: string | null
 }
 
 type EnrichedPermit = RawPermit & {
@@ -83,7 +90,7 @@ const PERMIT_COUNTIES: CountyKey[] = [
 // Slim column list to keep the payload small when hitting the 13
 // county tables in parallel.
 const PERMIT_COLUMNS =
-  'id, permit_number, api_number, operator_name, lease_name, county_code, latitude, longitude, permit_type, status, filed_date, approved_date'
+  'id, permit_number, api_number, operator_name, lease_name, county_code, latitude, longitude, permit_type, status, filed_date, approved_date, abstract_number'
 
 const bareAbstract = (raw: unknown): string =>
   String(raw ?? '')
@@ -182,11 +189,98 @@ async function loadParcels(countyId: CountyKey): Promise<GeoJSON.FeatureCollecti
   }
 }
 
+// Cache api_number -> well surface coords per county, populated on
+// first lookup demand. The wells GeoJSON is way smaller than the
+// parcels GeoJSON so this is cheap; we still cache to avoid the
+// per-permit-card fetch when the user is scrolling.
+const wellCoordsCache = new Map<CountyKey, Map<string, { lat: number; lon: number }>>()
+
+async function loadWellCoordsByApi(
+  countyId: CountyKey,
+): Promise<Map<string, { lat: number; lon: number }>> {
+  const cached = wellCoordsCache.get(countyId)
+  if (cached) return cached
+  const out = new Map<string, { lat: number; lon: number }>()
+  try {
+    const { data } = await supabase
+      .from(`${countyId}_wells`)
+      .select('api_number, surface_latitude, surface_longitude, latitude, longitude')
+      .not('api_number', 'is', null)
+      .limit(50000)
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      const api = String(row.api_number ?? '').trim()
+      if (!api) continue
+      const lat = Number(row.surface_latitude ?? row.latitude)
+      const lon = Number(row.surface_longitude ?? row.longitude)
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
+      if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue
+      // Store both the raw form and a normalized 10-digit form to
+      // catch mismatches between how the permit vs the well
+      // records the API. RRC writes it dozens of ways.
+      out.set(api, { lat, lon })
+      const digits = api.replace(/\D/g, '')
+      if (digits && digits !== api) out.set(digits, { lat, lon })
+    }
+  } catch {
+    // Table may not exist yet for upcoming counties; fall through.
+  }
+  wellCoordsCache.set(countyId, out)
+  return out
+}
+
+// Three-tier permit -> abstract resolver:
+//   1. permit.latitude/longitude valid    -> point-in-polygon (most accurate)
+//   2. permit.abstract_number populated   -> use directly (compute_development_status
+//                                            set it via spatial join on a prior run)
+//   3. permit.api_number matches a well   -> use that well's surface coords,
+//                                            run point-in-polygon
+// Prior version was tier 1 only, which meant every EWA-scraped permit
+// (RRC's HTML results page has no coordinate column) rendered
+// "Couldn't match this permit to a tract (missing lat/lon)".
 async function abstractForPermit(permit: RawPermit, countyId: CountyKey): Promise<string | null> {
+  // Tier 1: real lat/lon on the permit itself.
   const lat = Number(permit.latitude)
   const lon = Number(permit.longitude)
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+  const hasValidCoords =
+    Number.isFinite(lat) && Number.isFinite(lon) &&
+    lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180
+  if (hasValidCoords) {
+    const abstract = await pointInPolygonAbstract(countyId, lon, lat)
+    if (abstract) return abstract
+    // If PIP fell through (permit lat/lon just outside every tract
+    // polygon by a few meters, which happens near county borders),
+    // continue to tier 2 / 3 rather than giving up.
+  }
+
+  // Tier 2: compute_development_status.py stamped the tract on a
+  // prior nightly run. Trust it verbatim — it did its own PIP with
+  // the same parcels shapefile and would have been more careful
+  // about surveys / edge cases than we can afford client-side.
+  const stamped = String(permit.abstract_number ?? '').trim()
+  if (stamped) return stamped
+
+  // Tier 3: look up this permit's well by API and use its surface
+  // coords. RRC's wells shapefile carries lat/lon for essentially
+  // every drilled well, so this catches new EWA-scraped permits
+  // that fall in tier 1's blind spot.
+  const api = String(permit.api_number ?? '').trim()
+  if (api) {
+    const wellCoords = await loadWellCoordsByApi(countyId)
+    const hit = wellCoords.get(api) ?? wellCoords.get(api.replace(/\D/g, ''))
+    if (hit) {
+      const abstract = await pointInPolygonAbstract(countyId, hit.lon, hit.lat)
+      if (abstract) return abstract
+    }
+  }
+
+  return null
+}
+
+// Broken out of abstractForPermit so both the direct lat/lon path
+// and the api-based fallback can share it.
+async function pointInPolygonAbstract(
+  countyId: CountyKey, lon: number, lat: number,
+): Promise<string | null> {
   const gj = await loadParcels(countyId)
   if (!gj) return null
   for (const feature of gj.features) {
@@ -661,7 +755,9 @@ export default function PermitsPage() {
                     }}>
                       {!permit.abstract ? (
                         <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                          Couldn&apos;t match this permit to a tract (missing lat/lon).
+                          Couldn&apos;t match this permit to a tract yet.
+                          {' '}Waiting on the next nightly compute pass to run
+                          the spatial join.
                         </div>
                       ) : loadingOwners ? (
                         <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>

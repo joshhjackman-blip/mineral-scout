@@ -557,48 +557,46 @@ const estimateMonthlyRoyalty = (
 }
 
 export default function Home() {
-  // Deep-link support: `/?county=<key>&abstract=<label>` from
-  // /permits (and eventually other pages). Read URL params inside
-  // the initial useState factories so the first render already
-  // shows the requested county at tract level — no flash of the
-  // default Martin county-overview view before jumping.
-  //
-  // Guarded on `typeof window` so the SSR / static-export pass
-  // gets the plain default. useSearchParams() from next/navigation
-  // would also work but requires a Suspense boundary in some
-  // Next.js versions, and the URL params are stable across renders
-  // anyway (they're only read once at mount) so raw window.location
-  // is simpler.
-  const urlParams = (typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search)
-    : new URLSearchParams()
-  )
-  const urlCounty = urlParams.get('county') as CountyKey | null
-  const urlAbstractRaw = urlParams.get('abstract') || ''
-
-  const [selectedCounty, setSelectedCounty] = useState<CountyKey>(() =>
-    urlCounty && urlCounty in COUNTIES ? urlCounty : 'martin'
-  )
+  const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
-  // Jump straight into tract mode when the URL asked for a
-  // specific county — deep-links from /permits skip the county
-  // overview and go directly to the tract-detail view.
-  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>(() =>
-    urlCounty && urlCounty in COUNTIES ? 'tract' : 'county'
-  )
+  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   // Pending focus target: when the URL carries an `abstract` param,
   // stash it here. Once the county's tracts finish loading below,
   // a one-shot useEffect resolves this to a TractSelection and
-  // fires setSelected() + clears the pending state. Cleared after
-  // one successful match so subsequent Y-Z navigation doesn't
-  // re-trigger it.
-  const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(
-    urlAbstractRaw ? urlAbstractRaw.replace(/^A-\s*/i, '').trim() : null
-  )
+  // fires setSelected() + clears the pending state.
+  const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(null)
+
+  // Deep-link support: `/?county=<key>&abstract=<label>` from
+  // /permits and eventually other pages. Read the URL AFTER mount
+  // (not in useState factories) because Next.js runs this client
+  // component through SSR first — `window` is undefined during
+  // that pass, so any factory reading `window.location.search`
+  // returns the default. React then reuses the SSR state on
+  // hydration and never re-runs the factory even though `window`
+  // is now available. Reading via useEffect ensures the browser's
+  // real URL params are picked up on every fresh mount.
+  //
+  // This is the "post-mount URL sync" pattern. Runs exactly once
+  // per page mount (no dep on searchParams because we only care
+  // about the deep-link at open time, not subsequent SPA nav
+  // within Home).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const urlCounty = params.get('county') as CountyKey | null
+    const urlAbstractRaw = params.get('abstract') || ''
+    if (urlCounty && urlCounty in COUNTIES) {
+      setSelectedCounty(urlCounty)
+      setMapLevel('tract')
+    }
+    if (urlAbstractRaw) {
+      setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
+    }
+  }, [])
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
   // tab of the OwnerDrawer can render full legal descriptions per lease
