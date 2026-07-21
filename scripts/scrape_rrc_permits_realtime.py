@@ -267,10 +267,24 @@ def parse_us_date(raw: str) -> str | None:
 
 def open_search_session() -> tuple[HttpSession, str]:
     """GET the query form to grab a JSESSIONID (either in URL path or
-    as a cookie), then return the full action URL for the follow-up
+    as a cookie), then return the CLEAN action URL for the follow-up
     POST. Works over both the direct-connection path and the
     ScrapingBee proxy path (session cookie is preserved via
-    ScrapingBee's `session_id` parameter in the latter case)."""
+    ScrapingBee's `session_id` parameter in the latter case).
+
+    JSESSIONID stripping (2026-07-21): RRC's J2EE app rewrites the
+    form action to include the session as a matrix parameter
+    (`/EWA/drillingPermitsQueryAction.do;jsessionid=<id>`) for
+    cookieless clients. ScrapingBee's premium proxy 500s when
+    forwarding POST requests to URLs with matrix parameters —
+    their parser doesn't handle `;key=value` syntax reliably. Since
+    ScrapingBee is already tracking the JSESSIONID cookie for us
+    (via the `session_id` parameter, which pins the exit IP and
+    cookie jar for the run), we can safely strip the matrix
+    parameter and rely on the cookie. The direct-connection path
+    (no proxy) preserves cookies via requests.Session, so it works
+    the same way.
+    """
     sess = HttpSession()
     r = sess.get(f"{BASE}{SEARCH_PATH}")
     r.raise_for_status()
@@ -278,7 +292,11 @@ def open_search_session() -> tuple[HttpSession, str]:
     if not m:
         raise RuntimeError("RRC EWA form not found; endpoint layout may have changed")
     action = m.group(1)
-    return sess, f"{BASE}{action}"
+    # Strip ";jsessionid=<id>" from the action path. Everything from
+    # the semicolon up to the next `?` (or end of URL) is the matrix
+    # parameter.
+    action_clean = re.sub(r";jsessionid=[^?]*", "", action, flags=re.IGNORECASE)
+    return sess, f"{BASE}{action_clean}"
 
 
 def query_county(sess: HttpSession, action: str, county_fips: str,
