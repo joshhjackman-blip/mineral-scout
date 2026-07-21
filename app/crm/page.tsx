@@ -245,6 +245,25 @@ export default function CRM() {
     return derived === 'unknown' ? ('martin' as CountyKey) : derived
   }, [selected])
 
+  // Memoize the Deal -> OwnerLike mapping so we hand OwnerDrawer a
+  // STABLE reference across CRM re-renders. The drawer's internal
+  // hooks (useOwnerHoldings, useOwnerWells, useOwnerNote) all have
+  // `owner` in their useEffect dependency arrays; passing a fresh
+  // object literal every render (e.g. `owner={dealToOwner(selected)}`
+  // inline) makes those effects re-fire on every parent re-render,
+  // which cancels the in-flight Leases fetch before it can set state.
+  // Result: the Leases tab shows "0 leases" forever even though the
+  // Supabase query would have returned data. Reported 2026-07-21;
+  // the fix is this one useMemo. The dependency is selected.id
+  // rather than the whole selected object because Deal fields
+  // (phone, email, tag) get patched in place after skip trace and
+  // we don't want a phone-number change to blow the drawer state.
+  const drawerOwner: OwnerLike | null = useMemo(
+    () => (selected ? dealToOwner(selected) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected.id is the identity key; rest of selected can update in place
+    [selected?.id],
+  )
+
   return (
     <div className="h-screen flex flex-col bg-gray-50 font-sans">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
@@ -390,10 +409,10 @@ export default function CRM() {
             container we give it via `flex flex-1 h-full`, so a plain
             flex parent is all we need. */}
         <main className="flex-1 overflow-hidden flex bg-white">
-          {selected ? (
+          {selected && drawerOwner ? (
             <OwnerDrawer
               open={true}
-              owner={dealToOwner(selected)}
+              owner={drawerOwner}
               countyId={selectedCountyId}
               inPipeline={true}
               onClose={() => setSelected(null)}
