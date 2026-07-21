@@ -325,7 +325,16 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     return () => {
       cancelled = true
     }
-  }, [open, owner, county.id])
+    // Depend on owner_name (the query key) instead of the whole owner
+    // object. Passing the full `owner` here made this effect re-fire
+    // on every parent re-render when a caller passed an unstable
+    // reference (e.g. `owner={dealToOwner(selected)}` without a
+    // useMemo), which cancelled the in-flight query before it could
+    // set state — Leases tab stuck at "0 leases" until the parent
+    // stopped re-rendering. Owner identity from this hook's
+    // perspective is fully captured by (county.id, owner_name).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, owner?.owner_name, county.id])
 
   return { holdings, loading, errorMessages }
 }
@@ -426,7 +435,11 @@ function useOwnerWells(
     return () => {
       cancelled = true
     }
-  }, [county.id, open, owner, tractLabel, leaseIdsByCounty])
+    // Owner identity flattened to primitives so an unstable owner
+    // reference from the parent doesn't refire the effect. Same
+    // reasoning as useOwnerHoldings above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [county.id, open, owner?.owner_name, owner?.rrc_lease_id, owner?.operator_name, tractLabel, leaseIdsByCounty])
 
   return { wells, loading }
 }
@@ -480,7 +493,9 @@ function useOwnerNote(county: County, owner: OwnerLike | null, open: boolean) {
     return () => {
       cancelled = true
     }
-  }, [county.id, open, owner])
+    // Same primitive-dep pattern as the holdings + wells hooks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [county.id, open, owner?.owner_name])
 
   const save = async (value: string) => {
     if (!owner) return
