@@ -118,11 +118,20 @@ class HttpSession:
             # them; without a sticky session, ScrapingBee would
             # rotate exit IPs between requests and every POST would
             # 500 with "invalid session".
-            self._session_id = f"rrc-permits-{int(time.time())}"
+            #
+            # session_id must be a POSITIVE INTEGER (ScrapingBee
+            # 400s on string session ids; verified 2026-07-21).
+            # Truncate the epoch to fit under their int32 cap and
+            # to keep the id short. Value is opaque — the only
+            # requirement is that it stays stable for the run.
+            self._session_id = int(time.time()) % 2_000_000_000
             self._sess = None
-            self._proxy_params = {
-                "premium_proxy": "true",
-                "render_js": "false",
+            # ScrapingBee's Python SDK expects Python-native booleans
+            # for its boolean flags; passing "true"/"false" strings
+            # got 400 Bad Request from their validator.
+            self._proxy_params: dict[str, Any] = {
+                "premium_proxy": True,
+                "render_js": False,
                 "session_id": self._session_id,
             }
         else:

@@ -1341,9 +1341,9 @@ function WellsPanel({
 
 const DEV_STATUS_STYLE: Record<DevelopmentStatusValue, { label: string; classes: string; dotBg: string }> = {
   PDP:            { label: 'PDP',              classes: 'border-emerald-300 bg-emerald-50 text-emerald-800', dotBg: '#16A34A' },
-  PUD_DUC:        { label: 'PUD · DUC',        classes: 'border-purple-300 bg-purple-50 text-purple-800',    dotBg: '#A855F7' },
+  PUD_DUC:        { label: 'DUC',              classes: 'border-purple-300 bg-purple-50 text-purple-800',    dotBg: '#A855F7' },
   PUD_PERMITTED:  { label: 'PUD · Permitted',  classes: 'border-orange-300 bg-orange-50 text-orange-800',    dotBg: '#F97316' },
-  PUD_INFILL:     { label: 'PUD · Infill',     classes: 'border-blue-300 bg-blue-50 text-blue-800',          dotBg: '#3B82F6' },
+  PUD_INFILL:     { label: 'Infill',           classes: 'border-blue-300 bg-blue-50 text-blue-800',          dotBg: '#3B82F6' },
   LEASING_ACTIVE: { label: 'Leasing active',   classes: 'border-yellow-300 bg-yellow-50 text-yellow-800',    dotBg: '#EAB308' },
   FRONTIER:       { label: 'Frontier',         classes: 'border-slate-200 bg-slate-50 text-slate-600',       dotBg: '#94A3B8' },
 }
