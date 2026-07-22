@@ -6,9 +6,11 @@ Phase 1 ships:
   * Sentinel-2 chip pull + change/classify modules (scaffolded; opt-in)
   * Propensity bump + CRM hot-tag on completion-consistent events
 
-Phase 2: turn on Sentinel weekly pull, calibrate thresholds on labeled
-RRC completion dates, optional high-res confirmation for ambiguous
-high-propensity pads.
+Phase 2a: Sentinel chip crop → Raw-Data/pad-imagery + pad_imagery_log.
+Phase 2b: before/after change + classify → pad_change_log +
+pad_activity_events with before_path/after_path (--enable-sentinel).
+Phase 2c (later): calibrate thresholds on labeled RRC completions;
+optional high-res confirmation for ambiguous high-propensity pads.
 """
 
 __all__ = ["PERMIAN_PAD_COUNTIES"]

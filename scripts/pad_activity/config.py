@@ -31,6 +31,7 @@ PROPENSITY_SCORE_CAP = 10
 RRC_COMPLETION_LOOKBACK_DAYS = 90
 
 # Supabase Storage bucket + key prefix (matches existing Raw-Data pattern).
+# Chips are PNG so the Pad Activity UI can render them in <img> tags.
 STORAGE_BUCKET = "Raw-Data"
 STORAGE_PREFIX = "pad-imagery"
 

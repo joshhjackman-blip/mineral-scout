@@ -4,14 +4,10 @@ name: Pad activity weekly (rig → completion)
 #
 # Phase 1 (default): RRC completion-transition bridge → writes
 # pad_activity_events, bumps propensity_score, tags CRM deals hot.
-# Surfaces in OwnerDrawer "Well Activity" card.
 #
-# Phase 2 (opt-in later): add --enable-sentinel once rasterio chip
-# crop is landed; Sentinel-2 does the cheap sift, paid high-res only
-# for ambiguous high-propensity pads.
-#
-# Sunday 14:00 UTC = 9:00 AM CDT / 8:00 AM CST — after Saturday's
-# lease-memoranda scrape has settled.
+# Phase 2 (opt-in via workflow_dispatch): --enable-sentinel pulls
+# before/after Sentinel-2 chips, scores change, classifies signatures,
+# writes pad_change_log + pad_activity_events (with image paths).
 
 on:
   schedule:
@@ -30,6 +26,14 @@ on:
         description: 'If true, skip DB writes'
         required: false
         default: 'false'
+      enable_sentinel:
+        description: 'If true, pull Sentinel-2 pad chips (Phase 2)'
+        required: false
+        default: 'false'
+      max_chips:
+        description: 'Max Sentinel chips per county when enable_sentinel=true'
+        required: false
+        default: '25'
 
 concurrency:
   group: pad-activity-weekly
@@ -38,7 +42,7 @@ concurrency:
 jobs:
   detect:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
 
@@ -49,18 +53,25 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install 'supabase<2.15' numpy
+          pip install -r scripts/pad_activity/requirements.txt
 
       - name: Run pad-activity weekly
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AWS_NO_SIGN_REQUEST:       'YES'
+          GDAL_DISABLE_READDIR_ON_OPEN: EMPTY_DIR
         run: |
           COUNTIES="${{ github.event.inputs.counties || 'howard,martin' }}"
           DAYS="${{ github.event.inputs.lookback_days || '90' }}"
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
+          SENTINEL="${{ github.event.inputs.enable_sentinel || 'false' }}"
+          MAX_CHIPS="${{ github.event.inputs.max_chips || '25' }}"
           EXTRA=""
-          if [ "$DRY" = "true" ]; then EXTRA="--dry-run"; fi
+          if [ "$DRY" = "true" ]; then EXTRA="$EXTRA --dry-run"; fi
+          if [ "$SENTINEL" = "true" ]; then
+            EXTRA="$EXTRA --enable-sentinel --max-chips $MAX_CHIPS"
+          fi
           python -m scripts.pad_activity.run_weekly \
             --county "$COUNTIES" \
             --lookback-days "$DAYS" \
