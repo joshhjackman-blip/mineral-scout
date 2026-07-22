@@ -114,6 +114,17 @@ type ParsedPermit = {
   status: string | null
   filed_date: string | null
   approved_date: string | null
+  // Detail-page enrichment. Populated when we fetch the permit's
+  // drillingPermitDetailAction.do page. Enables resolving the
+  // permit to a tract without needing compute_development_status
+  // or a matching well row.
+  abstract_number: string | null
+  latitude: number | null
+  longitude: number | null
+  // URL of the RRC detail page. Extracted from the results table's
+  // inner <a> around the lease name so we can enrich per-permit
+  // later in the pipeline.
+  detail_url: string | null
 }
 
 function normalizeApi(value: string | null | undefined): string | null {
@@ -257,6 +268,21 @@ function parsePermitRows(html: string, countyFips: string): ParsedPermit[] {
     let status: string | null = cellText(13).toUpperCase() || null
     if (status && status.length > 32) status = status.slice(0, 32)
 
+    // The lease-name cell wraps its text in an <a> pointing at
+    // the permit detail page. Grab the href so we can enrich this
+    // row later with the abstract number + lat/lon that RRC's
+    // detail page carries but the search results don't.
+    let detailUrl: string | null = null
+    const leaseHref = $(tds[2]).find('a').attr('href')
+    if (leaseHref) {
+      // Result HREFs are relative (e.g.
+      // 'drillingPermitDetailAction.do?methodToCall=...'). Resolve
+      // against the EWA base so the detail fetch can use a full URL.
+      detailUrl = leaseHref.startsWith('http')
+        ? leaseHref
+        : `${BASE}/EWA/${leaseHref.replace(/^\//, '')}`
+    }
+
     permits.push({
       api_number: api,
       permit_number: permitNumber,
@@ -267,55 +293,239 @@ function parsePermitRows(html: string, countyFips: string): ParsedPermit[] {
       status,
       filed_date: submitted,
       approved_date: approved,
+      abstract_number: null,
+      latitude: null,
+      longitude: null,
+      detail_url: detailUrl,
     })
   })
   return permits
 }
 
+// Fetch a permit's detail page and extract the abstract number,
+// section, block, survey, and lat/lon. Returns null on any
+// failure so the permit still gets upserted with search-page
+// data. Called with a concurrency cap in enrichPermitsWithDetail
+// below.
+type PermitDetail = {
+  abstract_number: string | null
+  latitude: number | null
+  longitude: number | null
+}
+async function fetchPermitDetail(
+  detailUrl: string,
+  cookie: string,
+): Promise<PermitDetail | null> {
+  try {
+    const r = await fetch(detailUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': UA,
+        Accept: 'text/html',
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+      redirect: 'follow',
+      cache: 'no-store',
+    })
+    if (!r.ok) return null
+    const html = await r.text()
+    // Hidden input carries the abstract number as a plain integer
+    // ("274"). We normalize to a bare-digit string; the sidebar
+    // callers add the "A-" prefix themselves.
+    const absMatch = html.match(
+      /name="detailRecord\.abstractNumberHndlr\.inputValue"[^>]*value="([^"]+)"/i,
+    )
+    const abstract_number = absMatch ? cleanText(absMatch[1]) : null
+    // Lat/lon live in visible <b>Latitude:</b> / <b>Longitude:</b>
+    // spans. Values are plain decimals.
+    const latMatch = html.match(
+      /<b>\s*Latitude:\s*(?:&nbsp;)?\s*<\/b>\s*([-\d.]+)/i,
+    )
+    const lonMatch = html.match(
+      /<b>\s*Longitude:\s*(?:&nbsp;)?\s*<\/b>\s*([-\d.]+)/i,
+    )
+    const lat = latMatch ? Number(latMatch[1]) : NaN
+    const lon = lonMatch ? Number(lonMatch[1]) : NaN
+    return {
+      abstract_number,
+      latitude: Number.isFinite(lat) && lat >= -90 && lat <= 90 ? lat : null,
+      longitude: Number.isFinite(lon) && lon >= -180 && lon <= 180 ? lon : null,
+    }
+  } catch {
+    return null
+  }
+}
+
+// Enrich each permit with abstract_number + lat/lon from its
+// detail page. Skips permits that already have abstract_number
+// set (either from a prior compute pass or from a preceding
+// enrichment run — reduces credit / RRC load on repeat runs).
+// Concurrency cap of 4 balances throughput vs RRC-friendliness:
+// 12 counties x ~50 permits = ~600 detail fetches per run;
+// serialized would blow the 300s Vercel maxDuration.
+async function enrichPermitsWithDetail(
+  permits: ParsedPermit[],
+  cookie: string,
+  existingAbstracts: Map<string, string>,
+): Promise<{ enriched: number; skipped: number; failed: number }> {
+  const CONCURRENCY = 4
+  let enriched = 0
+  let skipped = 0
+  let failed = 0
+
+  // Filter: skip permits with no detail URL, and skip permits
+  // that already have an abstract in the DB from a prior run.
+  const queue = permits.filter((p) => {
+    if (!p.detail_url) return false
+    const priorAbstract = existingAbstracts.get(p.api_number)
+    if (priorAbstract) {
+      // Backfill the permit record with the prior abstract so the
+      // upsert doesn't null it out on the update path.
+      p.abstract_number = priorAbstract
+      skipped += 1
+      return false
+    }
+    return true
+  })
+
+  let idx = 0
+  const worker = async () => {
+    while (true) {
+      const my = idx++
+      if (my >= queue.length) return
+      const permit = queue[my]
+      const detail = await fetchPermitDetail(permit.detail_url!, cookie)
+      if (detail && (detail.abstract_number || detail.latitude !== null)) {
+        permit.abstract_number = detail.abstract_number
+        permit.latitude = detail.latitude
+        permit.longitude = detail.longitude
+        enriched += 1
+      } else {
+        failed += 1
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => worker()),
+  )
+  return { enriched, skipped, failed }
+}
+
 // Look up existing rows by api_number so we can decide insert vs
-// update. Same 1000-row paginated approach the Python scraper uses
-// to sidestep the JS client's default cap.
+// update. Also returns each row's existing abstract_number so
+// enrichPermitsWithDetail can skip permits that are already
+// resolved from a prior compute run or detail-fetch. Same 1000-row
+// paginated approach the Python scraper uses to sidestep the JS
+// client's default cap.
 async function existingByApi(
   supabase: LooseSupabase,
   table: string,
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>()
+): Promise<{
+  idByApi: Map<string, number>
+  abstractByApi: Map<string, string>
+}> {
+  const idByApi = new Map<string, number>()
+  const abstractByApi = new Map<string, string>()
   let lastId = 0
   while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select('id, api_number')
-      .gt('id', lastId)
-      .order('id', { ascending: true })
-      .limit(1000)
+    // Attempt with abstract_number; fall back to a smaller select
+    // if the county's permits table pre-dates Ticket 1.3.
+    let data:
+      | Array<{ id: number; api_number: string | null; abstract_number: string | null }>
+      | null = null
+    let error: { message: string } | null = null
+    {
+      const res = await supabase
+        .from(table)
+        .select('id, api_number, abstract_number')
+        .gt('id', lastId)
+        .order('id', { ascending: true })
+        .limit(1000)
+      data = (res.data as typeof data) ?? null
+      error = res.error ? { message: res.error.message } : null
+    }
+    if (error && /column .* does not exist/i.test(error.message)) {
+      const res = await supabase
+        .from(table)
+        .select('id, api_number')
+        .gt('id', lastId)
+        .order('id', { ascending: true })
+        .limit(1000)
+      data = ((res.data as Array<{ id: number; api_number: string | null }>) ?? []).map((r) => ({
+        ...r,
+        abstract_number: null,
+      }))
+      error = res.error ? { message: res.error.message } : null
+    }
     if (error) {
       const msg = error.message.toLowerCase()
       if (msg.includes('not find') || msg.includes('does not exist')) {
-        return new Map()
+        return { idByApi, abstractByApi }
       }
-      throw error
+      throw new Error(error.message)
     }
     if (!data || data.length === 0) break
-    for (const row of data as Array<{ id: number; api_number: string | null }>) {
+    for (const row of data) {
       const api = normalizeApi(row.api_number)
-      if (api && !out.has(api)) out.set(api, row.id)
+      if (!api) continue
+      if (!idByApi.has(api)) idByApi.set(api, row.id)
+      const abs = cleanText(row.abstract_number)
+      if (abs) abstractByApi.set(api, abs)
     }
-    lastId = (data[data.length - 1] as { id: number }).id
+    lastId = data[data.length - 1].id
     if (data.length < 1000) break
   }
-  return out
+  return { idByApi, abstractByApi }
+}
+
+// Strip fields that shouldn't be written to Supabase (`detail_url`
+// is scrape-only) and normalize null-vs-undefined for the writes.
+// Payload includes abstract_number + latitude + longitude which
+// are the tract-resolution fields the /permits page reads.
+function permitToPayload(row: ParsedPermit): Record<string, unknown> {
+  return {
+    api_number: row.api_number,
+    permit_number: row.permit_number,
+    operator_name: row.operator_name,
+    lease_name: row.lease_name,
+    county_code: row.county_code,
+    permit_type: row.permit_type,
+    status: row.status,
+    filed_date: row.filed_date,
+    approved_date: row.approved_date,
+    abstract_number: row.abstract_number,
+    latitude: row.latitude,
+    longitude: row.longitude,
+  }
+}
+
+// Minimal payload for update() retries against county tables whose
+// Ticket-1.3 schema hasn't landed (no abstract_number / latitude /
+// longitude columns). Same shape as the Python scraper's fallback.
+function permitToMinimalPayload(row: ParsedPermit): Record<string, unknown> {
+  return {
+    api_number: row.api_number,
+    permit_number: row.permit_number,
+    operator_name: row.operator_name,
+    lease_name: row.lease_name,
+    county_code: row.county_code,
+    permit_type: row.permit_type,
+    status: row.status,
+    filed_date: row.filed_date,
+    approved_date: row.approved_date,
+  }
 }
 
 async function upsertPermits(
   supabase: LooseSupabase,
   table: string,
   rows: ParsedPermit[],
+  idByApi: Map<string, number>,
 ): Promise<{ inserted: number; updated: number }> {
-  const existing = await existingByApi(supabase, table)
   const toInsert: ParsedPermit[] = []
   const toUpdate: Array<{ id: number; row: ParsedPermit }> = []
   for (const row of rows) {
-    const existingId = existing.get(row.api_number)
+    const existingId = idByApi.get(row.api_number)
     if (existingId !== undefined) {
       toUpdate.push({ id: existingId, row })
     } else {
@@ -325,12 +535,23 @@ async function upsertPermits(
   let inserted = 0
   const BATCH = 500
   for (let i = 0; i < toInsert.length; i += BATCH) {
-    const batch = toInsert.slice(i, i + BATCH)
+    const batch = toInsert.slice(i, i + BATCH).map(permitToPayload)
     const { error } = await supabase.from(table).insert(batch)
     if (error) {
       const msg = error.message.toLowerCase()
       if (msg.includes('not find') || msg.includes('does not exist')) {
         return { inserted: 0, updated: 0 }
+      }
+      // Column-mismatch fallback: retry with minimal payload.
+      if (
+        msg.includes('column') &&
+        (msg.includes('does not exist') || msg.includes('not find'))
+      ) {
+        const minimalBatch = toInsert.slice(i, i + BATCH).map(permitToMinimalPayload)
+        const retry = await supabase.from(table).insert(minimalBatch)
+        if (retry.error) throw retry.error
+        inserted += batch.length
+        continue
       }
       throw error
     }
@@ -338,27 +559,14 @@ async function upsertPermits(
   }
   let updated = 0
   for (const { id, row } of toUpdate) {
-    const { error } = await supabase.from(table).update(row).eq('id', id)
+    const { error } = await supabase.from(table).update(permitToPayload(row)).eq('id', id)
     if (error) {
-      // Silently retry with a minimum column set for counties whose
-      // permits schema predates the Ticket 1.3 columns.
       const msg = error.message.toLowerCase()
       if (
         msg.includes('column') &&
         (msg.includes('does not exist') || msg.includes('not find'))
       ) {
-        const minimal = {
-          api_number: row.api_number,
-          permit_number: row.permit_number,
-          operator_name: row.operator_name,
-          lease_name: row.lease_name,
-          county_code: row.county_code,
-          permit_type: row.permit_type,
-          status: row.status,
-          filed_date: row.filed_date,
-          approved_date: row.approved_date,
-        }
-        const retry = await supabase.from(table).update(minimal).eq('id', id)
+        const retry = await supabase.from(table).update(permitToMinimalPayload(row)).eq('id', id)
         if (retry.error) throw retry.error
       } else {
         throw error
@@ -376,6 +584,14 @@ type CountyReport = {
   parsed: number
   inserted: number
   updated: number
+  // Detail-enrichment counters. `resolved` = permits that ended
+  // this run with an abstract_number set (either freshly fetched
+  // from the detail page or inherited from a prior compute /
+  // enrichment run). Watching this % over time tells us how many
+  // brand-new permits are getting properly linked to tracts.
+  enriched?: number
+  skipped_enrich?: number
+  resolved?: number
   error?: string
 }
 
@@ -398,8 +614,25 @@ async function processCounty(
     if (rows.length === 0) {
       return { county, fips, parsed: 0, inserted: 0, updated: 0 }
     }
-    const { inserted, updated } = await upsertPermits(supabase, table, rows)
-    return { county, fips, parsed: rows.length, inserted, updated }
+    // Look up existing DB state ONCE per county so both the
+    // detail-enrichment skip check and the upsert insert/update
+    // split share the same view.
+    const { idByApi, abstractByApi } = await existingByApi(supabase, table)
+    const { enriched, skipped } = await enrichPermitsWithDetail(
+      rows,
+      cookie,
+      abstractByApi,
+    )
+    const { inserted, updated } = await upsertPermits(
+      supabase, table, rows, idByApi,
+    )
+    const resolved = rows.filter((r) => r.abstract_number).length
+    return {
+      county, fips,
+      parsed: rows.length,
+      inserted, updated,
+      enriched, skipped_enrich: skipped, resolved,
+    }
   } catch (exc) {
     return {
       county, fips, parsed: 0, inserted: 0, updated: 0,
