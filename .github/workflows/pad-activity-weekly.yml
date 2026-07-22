@@ -6,8 +6,8 @@ name: Pad activity weekly (rig → completion)
 # pad_activity_events, bumps propensity_score, tags CRM deals hot.
 #
 # Phase 2 (opt-in via workflow_dispatch): --enable-sentinel pulls
-# Sentinel-2 chips into Raw-Data/pad-imagery + pad_imagery_log.
-# Change+classify → events with before/after paths is next.
+# before/after Sentinel-2 chips, scores change, classifies signatures,
+# writes pad_change_log + pad_activity_events (with image paths).
 
 on:
   schedule:

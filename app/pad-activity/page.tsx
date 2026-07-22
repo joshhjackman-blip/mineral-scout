@@ -693,7 +693,7 @@ function ChipPanel({
           No satellite chip yet
           <br />
           <span style={{ fontSize: 11 }}>
-            Phase 1 uses RRC completions; imagery chips arrive in Phase 2
+            No chip yet — RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
           </span>
         </div>
       )}

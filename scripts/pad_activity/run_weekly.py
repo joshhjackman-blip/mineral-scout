@@ -9,8 +9,8 @@ Default path (Phase 1 — ships real signal today, no imagery needed):
   4. Bump propensity_score + tag CRM deals hot (completion signals)
 
 Optional (`--enable-sentinel`):
-  Pull Sentinel-2 chips for recent active pads (crop → Raw-Data/
-  pad-imagery → pad_imagery_log). Change+classify wiring is next.
+  Pull before/after Sentinel-2 chips → change score → classify →
+  pad_change_log + pad_activity_events (with before_path/after_path).
 
 Usage:
   python -m scripts.pad_activity.run_weekly --county howard,martin
@@ -39,10 +39,10 @@ from scripts.pad_activity.propagate import (  # noqa: E402
     upsert_events,
 )
 from scripts.pad_activity.rrc_bridge import detect_rrc_completions  # noqa: E402
+from scripts.pad_activity.imagery_detect import run_imagery_detection  # noqa: E402
 from scripts.pad_activity.sentinel import (  # noqa: E402
     PadTarget,
     plan_weekly_pull,
-    pull_chips,
 )
 
 
@@ -201,6 +201,8 @@ def main() -> int:
     total_events = 0
     total_bumps = 0
     total_chips = 0
+    total_pairs = 0
+    total_imagery_events = 0
 
     for county in counties:
         print(f"\n=== {county} ===", flush=True)
@@ -225,10 +227,8 @@ def main() -> int:
                     print(f"    e.g. {row['storage_key']}", flush=True)
                 if len(plan) > 5:
                     print(f"    … +{len(plan) - 5} more", flush=True)
-                if args.skip_rrc:
-                    continue
             else:
-                stats = pull_chips(
+                stats = run_imagery_detection(
                     client,
                     pull_targets,
                     week_end=dt.date.today(),
@@ -237,13 +237,18 @@ def main() -> int:
                     dry_run=args.dry_run,
                 )
                 print(
-                    f"  sentinel chips: attempted={stats['attempted']} "
-                    f"uploaded={stats['uploaded']} "
-                    f"no_scene={stats['skipped_no_scene']} "
+                    f"  sentinel: attempted={stats['attempted']} "
+                    f"pairs={stats['pairs_scored']} "
+                    f"major={stats['major_changes']} "
+                    f"events_written={stats['events_written']} "
+                    f"skipped={stats['skipped']} "
                     f"errors={stats['errors']}",
                     flush=True,
                 )
-                total_chips += stats["uploaded"]
+                total_chips += stats["chips_uploaded"]
+                total_pairs += stats["pairs_scored"]
+                total_imagery_events += stats["events_written"]
+                total_bumps += stats["propensity_bumps"]
 
         if args.skip_rrc:
             continue
@@ -266,7 +271,7 @@ def main() -> int:
 
         written = upsert_events(client, events, dry_run=args.dry_run)
         print(
-            f"  events written: {written:,} | "
+            f"  rrc events written: {written:,} | "
             f"propensity bumps: {bump_stats['propensity_bumps']:,} | "
             f"deals tagged hot: {bump_stats['deals_tagged_hot']:,}",
             flush=True,
@@ -275,8 +280,11 @@ def main() -> int:
         total_bumps += bump_stats["propensity_bumps"]
 
     print(
-        f"\nDone. events={total_events:,} propensity_bumps={total_bumps:,} "
-        f"chips_uploaded={total_chips:,}",
+        f"\nDone. rrc_events={total_events:,} "
+        f"imagery_events={total_imagery_events:,} "
+        f"pairs_scored={total_pairs:,} "
+        f"propensity_bumps={total_bumps:,} "
+        f"chips_uploaded≈{total_chips:,}",
         flush=True,
     )
     return 0

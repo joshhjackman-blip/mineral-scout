@@ -53,6 +53,7 @@ class ChipResult:
     height: int
     skipped: bool = False
     reason: str | None = None
+    rgb: np.ndarray | None = None
 
 
 def storage_key(county: str, pad: str, imagery_date: dt.date) -> str:
@@ -294,6 +295,22 @@ def chip_to_png_bytes(rgb: np.ndarray) -> bytes:
     return buf.getvalue()
 
 
+def png_bytes_to_rgb(png_bytes: bytes) -> np.ndarray:
+    try:
+        from PIL import Image  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            "Pillow is required to decode pad chips. pip install pillow"
+        ) from exc
+    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    return np.asarray(img, dtype=np.uint8)
+
+
+def download_chip_rgb(client: Any, storage_path: str) -> np.ndarray:
+    blob = client.storage.from_(STORAGE_BUCKET).download(storage_path)
+    return png_bytes_to_rgb(blob)
+
+
 def upload_chip(
     client: Any,
     *,
@@ -429,6 +446,7 @@ def pull_chip_for_target(
         scene_id=str(meta.get("scene_id") or scene.get("id") or ""),
         width=int(rgb.shape[1]),
         height=int(rgb.shape[0]),
+        rgb=rgb,
     )
 
 

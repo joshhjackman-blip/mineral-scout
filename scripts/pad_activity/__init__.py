@@ -6,10 +6,10 @@ Phase 1 ships:
   * Sentinel-2 chip pull + change/classify modules (scaffolded; opt-in)
   * Propensity bump + CRM hot-tag on completion-consistent events
 
-Phase 2a (landed): Sentinel chip crop → Raw-Data/pad-imagery +
-pad_imagery_log (--enable-sentinel).
-Phase 2b (next): week-over-week change + classify → events with
-before/after paths; calibrate thresholds on labeled RRC completions;
+Phase 2a: Sentinel chip crop → Raw-Data/pad-imagery + pad_imagery_log.
+Phase 2b: before/after change + classify → pad_change_log +
+pad_activity_events with before_path/after_path (--enable-sentinel).
+Phase 2c (later): calibrate thresholds on labeled RRC completions;
 optional high-res confirmation for ambiguous high-propensity pads.
 """
 
