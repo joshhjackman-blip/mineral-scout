@@ -324,36 +324,28 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
     `Range: 0-999` header that routes cleanly. Same total row count
     fetched; only the paging URL structure differs.
     """
-    full_columns = (
-        "id, permit_number, api_number, operator_name, lease_name, "
-        "latitude, longitude, permit_type, status, filed_date, approved_date, "
-        "spud_date, completion_date, abstract_number, permit_status"
-    )
-    minimal_columns = (
-        "id, permit_number, api_number, operator_name, lease_name, "
-        "latitude, longitude, permit_type, status, filed_date, approved_date"
-    )
-    columns = full_columns
+    # PGRST125 debug 2026-07-22: keyset AND .range() pagination
+    # both failed with the same URL-rejection error. Since the
+    # failure fires on the VERY FIRST call regardless of pagination
+    # flavor, the culprit is elsewhere — most likely the 15-column
+    # comma-separated select string ran afoul of Supabase's edge
+    # routing (URL length or some character-encoding edge case).
+    # Diagnostic swap: select("*") produces the shortest possible
+    # URL — just `?select=*`. If this works, the fix is to shorten
+    # the select list. If it still fails, the issue is upstream
+    # (RLS, project routing, etc.).
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
         try:
             result = (
                 client.table(table)
-                .select(columns)
+                .select("*")
                 .range(offset, offset + PAGE_SIZE - 1)
                 .execute()
             )
         except Exception as exc:
             message = str(exc).lower()
-            # A missing column error means the migration hasn't been
-            # applied yet — fall back to the pre-migration column set
-            # and retry from the same offset.
-            if "column" in message and columns == full_columns:
-                columns = minimal_columns
-                continue
-            # A missing table error means we don't ingest this county
-            # yet. Bail out with what we already have.
             if "relation" in message and "does not exist" in message:
                 return rows
             if "not find" in message and "table" in message:
@@ -367,7 +359,6 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
             break
         offset += PAGE_SIZE
         if offset >= 50_000:
-            # Safety cap; no county should ever have 50k+ permits.
             break
     return rows
 
@@ -442,35 +433,24 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
     with keyset pagination sometimes empties the first page against
     Gonzales's shape.
     """
-    full_cols = (
-        "api_number, latitude, longitude, well_status, well_type, "
-        "abstract, completion_date, operator_name, lease_name"
-    )
-    minimal_cols = (
-        "api_number, latitude, longitude, well_status, well_type, "
-        "completion_date, operator_name, lease_name"
-    )
-    # .range() offset pagination — same reason as paginate_permits:
-    # keyset .gt()+.order()+.limit() URLs triggered PGRST125 on
-    # Supabase's edge layer as of 2026-07-22.
-    columns = full_cols
+    # PGRST125 debug 2026-07-22: same treatment as paginate_permits.
+    # select("*") produces the shortest possible URL to isolate
+    # whether the long comma-separated column list was tripping
+    # Supabase's edge routing. Wells tables average ~9 columns of
+    # 5-15 chars each with lots of metadata — payload cost is a
+    # small (~2x) increase over the selective form.
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
         try:
             result = (
                 client.table(table)
-                .select(columns)
+                .select("*")
                 .range(offset, offset + PAGE_SIZE - 1)
                 .execute()
             )
         except Exception as exc:
             message = str(exc).lower()
-            # Missing column -> retry with the county-agnostic subset.
-            if "column" in message and "does not exist" in message and columns == full_cols:
-                columns = minimal_cols
-                continue
-            # Missing table -> bail out with what we have.
             if "relation" in message and "does not exist" in message:
                 return rows
             if "not find" in message and "table" in message:
@@ -484,8 +464,6 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
             break
         offset += PAGE_SIZE
         if offset >= 100_000:
-            # Safety cap; per-county wells tables can be 15-20k rows
-            # but should never exceed 100k.
             break
     return [
         r for r in rows
