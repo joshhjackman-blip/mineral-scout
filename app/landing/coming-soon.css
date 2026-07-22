@@ -1,0 +1,247 @@
+/* Coming-soon homepage — TRDDATA-style poster, Mineral Map brand colors */
+
+.cs-root {
+  --cs-blue: #2563EB;
+  --cs-blue-deep: #1D4ED8;
+  --cs-navy: #0B2A5C;
+  --cs-amber: #EF9F27;
+  --cs-white: #FFFFFF;
+  --cs-ink: #0A0A0A;
+  --cs-display: var(--font-barlow-condensed), 'Arial Narrow', sans-serif;
+  --cs-sans: Geist, system-ui, sans-serif;
+
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: linear-gradient(145deg, var(--cs-blue) 0%, var(--cs-blue-deep) 55%, #1E40AF 100%);
+  color: var(--cs-white);
+  font-family: var(--cs-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Soft atmospheric wash — not the hero idea, just depth */
+.cs-root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 18% 42%, rgba(255, 255, 255, 0.10), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 78% 70%, rgba(11, 42, 92, 0.28), transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.cs-nav {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 36px;
+}
+
+.cs-brand-mark {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  text-decoration: none;
+  font-family: var(--cs-display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.cs-brand-mark span:first-child {
+  color: var(--cs-white);
+}
+
+.cs-brand-mark span:last-child {
+  color: var(--cs-amber);
+}
+
+.cs-login {
+  color: var(--cs-white);
+  text-decoration: none;
+  font-family: var(--cs-sans);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 8px 4px;
+  border-bottom: 1px solid transparent;
+  transition: border-color 180ms ease, opacity 180ms ease;
+}
+
+.cs-login:hover {
+  border-bottom-color: rgba(255, 255, 255, 0.85);
+  opacity: 0.95;
+}
+
+.cs-stage {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  align-items: center;
+  min-height: calc(100dvh - 72px);
+  padding: 0 6vw 4vh;
+  gap: 2vw;
+}
+
+.cs-copy {
+  max-width: 14ch;
+}
+
+.cs-headline {
+  margin: 0;
+  font-family: var(--cs-display);
+  font-weight: 800;
+  font-size: clamp(64px, 12.5vw, 148px);
+  line-height: 0.88;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--cs-white);
+}
+
+.cs-headline .cs-map {
+  color: var(--cs-ink);
+  display: block;
+}
+
+.cs-subhead {
+  margin: 0.18em 0 0;
+  font-family: var(--cs-display);
+  font-weight: 800;
+  font-size: clamp(40px, 7.5vw, 92px);
+  line-height: 0.9;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  color: var(--cs-white);
+}
+
+.cs-rig {
+  position: relative;
+  width: 100%;
+  height: min(86vh, 820px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.cs-rig svg {
+  width: min(100%, 620px);
+  height: auto;
+  max-height: 86vh;
+  overflow: visible;
+}
+
+/* Motion */
+@keyframes cs-rise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cs-rig-in {
+  from {
+    opacity: 0;
+    transform: translateX(48px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes cs-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(0.6deg);
+  }
+}
+
+.cs-copy .cs-headline {
+  animation: cs-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cs-copy .cs-subhead {
+  animation: cs-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) 140ms both;
+}
+
+.cs-nav {
+  animation: cs-rise 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cs-rig {
+  animation: cs-rig-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) 180ms both;
+  transform-origin: 70% 100%;
+}
+
+.cs-rig-sway {
+  transform-origin: 55% 100%;
+  animation: cs-sway 7s ease-in-out 1.2s infinite;
+}
+
+@media (max-width: 860px) {
+  .cs-nav {
+    padding: 18px 20px;
+  }
+
+  .cs-stage {
+    grid-template-columns: 1fr;
+    align-content: center;
+    min-height: calc(100dvh - 64px);
+    padding: 8vh 7vw 0;
+    gap: 0;
+  }
+
+  .cs-copy {
+    max-width: none;
+    position: relative;
+    z-index: 2;
+  }
+
+  .cs-headline {
+    font-size: clamp(56px, 18vw, 96px);
+  }
+
+  .cs-subhead {
+    font-size: clamp(36px, 11vw, 64px);
+  }
+
+  .cs-rig {
+    position: absolute;
+    right: -8%;
+    bottom: 0;
+    width: 78%;
+    height: 58vh;
+    opacity: 0.92;
+    z-index: 1;
+  }
+
+  .cs-rig svg {
+    width: 100%;
+    max-height: 58vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-copy .cs-headline,
+  .cs-copy .cs-subhead,
+  .cs-nav,
+  .cs-rig,
+  .cs-rig-sway {
+    animation: none;
+  }
+}
