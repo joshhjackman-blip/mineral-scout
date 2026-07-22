@@ -129,33 +129,43 @@ function adminClient() {
 async function signPaths(
   supabase: NonNullable<ReturnType<typeof adminClient>>,
   events: PadActivityEvent[],
-  maxPaths = 60,
+  maxPaths = 120,
 ): Promise<Record<string, string>> {
-  const signed: Record<string, string> = {}
-  const paths = Array.from(
-    new Set(
-      events.flatMap((e) => {
-        const raw = (e.raw || {}) as Record<string, unknown>
-        const hires =
-          typeof raw.hires_path === 'string' && raw.hires_path
-            ? [raw.hires_path]
-            : []
-        return [e.before_path, e.after_path, ...hires].filter(Boolean) as string[]
-      }),
-    ),
-  )
-  for (const path of paths.slice(0, maxPaths)) {
-    try {
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from('Raw-Data')
-        .createSignedUrl(path, 60 * 60)
-      if (!signErr && signedData?.signedUrl) {
-        signed[path] = signedData.signedUrl
+  // Prioritize Sentinel before/after so the main chip pair never loses
+  // signed-URL slots to optional hi-res paths.
+  const sentinelPaths: string[] = []
+  const hiresPaths: string[] = []
+  const seen = new Set<string>()
+  for (const e of events) {
+    for (const p of [e.before_path, e.after_path]) {
+      if (p && !seen.has(p)) {
+        seen.add(p)
+        sentinelPaths.push(p)
       }
-    } catch {
-      // ignore missing objects
+    }
+    const hp = (e.raw as { hires_path?: unknown } | null | undefined)?.hires_path
+    if (typeof hp === 'string' && hp && !seen.has(hp)) {
+      seen.add(hp)
+      hiresPaths.push(hp)
     }
   }
+  const paths = [...sentinelPaths, ...hiresPaths].slice(0, maxPaths)
+
+  const signed: Record<string, string> = {}
+  await Promise.all(
+    paths.map(async (path) => {
+      try {
+        const { data: signedData, error: signErr } = await supabase.storage
+          .from('Raw-Data')
+          .createSignedUrl(path, 60 * 60)
+        if (!signErr && signedData?.signedUrl) {
+          signed[path] = signedData.signedUrl
+        }
+      } catch {
+        // ignore missing objects
+      }
+    }),
+  )
   return signed
 }
 

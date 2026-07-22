@@ -1,8 +1,9 @@
-"""Phase 2c — NAIP (~60 cm) hi-res confirmation chips.
+"""Phase 2c — hi-res confirmation chips for Needs Review pads.
 
-Pulls USDA NAIP aerial imagery from Microsoft Planetary Computer for
-pads that landed as AMBIGUOUS (Needs Review). Same storage layout as
-Sentinel chips, with a `_hires.png` suffix and source=`naip`.
+Primary (when MAPBOX_TOKEN / NEXT_PUBLIC_MAPBOX_TOKEN is set):
+  Mapbox Satellite static API — current composite imagery.
+Fallback:
+  USDA NAIP via Planetary Computer (~60 cm, often 2–4 years old in TX).
 
   python -m scripts.pad_activity.hires --county howard --event-id 123
   # or from weekly: --enable-hires
@@ -32,8 +33,44 @@ from .sentinel import (
 )
 
 
-def hires_storage_key(county: str, pad: str, imagery_date: dt.date) -> str:
-    return f"pad-imagery/{county}/{pad}/{imagery_date.isoformat()}_hires.png"
+def hires_storage_key(
+    county: str, pad: str, imagery_date: dt.date, source: str = "naip"
+) -> str:
+    safe = source.replace("/", "_")
+    return f"pad-imagery/{county}/{pad}/{imagery_date.isoformat()}_{safe}.png"
+
+
+def _mapbox_token() -> str | None:
+    import os
+
+    return os.environ.get("MAPBOX_TOKEN") or os.environ.get("NEXT_PUBLIC_MAPBOX_TOKEN")
+
+
+def pull_mapbox_chip(lon: float, lat: float) -> tuple[bytes, dt.date]:
+    """Current Mapbox Satellite static chip (JPEG/PNG bytes from API → PNG)."""
+    import urllib.request
+
+    token = _mapbox_token()
+    if not token:
+        raise RuntimeError("MAPBOX_TOKEN missing")
+    url = (
+        "https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/"
+        f"{lon:.6f},{lat:.6f},17,0/512x512@2x"
+        f"?access_token={token}"
+    )
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        raw = resp.read()
+    # Re-encode via pillow path used elsewhere.
+    rgb = png_bytes_to_rgb(raw) if raw[:8] == b"\x89PNG\r\n\x1a\n" else None
+    if rgb is None:
+        from PIL import Image  # type: ignore
+        import io
+
+        img = Image.open(io.BytesIO(raw)).convert("RGB").resize((512, 512))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        return buf.getvalue(), dt.date.today()
+    return chip_to_png_bytes(rgb), dt.date.today()
 
 
 def search_naip(
@@ -129,20 +166,45 @@ def pull_hires_for_target(
     *,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    scene = search_naip(target.longitude, target.latitude)
-    if not scene:
-        return {"ok": False, "reason": "no_naip_scene"}
-    raw_dt = scene.get("datetime") or ""
-    try:
-        imagery_date = dt.datetime.fromisoformat(
-            str(raw_dt).replace("Z", "+00:00")
-        ).date()
-    except ValueError:
+    source = "naip"
+    item_id = ""
+    label = ""
+    png: bytes
+    imagery_date: dt.date
+
+    # Prefer current Mapbox satellite when a token is available.
+    if _mapbox_token():
+        try:
+            png, imagery_date = pull_mapbox_chip(target.longitude, target.latitude)
+            source = "mapbox-satellite"
+            item_id = "mapbox-satellite-17"
+            label = "Mapbox Satellite · current"
+        except Exception as exc:
+            print(f"  mapbox hires failed, falling back to NAIP: {exc}", flush=True)
+            png = b""
+            imagery_date = dt.date.today()
+    else:
+        png = b""
         imagery_date = dt.date.today()
 
-    rgb = crop_naip_chip(target.longitude, target.latitude, scene["href"])
-    png = chip_to_png_bytes(rgb)
-    path = hires_storage_key(target.county_id, pad_id(target), imagery_date)
+    if not png:
+        scene = search_naip(target.longitude, target.latitude)
+        if not scene:
+            return {"ok": False, "reason": "no_hires_scene"}
+        raw_dt = scene.get("datetime") or ""
+        try:
+            imagery_date = dt.datetime.fromisoformat(
+                str(raw_dt).replace("Z", "+00:00")
+            ).date()
+        except ValueError:
+            imagery_date = dt.date.today()
+        rgb = crop_naip_chip(target.longitude, target.latitude, scene["href"])
+        png = chip_to_png_bytes(rgb)
+        source = "naip"
+        item_id = str(scene["id"])
+        label = f"NAIP survey · {imagery_date.isoformat()[:4]} (latest flight)"
+
+    path = hires_storage_key(target.county_id, pad_id(target), imagery_date, source)
     upload_chip(client, storage_path=path, png_bytes=png, dry_run=dry_run)
 
     if not dry_run:
@@ -154,14 +216,14 @@ def pull_hires_for_target(
             "imagery_date": imagery_date.isoformat(),
             "cloud_cover": None,
             "storage_path": path,
-            "source": "naip",
+            "source": source,
         }
         q = (
             client.table("pad_imagery_log")
             .delete()
             .eq("county_id", target.county_id)
             .eq("imagery_date", imagery_date.isoformat())
-            .eq("source", "naip")
+            .eq("source", source)
         )
         if target.api_number:
             q = q.eq("api_number", target.api_number)
@@ -174,8 +236,10 @@ def pull_hires_for_target(
         "ok": True,
         "storage_path": path,
         "imagery_date": imagery_date.isoformat(),
-        "item_id": scene["id"],
-        "source": "naip",
+        "item_id": item_id,
+        "source": source,
+        "label": label,
+        "stale_survey": source == "naip",
     }
 
 
@@ -201,8 +265,10 @@ def stamp_event_hires(
     meta = {
         "hires_path": result["storage_path"],
         "hires_date": result["imagery_date"],
-        "hires_source": "naip",
+        "hires_source": result.get("source") or "naip",
+        "hires_label": result.get("label") or "",
         "hires_item_id": result.get("item_id"),
+        "hires_stale_survey": bool(result.get("stale_survey")),
         "hires_requested_at": dt.datetime.utcnow().isoformat() + "Z",
         "hires_from_event_id": event_id,
         "latitude": lat,

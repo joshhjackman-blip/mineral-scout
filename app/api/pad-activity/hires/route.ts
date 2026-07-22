@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import {
   hiresStoragePath,
   padKeyFromEvent,
-  pullNaipChip,
-} from '@/lib/naip-hires'
+  pullHiresChip,
+} from '@/lib/pad-hires'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -49,10 +49,10 @@ async function resolveCoords(
 
 /**
  * POST /api/pad-activity/hires
- * Body: { event_id: number }
+ * Body: { event_id: number, force?: boolean }
  *
- * Pulls a NAIP (~60 cm) chip for the pad, stores it in Raw-Data, and
- * stamps sibling Ambiguous events with raw.hires_path for the review UI.
+ * Pulls current Mapbox Satellite (preferred) or NAIP survey fallback,
+ * stores PNG in Raw-Data, stamps sibling events with raw.hires_*.
  */
 export async function POST(request: NextRequest) {
   const supabase = adminClient()
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  let body: { event_id?: number }
+  let body: { event_id?: number; force?: boolean }
   try {
     body = await request.json()
   } catch {
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
   }
 
   const eventId = Number(body.event_id)
+  const force = Boolean(body.force)
   if (!eventId) {
     return NextResponse.json(
       { success: false, data: null, error: 'event_id required' },
@@ -97,8 +98,15 @@ export async function POST(request: NextRequest) {
   }
 
   const existingRaw = (seed.raw as Record<string, unknown>) || {}
-  if (typeof existingRaw.hires_path === 'string' && existingRaw.hires_path) {
-    // Idempotent — already have a chip; return signed URL.
+  const existingSource = String(existingRaw.hires_source || '')
+  // Reuse cache only for current Mapbox pulls — never stick on stale NAIP.
+  const cacheOk =
+    !force &&
+    typeof existingRaw.hires_path === 'string' &&
+    existingRaw.hires_path &&
+    existingSource === 'mapbox-satellite'
+
+  if (cacheOk) {
     const { data: signedData } = await supabase.storage
       .from('Raw-Data')
       .createSignedUrl(String(existingRaw.hires_path), 60 * 60)
@@ -107,6 +115,8 @@ export async function POST(request: NextRequest) {
       data: {
         hires_path: existingRaw.hires_path,
         hires_date: existingRaw.hires_date ?? null,
+        hires_source: existingSource,
+        hires_label: existingRaw.hires_label ?? null,
         signed_url: signedData?.signedUrl ?? null,
         cached: true,
       },
@@ -130,22 +140,27 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  let chip: Awaited<ReturnType<typeof pullNaipChip>>
+  let chip: Awaited<ReturnType<typeof pullHiresChip>>
   try {
-    chip = await pullNaipChip(coords.lon, coords.lat)
+    chip = await pullHiresChip(coords.lon, coords.lat)
   } catch (err) {
     return NextResponse.json(
       {
         success: false,
         data: null,
-        error: err instanceof Error ? err.message : 'NAIP pull failed',
+        error: err instanceof Error ? err.message : 'Hi-res pull failed',
       },
       { status: 502 },
     )
   }
 
   const padKey = padKeyFromEvent(seed)
-  const storagePath = hiresStoragePath(seed.county_id, padKey, chip.imageryDate)
+  const storagePath = hiresStoragePath(
+    seed.county_id,
+    padKey,
+    chip.imageryDate,
+    chip.source,
+  )
 
   const { error: upErr } = await supabase.storage.from('Raw-Data').upload(storagePath, chip.png, {
     contentType: 'image/png',
@@ -158,14 +173,13 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Best-effort imagery log (same table as Sentinel chips).
   try {
     let del = supabase
       .from('pad_imagery_log')
       .delete()
       .eq('county_id', seed.county_id)
       .eq('imagery_date', chip.imageryDate)
-      .eq('source', 'naip')
+      .eq('source', chip.source)
     if (seed.api_number) del = del.eq('api_number', seed.api_number)
     else if (seed.rrc_lease_id) del = del.eq('rrc_lease_id', seed.rrc_lease_id)
     await del
@@ -177,7 +191,7 @@ export async function POST(request: NextRequest) {
       imagery_date: chip.imageryDate,
       cloud_cover: null,
       storage_path: storagePath,
-      source: 'naip',
+      source: chip.source,
     })
   } catch {
     // Soft-fail — chip is already in Storage.
@@ -186,15 +200,16 @@ export async function POST(request: NextRequest) {
   const hiresMeta = {
     hires_path: storagePath,
     hires_date: chip.imageryDate,
-    hires_source: 'naip',
+    hires_source: chip.source,
+    hires_label: chip.label,
     hires_item_id: chip.itemId,
+    hires_stale_survey: chip.isStaleSurvey,
     hires_requested_at: new Date().toISOString(),
     hires_from_event_id: eventId,
     latitude: coords.lat,
     longitude: coords.lon,
   }
 
-  // Stamp siblings (same pad/week/source) so every owner card sees the chip.
   let q = supabase
     .from('pad_activity_events')
     .select('id,raw')
@@ -225,7 +240,9 @@ export async function POST(request: NextRequest) {
     data: {
       hires_path: storagePath,
       hires_date: chip.imageryDate,
-      hires_source: 'naip',
+      hires_source: chip.source,
+      hires_label: chip.label,
+      hires_stale_survey: chip.isStaleSurvey,
       signed_url: signedData?.signedUrl ?? null,
       updated,
       cached: false,

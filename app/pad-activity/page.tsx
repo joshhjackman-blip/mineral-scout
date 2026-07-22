@@ -175,14 +175,14 @@ export default function PadActivityPage() {
   )
 
   const requestHires = useCallback(
-    async (eventId: number) => {
+    async (eventId: number, force = false) => {
       setHiresLoadingId(eventId)
       setError(null)
       try {
         const res = await fetch('/api/pad-activity/hires', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event_id: eventId }),
+          body: JSON.stringify({ event_id: eventId, force }),
         })
         const json = await res.json()
         if (!json?.success) {
@@ -426,6 +426,16 @@ export default function PadActivityPage() {
                   typeof sample.raw?.hires_date === 'string'
                     ? sample.raw.hires_date
                     : null
+                const hiresLabel =
+                  typeof sample.raw?.hires_label === 'string'
+                    ? sample.raw.hires_label
+                    : hiresDate
+                      ? `Hi-res · ${hiresDate}`
+                      : 'Hi-res'
+                const hiresSource = String(sample.raw?.hires_source || '')
+                const hiresIsStale =
+                  Boolean(sample.raw?.hires_stale_survey) ||
+                  hiresSource === 'naip'
                 const canRequestHires =
                   sample.signature === 'AMBIGUOUS' &&
                   Boolean(
@@ -504,7 +514,7 @@ export default function PadActivityPage() {
                         <ChipPanel
                           label="Hi-res"
                           url={hiresUrl}
-                          subtitle={`NAIP · 60 cm${hiresDate ? ` · ${hiresDate}` : ''}`}
+                          subtitle={hiresLabel}
                           borderLeft
                           crisp
                         />
@@ -537,17 +547,32 @@ export default function PadActivityPage() {
                             <button
                               type="button"
                               disabled={hiresLoadingId === sample.id}
-                              onClick={() => void requestHires(sample.id)}
+                              onClick={() => void requestHires(sample.id, false)}
                               style={reviewBtnStyle('#0F766E')}
-                              title="Pull USDA NAIP (~60 cm) aerial chip for this pad"
+                              title="Pull current satellite chip for this pad (Mapbox)"
                             >
-                              {hiresLoadingId === sample.id ? 'Pulling NAIP…' : 'Request hi-res'}
+                              {hiresLoadingId === sample.id ? 'Pulling hi-res…' : 'Request hi-res'}
                             </button>
                           )}
                           {hiresUrl && (
-                            <span style={{ fontSize: 11, fontWeight: 600, color: '#0F766E' }}>
-                              Hi-res ready{hiresDate ? ` · ${hiresDate}` : ''}
-                            </span>
+                            <>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: hiresIsStale ? '#B45309' : '#0F766E' }}>
+                                {hiresIsStale
+                                  ? `Survey aerial ${hiresDate || ''} — may predate this event`
+                                  : `Hi-res ready · current`}
+                              </span>
+                              {canRequestHires && (
+                                <button
+                                  type="button"
+                                  disabled={hiresLoadingId === sample.id}
+                                  onClick={() => void requestHires(sample.id, true)}
+                                  style={reviewBtnStyle('#0F766E')}
+                                  title="Re-pull current Mapbox satellite (replaces stale NAIP)"
+                                >
+                                  {hiresLoadingId === sample.id ? 'Refreshing…' : 'Refresh hi-res'}
+                                </button>
+                              )}
+                            </>
                           )}
                           {beforeUrl && afterUrl && (
                             <>
@@ -881,7 +906,7 @@ function ChipPanel({
         }}
       >
         {label}
-        <span style={{ fontWeight: 500, marginLeft: 6, color: crisp ? '#0F766E' : '#CBD5E1' }}>
+        <span style={{ fontWeight: 500, marginLeft: 6, color: crisp ? '#0F766E' : '#64748B' }}>
           {subtitle}
         </span>
       </div>
