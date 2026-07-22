@@ -1,0 +1,6 @@
+# Pad-activity weekly job (Phase 1 RRC + Phase 2 Sentinel chips)
+supabase<2.15
+numpy>=1.26
+pystac-client>=0.7
+rasterio>=1.3,<2
+pillow>=10

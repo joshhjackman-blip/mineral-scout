@@ -9,13 +9,13 @@ Default path (Phase 1 — ships real signal today, no imagery needed):
   4. Bump propensity_score + tag CRM deals hot (completion signals)
 
 Optional (`--enable-sentinel`):
-  Plan / pull Sentinel-2 chips, run change+classify, write pad_change_log.
-  Chip crop is still stubbed — this flag validates STAC connectivity and
-  pad targeting until rasterio crop lands in Phase 2.
+  Pull Sentinel-2 chips for recent active pads (crop → Raw-Data/
+  pad-imagery → pad_imagery_log). Change+classify wiring is next.
 
 Usage:
   python -m scripts.pad_activity.run_weekly --county howard,martin
   python -m scripts.pad_activity.run_weekly --county howard --dry-run
+  python -m scripts.pad_activity.run_weekly --county howard --enable-sentinel --max-chips 10
   python -m scripts.pad_activity.run_weekly --county howard --enable-sentinel --plan-only
 """
 
@@ -39,7 +39,11 @@ from scripts.pad_activity.propagate import (  # noqa: E402
     upsert_events,
 )
 from scripts.pad_activity.rrc_bridge import detect_rrc_completions  # noqa: E402
-from scripts.pad_activity.sentinel import PadTarget, plan_weekly_pull  # noqa: E402
+from scripts.pad_activity.sentinel import (  # noqa: E402
+    PadTarget,
+    plan_weekly_pull,
+    pull_chips,
+)
 
 
 ACTIVE_DEFAULT = ("howard", "martin")
@@ -56,7 +60,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--enable-sentinel",
         action="store_true",
-        help="Also plan/pull Sentinel-2 chips (Phase 2 path)",
+        help="Pull Sentinel-2 pad chips into Raw-Data/pad-imagery",
     )
     p.add_argument(
         "--plan-only",
@@ -64,12 +68,45 @@ def parse_args() -> argparse.Namespace:
         help="With --enable-sentinel, only print the pull plan",
     )
     p.add_argument(
+        "--max-chips",
+        type=int,
+        default=25,
+        help="Max Sentinel chips to pull per county (default 25)",
+    )
+    p.add_argument(
+        "--sentinel-lookback-days",
+        type=int,
+        default=14,
+        help="STAC search window ending today (default 14)",
+    )
+    p.add_argument(
         "--lookback-days",
         type=int,
         default=90,
         help="RRC activity lookback window in days (default 90)",
     )
+    p.add_argument(
+        "--skip-rrc",
+        action="store_true",
+        help="Skip Phase-1 RRC bridge (imagery-only run)",
+    )
     return p.parse_args()
+
+
+def _coord_pair(row: dict) -> tuple[float, float] | None:
+    lat, lon = row.get("latitude"), row.get("longitude")
+    if lat is None or lon is None:
+        return None
+    try:
+        lat_f, lon_f = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return None
+    if lat_f == 0 and lon_f == 0:
+        return None
+    # Rough Permian bounds — drop obvious junk coords.
+    if not (29.0 <= lat_f <= 34.5 and -105.5 <= lon_f <= -100.0):
+        return None
+    return lat_f, lon_f
 
 
 def _wells_as_pad_targets(client, county: str) -> list[PadTarget]:
@@ -80,21 +117,70 @@ def _wells_as_pad_targets(client, county: str) -> list[PadTarget]:
     )
     targets: list[PadTarget] = []
     for r in rows:
-        lat, lon = r.get("latitude"), r.get("longitude")
-        if lat is None or lon is None:
+        coords = _coord_pair(r)
+        if not coords:
             continue
-        try:
-            lat_f, lon_f = float(lat), float(lon)
-        except (TypeError, ValueError):
-            continue
-        if lat_f == 0 and lon_f == 0:
-            continue
+        lat_f, lon_f = coords
         targets.append(
             PadTarget(
                 county_id=county,
                 api_number=str(r.get("api_number") or "") or None,
                 rrc_lease_id=str(r.get("rrc_lease_id") or "") or None,
                 abstract_number=str(r.get("abstract") or "") or None,
+                latitude=lat_f,
+                longitude=lon_f,
+                lease_name=str(r.get("lease_name") or "") or None,
+                operator_name=str(r.get("operator_name") or "") or None,
+            )
+        )
+    return targets
+
+
+def _active_pad_targets(client, county: str, lookback_days: int) -> list[PadTarget]:
+    """Prefer pads with recent permit activity + coords (smaller pull set)."""
+    cutoff = dt.date.today() - dt.timedelta(days=lookback_days)
+    rows = paginate_table(
+        client,
+        f"{county}_permits",
+        "api_number,abstract_number,latitude,longitude,lease_name,operator_name,"
+        "approved_date,filed_date,spud_date,completion_date",
+    )
+    seen: set[str] = set()
+    targets: list[PadTarget] = []
+
+    def _parse(raw: object) -> dt.date | None:
+        if raw is None:
+            return None
+        text = str(raw).strip()[:10]
+        try:
+            return dt.date.fromisoformat(text)
+        except ValueError:
+            return None
+
+    for r in rows:
+        dates = [
+            _parse(r.get("completion_date")),
+            _parse(r.get("spud_date")),
+            _parse(r.get("approved_date")),
+            _parse(r.get("filed_date")),
+        ]
+        if not any(d and d >= cutoff for d in dates):
+            continue
+        coords = _coord_pair(r)
+        if not coords:
+            continue
+        lat_f, lon_f = coords
+        api = str(r.get("api_number") or "").strip() or None
+        key = api or f"{lat_f:.5f},{lon_f:.5f}"
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(
+            PadTarget(
+                county_id=county,
+                api_number=api,
+                rrc_lease_id=None,
+                abstract_number=str(r.get("abstract_number") or "") or None,
                 latitude=lat_f,
                 longitude=lon_f,
                 lease_name=str(r.get("lease_name") or "") or None,
@@ -114,26 +200,53 @@ def main() -> int:
     client = make_client()
     total_events = 0
     total_bumps = 0
+    total_chips = 0
 
     for county in counties:
         print(f"\n=== {county} ===", flush=True)
 
         if args.enable_sentinel:
-            targets = _wells_as_pad_targets(client, county)
-            print(f"  pad targets with coords: {len(targets):,}", flush=True)
-            plan = plan_weekly_pull(targets, week_end=dt.date.today())
+            # Plan against the full well inventory; pull only recent-active pads.
+            all_targets = _wells_as_pad_targets(client, county)
+            active_targets = _active_pad_targets(
+                client, county, lookback_days=args.lookback_days
+            )
+            pull_targets = active_targets or all_targets
+            print(
+                f"  pad targets: wells_with_coords={len(all_targets):,} "
+                f"recent_active={len(active_targets):,} "
+                f"pull_queue={min(len(pull_targets), args.max_chips):,}",
+                flush=True,
+            )
+            plan = plan_weekly_pull(pull_targets, week_end=dt.date.today())
             print(f"  sentinel pull plan rows: {len(plan):,}", flush=True)
             if args.plan_only:
                 for row in plan[:5]:
                     print(f"    e.g. {row['storage_key']}", flush=True)
                 if len(plan) > 5:
                     print(f"    … +{len(plan) - 5} more", flush=True)
-                continue
-            print(
-                "  sentinel chip crop is stubbed — skipping imagery write. "
-                "RRC bridge still runs below.",
-                flush=True,
-            )
+                if args.skip_rrc:
+                    continue
+            else:
+                stats = pull_chips(
+                    client,
+                    pull_targets,
+                    week_end=dt.date.today(),
+                    lookback_days=args.sentinel_lookback_days,
+                    max_chips=args.max_chips,
+                    dry_run=args.dry_run,
+                )
+                print(
+                    f"  sentinel chips: attempted={stats['attempted']} "
+                    f"uploaded={stats['uploaded']} "
+                    f"no_scene={stats['skipped_no_scene']} "
+                    f"errors={stats['errors']}",
+                    flush=True,
+                )
+                total_chips += stats["uploaded"]
+
+        if args.skip_rrc:
+            continue
 
         events = detect_rrc_completions(
             client, county, lookback_days=args.lookback_days
@@ -145,7 +258,6 @@ def main() -> int:
         bump_stats = bump_propensity_and_tag_deals(
             client, events, dry_run=args.dry_run
         )
-        # propensity_bump stamped onto events before upsert
         for ev in events:
             if ev.get("signature") in {"COMPLETION_CREW", "RRC_COMPLETION"} and ev.get(
                 "owner_name"
@@ -163,7 +275,8 @@ def main() -> int:
         total_bumps += bump_stats["propensity_bumps"]
 
     print(
-        f"\nDone. events={total_events:,} propensity_bumps={total_bumps:,}",
+        f"\nDone. events={total_events:,} propensity_bumps={total_bumps:,} "
+        f"chips_uploaded={total_chips:,}",
         flush=True,
     )
     return 0
