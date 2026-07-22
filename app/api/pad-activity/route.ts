@@ -129,12 +129,19 @@ function adminClient() {
 async function signPaths(
   supabase: NonNullable<ReturnType<typeof adminClient>>,
   events: PadActivityEvent[],
-  maxPaths = 40,
+  maxPaths = 60,
 ): Promise<Record<string, string>> {
   const signed: Record<string, string> = {}
   const paths = Array.from(
     new Set(
-      events.flatMap((e) => [e.before_path, e.after_path].filter(Boolean) as string[]),
+      events.flatMap((e) => {
+        const raw = (e.raw || {}) as Record<string, unknown>
+        const hires =
+          typeof raw.hires_path === 'string' && raw.hires_path
+            ? [raw.hires_path]
+            : []
+        return [e.before_path, e.after_path, ...hires].filter(Boolean) as string[]
+      }),
     ),
   )
   for (const path of paths.slice(0, maxPaths)) {

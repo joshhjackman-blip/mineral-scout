@@ -38,6 +38,7 @@ type PadEvent = {
   created_at: string
   latitude?: number | null
   longitude?: number | null
+  raw?: Record<string, unknown> | null
 }
 
 function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'latitude' | 'longitude' | 'owner_name'>): string {
@@ -45,7 +46,8 @@ function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'l
   params.set('county', ev.county_id)
   if (ev.abstract_number) {
     params.set('abstract', ev.abstract_number)
-  } else if (
+  }
+  if (
     ev.latitude != null &&
     ev.longitude != null &&
     Number.isFinite(ev.latitude) &&
@@ -93,6 +95,7 @@ export default function PadActivityPage() {
   const [countyFilter, setCountyFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [reviewingId, setReviewingId] = useState<number | null>(null)
+  const [hiresLoadingId, setHiresLoadingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -166,6 +169,31 @@ export default function PadActivityPage() {
         setError(err instanceof Error ? err.message : 'Review failed')
       } finally {
         setReviewingId(null)
+      }
+    },
+    [load],
+  )
+
+  const requestHires = useCallback(
+    async (eventId: number) => {
+      setHiresLoadingId(eventId)
+      setError(null)
+      try {
+        const res = await fetch('/api/pad-activity/hires', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: eventId }),
+        })
+        const json = await res.json()
+        if (!json?.success) {
+          setError(json?.error || 'Hi-res request failed')
+          return
+        }
+        await load()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Hi-res request failed')
+      } finally {
+        setHiresLoadingId(null)
       }
     },
     [load],
@@ -389,6 +417,21 @@ export default function PadActivityPage() {
                 }
                 const beforeUrl = sample.before_path ? signed[sample.before_path] : null
                 const afterUrl = sample.after_path ? signed[sample.after_path] : null
+                const hiresPath =
+                  typeof sample.raw?.hires_path === 'string'
+                    ? sample.raw.hires_path
+                    : null
+                const hiresUrl = hiresPath ? signed[hiresPath] || null : null
+                const hiresDate =
+                  typeof sample.raw?.hires_date === 'string'
+                    ? sample.raw.hires_date
+                    : null
+                const canRequestHires =
+                  sample.signature === 'AMBIGUOUS' &&
+                  Boolean(
+                    (sample.latitude != null && sample.longitude != null) ||
+                      sample.api_number,
+                  )
                 const open = expanded[sample.id] ?? owners.length > 0
                 const countyName = COUNTIES[sample.county_id]?.name || sample.county_id
                 const pct = Math.round((sample.confidence || 0) * 100)
@@ -449,14 +492,23 @@ export default function PadActivityPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
+                        gridTemplateColumns: hiresUrl ? '1fr 1fr 1.15fr' : '1fr 1fr',
                         gap: 0,
                         borderBottom: '1px solid #F3F4F6',
                         background: '#F8FAFC',
                       }}
                     >
-                      <ChipPanel label="Before" url={beforeUrl} />
-                      <ChipPanel label="After" url={afterUrl} borderLeft />
+                      <ChipPanel label="Before" url={beforeUrl} subtitle="Sentinel-2 · 10 m" />
+                      <ChipPanel label="After" url={afterUrl} subtitle="Sentinel-2 · 10 m" borderLeft />
+                      {hiresUrl && (
+                        <ChipPanel
+                          label="Hi-res"
+                          url={hiresUrl}
+                          subtitle={`NAIP · 60 cm${hiresDate ? ` · ${hiresDate}` : ''}`}
+                          borderLeft
+                          crisp
+                        />
+                      )}
                     </div>
 
                     <div style={{ padding: '14px 16px' }}>
@@ -464,7 +516,7 @@ export default function PadActivityPage() {
                         {sample.summary}
                       </p>
 
-                      {sample.signature === 'AMBIGUOUS' && beforeUrl && afterUrl && (
+                      {sample.signature === 'AMBIGUOUS' && (
                         <div
                           style={{
                             marginTop: 12,
@@ -481,32 +533,54 @@ export default function PadActivityPage() {
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
                             Human review
                           </span>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'COMPLETION_CREW')}
-                            style={reviewBtnStyle('#059669')}
-                          >
-                            Confirm completion
-                          </button>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'RIG_MOVE_IN')}
-                            style={reviewBtnStyle('#7C3AED')}
-                          >
-                            Confirm rig / pad
-                          </button>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'NON_RELEVANT')}
-                            style={reviewBtnStyle('#6B7280')}
-                          >
-                            Not relevant
-                          </button>
-                          {reviewingId === sample.id && (
-                            <span style={{ fontSize: 11, color: '#92400E' }}>Saving…</span>
+                          {canRequestHires && !hiresUrl && (
+                            <button
+                              type="button"
+                              disabled={hiresLoadingId === sample.id}
+                              onClick={() => void requestHires(sample.id)}
+                              style={reviewBtnStyle('#0F766E')}
+                              title="Pull USDA NAIP (~60 cm) aerial chip for this pad"
+                            >
+                              {hiresLoadingId === sample.id ? 'Pulling NAIP…' : 'Request hi-res'}
+                            </button>
+                          )}
+                          {hiresUrl && (
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#0F766E' }}>
+                              Hi-res ready{hiresDate ? ` · ${hiresDate}` : ''}
+                            </span>
+                          )}
+                          {beforeUrl && afterUrl && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'COMPLETION_CREW')}
+                                style={reviewBtnStyle('#059669')}
+                              >
+                                Confirm completion
+                              </button>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'RIG_MOVE_IN')}
+                                style={reviewBtnStyle('#7C3AED')}
+                              >
+                                Confirm rig / pad
+                              </button>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'NON_RELEVANT')}
+                                style={reviewBtnStyle('#6B7280')}
+                              >
+                                Not relevant
+                              </button>
+                            </>
+                          )}
+                          {(reviewingId === sample.id || hiresLoadingId === sample.id) && (
+                            <span style={{ fontSize: 11, color: '#92400E' }}>
+                              {hiresLoadingId === sample.id ? 'Fetching aerial…' : 'Saving…'}
+                            </span>
                           )}
                         </div>
                       )}
@@ -775,10 +849,15 @@ function ChipPanel({
   label,
   url,
   borderLeft,
+  subtitle = 'Sentinel-2 · 10 m',
+  crisp = false,
 }: {
   label: string
   url: string | null
   borderLeft?: boolean
+  subtitle?: string
+  /** NAIP chips are sharp enough — don't force pixelated upscale. */
+  crisp?: boolean
 }) {
   return (
     <div
@@ -802,8 +881,8 @@ function ChipPanel({
         }}
       >
         {label}
-        <span style={{ fontWeight: 500, marginLeft: 6, color: '#CBD5E1' }}>
-          Sentinel-2 · 10 m
+        <span style={{ fontWeight: 500, marginLeft: 6, color: crisp ? '#0F766E' : '#CBD5E1' }}>
+          {subtitle}
         </span>
       </div>
       {url ? (
@@ -815,7 +894,7 @@ function ChipPanel({
             width: '100%',
             height: 220,
             objectFit: 'contain',
-            imageRendering: 'pixelated',
+            imageRendering: crisp ? 'auto' : 'pixelated',
             background: '#0F172A',
           }}
         />

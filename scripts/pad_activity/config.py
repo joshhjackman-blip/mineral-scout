@@ -40,3 +40,10 @@ STORAGE_PREFIX = "pad-imagery"
 # Element84 Earth Search STAC (free Sentinel-2).
 STAC_API_URL = "https://earth-search.aws.element84.com/v1"
 STAC_COLLECTION = "sentinel-2-l2a"
+
+# Phase 2c — NAIP hi-res confirmation (Microsoft Planetary Computer).
+# ~60 cm GSD aerial imagery for the continental US; no paid API key.
+HIRES_STAC_API_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
+HIRES_STAC_COLLECTION = "naip"
+HIRES_CHIP_SIZE_PX = 512
+HIRES_PAD_BUFFER_M = 120

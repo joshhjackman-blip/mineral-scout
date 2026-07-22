@@ -34,6 +34,14 @@ on:
         description: 'Max Sentinel chips per county when enable_sentinel=true'
         required: false
         default: '25'
+      enable_hires:
+        description: 'If true, pull NAIP (~60cm) hi-res chips for AMBIGUOUS pads'
+        required: false
+        default: 'false'
+      max_hires:
+        description: 'Max NAIP chips per county when enable_hires=true'
+        required: false
+        default: '10'
 
 concurrency:
   group: pad-activity-weekly
@@ -67,10 +75,15 @@ jobs:
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
           SENTINEL="${{ github.event.inputs.enable_sentinel || 'false' }}"
           MAX_CHIPS="${{ github.event.inputs.max_chips || '25' }}"
+          HIRES="${{ github.event.inputs.enable_hires || 'false' }}"
+          MAX_HIRES="${{ github.event.inputs.max_hires || '10' }}"
           EXTRA=""
           if [ "$DRY" = "true" ]; then EXTRA="$EXTRA --dry-run"; fi
           if [ "$SENTINEL" = "true" ]; then
             EXTRA="$EXTRA --enable-sentinel --max-chips $MAX_CHIPS"
+          fi
+          if [ "$HIRES" = "true" ]; then
+            EXTRA="$EXTRA --enable-hires --max-hires $MAX_HIRES"
           fi
           python -m scripts.pad_activity.run_weekly \
             --county "$COUNTIES" \
