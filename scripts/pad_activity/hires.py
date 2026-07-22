@@ -29,6 +29,7 @@ from .sentinel import (
     PadTarget,
     chip_to_png_bytes,
     pad_id,
+    png_bytes_to_rgb,
     upload_chip,
 )
 

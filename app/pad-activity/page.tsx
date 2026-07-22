@@ -415,11 +415,13 @@ export default function PadActivityPage() {
                   label: sample.signature,
                   color: '#6B7280',
                 }
-                const beforeUrl = sample.before_path ? signed[sample.before_path] : null
-                const afterUrl = sample.after_path ? signed[sample.after_path] : null
+                const beforeKey = sample.before_path?.replace(/^\/+/, '').trim() || null
+                const afterKey = sample.after_path?.replace(/^\/+/, '').trim() || null
+                const beforeUrl = beforeKey ? signed[beforeKey] || null : null
+                const afterUrl = afterKey ? signed[afterKey] || null : null
                 const hiresPath =
                   typeof sample.raw?.hires_path === 'string'
-                    ? sample.raw.hires_path
+                    ? sample.raw.hires_path.replace(/^\/+/, '').trim()
                     : null
                 const hiresUrl = hiresPath ? signed[hiresPath] || null : null
                 const hiresDate =
@@ -508,8 +510,27 @@ export default function PadActivityPage() {
                         background: '#F8FAFC',
                       }}
                     >
-                      <ChipPanel label="Before" url={beforeUrl} subtitle="Sentinel-2 · 10 m" />
-                      <ChipPanel label="After" url={afterUrl} subtitle="Sentinel-2 · 10 m" borderLeft />
+                      <ChipPanel
+                        label="Before"
+                        url={beforeUrl}
+                        subtitle="Sentinel-2 · 10 m"
+                        missingHint={
+                          beforeKey
+                            ? 'Chip path on file but URL failed to sign — re-check Storage'
+                            : 'No before chip yet (run weekly with --enable-sentinel)'
+                        }
+                      />
+                      <ChipPanel
+                        label="After"
+                        url={afterUrl}
+                        subtitle="Sentinel-2 · 10 m"
+                        borderLeft
+                        missingHint={
+                          afterKey
+                            ? 'Chip path on file but URL failed to sign — re-check Storage'
+                            : 'No after chip yet (run weekly with --enable-sentinel)'
+                        }
+                      />
                       {hiresUrl && (
                         <ChipPanel
                           label="Hi-res"
@@ -876,14 +897,21 @@ function ChipPanel({
   borderLeft,
   subtitle = 'Sentinel-2 · 10 m',
   crisp = false,
+  missingHint,
 }: {
   label: string
   url: string | null
   borderLeft?: boolean
   subtitle?: string
-  /** NAIP chips are sharp enough — don't force pixelated upscale. */
+  /** Hi-res chips are sharp enough — don't force pixelated upscale. */
   crisp?: boolean
+  missingHint?: string
 }) {
+  const [broken, setBroken] = useState(false)
+  useEffect(() => {
+    setBroken(false)
+  }, [url])
+
   return (
     <div
       style={{
@@ -910,11 +938,12 @@ function ChipPanel({
           {subtitle}
         </span>
       </div>
-      {url ? (
+      {url && !broken ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={url}
           alt={`${label} pad chip`}
+          onError={() => setBroken(true)}
           style={{
             width: '100%',
             height: 220,
@@ -939,10 +968,13 @@ function ChipPanel({
             background: '#F8FAFC',
           }}
         >
-          No satellite chip yet
+          {broken ? 'Image failed to load' : 'No satellite chip yet'}
           <br />
           <span style={{ fontSize: 11 }}>
-            RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
+            {broken
+              ? 'Signed URL expired or object missing in Storage'
+              : missingHint ||
+                'RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths'}
           </span>
         </div>
       )}

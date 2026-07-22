@@ -138,34 +138,45 @@ async function signPaths(
   const seen = new Set<string>()
   for (const e of events) {
     for (const p of [e.before_path, e.after_path]) {
-      if (p && !seen.has(p)) {
-        seen.add(p)
-        sentinelPaths.push(p)
+      // Normalize: Storage keys should not start with '/'
+      const path = typeof p === 'string' ? p.replace(/^\/+/, '').trim() : ''
+      if (path && !seen.has(path)) {
+        seen.add(path)
+        sentinelPaths.push(path)
       }
     }
     const hp = (e.raw as { hires_path?: unknown } | null | undefined)?.hires_path
-    if (typeof hp === 'string' && hp && !seen.has(hp)) {
-      seen.add(hp)
-      hiresPaths.push(hp)
+    if (typeof hp === 'string' && hp) {
+      const path = hp.replace(/^\/+/, '').trim()
+      if (path && !seen.has(path)) {
+        seen.add(path)
+        hiresPaths.push(path)
+      }
     }
   }
   const paths = [...sentinelPaths, ...hiresPaths].slice(0, maxPaths)
 
+  // Sign in small batches — blasting 100+ parallel createSignedUrl calls
+  // was silently failing on Supabase and leaving Sentinel chips blank.
   const signed: Record<string, string> = {}
-  await Promise.all(
-    paths.map(async (path) => {
-      try {
-        const { data: signedData, error: signErr } = await supabase.storage
-          .from('Raw-Data')
-          .createSignedUrl(path, 60 * 60)
-        if (!signErr && signedData?.signedUrl) {
-          signed[path] = signedData.signedUrl
+  const BATCH = 8
+  for (let i = 0; i < paths.length; i += BATCH) {
+    const chunk = paths.slice(i, i + BATCH)
+    await Promise.all(
+      chunk.map(async (path) => {
+        try {
+          const { data: signedData, error: signErr } = await supabase.storage
+            .from('Raw-Data')
+            .createSignedUrl(path, 60 * 60)
+          if (!signErr && signedData?.signedUrl) {
+            signed[path] = signedData.signedUrl
+          }
+        } catch {
+          // ignore missing objects
         }
-      } catch {
-        // ignore missing objects
-      }
-    }),
-  )
+      }),
+    )
+  }
   return signed
 }
 
