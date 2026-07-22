@@ -116,8 +116,9 @@
   pointer-events: none;
 }
 
-.cs-rig svg {
-  width: min(100%, 620px);
+.cs-rig svg,
+.cs-pumpjack {
+  width: min(100%, 640px);
   height: auto;
   max-height: 86vh;
   overflow: visible;
@@ -146,13 +147,24 @@
   }
 }
 
-@keyframes cs-sway {
+/* Walking beam nod — horse head dips toward the wellhead */
+@keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(0deg);
+    transform: rotate(-16deg);
   }
   50% {
-    transform: rotate(0.6deg);
+    transform: rotate(16deg);
+  }
+}
+
+/* Crank / counterweight spin — same period as the nod */
+@keyframes cs-pump-crank {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -173,9 +185,14 @@
   transform-origin: 70% 100%;
 }
 
-.cs-rig-sway {
-  transform-origin: 55% 100%;
-  animation: cs-sway 7s ease-in-out 1.2s infinite;
+.cs-pump-beam {
+  transform-origin: 0 0;
+  animation: cs-pump-nod 2.8s ease-in-out 0.9s infinite;
+}
+
+.cs-pump-crank {
+  transform-origin: 0 0;
+  animation: cs-pump-crank 2.8s linear 0.9s infinite;
 }
 
 @media (max-width: 860px) {
@@ -226,7 +243,8 @@
   .cs-copy .cs-subhead,
   .cs-nav,
   .cs-rig,
-  .cs-rig-sway {
+  .cs-pump-beam,
+  .cs-pump-crank {
     animation: none;
   }
 }
