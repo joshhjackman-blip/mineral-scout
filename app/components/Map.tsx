@@ -334,6 +334,20 @@ export default function Map({
   // APPROVED permits (blue) can hide the teal noise, and vice versa.
   const [showSubmittedGlow, setShowSubmittedGlow] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
+  // Refs so applyTractCountyStyles (which force-sets parcel layer
+  // visibility on status toggles) can honor the current halo toggles
+  // instead of always flipping blue/teal back to visible.
+  const showPermitGlowRef = useRef(showPermitGlow)
+  const showSubmittedGlowRef = useRef(showSubmittedGlow)
+  useEffect(() => {
+    showPermitGlowRef.current = showPermitGlow
+  }, [showPermitGlow])
+  useEffect(() => {
+    showSubmittedGlowRef.current = showSubmittedGlow
+  }, [showSubmittedGlow])
+  // Bumped whenever county parcel FeatureCollections finish loading so
+  // the focusTarget zoom effect can retry after async geojson fetch.
+  const [parcelsVersion, setParcelsVersion] = useState(0)
   // Latest devStatusByAbstract in a ref so the setupTractLevel closure
   // (memoized on countyEntries only) still sees fresh data.
   const devStatusByAbstractRef = useRef(devStatusByAbstract ?? {})
@@ -730,9 +744,24 @@ export default function Map({
         mapInstance.setPaintProperty(outlineId, 'line-opacity', 0.92)
         for (const suffix of parcelLayerSuffixes) {
           const layerId = `${suffix}-${countyConfig.id}`
-          if (mapInstance.getLayer(layerId)) {
-            mapInstance.setLayoutProperty(layerId, 'visibility', 'visible')
+          if (!mapInstance.getLayer(layerId)) continue
+          // Status toggles null lastStyledSelectedCountyRef and re-run
+          // this first-pass path. Previously every suffix was forced
+          // 'visible', which re-enabled blue/teal halos after the user
+          // had turned them off. Honor the overlay toggles here.
+          let visibility: 'visible' | 'none' = 'visible'
+          if (
+            suffix === 'parcels-permit-glow-outer' ||
+            suffix === 'parcels-permit-glow-core'
+          ) {
+            visibility = showPermitGlowRef.current ? 'visible' : 'none'
+          } else if (
+            suffix === 'parcels-permit-submitted-outer' ||
+            suffix === 'parcels-permit-submitted-core'
+          ) {
+            visibility = showSubmittedGlowRef.current ? 'visible' : 'none'
           }
+          mapInstance.setLayoutProperty(layerId, 'visibility', visibility)
         }
       } else {
         for (const suffix of parcelLayerSuffixes) {
@@ -1405,6 +1434,10 @@ export default function Map({
     parcelsByCounty.forEach(([countyKey, geojson]) => {
       injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
+    })
+    // Signal that parcel features are ready for focusTarget fitBounds.
+    setParcelsVersion((v) => v + 1)
+    parcelsByCounty.forEach(([countyKey, geojson]) => {
       const countyConfig = COUNTIES[countyKey]
       const sourceId = `parcels-${countyConfig.id}`
       const fillId = `parcels-fill-${countyConfig.id}`
@@ -2147,28 +2180,65 @@ export default function Map({
         }
       }
     }
-  }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries])
+  }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
     if (!focusTarget || !map.current?.isStyleLoaded()) return
 
     const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
-    const selectedAbstract = String(focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? '').trim()
-    const selectedSurvey = String(focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '').trim()
-    if (!selectedAbstract || !selectedSurvey) return
+    if (features.length === 0) return
 
-    const matched = features.find((feature) => {
-      const props = (feature.properties ?? {}) as Record<string, unknown>
-      const featureAbstract = String(props.abstract_label ?? props.ABSTRACT_L ?? '').trim()
-      const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '').trim()
-      return featureAbstract === selectedAbstract && featureSurvey === selectedSurvey
-    })
+    const normalizeAbstract = (raw: unknown) =>
+      String(raw ?? '')
+        .replace(/^A-\s*/i, '')
+        .trim()
+        .toUpperCase()
+
+    const selectedAbstract = normalizeAbstract(
+      focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
+    )
+    if (!selectedAbstract) return
+
+    const selectedSurvey = String(
+      focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
+    )
+      .trim()
+      .toUpperCase()
+
+    // Prefer abstract + survey when both sides have survey; otherwise
+    // match on bare abstract alone. Howard/Martin map geojson often has
+    // LEVEL1_SUR = null, and the old `!selectedSurvey` early-return meant
+    // deep-links from /pad-activity never fitBounds.
+    const matched =
+      features.find((feature) => {
+        const props = (feature.properties ?? {}) as Record<string, unknown>
+        const featureAbstract = normalizeAbstract(
+          props.abstract_label ?? props.ABSTRACT_L ?? props.CODE,
+        )
+        if (featureAbstract !== selectedAbstract) return false
+        if (!selectedSurvey) return true
+        const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '')
+          .trim()
+          .toUpperCase()
+        return !featureSurvey || featureSurvey === selectedSurvey
+      }) ??
+      features.find((feature) => {
+        const props = (feature.properties ?? {}) as Record<string, unknown>
+        return (
+          normalizeAbstract(props.abstract_label ?? props.ABSTRACT_L ?? props.CODE) ===
+          selectedAbstract
+        )
+      })
 
     if (matched?.geometry) {
-      fitGeometry(map.current, matched.geometry)
+      fitGeometry(map.current, matched.geometry, {
+        padding: 80,
+        maxZoom: 15,
+        duration: 900,
+      })
     }
-  }, [focusTarget, mapLevel, selectedCounty])
+  }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
