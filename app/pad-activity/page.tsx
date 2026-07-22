@@ -6,7 +6,14 @@
 // scan activity → expand leads → call / open on map / CRM.
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react'
 import AppLogo from '@/app/components/AppLogo'
 import { COUNTIES } from '@/lib/counties'
 
@@ -65,6 +72,7 @@ export default function PadActivityPage() {
   const [signatureFilter, setSignatureFilter] = useState<string>('all')
   const [countyFilter, setCountyFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const [reviewingId, setReviewingId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,6 +119,36 @@ export default function PadActivityPage() {
         e.signature === 'COMPLETION_CREW' || e.signature === 'RRC_COMPLETION',
       ).length,
     [events],
+  )
+
+  const reviewCount = useMemo(
+    () => events.filter((e) => e.signature === 'AMBIGUOUS' && e.before_path && e.after_path).length,
+    [events],
+  )
+
+  const submitReview = useCallback(
+    async (eventId: number, decision: 'COMPLETION_CREW' | 'RIG_MOVE_IN' | 'NON_RELEVANT') => {
+      setReviewingId(eventId)
+      setError(null)
+      try {
+        const res = await fetch('/api/pad-activity/review', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: eventId, decision }),
+        })
+        const json = await res.json()
+        if (!json?.success) {
+          setError(json?.error || 'Review failed')
+          return
+        }
+        await load()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Review failed')
+      } finally {
+        setReviewingId(null)
+      }
+    },
+    [load],
   )
 
   // Group events by pad key so one card can list multiple owners.
@@ -265,6 +303,12 @@ export default function PadActivityPage() {
               label="Crew (imagery)"
               color="#059669"
             />
+            <Chip
+              active={signatureFilter === 'AMBIGUOUS'}
+              onClick={() => setSignatureFilter('AMBIGUOUS')}
+              label={reviewCount > 0 ? `Needs review (${reviewCount})` : 'Needs review'}
+              color="#D97706"
+            />
           </FilterGroup>
         </div>
 
@@ -390,6 +434,53 @@ export default function PadActivityPage() {
                       <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: '#1F2937' }}>
                         {sample.summary}
                       </p>
+
+                      {sample.signature === 'AMBIGUOUS' && beforeUrl && afterUrl && (
+                        <div
+                          style={{
+                            marginTop: 12,
+                            padding: '10px 12px',
+                            borderRadius: 8,
+                            background: '#FFFBEB',
+                            border: '1px solid #FDE68A',
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: 8,
+                            alignItems: 'center',
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
+                            Human review
+                          </span>
+                          <button
+                            type="button"
+                            disabled={reviewingId === sample.id}
+                            onClick={() => void submitReview(sample.id, 'COMPLETION_CREW')}
+                            style={reviewBtnStyle('#059669')}
+                          >
+                            Confirm completion
+                          </button>
+                          <button
+                            type="button"
+                            disabled={reviewingId === sample.id}
+                            onClick={() => void submitReview(sample.id, 'RIG_MOVE_IN')}
+                            style={reviewBtnStyle('#7C3AED')}
+                          >
+                            Confirm rig / pad
+                          </button>
+                          <button
+                            type="button"
+                            disabled={reviewingId === sample.id}
+                            onClick={() => void submitReview(sample.id, 'NON_RELEVANT')}
+                            style={reviewBtnStyle('#6B7280')}
+                          >
+                            Not relevant
+                          </button>
+                          {reviewingId === sample.id && (
+                            <span style={{ fontSize: 11, color: '#92400E' }}>Saving…</span>
+                          )}
+                        </div>
+                      )}
 
                       <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <button
@@ -638,6 +729,19 @@ function Chip({
   )
 }
 
+function reviewBtnStyle(color: string): CSSProperties {
+  return {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '6px 10px',
+    borderRadius: 6,
+    border: `1px solid ${color}`,
+    background: '#FFFFFF',
+    color,
+    cursor: 'pointer',
+  }
+}
+
 function ChipPanel({
   label,
   url,
@@ -651,9 +755,10 @@ function ChipPanel({
     <div
       style={{
         borderLeft: borderLeft ? '1px solid #E5E7EB' : undefined,
-        minHeight: 160,
+        minHeight: 240,
         display: 'flex',
         flexDirection: 'column',
+        background: '#0F172A',
       }}
     >
       <div
@@ -664,22 +769,32 @@ function ChipPanel({
           letterSpacing: 0.5,
           textTransform: 'uppercase',
           color: '#94A3B8',
+          background: '#F8FAFC',
         }}
       >
         {label}
+        <span style={{ fontWeight: 500, marginLeft: 6, color: '#CBD5E1' }}>
+          Sentinel-2 · 10 m
+        </span>
       </div>
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={url}
           alt={`${label} pad chip`}
-          style={{ width: '100%', height: 140, objectFit: 'cover', imageRendering: 'pixelated' }}
+          style={{
+            width: '100%',
+            height: 220,
+            objectFit: 'contain',
+            imageRendering: 'pixelated',
+            background: '#0F172A',
+          }}
         />
       ) : (
         <div
           style={{
             flex: 1,
-            minHeight: 140,
+            minHeight: 220,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -688,12 +803,13 @@ function ChipPanel({
             fontSize: 12,
             color: '#94A3B8',
             lineHeight: 1.4,
+            background: '#F8FAFC',
           }}
         >
           No satellite chip yet
           <br />
           <span style={{ fontSize: 11 }}>
-            No chip yet — RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
+            RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
           </span>
         </div>
       )}

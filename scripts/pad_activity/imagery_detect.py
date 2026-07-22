@@ -205,14 +205,22 @@ def detect_pad_change(
         dry_run=dry_run,
     )
 
-    if change.classification != "MAJOR_CHANGE":
+    # NO_CHANGE stays log-only. MINOR_CHANGE always enters the human
+    # review queue as AMBIGUOUS (more photo sets for brokers to triage).
+    # MAJOR_CHANGE goes through the classifier as before.
+    if change.classification == "NO_CHANGE":
         result["status"] = "logged_no_event"
         return result
 
     sig = classify_signature(before.rgb, after.rgb, change.metrics)
-    if sig.signature == "NON_RELEVANT":
+    signature = sig.signature
+    confidence = sig.confidence
+    if change.classification == "MINOR_CHANGE":
+        signature = "AMBIGUOUS"
+        confidence = min(confidence, 0.55)
+    elif signature == "NON_RELEVANT":
         result["status"] = "major_non_relevant"
-        result["signature"] = sig.signature
+        result["signature"] = signature
         return result
 
     event = {
@@ -223,11 +231,11 @@ def detect_pad_change(
         "owner_name": None,
         "lease_name": target.lease_name,
         "operator_name": target.operator_name,
-        "signature": sig.signature,
-        "confidence": sig.confidence,
+        "signature": signature,
+        "confidence": confidence,
         "change_score": change.change_score,
         "summary": summary_for_signature(
-            sig.signature, sig.confidence, lease_name=target.lease_name
+            signature, confidence, lease_name=target.lease_name
         ),
         "before_path": before.storage_path,
         "after_path": after.storage_path,
@@ -237,12 +245,14 @@ def detect_pad_change(
         "raw": {
             "features": sig.features,
             "metrics": change.metrics,
+            "change_classification": change.classification,
+            "needs_review": signature == "AMBIGUOUS",
             "before_date": before.imagery_date.isoformat(),
             "after_date": after.imagery_date.isoformat(),
         },
     }
     result["status"] = "event"
-    result["signature"] = sig.signature
+    result["signature"] = signature
     result["event"] = event
     return result
 
@@ -289,11 +299,13 @@ def run_imagery_detection(
             if status == "event":
                 stats["chips_uploaded"] += 2  # before+after (approx)
                 stats["pairs_scored"] += 1
-                stats["major_changes"] += 1
+                if out.get("classification") == "MAJOR_CHANGE":
+                    stats["major_changes"] += 1
                 stats["events"] += 1
                 events.append(out["event"])
                 print(
                     f"    EVENT {out['pad_id']}: {out['signature']} "
+                    f"({out.get('classification')}) "
                     f"score={out.get('change_score', 0):.3f} "
                     f"{out['before_path']} → {out['after_path']}",
                     flush=True,
