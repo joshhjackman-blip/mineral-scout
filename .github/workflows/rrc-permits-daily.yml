@@ -82,9 +82,16 @@ jobs:
         # for the adjacency + point-in-polygon logic. supabase-py
         # for DB writes. pyshp so the wells-zip lateral loader can
         # feed the infill-gap detection.
+        #
+        # supabase-py pinned to <2.15 as of 2026-07-22. The 2.31
+        # release generates request URLs Supabase's edge-routing
+        # layer rejects with PGRST125 'Invalid path specified in
+        # request URL'. Same error was blocking scrape_rrc_permits.py
+        # earlier this week. 2.14.x has been stable for us across
+        # multiple prior compute runs.
         run: |
           python -m pip install --upgrade pip
-          pip install supabase pyshp geopandas shapely
+          pip install 'supabase<2.15' pyshp geopandas shapely
 
       - name: Recompute tract_development_status
         # Reclassifies every abstract now that fresh permits landed

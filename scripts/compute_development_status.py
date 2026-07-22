@@ -1154,8 +1154,16 @@ def main() -> None:
         try:
             process_county(client, county, args)
         except Exception as exc:
-            # Never let one county tank the whole cron run.
+            # Never let one county tank the whole cron run — but do
+            # print the full traceback so we can see where PGRST /
+            # network / Supabase errors are actually landing. The
+            # previous plain-`str(exc)` output was too terse to
+            # diagnose PGRST125 with (which surfaces as a bare
+            # {'code':'PGRST125','message':'Invalid path...'} dict
+            # with no stack context).
+            import traceback
             print(f"  ERROR processing {county}: {exc}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
 
 
 if __name__ == "__main__":
