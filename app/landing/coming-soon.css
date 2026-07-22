@@ -68,15 +68,18 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  align-items: center;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr);
+  align-items: end;
   min-height: calc(100dvh - 72px);
-  padding: 0 6vw 4vh;
-  gap: 2vw;
+  padding: 0 3vw 0 6vw;
+  gap: 0;
 }
 
 .cs-copy {
   max-width: 14ch;
+  padding-bottom: 12vh;
+  position: relative;
+  z-index: 2;
 }
 
 .cs-headline {
@@ -109,18 +112,19 @@
 .cs-rig {
   position: relative;
   width: 100%;
-  height: min(86vh, 820px);
+  height: min(96vh, 980px);
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   pointer-events: none;
+  margin-right: -4vw;
 }
 
 .cs-rig svg,
 .cs-pumpjack {
-  width: min(100%, 640px);
+  width: min(118%, 920px);
   height: auto;
-  max-height: 86vh;
+  max-height: 96vh;
   overflow: visible;
 }
 
@@ -222,19 +226,25 @@
     font-size: clamp(36px, 11vw, 64px);
   }
 
+  .cs-copy {
+    padding-bottom: 4vh;
+  }
+
   .cs-rig {
     position: absolute;
-    right: -8%;
+    right: -14%;
     bottom: 0;
-    width: 78%;
-    height: 58vh;
-    opacity: 0.92;
+    width: 92%;
+    height: 62vh;
+    margin-right: 0;
+    opacity: 0.95;
     z-index: 1;
   }
 
-  .cs-rig svg {
+  .cs-rig svg,
+  .cs-pumpjack {
     width: 100%;
-    max-height: 58vh;
+    max-height: 62vh;
   }
 }
 

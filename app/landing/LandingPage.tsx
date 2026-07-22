@@ -13,87 +13,150 @@ const display = Barlow_Condensed({
 })
 
 /**
- * Cartoon oil pumpjack silhouette — same bold black poster style as the
- * old derrick, with a nodding walking beam + spinning crank counterweight.
- *
- * Moving parts are wrapped in translate → animate → untranslate groups so
- * CSS rotate origins stay reliable across browsers.
+ * Cartoon oil pumpjack — bold black poster silhouette of a classic
+ * "nodding donkey": long walking beam, curved horse head, tall A-frame,
+ * curved crank counterweights. Moving parts use translate → animate →
+ * untranslate so CSS rotate origins stay reliable.
  */
 function PumpjackSilhouette() {
+  // Pivot: walking beam / samson pin
+  const beamX = 360
+  const beamY = 250
+  // Crank hub center
+  const crankX = 560
+  const crankY = 520
+
   return (
     <svg
-      viewBox="0 0 640 720"
+      viewBox="40 40 720 680"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
       className="cs-pumpjack"
     >
-      {/* Ground pad */}
+      {/* Ground shadow / pad */}
+      <ellipse cx="400" cy="690" rx="320" ry="22" fill="#0A0A0A" opacity="0.22" />
       <path
         fill="#0A0A0A"
-        d="M36 678h568l-22 28H58l-22-28Zm48-34h472l14 34H70l14-34Z"
+        d="M80 655h640l-28 32H108l-28-32Z"
       />
 
-      {/* Concrete skid / base */}
-      <path fill="#0A0A0A" d="M120 620h400v28H120z" />
-      <path fill="#0A0A0A" d="M160 596h320v24H160z" />
+      {/* Skid base */}
+      <path fill="#0A0A0A" d="M140 600h520v36H140z" />
+      <path fill="#0A0A0A" d="M180 572h440v28H180z" />
 
-      {/* Wellhead + polished rod guide (left) */}
+      {/* Wellhead / stuffing box (left) */}
       <g fill="#0A0A0A">
-        <rect x="118" y="520" width="56" height="76" rx="4" />
-        <rect x="108" y="496" width="76" height="28" rx="3" />
-        <rect x="132" y="360" width="14" height="140" />
-        <rect x="124" y="348" width="30" height="18" rx="2" />
+        <rect x="96" y="500" width="72" height="100" rx="6" />
+        <rect x="84" y="468" width="96" height="36" rx="4" />
+        <rect x="110" y="420" width="20" height="52" rx="2" />
+        <rect x="98" y="402" width="44" height="22" rx="3" />
+        {/* Flowline stub */}
+        <rect x="40" y="530" width="56" height="18" rx="3" />
       </g>
 
-      {/* Samson post (A-frame) */}
+      {/* Samson post — tall classic A-frame */}
       <g fill="#0A0A0A">
-        <path d="M292 596 340 250h20l48 346H292Zm-42 0 58-300h18l-28 300H250Zm142 0-28-300h18l58 300H392Z" />
-        <rect x="318" y="240" width="44" height="28" rx="2" />
-        <rect x="308" y="320" width="64" height="10" />
-        <rect x="304" y="390" width="72" height="10" />
-        <rect x="298" y="460" width="84" height="10" />
-        <rect x="292" y="530" width="96" height="10" />
+        <path d="M300 572 348 230h24l48 342H300Z" />
+        <path d="M248 572 330 220h22L286 572H248Z" />
+        <path d="M420 572 368 220h22l64 352H420Z" />
+        {/* Cap / saddle */}
+        <rect x="330" y="214" width="60" height="36" rx="3" />
+        {/* Cross members */}
+        <rect x="292" y="300" width="96" height="14" />
+        <rect x="280" y="380" width="120" height="14" />
+        <rect x="268" y="460" width="144" height="14" />
+        <rect x="256" y="530" width="168" height="14" />
       </g>
 
-      {/* Gearbox / prime mover house */}
+      {/* Gearbox + motor house */}
       <g fill="#0A0A0A">
-        <path d="M420 520h140v76H420z" />
-        <path d="M440 480h100v40H440z" />
-        <rect x="456" y="448" width="28" height="32" />
-        <rect x="500" y="456" width="22" height="24" />
+        <path d="M470 500h180v72H470z" />
+        <path d="M500 450h130v50H500z" />
+        <rect x="520" y="410" width="36" height="40" rx="2" />
+        <rect x="572" y="422" width="28" height="28" rx="2" />
+        {/* Exhaust / vent */}
+        <rect x="610" y="390" width="14" height="36" rx="2" />
       </g>
 
-      {/* Crank + counterweight — spins around hub (500, 560) */}
-      <g transform="translate(500 560)">
+      {/* Crank + twin curved counterweights — spins around hub */}
+      <g transform={`translate(${crankX} ${crankY})`}>
         <g className="cs-pump-crank">
-          <g transform="translate(-500 -560)">
-            <circle cx="500" cy="560" r="22" fill="#0A0A0A" />
-            <rect x="490" y="420" width="20" height="140" rx="4" fill="#0A0A0A" />
+          <g transform={`translate(${-crankX} ${-crankY})`}>
+            {/* Crank arm */}
+            <rect
+              x={crankX - 14}
+              y={crankY - 168}
+              width="28"
+              height="168"
+              rx="6"
+              fill="#0A0A0A"
+            />
+            {/* Curved counterweight (classic C-shape mass) */}
             <path
               fill="#0A0A0A"
-              d="M456 400c0-28 20-48 44-48s44 20 44 48v36c0 16-12 28-28 28h-32c-16 0-28-12-28-28v-36Z"
+              d={`
+                M ${crankX - 78} ${crankY - 190}
+                a 78 78 0 0 1 156 0
+                v 48
+                a 40 40 0 0 1 -40 40
+                h -76
+                a 40 40 0 0 1 -40 -40
+                z
+              `}
             />
-            <circle cx="500" cy="420" r="14" fill="#0A0A0A" />
+            {/* Wrist-pin boss */}
+            <circle cx={crankX} cy={crankY - 168} r="18" fill="#0A0A0A" />
+            {/* Hub */}
+            <circle cx={crankX} cy={crankY} r="30" fill="#0A0A0A" />
+            <circle cx={crankX} cy={crankY} r="12" fill="#0B2A5C" />
           </g>
         </g>
       </g>
 
-      {/* Walking beam + horse head — nods around samson pin (340, 254) */}
-      <g transform="translate(340 254)">
+      {/* Walking beam + horse head — nods around samson pin */}
+      <g transform={`translate(${beamX} ${beamY})`}>
         <g className="cs-pump-beam">
-          <g transform="translate(-340 -254)">
-            <path fill="#0A0A0A" d="M96 230h292v48H96z" />
-            <path fill="#0A0A0A" d="M388 238h96l28 20-28 20H388z" />
-            <rect x="460" y="220" width="36" height="68" rx="4" fill="#0A0A0A" />
+          <g transform={`translate(${-beamX} ${-beamY})`}>
+            {/* Long tapered walking beam */}
             <path
               fill="#0A0A0A"
-              d="M96 214c-8 0-18 6-24 16l-40 56c-6 10-4 22 6 28l18 8c12 6 26 2 34-8l28-40V214H96Z"
+              d={`
+                M 70 228
+                H 520
+                l 36 22
+                l -36 22
+                H 70
+                a 18 18 0 0 1 0 -44
+                z
+              `}
             />
-            <rect x="54" y="286" width="12" height="70" fill="#0A0A0A" />
-            <rect x="42" y="350" width="36" height="16" rx="3" fill="#0A0A0A" />
-            <circle cx="340" cy="254" r="16" fill="#0A0A0A" />
-            <circle cx="340" cy="254" r="7" fill="#0B2A5C" />
+            {/* Equalizer / rear bearing block */}
+            <rect x="500" y="208" width="48" height="84" rx="6" fill="#0A0A0A" />
+            {/* Pitman stub hanging from equalizer */}
+            <rect x="514" y="288" width="20" height="70" rx="4" fill="#0A0A0A" />
+
+            {/* Horse head — big curved cartoon profile */}
+            <path
+              fill="#0A0A0A"
+              d={`
+                M 70 210
+                C 40 210, 10 230, -10 270
+                C -28 308, -20 350, 8 368
+                C 28 380, 52 372, 64 352
+                L 96 300
+                V 210
+                Z
+              `}
+            />
+            {/* Bridle cables + carrier bar */}
+            <rect x="-2" y="360" width="14" height="90" fill="#0A0A0A" />
+            <rect x="18" y="360" width="14" height="90" fill="#0A0A0A" />
+            <rect x="-14" y="444" width="62" height="20" rx="4" fill="#0A0A0A" />
+
+            {/* Pivot pin */}
+            <circle cx={beamX} cy={beamY} r="22" fill="#0A0A0A" />
+            <circle cx={beamX} cy={beamY} r="9" fill="#0B2A5C" />
           </g>
         </g>
       </g>
