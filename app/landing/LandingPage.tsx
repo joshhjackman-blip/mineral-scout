@@ -12,70 +12,90 @@ const display = Barlow_Condensed({
   variable: '--font-barlow-condensed',
 })
 
-/** Lattice oil derrick silhouette — poster-scale graphic for the coming-soon homepage. */
-function OilRigSilhouette() {
+/**
+ * Cartoon oil pumpjack silhouette — same bold black poster style as the
+ * old derrick, with a nodding walking beam + spinning crank counterweight.
+ *
+ * Moving parts are wrapped in translate → animate → untranslate groups so
+ * CSS rotate origins stay reliable across browsers.
+ */
+function PumpjackSilhouette() {
   return (
     <svg
-      viewBox="0 0 520 780"
+      viewBox="0 0 640 720"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       aria-hidden="true"
-      className="cs-rig-sway"
+      className="cs-pumpjack"
     >
-      {/* Base / substructure */}
+      {/* Ground pad */}
       <path
         fill="#0A0A0A"
-        d="M78 742h364l-18 28H96l-18-28Zm42-36h280l12 36H108l12-36Z"
-      />
-      {/* Drill floor / deck */}
-      <path fill="#0A0A0A" d="M128 686h264v22H128z" />
-      <path fill="#0A0A0A" d="M148 662h224v24H148z" />
-
-      {/* Derrick legs */}
-      <path
-        fill="#0A0A0A"
-        d="M178 662 228 86h16l50 576H178Zm148 0L276 86h16l50 576H326Z"
+        d="M36 678h568l-22 28H58l-22-28Zm48-34h472l14 34H70l14-34Z"
       />
 
-      {/* Cross bracing */}
-      <g stroke="#0A0A0A" strokeWidth="10" strokeLinecap="square">
-        <path d="M190 620 340 560M190 560 340 500M190 500 340 440M190 440 340 380M190 380 340 320M190 320 340 260M190 260 340 200M190 200 340 140" />
-        <path d="M340 620 190 560M340 560 190 500M340 500 190 440M340 440 190 380M340 380 190 320M340 320 190 260M340 260 190 200M340 200 190 140" />
+      {/* Concrete skid / base */}
+      <path fill="#0A0A0A" d="M120 620h400v28H120z" />
+      <path fill="#0A0A0A" d="M160 596h320v24H160z" />
+
+      {/* Wellhead + polished rod guide (left) */}
+      <g fill="#0A0A0A">
+        <rect x="118" y="520" width="56" height="76" rx="4" />
+        <rect x="108" y="496" width="76" height="28" rx="3" />
+        <rect x="132" y="360" width="14" height="140" />
+        <rect x="124" y="348" width="30" height="18" rx="2" />
       </g>
 
-      {/* Horizontal girts */}
+      {/* Samson post (A-frame) */}
       <g fill="#0A0A0A">
-        <rect x="186" y="140" width="148" height="12" />
-        <rect x="182" y="200" width="156" height="12" />
-        <rect x="178" y="260" width="164" height="12" />
-        <rect x="174" y="320" width="172" height="12" />
-        <rect x="170" y="380" width="180" height="12" />
-        <rect x="166" y="440" width="188" height="12" />
-        <rect x="162" y="500" width="196" height="12" />
-        <rect x="158" y="560" width="204" height="12" />
-        <rect x="154" y="620" width="212" height="12" />
+        <path d="M292 596 340 250h20l48 346H292Zm-42 0 58-300h18l-28 300H250Zm142 0-28-300h18l58 300H392Z" />
+        <rect x="318" y="240" width="44" height="28" rx="2" />
+        <rect x="308" y="320" width="64" height="10" />
+        <rect x="304" y="390" width="72" height="10" />
+        <rect x="298" y="460" width="84" height="10" />
+        <rect x="292" y="530" width="96" height="10" />
       </g>
 
-      {/* Crown block */}
-      <path fill="#0A0A0A" d="M214 48h92l22 38H192l22-38Z" />
-      <rect x="236" y="22" width="48" height="32" fill="#0A0A0A" />
-      <rect x="248" y="8" width="24" height="18" fill="#0A0A0A" />
-
-      {/* Travelling block / drill line */}
-      <rect x="254" y="86" width="12" height="420" fill="#0A0A0A" />
-      <rect x="238" y="300" width="44" height="54" fill="#0A0A0A" />
-      <rect x="246" y="370" width="28" height="36" fill="#0A0A0A" />
-
-      {/* Drawworks / doghouse mass */}
-      <path fill="#0A0A0A" d="M360 590h92v72H360z" />
-      <path fill="#0A0A0A" d="M68 602h86v60H68z" />
-      <path fill="#0A0A0A" d="M92 560h48v42H92z" />
-
-      {/* Pipe rack hint */}
+      {/* Gearbox / prime mover house */}
       <g fill="#0A0A0A">
-        <rect x="390" y="668" width="86" height="10" rx="1" />
-        <rect x="398" y="652" width="70" height="10" rx="1" />
-        <rect x="406" y="636" width="54" height="10" rx="1" />
+        <path d="M420 520h140v76H420z" />
+        <path d="M440 480h100v40H440z" />
+        <rect x="456" y="448" width="28" height="32" />
+        <rect x="500" y="456" width="22" height="24" />
+      </g>
+
+      {/* Crank + counterweight — spins around hub (500, 560) */}
+      <g transform="translate(500 560)">
+        <g className="cs-pump-crank">
+          <g transform="translate(-500 -560)">
+            <circle cx="500" cy="560" r="22" fill="#0A0A0A" />
+            <rect x="490" y="420" width="20" height="140" rx="4" fill="#0A0A0A" />
+            <path
+              fill="#0A0A0A"
+              d="M456 400c0-28 20-48 44-48s44 20 44 48v36c0 16-12 28-28 28h-32c-16 0-28-12-28-28v-36Z"
+            />
+            <circle cx="500" cy="420" r="14" fill="#0A0A0A" />
+          </g>
+        </g>
+      </g>
+
+      {/* Walking beam + horse head — nods around samson pin (340, 254) */}
+      <g transform="translate(340 254)">
+        <g className="cs-pump-beam">
+          <g transform="translate(-340 -254)">
+            <path fill="#0A0A0A" d="M96 230h292v48H96z" />
+            <path fill="#0A0A0A" d="M388 238h96l28 20-28 20H388z" />
+            <rect x="460" y="220" width="36" height="68" rx="4" fill="#0A0A0A" />
+            <path
+              fill="#0A0A0A"
+              d="M96 214c-8 0-18 6-24 16l-40 56c-6 10-4 22 6 28l18 8c12 6 26 2 34-8l28-40V214H96Z"
+            />
+            <rect x="54" y="286" width="12" height="70" fill="#0A0A0A" />
+            <rect x="42" y="350" width="36" height="16" rx="3" fill="#0A0A0A" />
+            <circle cx="340" cy="254" r="16" fill="#0A0A0A" />
+            <circle cx="340" cy="254" r="7" fill="#0B2A5C" />
+          </g>
+        </g>
       </g>
     </svg>
   )
@@ -103,7 +123,7 @@ export default function LandingPage() {
         </div>
 
         <div className="cs-rig" aria-hidden="true">
-          <OilRigSilhouette />
+          <PumpjackSilhouette />
         </div>
       </main>
     </div>
