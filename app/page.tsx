@@ -689,6 +689,7 @@ export default function Home() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [searching, setSearching] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingOwnerSearchRef = useRef<OwnerSearchResult | null>(null)
   const countySwitchHideTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const countySwitchClearTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasInitializedCountySwitchRef = useRef(false)
@@ -986,9 +987,13 @@ export default function Home() {
     setTractWellsLoaded(false)
     setTractWellsLoading(false)
     setWellsExpanded(false)
-    setOwnerTracts([])
-    setOwnerTractsName('')
-    setOwnerTractsLoading(false)
+    // Preserve owner-tracts loading state when a search result triggered
+    // the county switch — the pending resolver finishes after tracts load.
+    if (!pendingOwnerSearchRef.current) {
+      setOwnerTracts([])
+      setOwnerTractsName('')
+      setOwnerTractsLoading(false)
+    }
     setCountyPermits([])
     setDrawerOwner(null)
     setDrawerTractLabel(null)
@@ -1304,9 +1309,9 @@ export default function Home() {
         return
       }
 
-      const searchCounties = mapLevel === 'county'
-        ? COUNTY_ORDER
-        : [selectedCounty]
+      // Always search every active county — scoping to the current tract
+      // county made the bar look broken when the owner lived next door.
+      const searchCounties = COUNTY_ORDER
 
       // Run parallel searches for each word as primary.
       // This handles both "Kent Plaster" and "Plaster Kent".
@@ -1754,41 +1759,26 @@ export default function Home() {
     level3_sur: tract.level3_sur,
   })
 
-  const handleSearchSelect = async (result: OwnerSearchResult) => {
+  const resolveOwnerSearch = useCallback(async (
+    result: OwnerSearchResult,
+    tractsForCounty: TractRecord[],
+  ) => {
     const ownerName = String(result.owner_name ?? '').trim()
     if (!ownerName) {
-      setSearchQuery('')
-      setSearchResults([])
-      setSearchOpen(false)
+      setOwnerTractsLoading(false)
       return
     }
 
     const resultCounty = result.countyId ?? selectedCounty
-    if (mapLevel === 'county') {
-      if (resultCounty !== selectedCounty) {
-        setSelectedCounty(resultCounty)
-      }
-      setMapLevel('tract')
-      setSelected(null)
-      setExpandedOwner(null)
-      setOwnerWells({})
-      setTractWells([])
-      setTractWellsLoaded(false)
-      setWellsExpanded(false)
+    const normalizedOwner = ownerName.toUpperCase()
+    const resultCountyConfig = COUNTIES[resultCounty]
+    if (!resultCountyConfig) {
+      setOwnerTractsLoading(false)
+      showToast(`Unknown county for ${ownerName}`, 'error')
+      setOwnerTractsName('')
+      return
     }
 
-    const normalizedOwner = ownerName.toUpperCase()
-
-    // Close the search dropdown immediately; the tract list takes over.
-    setSearchQuery('')
-    setSearchResults([])
-    setSearchOpen(false)
-
-    setOwnerTracts([])
-    setOwnerTractsName(ownerName)
-    setOwnerTractsLoading(true)
-
-    const resultCountyConfig = COUNTIES[resultCounty]
     const ownershipTable = resultCountyConfig.ownershipTable
     // Abstract-join counties expose an `abstract` column on the ownership
     // row; rrc_lease_id-join counties don't.
@@ -1816,7 +1806,7 @@ export default function Home() {
         const leaseIdRaw = String(record.rrc_lease_id ?? '').trim()
         const leaseIdNorm = normalizeLeaseId(record.rrc_lease_id)
 
-        const tract = tracts.find((t) => {
+        const tract = tractsForCounty.find((t) => {
           const tractAbstractRaw = String(t.abstract_label ?? '').trim()
           const tractAbstractNumeric = tractAbstractRaw.replace(/^A-\s*/i, '').trim()
           if (abstractNumeric && tractAbstractNumeric === abstractNumeric) return true
@@ -1852,7 +1842,7 @@ export default function Home() {
     // owners whose ownership row didn't have an abstract the tracts index
     // recognizes.
     if (uniqueTracts.length === 0) {
-      for (const t of tracts) {
+      for (const t of tractsForCounty) {
         const owners = parseOwners(t.owners_json) as Array<Record<string, unknown>>
         const hasOwner = owners.some(
           (o) => String(o.owner_name ?? '').trim().toUpperCase() === normalizedOwner
@@ -1901,7 +1891,58 @@ export default function Home() {
       setOwnerTracts([])
       setOwnerTractsName('')
     }
+  }, [selectedCounty])
+
+  const handleSearchSelect = (result: OwnerSearchResult) => {
+    const ownerName = String(result.owner_name ?? '').trim()
+    if (!ownerName) {
+      setSearchQuery('')
+      setSearchResults([])
+      setSearchOpen(false)
+      return
+    }
+
+    const resultCounty = result.countyId ?? selectedCounty
+
+    // Close the search dropdown immediately; the tract list takes over.
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
+    setSelected(null)
+    setExpandedOwner(null)
+    setOwnerWells({})
+    setTractWells([])
+    setTractWellsLoaded(false)
+    setWellsExpanded(false)
+    setOwnerTracts([])
+    setOwnerTractsName(ownerName)
+    setOwnerTractsLoading(true)
+
+    // Queue until the target county's tracts GeoJSON is loaded. Selecting
+    // a Martin owner while Howard parcels are still in state used to
+    // toast "No mapped tract found" and look like search was broken.
+    pendingOwnerSearchRef.current = result
+    setMapLevel('tract')
+    if (resultCounty !== selectedCounty) {
+      setSelectedCounty(resultCounty)
+      return
+    }
+    if (tracts.length > 0 && !loading) {
+      pendingOwnerSearchRef.current = null
+      void resolveOwnerSearch(result, tracts)
+    }
   }
+
+  // Finish a pending owner-search once the destination county's tracts load.
+  useEffect(() => {
+    const pending = pendingOwnerSearchRef.current
+    if (!pending) return
+    const pendingCounty = pending.countyId ?? selectedCounty
+    if (pendingCounty !== selectedCounty) return
+    if (loading || tracts.length === 0) return
+    pendingOwnerSearchRef.current = null
+    void resolveOwnerSearch(pending, tracts)
+  }, [tracts, selectedCounty, loading, resolveOwnerSearch])
 
   // Rank order once the score-based sort was removed:
   //   1. PDP wells drilled (drilled + completed activity)
@@ -2188,7 +2229,7 @@ export default function Home() {
                     e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  Pad activity
+                  Satellite Imagery
                 </a>
                 <a
                   href="/crm"
@@ -2420,7 +2461,7 @@ export default function Home() {
               whiteSpace: 'nowrap',
             }}
           >
-            Pad activity
+            Satellite Imagery
           </a>
           <a
             href="/crm"
@@ -3598,6 +3639,10 @@ export default function Home() {
               mapLevel={mapLevel}
               focusTarget={selected}
               devStatusByAbstract={devStatusByAbstract}
+              onEnterTractMode={() => {
+                setMapLevel('tract')
+                setExpandedOwner(null)
+              }}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')

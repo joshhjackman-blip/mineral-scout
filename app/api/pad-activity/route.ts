@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient, padImageryProxyUrl } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -120,34 +120,39 @@ async function hydrateAbstracts(
 }
 
 function adminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return createClient(url, key, { auth: { persistSession: false } })
+  return createAdminClient()
 }
 
-async function signPaths(
-  supabase: NonNullable<ReturnType<typeof adminClient>>,
+/** Map storage keys → same-origin proxy URLs (no Supabase JWT expiry). */
+function chipUrls(
   events: PadActivityEvent[],
-  maxPaths = 40,
-): Promise<Record<string, string>> {
-  const signed: Record<string, string> = {}
-  const paths = Array.from(
-    new Set(
-      events.flatMap((e) => [e.before_path, e.after_path].filter(Boolean) as string[]),
-    ),
-  )
-  for (const path of paths.slice(0, maxPaths)) {
-    try {
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from('Raw-Data')
-        .createSignedUrl(path, 60 * 60)
-      if (!signErr && signedData?.signedUrl) {
-        signed[path] = signedData.signedUrl
+  maxPaths = 120,
+): Record<string, string> {
+  const sentinelPaths: string[] = []
+  const hiresPaths: string[] = []
+  const seen = new Set<string>()
+  for (const e of events) {
+    for (const p of [e.before_path, e.after_path]) {
+      const path = typeof p === 'string' ? p.replace(/^\/+/, '').trim() : ''
+      if (path && !seen.has(path)) {
+        seen.add(path)
+        sentinelPaths.push(path)
       }
-    } catch {
-      // ignore missing objects
     }
+    const hp = (e.raw as { hires_path?: unknown } | null | undefined)?.hires_path
+    if (typeof hp === 'string' && hp) {
+      const path = hp.replace(/^\/+/, '').trim()
+      if (path && !seen.has(path)) {
+        seen.add(path)
+        hiresPaths.push(path)
+      }
+    }
+  }
+  const paths = [...sentinelPaths, ...hiresPaths].slice(0, maxPaths)
+  const signed: Record<string, string> = {}
+  for (const path of paths) {
+    const url = padImageryProxyUrl(path)
+    if (url) signed[path] = url
   }
   return signed
 }
@@ -239,7 +244,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
       .slice(0, limit)
     const events = await hydrateAbstracts(supabase, rawEvents)
-    const signed = await signPaths(supabase, events)
+    const signed = chipUrls(events)
 
     // Unique leads affected (owner_name + county), newest first.
     const leadMap = new Map<string, {
@@ -275,16 +280,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        events,
-        signed,
-        leads: Array.from(leadMap.values()),
-        days,
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          events,
+          signed,
+          leads: Array.from(leadMap.values()),
+          days,
+        },
+        error: null,
       },
-      error: null,
-    })
+      {
+        headers: {
+          'Cache-Control': 'private, no-store',
+        },
+      },
+    )
   }
 
   // ── Drawer query (county + abstract|owner) ───────────────────────
@@ -330,11 +342,18 @@ export async function GET(request: NextRequest) {
   }
 
   const events = (data || []) as unknown as PadActivityEvent[]
-  const signed = await signPaths(supabase, events, 20)
+  const signed = chipUrls(events, 20)
 
-  return NextResponse.json({
-    success: true,
-    data: { events, signed },
-    error: null,
-  })
+  return NextResponse.json(
+    {
+      success: true,
+      data: { events, signed },
+      error: null,
+    },
+    {
+      headers: {
+        'Cache-Control': 'private, no-store',
+      },
+    },
+  )
 }

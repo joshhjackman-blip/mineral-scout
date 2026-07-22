@@ -90,6 +90,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip Phase-1 RRC bridge (imagery-only run)",
     )
+    p.add_argument(
+        "--enable-hires",
+        action="store_true",
+        help="Phase 2c: pull NAIP (~60cm) chips for AMBIGUOUS pads needing review",
+    )
+    p.add_argument(
+        "--max-hires",
+        type=int,
+        default=10,
+        help="Max NAIP hi-res chips per county when --enable-hires (default 10)",
+    )
     return p.parse_args()
 
 
@@ -203,6 +214,7 @@ def main() -> int:
     total_chips = 0
     total_pairs = 0
     total_imagery_events = 0
+    total_hires = 0
 
     for county in counties:
         print(f"\n=== {county} ===", flush=True)
@@ -250,6 +262,23 @@ def main() -> int:
                 total_imagery_events += stats["events_written"]
                 total_bumps += stats["propensity_bumps"]
 
+        if args.enable_hires:
+            from scripts.pad_activity.hires import pull_hires_for_ambiguous
+
+            hires_stats = pull_hires_for_ambiguous(
+                client,
+                county_id=county,
+                max_pads=args.max_hires,
+                dry_run=args.dry_run,
+            )
+            print(
+                f"  hires/NAIP: attempted={hires_stats['attempted']} "
+                f"ok={hires_stats['ok']} skipped={hires_stats['skipped']} "
+                f"failed={hires_stats['failed']}",
+                flush=True,
+            )
+            total_hires += hires_stats["ok"]
+
         if args.skip_rrc:
             continue
 
@@ -284,7 +313,8 @@ def main() -> int:
         f"imagery_events={total_imagery_events:,} "
         f"pairs_scored={total_pairs:,} "
         f"propensity_bumps={total_bumps:,} "
-        f"chips_uploaded≈{total_chips:,}",
+        f"chips_uploaded≈{total_chips:,} "
+        f"hires_ok={total_hires:,}",
         flush=True,
     )
     return 0

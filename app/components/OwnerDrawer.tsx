@@ -1094,8 +1094,10 @@ function WellActivityCard({
   }
 
   const top = events[0]
-  const beforeUrl = top?.before_path ? signed[top.before_path] : null
-  const afterUrl = top?.after_path ? signed[top.after_path] : null
+  const beforeKey = top?.before_path?.replace(/^\/+/, '').trim() || ''
+  const afterKey = top?.after_path?.replace(/^\/+/, '').trim() || ''
+  const beforeUrl = beforeKey ? signed[beforeKey] || signed[top.before_path!] || null : null
+  const afterUrl = afterKey ? signed[afterKey] || signed[top.after_path!] || null : null
   const label = SIGNATURE_LABEL[top.signature] || top.signature
   const pct = Math.round((top.confidence || 0) * 100)
 

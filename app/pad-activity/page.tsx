@@ -1,6 +1,6 @@
 'use client'
 
-// Pad Activity page — weekly rig → completion signals with
+// Satellite Imagery page — weekly rig → completion signals with
 // side-by-side before/after chips and the mineral owners affected.
 // Mirrors /permits chrome so brokers treat it as a peer workflow:
 // scan activity → expand leads → call / open on map / CRM.
@@ -38,6 +38,7 @@ type PadEvent = {
   created_at: string
   latitude?: number | null
   longitude?: number | null
+  raw?: Record<string, unknown> | null
 }
 
 function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'latitude' | 'longitude' | 'owner_name'>): string {
@@ -45,7 +46,8 @@ function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'l
   params.set('county', ev.county_id)
   if (ev.abstract_number) {
     params.set('abstract', ev.abstract_number)
-  } else if (
+  }
+  if (
     ev.latitude != null &&
     ev.longitude != null &&
     Number.isFinite(ev.latitude) &&
@@ -93,6 +95,8 @@ export default function PadActivityPage() {
   const [countyFilter, setCountyFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [reviewingId, setReviewingId] = useState<number | null>(null)
+  const [hiresLoadingId, setHiresLoadingId] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -110,7 +114,7 @@ export default function PadActivityPage() {
       const res = await fetch(`/api/pad-activity?${params.toString()}`)
       const json = await res.json()
       if (!json?.success) {
-        setError(json?.error || 'Failed to load pad activity')
+        setError(json?.error || 'Failed to load satellite imagery')
         setEvents([])
         setLeads([])
         setSigned({})
@@ -121,7 +125,7 @@ export default function PadActivityPage() {
       setSigned((json.data?.signed || {}) as Record<string, string>)
       if (json.error) setError(json.error)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load pad activity')
+      setError(err instanceof Error ? err.message : 'Failed to load satellite imagery')
       setEvents([])
       setLeads([])
     } finally {
@@ -171,6 +175,31 @@ export default function PadActivityPage() {
     [load],
   )
 
+  const requestHires = useCallback(
+    async (eventId: number, force = false) => {
+      setHiresLoadingId(eventId)
+      setError(null)
+      try {
+        const res = await fetch('/api/pad-activity/hires', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: eventId, force }),
+        })
+        const json = await res.json()
+        if (!json?.success) {
+          setError(json?.error || 'Hi-res request failed')
+          return
+        }
+        await load()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Hi-res request failed')
+      } finally {
+        setHiresLoadingId(null)
+      }
+    },
+    [load],
+  )
+
   // Group events by pad key so one card can list multiple owners.
   const cards = useMemo(() => {
     const map = new Map<string, {
@@ -205,6 +234,50 @@ export default function PadActivityPage() {
     return Array.from(map.values())
   }, [events])
 
+  const searchTerms = useMemo(
+    () =>
+      searchQuery
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 0),
+    [searchQuery],
+  )
+
+  const filteredCards = useMemo(() => {
+    if (searchTerms.length === 0) return cards
+    return cards.filter(({ sample, owners }) => {
+      const haystack = [
+        sample.lease_name,
+        sample.operator_name,
+        sample.api_number,
+        sample.abstract_number,
+        sample.rrc_lease_id,
+        sample.owner_name,
+        sample.summary,
+        ...owners,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchTerms.every((t) => haystack.includes(t))
+    })
+  }, [cards, searchTerms])
+
+  const filteredLeads = useMemo(() => {
+    if (searchTerms.length === 0) return leads
+    return leads.filter((lead) => {
+      const haystack = [
+        lead.owner_name,
+        lead.county_id,
+        ...lead.abstracts,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return searchTerms.every((t) => haystack.includes(t))
+    })
+  }, [leads, searchTerms])
+
   useEffect(() => {
     setExpanded((prev) => {
       const next = { ...prev }
@@ -238,7 +311,7 @@ export default function PadActivityPage() {
         </Link>
         <span style={{ fontSize: 12, color: '#6B7280' }}>·</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-          Pad Activity
+          Satellite Imagery
         </span>
         <div style={{ flex: 1 }} />
         <Link
@@ -273,16 +346,65 @@ export default function PadActivityPage() {
       <div style={{ maxWidth: 1280, width: '100%', margin: '0 auto', padding: '24px 20px 40px', flex: 1 }}>
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
-            Pad activity — last {windowDays} days
+            Satellite Imagery — last {windowDays} days
           </h1>
           <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>
             {loading
-              ? 'Loading pad activity…'
-              : `${cards.length} pad event${cards.length === 1 ? '' : 's'} · ${completionCount} completion · ${leads.length} lead${leads.length === 1 ? '' : 's'} affected`}
+              ? 'Loading satellite imagery…'
+              : `${filteredCards.length} pad event${filteredCards.length === 1 ? '' : 's'} · ${completionCount} completion · ${filteredLeads.length} lead${filteredLeads.length === 1 ? '' : 's'} affected`}
           </p>
         </div>
 
-        {/* Filters */}
+        {/* Search + filters */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flex: '1 1 260px',
+              maxWidth: 420,
+              background: '#FFFFFF',
+              border: '1px solid #E5E7EB',
+              borderRadius: 8,
+              padding: '8px 12px',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search owner, lease, API, abstract…"
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                width: '100%',
+                fontSize: 13,
+                color: '#111827',
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#9CA3AF',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: 0,
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
           <FilterGroup label="Window">
             {([7, 14, 30, 90] as WindowChoice[]).map((d) => (
@@ -370,10 +492,10 @@ export default function PadActivityPage() {
           {/* Event cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {loading ? (
-              <EmptyBox>Loading pad activity across counties…</EmptyBox>
+              <EmptyBox>Loading satellite imagery across counties…</EmptyBox>
             ) : cards.length === 0 ? (
               <EmptyBox>
-                No pad activity in this window yet.
+                No satellite imagery events in this window yet.
                 <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
                   Imagery is optional. Re-run{' '}
                   <strong>Pad activity weekly</strong> on <code>main</code> —
@@ -381,14 +503,48 @@ export default function PadActivityPage() {
                   from your RRC scrape (no satellite needed).
                 </div>
               </EmptyBox>
+            ) : filteredCards.length === 0 ? (
+              <EmptyBox>
+                No events match &quot;{searchQuery.trim()}&quot;.
+                <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
+                  Try a lease name, owner, API number, or abstract.
+                </div>
+              </EmptyBox>
             ) : (
-              cards.map(({ key, sample, owners }) => {
+              filteredCards.map(({ key, sample, owners }) => {
                 const meta = SIGNATURE_LABEL[sample.signature] || {
                   label: sample.signature,
                   color: '#6B7280',
                 }
-                const beforeUrl = sample.before_path ? signed[sample.before_path] : null
-                const afterUrl = sample.after_path ? signed[sample.after_path] : null
+                const beforeKey = sample.before_path?.replace(/^\/+/, '').trim() || null
+                const afterKey = sample.after_path?.replace(/^\/+/, '').trim() || null
+                const beforeUrl = beforeKey ? signed[beforeKey] || null : null
+                const afterUrl = afterKey ? signed[afterKey] || null : null
+                const hiresPath =
+                  typeof sample.raw?.hires_path === 'string'
+                    ? sample.raw.hires_path.replace(/^\/+/, '').trim()
+                    : null
+                const hiresUrl = hiresPath ? signed[hiresPath] || null : null
+                const hiresDate =
+                  typeof sample.raw?.hires_date === 'string'
+                    ? sample.raw.hires_date
+                    : null
+                const hiresLabel =
+                  typeof sample.raw?.hires_label === 'string'
+                    ? sample.raw.hires_label
+                    : hiresDate
+                      ? `Hi-res · ${hiresDate}`
+                      : 'Hi-res'
+                const hiresSource = String(sample.raw?.hires_source || '')
+                const hiresIsStale =
+                  Boolean(sample.raw?.hires_stale_survey) ||
+                  hiresSource === 'naip'
+                const canRequestHires = Boolean(
+                  (sample.latitude != null && sample.longitude != null) ||
+                    sample.api_number ||
+                    sample.raw?.latitude != null ||
+                    sample.raw?.longitude != null,
+                )
                 const open = expanded[sample.id] ?? owners.length > 0
                 const countyName = COUNTIES[sample.county_id]?.name || sample.county_id
                 const pct = Math.round((sample.confidence || 0) * 100)
@@ -449,14 +605,42 @@ export default function PadActivityPage() {
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
+                        gridTemplateColumns: hiresUrl ? '1fr 1fr 1.15fr' : '1fr 1fr',
                         gap: 0,
                         borderBottom: '1px solid #F3F4F6',
                         background: '#F8FAFC',
                       }}
                     >
-                      <ChipPanel label="Before" url={beforeUrl} />
-                      <ChipPanel label="After" url={afterUrl} borderLeft />
+                      <ChipPanel
+                        label="Before"
+                        url={beforeUrl}
+                        subtitle="Sentinel-2 · 10 m"
+                        missingHint={
+                          beforeKey
+                            ? 'Chip path on file but image failed to load — re-check Storage'
+                            : 'No before chip yet (run weekly with --enable-sentinel)'
+                        }
+                      />
+                      <ChipPanel
+                        label="After"
+                        url={afterUrl}
+                        subtitle="Sentinel-2 · 10 m"
+                        borderLeft
+                        missingHint={
+                          afterKey
+                            ? 'Chip path on file but image failed to load — re-check Storage'
+                            : 'No after chip yet (run weekly with --enable-sentinel)'
+                        }
+                      />
+                      {hiresUrl && (
+                        <ChipPanel
+                          label="Hi-res"
+                          url={hiresUrl}
+                          subtitle={hiresLabel}
+                          borderLeft
+                          crisp
+                        />
+                      )}
                     </div>
 
                     <div style={{ padding: '14px 16px' }}>
@@ -464,49 +648,88 @@ export default function PadActivityPage() {
                         {sample.summary}
                       </p>
 
-                      {sample.signature === 'AMBIGUOUS' && beforeUrl && afterUrl && (
+                      {(canRequestHires || sample.signature === 'AMBIGUOUS') && (
                         <div
                           style={{
                             marginTop: 12,
                             padding: '10px 12px',
                             borderRadius: 8,
-                            background: '#FFFBEB',
-                            border: '1px solid #FDE68A',
+                            background: sample.signature === 'AMBIGUOUS' ? '#FFFBEB' : '#F0FDFA',
+                            border: sample.signature === 'AMBIGUOUS' ? '1px solid #FDE68A' : '1px solid #99F6E4',
                             display: 'flex',
                             flexWrap: 'wrap',
                             gap: 8,
                             alignItems: 'center',
                           }}
                         >
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
-                            Human review
-                          </span>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'COMPLETION_CREW')}
-                            style={reviewBtnStyle('#059669')}
-                          >
-                            Confirm completion
-                          </button>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'RIG_MOVE_IN')}
-                            style={reviewBtnStyle('#7C3AED')}
-                          >
-                            Confirm rig / pad
-                          </button>
-                          <button
-                            type="button"
-                            disabled={reviewingId === sample.id}
-                            onClick={() => void submitReview(sample.id, 'NON_RELEVANT')}
-                            style={reviewBtnStyle('#6B7280')}
-                          >
-                            Not relevant
-                          </button>
-                          {reviewingId === sample.id && (
-                            <span style={{ fontSize: 11, color: '#92400E' }}>Saving…</span>
+                          {sample.signature === 'AMBIGUOUS' && (
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
+                              Human review
+                            </span>
+                          )}
+                          {canRequestHires && !hiresUrl && (
+                            <button
+                              type="button"
+                              disabled={hiresLoadingId === sample.id}
+                              onClick={() => void requestHires(sample.id, false)}
+                              style={reviewBtnStyle('#0F766E')}
+                              title="Pull current satellite chip for this pad (Mapbox)"
+                            >
+                              {hiresLoadingId === sample.id ? 'Pulling hi-res…' : 'Request hi-res'}
+                            </button>
+                          )}
+                          {hiresUrl && (
+                            <>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: hiresIsStale ? '#B45309' : '#0F766E' }}>
+                                {hiresIsStale
+                                  ? `Survey aerial ${hiresDate || ''} — may predate this event`
+                                  : `Hi-res ready · current`}
+                              </span>
+                              {canRequestHires && (
+                                <button
+                                  type="button"
+                                  disabled={hiresLoadingId === sample.id}
+                                  onClick={() => void requestHires(sample.id, true)}
+                                  style={reviewBtnStyle('#0F766E')}
+                                  title="Re-pull current Mapbox satellite (replaces stale NAIP)"
+                                >
+                                  {hiresLoadingId === sample.id ? 'Refreshing…' : 'Refresh hi-res'}
+                                </button>
+                              )}
+                            </>
+                          )}
+                          {sample.signature === 'AMBIGUOUS' && beforeUrl && afterUrl && (
+                            <>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'COMPLETION_CREW')}
+                                style={reviewBtnStyle('#059669')}
+                              >
+                                Confirm completion
+                              </button>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'RIG_MOVE_IN')}
+                                style={reviewBtnStyle('#7C3AED')}
+                              >
+                                Confirm rig / pad
+                              </button>
+                              <button
+                                type="button"
+                                disabled={reviewingId === sample.id}
+                                onClick={() => void submitReview(sample.id, 'NON_RELEVANT')}
+                                style={reviewBtnStyle('#6B7280')}
+                              >
+                                Not relevant
+                              </button>
+                            </>
+                          )}
+                          {(reviewingId === sample.id || hiresLoadingId === sample.id) && (
+                            <span style={{ fontSize: 11, color: '#92400E' }}>
+                              {hiresLoadingId === sample.id ? 'Fetching aerial…' : 'Saving…'}
+                            </span>
                           )}
                         </div>
                       )}
@@ -645,7 +868,7 @@ export default function PadActivityPage() {
                 color: '#64748B',
               }}
             >
-              Leads affected · {leads.length}
+              Leads affected · {filteredLeads.length}
             </div>
             <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               {loading ? (
@@ -654,8 +877,12 @@ export default function PadActivityPage() {
                 <div style={{ padding: 16, fontSize: 13, color: '#6B7280' }}>
                   No owner-linked events in this window.
                 </div>
+              ) : filteredLeads.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 13, color: '#6B7280' }}>
+                  No leads match this search.
+                </div>
               ) : (
-                leads.map((lead) => {
+                filteredLeads.map((lead) => {
                   const meta = SIGNATURE_LABEL[lead.latest_signature]
                   const abs = lead.abstracts[0]
                   const href = abs
@@ -775,11 +1002,23 @@ function ChipPanel({
   label,
   url,
   borderLeft,
+  subtitle = 'Sentinel-2 · 10 m',
+  crisp = false,
+  missingHint,
 }: {
   label: string
   url: string | null
   borderLeft?: boolean
+  subtitle?: string
+  /** Hi-res chips are sharp enough — don't force pixelated upscale. */
+  crisp?: boolean
+  missingHint?: string
 }) {
+  const [broken, setBroken] = useState(false)
+  useEffect(() => {
+    setBroken(false)
+  }, [url])
+
   return (
     <div
       style={{
@@ -802,20 +1041,21 @@ function ChipPanel({
         }}
       >
         {label}
-        <span style={{ fontWeight: 500, marginLeft: 6, color: '#CBD5E1' }}>
-          Sentinel-2 · 10 m
+        <span style={{ fontWeight: 500, marginLeft: 6, color: crisp ? '#0F766E' : '#64748B' }}>
+          {subtitle}
         </span>
       </div>
-      {url ? (
+      {url && !broken ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={url}
           alt={`${label} pad chip`}
+          onError={() => setBroken(true)}
           style={{
             width: '100%',
             height: 220,
             objectFit: 'contain',
-            imageRendering: 'pixelated',
+            imageRendering: crisp ? 'auto' : 'pixelated',
             background: '#0F172A',
           }}
         />
@@ -835,10 +1075,13 @@ function ChipPanel({
             background: '#F8FAFC',
           }}
         >
-          No satellite chip yet
+          {broken ? 'Image failed to load' : 'No satellite chip yet'}
           <br />
           <span style={{ fontSize: 11 }}>
-            RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
+            {broken
+              ? 'Chip missing in Storage (or proxy failed)'
+              : missingHint ||
+                'RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths'}
           </span>
         </div>
       )}
