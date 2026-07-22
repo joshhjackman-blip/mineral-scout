@@ -5,8 +5,10 @@ from __future__ import annotations
 # Buffer around each well surface location when cropping a chip (meters).
 PAD_BUFFER_M = 150
 
-# Chip size in pixels at Sentinel-2 10 m/px (~640 m / ~1280 m FOV).
-CHIP_SIZE_PX = 64
+# Chip size in pixels at Sentinel-2 10 m/px.
+# 128px ≈ 1.28 km FOV — more context and less upscale blur in the UI
+# than 64px (still native 10 m GSD; paid high-res is the real sharpness leap).
+CHIP_SIZE_PX = 128
 
 # Cloud cover filter for Sentinel-2 L2A scenes.
 MAX_CLOUD_COVER_PCT = 20.0
