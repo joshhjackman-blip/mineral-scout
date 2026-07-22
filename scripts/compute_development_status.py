@@ -316,6 +316,13 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
     the post-Ticket-1.3 shape (with spud_date / completion_date /
     abstract_number / permit_status) and the pre-migration shape.
     Returns [] if the table itself doesn't exist yet.
+
+    Uses .range() offset pagination instead of keyset (.gt("id", ...)
+    + .order("id") + .limit()) — the keyset URL shape triggered
+    Supabase's edge-routing PGRST125 rejection on 2026-07-22 with
+    supabase-py 2.14. The .range() form generates a cleaner
+    `Range: 0-999` header that routes cleanly. Same total row count
+    fetched; only the paging URL structure differs.
     """
     full_columns = (
         "id, permit_number, api_number, operator_name, lease_name, "
@@ -328,22 +335,20 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
     )
     columns = full_columns
     rows: list[dict[str, Any]] = []
-    last_id = 0
+    offset = 0
     while True:
         try:
             result = (
                 client.table(table)
                 .select(columns)
-                .gt("id", last_id)
-                .order("id", desc=False)
-                .limit(PAGE_SIZE)
+                .range(offset, offset + PAGE_SIZE - 1)
                 .execute()
             )
         except Exception as exc:
             message = str(exc).lower()
             # A missing column error means the migration hasn't been
             # applied yet — fall back to the pre-migration column set
-            # and retry from the same last_id.
+            # and retry from the same offset.
             if "column" in message and columns == full_columns:
                 columns = minimal_columns
                 continue
@@ -358,8 +363,11 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
         if not page:
             break
         rows.extend(page)
-        last_id = page[-1]["id"]
         if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+        if offset >= 50_000:
+            # Safety cap; no county should ever have 50k+ permits.
             break
     return rows
 
@@ -368,17 +376,18 @@ def paginate_lease_memoranda(client: Client, county: str) -> list[dict[str, Any]
     """Fetch fresh lease-memo rows from public.lease_memoranda for one
     county. Fails soft if the table isn't there yet (Phase 3 migration
     not applied) — returns []."""
+    # .range() offset pagination — same reason as paginate_permits:
+    # keyset .gt()+.order()+.limit() URLs triggered PGRST125 on
+    # Supabase's edge layer.
     rows: list[dict[str, Any]] = []
-    last_id = 0
+    offset = 0
     while True:
         try:
             result = (
                 client.table("lease_memoranda")
                 .select("id, abstract_number, lessee, lessor, memo_date, filed_date, source_url")
                 .eq("county_id", county)
-                .gt("id", last_id)
-                .order("id", desc=False)
-                .limit(PAGE_SIZE)
+                .range(offset, offset + PAGE_SIZE - 1)
                 .execute()
             )
         except Exception as exc:
@@ -390,8 +399,10 @@ def paginate_lease_memoranda(client: Client, county: str) -> list[dict[str, Any]
         if not page:
             break
         rows.extend(page)
-        last_id = page[-1]["id"]
         if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+        if offset >= 50_000:
             break
     return rows
 
@@ -439,20 +450,20 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
         "api_number, latitude, longitude, well_status, well_type, "
         "completion_date, operator_name, lease_name"
     )
+    # .range() offset pagination — same reason as paginate_permits:
+    # keyset .gt()+.order()+.limit() URLs triggered PGRST125 on
+    # Supabase's edge layer as of 2026-07-22.
     columns = full_cols
     rows: list[dict[str, Any]] = []
-    last_api = ""
+    offset = 0
     while True:
         try:
-            query = (
+            result = (
                 client.table(table)
                 .select(columns)
-                .order("api_number", desc=False)
-                .limit(PAGE_SIZE)
+                .range(offset, offset + PAGE_SIZE - 1)
+                .execute()
             )
-            if last_api:
-                query = query.gt("api_number", last_api)
-            result = query.execute()
         except Exception as exc:
             message = str(exc).lower()
             # Missing column -> retry with the county-agnostic subset.
@@ -469,8 +480,12 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
         if not page:
             break
         rows.extend(page)
-        last_api = page[-1].get("api_number") or last_api
         if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
+        if offset >= 100_000:
+            # Safety cap; per-county wells tables can be 15-20k rows
+            # but should never exceed 100k.
             break
     return [
         r for r in rows
