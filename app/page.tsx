@@ -559,6 +559,10 @@ const estimateMonthlyRoyalty = (
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
+  // When true, the tract-mode "fly to county center" effect is suppressed
+  // so deep-links (Pad Activity → Open on map) can fitBounds the exact
+  // tract without being yanked back to county zoom.
+  const suppressCountyFlyRef = useRef(false)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
@@ -586,10 +590,14 @@ export default function Home() {
     const urlLat = Number(params.get('lat'))
     const urlLon = Number(params.get('lon'))
     const urlOwner = (params.get('owner') || '').trim()
+    const hasTractDeepLink =
+      Boolean(urlAbstractRaw) ||
+      (Number.isFinite(urlLat) && Number.isFinite(urlLon))
     if (urlCounty && urlCounty in COUNTIES) {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
     }
+    if (hasTractDeepLink) suppressCountyFlyRef.current = true
     if (urlAbstractRaw) {
       setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
     } else if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
@@ -857,6 +865,8 @@ export default function Home() {
     if (currentIndex === -1) return
     const nextIndex = currentIndex + offset
     if (nextIndex < 0 || nextIndex >= COUNTY_ORDER.length) return
+    // Manual county nav — restore the normal county-center fly.
+    suppressCountyFlyRef.current = false
     setSelectedCounty(COUNTY_ORDER[nextIndex])
   }, [selectedCounty])
 
@@ -874,21 +884,28 @@ export default function Home() {
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
-    const county = COUNTIES[selectedCounty]
-  let attempts = 0
-  const tryFlyTo = () => {
-    attempts += 1
-    if (mapFlyToRef.current) {
-      mapFlyToRef.current(county.mapCenter, county.mapZoom)
+    // Deep-link (abstract / lat-lon): Map.tsx fitBounds handles the
+    // camera. Flying to county center here was winning the race and
+    // leaving the map at county zoom while the sidebar showed the tract.
+    if (suppressCountyFlyRef.current || pendingUrlAbstract || pendingUrlPoint) {
       return
     }
-    if (attempts < 10) {
-      setTimeout(tryFlyTo, 200)
+    const county = COUNTIES[selectedCounty]
+    let attempts = 0
+    const tryFlyTo = () => {
+      attempts += 1
+      if (suppressCountyFlyRef.current) return
+      if (mapFlyToRef.current) {
+        mapFlyToRef.current(county.mapCenter, county.mapZoom)
+        return
+      }
+      if (attempts < 10) {
+        setTimeout(tryFlyTo, 200)
+      }
     }
-  }
-  const timer = setTimeout(tryFlyTo, 200)
+    const timer = setTimeout(tryFlyTo, 200)
     return () => clearTimeout(timer)
-  }, [mapLevel, selectedCounty])
+  }, [mapLevel, selectedCounty, pendingUrlAbstract, pendingUrlPoint])
 
   useEffect(() => {
     // 900px is the width at which the drawer's side-panel layout
@@ -976,6 +993,7 @@ export default function Home() {
 
   useEffect(() => {
     setSelected(null)
+    setSelectedTractGeometry(null)
     setExpandedOwner(null)
     setSearchQuery('')
     setSearchResults([])
@@ -1714,10 +1732,9 @@ export default function Home() {
         })
         if (match) {
           setSelected(toTractSelection(match))
+          // Geometry drives Map focusGeometry → fitBounds (exact tract).
+          // Do not flyTo the point here — that fought tract zoom.
           if (matchedGeom) setSelectedTractGeometry(matchedGeom)
-          if (mapFlyToRef.current) {
-            mapFlyToRef.current([lon, lat], 14)
-          }
           setPendingUrlPoint(null)
           if (pendingUrlOwner) {
             setHighlightedOwner(pendingUrlOwner)
@@ -1765,6 +1782,7 @@ export default function Home() {
 
     const resultCounty = result.countyId ?? selectedCounty
     if (mapLevel === 'county') {
+      suppressCountyFlyRef.current = false
       if (resultCounty !== selectedCounty) {
         setSelectedCounty(resultCounty)
       }
@@ -2230,8 +2248,10 @@ export default function Home() {
             {mapLevel === 'tract' && (
               <button
                 onClick={() => {
+                  suppressCountyFlyRef.current = false
                   setMapLevel('county')
                   setSelected(null)
+                  setSelectedTractGeometry(null)
                   setExpandedOwner(null)
                   setSearchQuery('')
                   setSearchResults([])
@@ -2256,7 +2276,10 @@ export default function Home() {
             )}
             <select
               value={selectedCounty}
-              onChange={(event) => setSelectedCounty(event.target.value as CountyKey)}
+              onChange={(event) => {
+                suppressCountyFlyRef.current = false
+                setSelectedCounty(event.target.value as CountyKey)
+              }}
               style={{
                 height: 26,
                 border: '1px solid #E5E7EB',
@@ -2571,6 +2594,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setSelected(null)
+                  setSelectedTractGeometry(null)
                   // If we're in an owner-tracts session, keep the list so the
                   // user can pick a different tract for the same owner.
                   if (!ownerTractsName) {
@@ -3325,6 +3349,7 @@ export default function Home() {
                         <div
                           key={c.id}
                           onClick={() => {
+                            suppressCountyFlyRef.current = false
                             setSelectedCounty(c.id as CountyKey)
                             setMapLevel('tract')
                           }}
@@ -3597,11 +3622,14 @@ export default function Home() {
               mapFlyToRef={mapFlyToRef}
               mapLevel={mapLevel}
               focusTarget={selected}
+              focusGeometry={selectedTractGeometry}
               devStatusByAbstract={devStatusByAbstract}
               onCountySwitch={(countyId) => {
+                suppressCountyFlyRef.current = false
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
                 setSelected(null)
+                setSelectedTractGeometry(null)
                 setExpandedOwner(null)
                 setSearchQuery('')
                 setSearchResults([])

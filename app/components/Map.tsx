@@ -276,6 +276,7 @@ export type DevStatusMapEntry = {
 export default function Map({
   onOwnerClick,
   focusTarget,
+  focusGeometry,
   selectedCounty,
   mapFlyToRef,
   mapLevel,
@@ -285,6 +286,9 @@ export default function Map({
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
+  /** Optional polygon from the page-level geojson index — preferred for
+   *  deep-link fitBounds so we don't wait on Mapbox parcel source load. */
+  focusGeometry?: GeoJSON.Geometry | null
   selectedCounty: CountyKey
   mapFlyToRef?: React.MutableRefObject<((center: [number, number], zoom: number) => void) | null>
   mapLevel: 'county' | 'tract'
@@ -466,6 +470,8 @@ export default function Map({
     }
 
     if (!bounds.isEmpty()) {
+      // Cancel any in-flight flyTo (e.g. county-center) so tract zoom wins.
+      mapInstance.stop()
       mapInstance.fitBounds(bounds, {
         padding: options?.padding ?? 120,
         duration: options?.duration ?? 800,
@@ -2184,7 +2190,20 @@ export default function Map({
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
-    if (!focusTarget || !map.current?.isStyleLoaded()) return
+    if (!map.current?.isStyleLoaded()) return
+
+    // Prefer geometry handed up from the page (deep-link geojson index) —
+    // available as soon as tracts load, without waiting on Mapbox sources.
+    if (focusGeometry) {
+      fitGeometry(map.current, focusGeometry, {
+        padding: 80,
+        maxZoom: 15,
+        duration: 900,
+      })
+      return
+    }
+
+    if (!focusTarget) return
 
     const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
     if (features.length === 0) return
@@ -2238,18 +2257,14 @@ export default function Map({
         duration: 900,
       })
     }
-  }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
+  }, [focusTarget, focusGeometry, mapLevel, selectedCounty, parcelsVersion])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-      {mapReady && (
-        <TractSearch
-          map={map.current}
-          geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
-        />
-      )}
       {mapReady && mapLevel === 'tract' && (
+        // County overview / tract mode: LEGEND + OVERLAYS top-left
+        // (replaces the old top-left tract search slot).
         <LayerTogglePanel
           statusVisible={statusVisible}
           onStatus={setStatus}
@@ -2263,17 +2278,24 @@ export default function Map({
           onSubmittedGlow={setShowSubmittedGlow}
         />
       )}
+      {mapReady && mapLevel === 'tract' && (
+        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 5, width: 288 }}>
+          <TractSearch
+            map={map.current}
+            geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
+          />
+        </div>
+      )}
     </div>
   )
 }
 
-// In-map layer control. Fixed to the top-right of the map viewport.
-// Single unified LEGEND — one row per UnifiedStatus, one color per
-// status, one toggle per row. Checking a row shows those tracts;
-// unchecking hides them by dropping fill-opacity to 0. Below the
-// legend a single OVERLAYS section carries the Active rigs dot
-// toggle, which is the one signal that doesn't collapse cleanly
-// into the primary tract classification.
+// In-map layer control. Fixed to the top-left of the map viewport on
+// county overview / tract mode. Single unified LEGEND — one row per
+// UnifiedStatus, one color per status, one toggle per row. Checking a
+// row shows those tracts; unchecking hides them by dropping
+// fill-opacity to 0. Below the legend a single OVERLAYS section
+// carries permit halos + Active rigs.
 function LayerTogglePanel({
   statusVisible, onStatus,
   statusPalette, statusLabels,
@@ -2311,7 +2333,7 @@ function LayerTogglePanel({
     <div
       style={{
         position: 'absolute',
-        right: 12,
+        left: 12,
         top: 12,
         background: 'rgba(255,255,255,0.97)',
         border: '1px solid #E5E7EB',
