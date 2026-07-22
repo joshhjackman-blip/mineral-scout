@@ -960,34 +960,27 @@ def summarize_abstract(
             })
 
     # Status priority (highest wins). Revised 2026-07-16 after the
-    # Martin all-yellow feedback and again on 2026-07-21 to split
-    # True PUD out from Infill (SEC 10b-style proved undeveloped is
-    # a distinct concept from spacing-gap analytics).
+    # Martin all-yellow feedback. TRUE_PUD was briefly split out on
+    # 2026-07-21 (SEC 10b-style proved undeveloped) then folded back
+    # into FRONTIER on 2026-07-22 — one undeveloped bucket on the map.
+    # Adjacent-PDP + operator-commitment still bump pud_score below;
+    # they no longer mint a separate status.
     #
     #   PUD_DUC        drilled + no completion (most urgent — royalty
     #                  hits when completion crews finish)
     #   PUD_INFILL     PDP tract with fresh permits OR spacing-gap
     #                  detection hit (infill drilling on producing acreage)
-    #   PUD_PERMITTED  approved permit on a non-producing tract (the
-    #                  permit filing IS the commitment signal — no
-    #                  need to demote to True PUD)
-    #   TRUE_PUD       non-producing + no permit here + offset PDP +
-    #                  operator committed. Emerald on the map.
-    #   PUD_INFILL     spacing-math on an empty tract without True
-    #                  PUD's stronger commitment signal
+    #   PUD_PERMITTED  approved permit on a non-producing tract
+    #   PUD_INFILL     spacing-math on an empty tract
     #   PDP            producing wells, no fresh activity
     #   LEASING_ACTIVE fresh lease memo but no drilling
-    #   FRONTIER       nothing
+    #   FRONTIER       undeveloped (no PDP / DUC / permit / infill)
     if duc_on_tract > 0:
         status = "PUD_DUC"
     elif has_producing_well and (approved_on_tract > 0 or infill_hit_count > 0):
         status = "PUD_INFILL"
     elif approved_on_tract > 0:
         status = "PUD_PERMITTED"
-    elif (not has_producing_well
-          and adjacent_pdp_count > 0
-          and operator_committed):
-        status = "TRUE_PUD"
     elif infill_hit_count > 0:
         status = "PUD_INFILL"
     elif has_producing_well:
@@ -1007,10 +1000,9 @@ def summarize_abstract(
     if infill_hit_count > 0:
         score += 2
     if not has_producing_well and adjacent_pdp_count > 0:
-        # True PUD signal — adjacent producing acreage on an empty
-        # tract is a strong development-hint. Bump score even if
-        # the tract ends up classified as Infill because operator
-        # commitment isn't met yet.
+        # Adjacent producing acreage on an empty tract is a strong
+        # development hint (former True PUD signal). Bump score even
+        # when the tract lands in FRONTIER / Infill.
         score += 2
     if fresh_lease_memos:
         score += 1

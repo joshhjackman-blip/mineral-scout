@@ -45,16 +45,26 @@ function productionStatusToUnified(production: string): UnifiedStatus {
   return 'FRONTIER'
 }
 
-// Compute the unified map_status for a single feature from whichever
-// signal is stronger: dev-status classification wins when it's not
-// FRONTIER; otherwise fall back to production_status. Result is written
-// to feature.properties.map_status.
+// Prefer a computed tract_development_status row when we have one.
+// Only fall back to the geojson `production_status` when no compute
+// row exists for this abstract (county not yet computed, or key
+// mismatch). Previously FRONTIER rows were treated as "no signal"
+// and overwritten by production_status — that made Martin's 17
+// Frontier tracts paint as PDP yellow whenever the shapefile still
+// carried a producing label, so Frontier looked "missing" on the map.
+//
+// TRUE_PUD collapses into FRONTIER (2026-07-22): one undeveloped
+// bucket on the map. Legacy TRUE_PUD rows still in the DB paint as
+// Frontier until the next compute pass rewrites them.
 function deriveMapStatus(
   props: GeoJSON.GeoJsonProperties,
   entry: { development_status?: string } | undefined,
 ): UnifiedStatus {
   const devStatus = entry?.development_status
-  if (devStatus && devStatus !== 'FRONTIER') return devStatus as UnifiedStatus
+  if (devStatus) {
+    if (devStatus === 'TRUE_PUD') return 'FRONTIER'
+    return devStatus as UnifiedStatus
+  }
   return productionStatusToUnified(String(props?.production_status ?? 'none'))
 }
 
@@ -121,7 +131,9 @@ function injectDevStatusIntoFeatures(
     })
     feature.properties = {
       ...props,
-      development_status: entry?.development_status ?? 'FRONTIER',
+      // Persist the remapped status so click handlers / drawers see
+      // FRONTIER for legacy TRUE_PUD rows, matching map_status.
+      development_status: mapStatus,
       pud_score: entry?.pud_score ?? 0,
       map_status: mapStatus,
       has_recent_permit: hasRecentPermit,
@@ -291,22 +303,19 @@ export default function Map({
   const [statusVisible, setStatusVisible] = useState<Record<UnifiedStatus, boolean>>({
     PDP: true,
     PUD_DUC: true,
-    // True PUD (2026-07-21): SEC-style proved undeveloped —
-    // adjacent PDPs prove the geology + operator has committed
-    // via dev programs or nearby permits. Distinct from Infill
-    // (spacing-math only, no commitment signal).
+    // TRUE_PUD collapsed into FRONTIER (2026-07-22). Kept on the
+    // Record for type completeness; not shown in the legend.
     TRUE_PUD: true,
     // PUD_PERMITTED and LEASING_ACTIVE are still valid dev-status
     // classifications the compute pipeline may emit, but they've been
     // dropped from the visible legend:
     //   - PUD_PERMITTED never fires in mature Permian data because
     //     the classifier promotes producing tracts with fresh permits
-    //     to PUD_INFILL. Permits are now surfaced as a blue GLOW
-    //     overlay on top of whatever the tract's primary color is —
-    //     see `showPermitGlow` below.
+    //     to PUD_INFILL. Permits are now surfaced as blue/teal GLOW
+    //     overlays — see `showPermitGlow` / `showSubmittedGlow`.
     //   - LEASING_ACTIVE has zero tracts and doesn't add signal for
     //     the current buyer workflow.
-    // Both statuses paint as FRONTIER gray when they somehow appear.
+    // Both statuses paint as FRONTIER slate when they somehow appear.
     PUD_PERMITTED: true,
     PUD_INFILL: true,
     LEASING_ACTIVE: true,
@@ -565,32 +574,33 @@ export default function Map({
   const STATUS_FILL: Record<UnifiedStatus, string> = {
     PDP:            '#EAB308', // yellow — producing today
     PUD_DUC:        '#A855F7', // purple — drilled, awaiting completion
-    // True PUD (2026-07-21): no PDP, no DUC, offset PDP within 1
-    // mile + operator commitment. SEC 10b-style proved undeveloped.
-    // Emerald picks it out of the palette (no collision with
-    // yellow / purple / orange / gray / blue / teal / red).
-    TRUE_PUD:       '#10B981',
-    // PUD_PERMITTED + LEASING_ACTIVE paint as FRONTIER gray because
-    // permits are surfaced by the blue glow overlay and leasing has
-    // been dropped from the visible palette (2026-07-17).
-    PUD_PERMITTED:  '#E5E7EB',
+    // TRUE_PUD merged into FRONTIER (2026-07-22). Palette entry
+    // kept for type completeness; deriveMapStatus remaps it.
+    TRUE_PUD:       '#94A3B8',
+    // PUD_PERMITTED + LEASING_ACTIVE paint as FRONTIER slate because
+    // permits are surfaced by the blue/teal glow overlays and leasing
+    // has been dropped from the visible palette (2026-07-17).
+    PUD_PERMITTED:  '#94A3B8',
     PUD_INFILL:     '#F97316', // orange — spacing-gap infill candidate
-    LEASING_ACTIVE: '#E5E7EB',
-    FRONTIER:       '#E5E7EB', // gray — no signals yet
+    LEASING_ACTIVE: '#94A3B8',
+    // Frontier = undeveloped bucket (ex-TRUE_PUD + ex-FRONTIER).
+    // Slate (not near-white) so the ~17–30 empty tracts per county
+    // actually read on the map; 0.18 on #E5E7EB was invisible.
+    FRONTIER:       '#94A3B8',
   }
   const STATUS_OUTLINE: Record<UnifiedStatus, string> = {
     PDP:            '#A16207',
     PUD_DUC:        '#6B21A8',
-    TRUE_PUD:       '#047857', // deep emerald
-    PUD_PERMITTED:  '#CBD5E1',
+    TRUE_PUD:       '#64748B',
+    PUD_PERMITTED:  '#64748B',
     PUD_INFILL:     '#C2410C',
-    LEASING_ACTIVE: '#CBD5E1',
-    FRONTIER:       '#CBD5E1',
+    LEASING_ACTIVE: '#64748B',
+    FRONTIER:       '#64748B',
   }
   const STATUS_LABEL: Record<UnifiedStatus, string> = {
     PDP:            'PDP',
     PUD_DUC:        'DUC',
-    TRUE_PUD:       'True PUD',
+    TRUE_PUD:       'Frontier',
     PUD_PERMITTED:  'PUD (Permitted)',
     PUD_INFILL:     'Infill',
     LEASING_ACTIVE: 'Leasing active',
@@ -600,20 +610,20 @@ export default function Map({
   const STATUS_OPACITY: Record<UnifiedStatus, number> = {
     PDP:            0.72,
     PUD_DUC:        0.82,
-    TRUE_PUD:       0.78,
-    PUD_PERMITTED:  0.18, // treated as frontier
+    TRUE_PUD:       0.55,
+    PUD_PERMITTED:  0.55, // treated as frontier
     PUD_INFILL:     0.75,
-    LEASING_ACTIVE: 0.18, // treated as frontier
-    FRONTIER:       0.18,
+    LEASING_ACTIVE: 0.55, // treated as frontier
+    FRONTIER:       0.55,
   }
   const STATUS_OUTLINE_WIDTH: Record<UnifiedStatus, number> = {
     PDP:            1.6,
     PUD_DUC:        2.0,
-    TRUE_PUD:       1.8,
-    PUD_PERMITTED:  0.9,
+    TRUE_PUD:       1.2,
+    PUD_PERMITTED:  1.2,
     PUD_INFILL:     1.5,
-    LEASING_ACTIVE: 0.9,
-    FRONTIER:       0.9,
+    LEASING_ACTIVE: 1.2,
+    FRONTIER:       1.2,
   }
 
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
@@ -2217,13 +2227,12 @@ function LayerTogglePanel({
   onSubmittedGlow: (v: boolean) => void
 }) {
   // Legend row order for the four surviving primary classifications
-  // (PDP / PUD_DUC / PUD_INFILL / FRONTIER). PUD_PERMITTED and
-  // LEASING_ACTIVE were pulled off the visible legend on
-  // 2026-07-17 — the first because permits are surfaced via the
-  // blue glow overlay now, the second because zero tracts land in
-  // that status anyway.
+  // (PDP / PUD_DUC / PUD_INFILL / FRONTIER). TRUE_PUD was folded into
+  // FRONTIER on 2026-07-22. PUD_PERMITTED and LEASING_ACTIVE were
+  // pulled off earlier — permits via blue/teal glow overlays,
+  // leasing because zero tracts land there.
   const statusKeys: UnifiedStatus[] = [
-    'PDP', 'PUD_DUC', 'TRUE_PUD', 'PUD_INFILL', 'FRONTIER',
+    'PDP', 'PUD_DUC', 'PUD_INFILL', 'FRONTIER',
   ]
   const legendRows = statusKeys.map((key) => ({
     label: statusLabels[key],
