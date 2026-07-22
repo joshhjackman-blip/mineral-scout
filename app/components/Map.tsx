@@ -279,6 +279,7 @@ export default function Map({
   focusGeometry,
   selectedCounty,
   mapFlyToRef,
+  mapFitBoundsRef,
   mapLevel,
   onCountySelect,
   onCountySwitch,
@@ -291,6 +292,8 @@ export default function Map({
   focusGeometry?: GeoJSON.Geometry | null
   selectedCounty: CountyKey
   mapFlyToRef?: React.MutableRefObject<((center: [number, number], zoom: number) => void) | null>
+  /** Imperative tract fitBounds used by Pad Activity / permit deep-links. */
+  mapFitBoundsRef?: React.MutableRefObject<((geometry: GeoJSON.Geometry) => void) | null>
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
@@ -2100,6 +2103,32 @@ export default function Map({
   }, [mapFlyToRef])
 
   useEffect(() => {
+    if (!mapFitBoundsRef) return
+    mapFitBoundsRef.current = (geometry) => {
+      if (!map.current) return
+      // Wait for style if the map just mounted (deep-link cold load).
+      if (!map.current.isStyleLoaded()) {
+        map.current.once('load', () => {
+          if (map.current) fitGeometry(map.current, geometry, {
+            padding: 80,
+            maxZoom: 15,
+            duration: 900,
+          })
+        })
+        return
+      }
+      fitGeometry(map.current, geometry, {
+        padding: 80,
+        maxZoom: 15,
+        duration: 900,
+      })
+    }
+    return () => {
+      mapFitBoundsRef.current = null
+    }
+  }, [mapFitBoundsRef])
+
+  useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
     applyTractCountyStyles()
@@ -2188,9 +2217,9 @@ export default function Map({
     }
   }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
-  // Remember the last abstract/geometry we fitted so parcelsVersion
-  // bumps (async geojson load) don't re-fitBounds and cancel an
-  // in-flight county-center flyTo when nothing new was selected.
+  // Backup tract focus (sidebar click / deep-link). Primary deep-link
+  // path is page → mapFitBoundsRef; this effect retries when parcels
+  // finish loading or the map becomes ready after a cold start.
   const lastFittedFocusKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -2198,7 +2227,13 @@ export default function Map({
       lastFittedFocusKeyRef.current = null
       return
     }
-    if (!map.current?.isStyleLoaded()) return
+    if (!focusGeometry && !focusTarget) {
+      lastFittedFocusKeyRef.current = null
+      return
+    }
+
+    let cancelled = false
+    let attempts = 0
 
     const normalizeAbstract = (raw: unknown) =>
       String(raw ?? '')
@@ -2206,78 +2241,86 @@ export default function Map({
         .trim()
         .toUpperCase()
 
-    // Prefer geometry handed up from the page (deep-link geojson index) —
-    // available as soon as tracts load, without waiting on Mapbox sources.
-    if (focusGeometry) {
-      const focusKey = `geom:${normalizeAbstract(
-        focusTarget?.abstract_label ?? focusTarget?.ABSTRACT_L ?? focusTarget?.CODE,
-      )}`
-      if (lastFittedFocusKeyRef.current === focusKey && focusKey !== 'geom:') return
-      lastFittedFocusKeyRef.current = focusKey
-      fitGeometry(map.current, focusGeometry, {
-        padding: 80,
-        maxZoom: 15,
-        duration: 900,
-      })
-      return
+    const tryFit = () => {
+      if (cancelled || !map.current) return
+      if (!map.current.isStyleLoaded()) {
+        if (attempts++ < 40) setTimeout(tryFit, 100)
+        return
+      }
+
+      // Prefer geometry handed up from the page (deep-link geojson index).
+      if (focusGeometry) {
+        const focusKey = `geom:${normalizeAbstract(
+          focusTarget?.abstract_label ?? focusTarget?.ABSTRACT_L ?? focusTarget?.CODE,
+        )}`
+        if (lastFittedFocusKeyRef.current === focusKey && focusKey !== 'geom:') return
+        lastFittedFocusKeyRef.current = focusKey
+        fitGeometry(map.current, focusGeometry, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 900,
+        })
+        return
+      }
+
+      if (!focusTarget) return
+
+      const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
+      if (features.length === 0) {
+        // Parcels still loading — parcelsVersion bump will re-run this effect.
+        return
+      }
+
+      const selectedAbstract = normalizeAbstract(
+        focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
+      )
+      if (!selectedAbstract) return
+
+      const focusKey = `abs:${selectedAbstract}`
+      if (lastFittedFocusKeyRef.current === focusKey) return
+
+      const selectedSurvey = String(
+        focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
+      )
+        .trim()
+        .toUpperCase()
+
+      const matched =
+        features.find((feature) => {
+          const props = (feature.properties ?? {}) as Record<string, unknown>
+          const featureAbstract = normalizeAbstract(
+            props.abstract_label ?? props.ABSTRACT_L ?? props.CODE,
+          )
+          if (featureAbstract !== selectedAbstract) return false
+          if (!selectedSurvey) return true
+          const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '')
+            .trim()
+            .toUpperCase()
+          return !featureSurvey || featureSurvey === selectedSurvey
+        }) ??
+        features.find((feature) => {
+          const props = (feature.properties ?? {}) as Record<string, unknown>
+          return (
+            normalizeAbstract(props.abstract_label ?? props.ABSTRACT_L ?? props.CODE) ===
+            selectedAbstract
+          )
+        })
+
+      if (matched?.geometry) {
+        lastFittedFocusKeyRef.current = focusKey
+        fitGeometry(map.current, matched.geometry, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 900,
+        })
+      }
     }
 
-    if (!focusTarget) {
-      lastFittedFocusKeyRef.current = null
-      return
+    tryFit()
+    return () => {
+      cancelled = true
     }
-
-    const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
-    if (features.length === 0) return
-
-    const selectedAbstract = normalizeAbstract(
-      focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
-    )
-    if (!selectedAbstract) return
-
-    const focusKey = `abs:${selectedAbstract}`
-    if (lastFittedFocusKeyRef.current === focusKey) return
-
-    const selectedSurvey = String(
-      focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
-    )
-      .trim()
-      .toUpperCase()
-
-    // Prefer abstract + survey when both sides have survey; otherwise
-    // match on bare abstract alone. Howard/Martin map geojson often has
-    // LEVEL1_SUR = null, and the old `!selectedSurvey` early-return meant
-    // deep-links from /pad-activity never fitBounds.
-    const matched =
-      features.find((feature) => {
-        const props = (feature.properties ?? {}) as Record<string, unknown>
-        const featureAbstract = normalizeAbstract(
-          props.abstract_label ?? props.ABSTRACT_L ?? props.CODE,
-        )
-        if (featureAbstract !== selectedAbstract) return false
-        if (!selectedSurvey) return true
-        const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '')
-          .trim()
-          .toUpperCase()
-        return !featureSurvey || featureSurvey === selectedSurvey
-      }) ??
-      features.find((feature) => {
-        const props = (feature.properties ?? {}) as Record<string, unknown>
-        return (
-          normalizeAbstract(props.abstract_label ?? props.ABSTRACT_L ?? props.CODE) ===
-          selectedAbstract
-        )
-      })
-
-    if (matched?.geometry) {
-      lastFittedFocusKeyRef.current = focusKey
-      fitGeometry(map.current, matched.geometry, {
-        padding: 80,
-        maxZoom: 15,
-        duration: 900,
-      })
-    }
-  }, [focusTarget, focusGeometry, mapLevel, selectedCounty, parcelsVersion])
+  }, [focusTarget, focusGeometry, mapLevel, selectedCounty, parcelsVersion, mapReady])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>

@@ -559,10 +559,13 @@ const estimateMonthlyRoyalty = (
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
-  // One-shot: skip the next county-center flyTo so a deep-link can
-  // fitBounds the tract. Cleared as soon as it's consumed (or when
-  // the user explicitly enters a county from the UI).
-  const skipNextCountyFlyRef = useRef(false)
+  // Imperative fitBounds for tract deep-links (Pad Activity → Open on map).
+  // Kept separate from mapFlyToRef so county zoom and tract zoom never
+  // share a skip-flag that one path can consume out from under the other.
+  const mapFitBoundsRef = useRef<((geometry: GeoJSON.Geometry) => void) | null>(null)
+  // Bumped on every county-camera request so in-flight tract fit retries
+  // abort instead of yanking the camera after the user changed counties.
+  const cameraGenerationRef = useRef(0)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
@@ -575,6 +578,43 @@ export default function Home() {
   const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(null)
   const [pendingUrlPoint, setPendingUrlPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [pendingUrlOwner, setPendingUrlOwner] = useState<string | null>(null)
+  // True while a tract deep-link is waiting to fitBounds. Blocks any
+  // accidental county fly until the tract camera lands (or user nav).
+  const tractDeepLinkActiveRef = useRef(false)
+
+  const flyToCountyView = useCallback((countyKey: CountyKey) => {
+    // County path owns the camera from here on.
+    tractDeepLinkActiveRef.current = false
+    cameraGenerationRef.current += 1
+    const target = COUNTIES[countyKey]
+    let attempts = 0
+    const tryFlyTo = () => {
+      attempts += 1
+      if (mapFlyToRef.current) {
+        mapFlyToRef.current(target.mapCenter, target.mapZoom)
+        return
+      }
+      if (attempts < 20) setTimeout(tryFlyTo, 150)
+    }
+    setTimeout(tryFlyTo, 100)
+  }, [])
+
+  const fitToTractGeometry = useCallback((geometry: GeoJSON.Geometry) => {
+    const gen = cameraGenerationRef.current
+    let attempts = 0
+    const tryFit = () => {
+      // Abort if the user started a county fly in the meantime.
+      if (gen !== cameraGenerationRef.current) return
+      attempts += 1
+      if (mapFitBoundsRef.current) {
+        mapFitBoundsRef.current(geometry)
+        tractDeepLinkActiveRef.current = false
+        return
+      }
+      if (attempts < 40) setTimeout(tryFit, 150)
+    }
+    setTimeout(tryFit, 100)
+  }, [])
 
   // Deep-link support from /permits, /pad-activity, etc:
   //   `/?county=<key>&abstract=<label>`
@@ -582,6 +622,13 @@ export default function Home() {
   //   optional `&owner=<name>` to highlight / expand that owner
   // Read the URL AFTER mount (not in useState factories) because
   // Next.js runs this client component through SSR first.
+  //
+  // Camera rule (both paths must work together):
+  //   • Tract deep-link (abstract / lat-lon) → NEVER county-fly; fitBounds
+  //     the tract once geometry resolves.
+  //   • County-only URL or UI county click → flyToCountyView only.
+  //   • No automatic fly on mapLevel/selectedCounty — that race is what
+  //     kept breaking one path when the other was fixed.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
@@ -596,31 +643,24 @@ export default function Home() {
     if (urlCounty && urlCounty in COUNTIES) {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
+      if (hasTractDeepLink) {
+        tractDeepLinkActiveRef.current = true
+      } else {
+        // County-only deep link — zoom to county once the map mounts.
+        flyToCountyView(urlCounty)
+      }
     }
-    // Only suppress the *first* county fly after a tract deep-link.
-    // Sticky suppress was blocking later "click county → zoom" navigations.
-    if (hasTractDeepLink) skipNextCountyFlyRef.current = true
+    // Accept abstract and lat/lon together (pad-activity sends both).
+    // Abstract wins for selection; lat/lon is the geometry fallback.
     if (urlAbstractRaw) {
       setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
-    } else if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
+    }
+    if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
       setPendingUrlPoint({ lat: urlLat, lon: urlLon })
     }
     if (urlOwner) setPendingUrlOwner(urlOwner)
-  }, [])
-
-  const flyToCountyView = useCallback((countyKey: CountyKey) => {
-    skipNextCountyFlyRef.current = false
-    const target = COUNTIES[countyKey]
-    let attempts = 0
-    const tryFlyTo = () => {
-      attempts += 1
-      if (mapFlyToRef.current) {
-        mapFlyToRef.current(target.mapCenter, target.mapZoom)
-        return
-      }
-      if (attempts < 15) setTimeout(tryFlyTo, 150)
-    }
-    setTimeout(tryFlyTo, 100)
+    // flyToCountyView is stable (empty deps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
@@ -957,30 +997,11 @@ export default function Home() {
     setDrawerTractLabel(null)
   }, [selected?.abstract_label, selected?.ABSTRACT_L])
 
-  useEffect(() => {
-    if (mapLevel !== 'tract') return
-    // Deep-link entry: consume the one-shot skip so Map fitBounds owns
-    // the camera. Later county clicks call flyToCountyView() directly
-    // and are not blocked by a sticky flag.
-    if (skipNextCountyFlyRef.current) {
-      skipNextCountyFlyRef.current = false
-      return
-    }
-    const target = COUNTIES[selectedCounty]
-    let attempts = 0
-    const tryFlyTo = () => {
-      attempts += 1
-      if (mapFlyToRef.current) {
-        mapFlyToRef.current(target.mapCenter, target.mapZoom)
-        return
-      }
-      if (attempts < 10) {
-        setTimeout(tryFlyTo, 200)
-      }
-    }
-    const timer = setTimeout(tryFlyTo, 200)
-    return () => clearTimeout(timer)
-  }, [mapLevel, selectedCounty])
+  // NOTE: intentional absence of a mapLevel/selectedCounty → flyTo effect.
+  // County zoom is only triggered by flyToCountyView() (UI clicks / county-
+  // only URL). Tract zoom is only triggered by fitToTractGeometry() (deep-
+  // link resolver). Sharing one auto-effect between them caused the
+  // "fix one breaks the other" race.
 
   useEffect(() => {
     // 900px is the width at which the drawer's side-panel layout
@@ -1755,71 +1776,103 @@ export default function Home() {
   useEffect(() => {
     if (tracts.length === 0) return
 
+    const resolveGeomFromPoint = (): {
+      bare: string
+      geom: GeoJSON.Geometry
+    } | null => {
+      if (!pendingUrlPoint) return null
+      const { lat, lon } = pendingUrlPoint
+      for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
+        if (isPointInGeometry(lon, lat, geom)) {
+          return {
+            bare: bare.replace(/^A-\s*/i, '').trim().toUpperCase(),
+            geom,
+          }
+        }
+      }
+      return null
+    }
+
+    const applyTractFocus = (
+      match: TractRecord,
+      geom: GeoJSON.Geometry | null | undefined,
+      labelOverride?: string,
+    ) => {
+      const selection = {
+        ...toTractSelection(match),
+        abstract_label:
+          labelOverride ||
+          String(match.abstract_label ?? '').trim() ||
+          '',
+      }
+      setSelected(selection)
+      if (geom) {
+        setSelectedTractGeometry(geom)
+        fitToTractGeometry(geom)
+      }
+      setPendingUrlAbstract(null)
+      setPendingUrlPoint(null)
+      if (pendingUrlOwner) {
+        setHighlightedOwner(pendingUrlOwner)
+        setPendingUrlOwner(null)
+      }
+    }
+
     if (pendingUrlAbstract) {
       const wanted = pendingUrlAbstract.replace(/^A-\s*/i, '').trim().toUpperCase()
       const match = tracts.find((t) => {
         const label = String(t.abstract_label ?? '')
           .replace(/^A-\s*/i, '')
+          .replace(/^\d{5}-/, '')
           .trim()
           .toUpperCase()
         return label === wanted
       })
       if (match) {
-        // Prefer the geojson label form (often "A-316") so Map focus
-        // matching against ABSTRACT_L succeeds.
-        const selection = {
-          ...toTractSelection(match),
-          abstract_label:
-            String(match.abstract_label ?? '').trim() ||
-            (wanted ? `A-${wanted}` : ''),
-        }
-        setSelected(selection)
         const bare = wanted
-        const geom =
+        let geom: GeoJSON.Geometry | undefined =
           tractGeometryByAbstract[bare] ||
           tractGeometryByAbstract[`A-${bare}`] ||
-          tractGeometryByAbstract[wanted]
-        if (geom) setSelectedTractGeometry(geom)
-        setPendingUrlAbstract(null)
-        if (pendingUrlOwner) {
-          setHighlightedOwner(pendingUrlOwner)
-          setPendingUrlOwner(null)
+          tractGeometryByAbstract[wanted] ||
+          tractGeometryByAbstract[
+            String(match.abstract_label ?? '')
+              .replace(/^A-\s*/i, '')
+              .trim()
+              .toUpperCase()
+          ]
+        // Abstract matched the sidebar row but geometry lookup missed —
+        // use lat/lon point-in-polygon so Open on map still zooms in.
+        if (!geom) {
+          geom = resolveGeomFromPoint()?.geom
         }
+        applyTractFocus(
+          match,
+          geom,
+          String(match.abstract_label ?? '').trim() || (wanted ? `A-${wanted}` : ''),
+        )
         return
       }
+      // Abstract string missed — fall through to lat/lon if present.
     }
 
     if (pendingUrlPoint) {
-      const { lat, lon } = pendingUrlPoint
-      let matchedBare: string | null = null
-      let matchedGeom: GeoJSON.Geometry | null = null
-      for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
-        if (isPointInGeometry(lon, lat, geom)) {
-          matchedBare = bare
-          matchedGeom = geom
-          break
-        }
-      }
-      if (matchedBare) {
+      const hit = resolveGeomFromPoint()
+      if (hit) {
         const match = tracts.find((t) => {
-          const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim()
-          return label === matchedBare
+          const label = String(t.abstract_label ?? '')
+            .replace(/^A-\s*/i, '')
+            .replace(/^\d{5}-/, '')
+            .trim()
+            .toUpperCase()
+          return label === hit.bare
         })
         if (match) {
-          setSelected(toTractSelection(match))
-          // Geometry drives Map focusGeometry → fitBounds (exact tract).
-          // Do not flyTo the point here — that fought tract zoom.
-          if (matchedGeom) setSelectedTractGeometry(matchedGeom)
-          setPendingUrlPoint(null)
-          if (pendingUrlOwner) {
-            setHighlightedOwner(pendingUrlOwner)
-            setPendingUrlOwner(null)
-          }
+          applyTractFocus(match, hit.geom)
         }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracts, pendingUrlAbstract, pendingUrlPoint, tractGeometryByAbstract, pendingUrlOwner])
+  }, [tracts, pendingUrlAbstract, pendingUrlPoint, tractGeometryByAbstract, pendingUrlOwner, fitToTractGeometry])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,
@@ -2324,7 +2377,8 @@ export default function Home() {
             {mapLevel === 'tract' && (
               <button
                 onClick={() => {
-                  skipNextCountyFlyRef.current = false
+                  tractDeepLinkActiveRef.current = false
+                  cameraGenerationRef.current += 1
                   setMapLevel('county')
                   setSelected(null)
                   setSelectedTractGeometry(null)
@@ -3362,7 +3416,7 @@ export default function Home() {
               {mapLevel === 'tract' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {liveCountyStatEntries.map((card, idx, arr) => {
-                    // Odd count → last card spans both columns.
+                    // 7 cards (legend/overlay counts): last card spans full width.
                     const isLastOdd = idx === arr.length - 1 && arr.length % 2 === 1
                     return (
                       <div
@@ -3698,6 +3752,7 @@ export default function Home() {
             <MineralMap
               selectedCounty={selectedCounty}
               mapFlyToRef={mapFlyToRef}
+              mapFitBoundsRef={mapFitBoundsRef}
               mapLevel={mapLevel}
               focusTarget={selected}
               focusGeometry={selectedTractGeometry}
