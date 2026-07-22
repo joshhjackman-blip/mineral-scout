@@ -569,33 +569,33 @@ export default function Home() {
   // a one-shot useEffect resolves this to a TractSelection and
   // fires setSelected() + clears the pending state.
   const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(null)
+  const [pendingUrlPoint, setPendingUrlPoint] = useState<{ lat: number; lon: number } | null>(null)
+  const [pendingUrlOwner, setPendingUrlOwner] = useState<string | null>(null)
 
-  // Deep-link support: `/?county=<key>&abstract=<label>` from
-  // /permits and eventually other pages. Read the URL AFTER mount
-  // (not in useState factories) because Next.js runs this client
-  // component through SSR first — `window` is undefined during
-  // that pass, so any factory reading `window.location.search`
-  // returns the default. React then reuses the SSR state on
-  // hydration and never re-runs the factory even though `window`
-  // is now available. Reading via useEffect ensures the browser's
-  // real URL params are picked up on every fresh mount.
-  //
-  // This is the "post-mount URL sync" pattern. Runs exactly once
-  // per page mount (no dep on searchParams because we only care
-  // about the deep-link at open time, not subsequent SPA nav
-  // within Home).
+  // Deep-link support from /permits, /pad-activity, etc:
+  //   `/?county=<key>&abstract=<label>`
+  //   `/?county=<key>&lat=<n>&lon=<n>`  (point-in-polygon → exact tract)
+  //   optional `&owner=<name>` to highlight / expand that owner
+  // Read the URL AFTER mount (not in useState factories) because
+  // Next.js runs this client component through SSR first.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const urlCounty = params.get('county') as CountyKey | null
     const urlAbstractRaw = params.get('abstract') || ''
+    const urlLat = Number(params.get('lat'))
+    const urlLon = Number(params.get('lon'))
+    const urlOwner = (params.get('owner') || '').trim()
     if (urlCounty && urlCounty in COUNTIES) {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
     }
     if (urlAbstractRaw) {
       setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
+    } else if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
+      setPendingUrlPoint({ lat: urlLat, lon: urlLon })
     }
+    if (urlOwner) setPendingUrlOwner(urlOwner)
   }, [])
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
@@ -1658,29 +1658,63 @@ export default function Home() {
   // One-shot deep-link resolver: once tracts finish loading for
   // the URL-requested county, find the tract whose abstract_label
   // matches ?abstract=X (case-insensitive, "A-" prefix optional)
-  // and hand it to setSelected. That triggers the map's focus /
-  // fly-to logic just like clicking a tract from the sidebar.
-  // Clears pendingUrlAbstract on success so it never re-fires.
+  // OR contains ?lat/?lon via point-in-polygon, then setSelected.
   useEffect(() => {
-    if (!pendingUrlAbstract) return
     if (tracts.length === 0) return
-    const wanted = pendingUrlAbstract.toUpperCase().trim()
-    const match = tracts.find((t) => {
-      const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim().toUpperCase()
-      return label === wanted
-    })
-    if (match) {
-      setSelected(toTractSelection(match))
-      setPendingUrlAbstract(null)
+
+    if (pendingUrlAbstract) {
+      const wanted = pendingUrlAbstract.toUpperCase().trim()
+      const match = tracts.find((t) => {
+        const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim().toUpperCase()
+        return label === wanted
+      })
+      if (match) {
+        const selection = toTractSelection(match)
+        setSelected(selection)
+        const bare = wanted.replace(/^A-\s*/i, '')
+        const geom = tractGeometryByAbstract[bare] || tractGeometryByAbstract[wanted]
+        if (geom) setSelectedTractGeometry(geom)
+        setPendingUrlAbstract(null)
+        if (pendingUrlOwner) {
+          setHighlightedOwner(pendingUrlOwner)
+          setPendingUrlOwner(null)
+        }
+        return
+      }
     }
-    // If no match, we keep pendingUrlAbstract set so a subsequent
-    // county switch (or the same county finishing a re-load)
-    // could still resolve it. But we intentionally don't clear it
-    // so we don't silently swallow an invalid abstract; the user
-    // just stays at the county's tract-overview level, which is
-    // still a better place to land than the county-overview map.
+
+    if (pendingUrlPoint) {
+      const { lat, lon } = pendingUrlPoint
+      let matchedBare: string | null = null
+      let matchedGeom: GeoJSON.Geometry | null = null
+      for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
+        if (isPointInGeometry(lon, lat, geom)) {
+          matchedBare = bare
+          matchedGeom = geom
+          break
+        }
+      }
+      if (matchedBare) {
+        const match = tracts.find((t) => {
+          const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim()
+          return label === matchedBare
+        })
+        if (match) {
+          setSelected(toTractSelection(match))
+          if (matchedGeom) setSelectedTractGeometry(matchedGeom)
+          if (mapFlyToRef.current) {
+            mapFlyToRef.current([lon, lat], 14)
+          }
+          setPendingUrlPoint(null)
+          if (pendingUrlOwner) {
+            setHighlightedOwner(pendingUrlOwner)
+            setPendingUrlOwner(null)
+          }
+        }
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracts, pendingUrlAbstract])
+  }, [tracts, pendingUrlAbstract, pendingUrlPoint, tractGeometryByAbstract, pendingUrlOwner])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,

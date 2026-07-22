@@ -249,6 +249,10 @@ def detect_pad_change(
             "needs_review": signature == "AMBIGUOUS",
             "before_date": before.imagery_date.isoformat(),
             "after_date": after.imagery_date.isoformat(),
+            # Well surface location — map deep-link fallback when abstract
+            # is missing (point-in-polygon → exact tract).
+            "latitude": target.latitude,
+            "longitude": target.longitude,
         },
     }
     result["status"] = "event"
