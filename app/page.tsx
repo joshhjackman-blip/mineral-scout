@@ -1663,16 +1663,29 @@ export default function Home() {
     if (tracts.length === 0) return
 
     if (pendingUrlAbstract) {
-      const wanted = pendingUrlAbstract.toUpperCase().trim()
+      const wanted = pendingUrlAbstract.replace(/^A-\s*/i, '').trim().toUpperCase()
       const match = tracts.find((t) => {
-        const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim().toUpperCase()
+        const label = String(t.abstract_label ?? '')
+          .replace(/^A-\s*/i, '')
+          .trim()
+          .toUpperCase()
         return label === wanted
       })
       if (match) {
-        const selection = toTractSelection(match)
+        // Prefer the geojson label form (often "A-316") so Map focus
+        // matching against ABSTRACT_L succeeds.
+        const selection = {
+          ...toTractSelection(match),
+          abstract_label:
+            String(match.abstract_label ?? '').trim() ||
+            (wanted ? `A-${wanted}` : ''),
+        }
         setSelected(selection)
-        const bare = wanted.replace(/^A-\s*/i, '')
-        const geom = tractGeometryByAbstract[bare] || tractGeometryByAbstract[wanted]
+        const bare = wanted
+        const geom =
+          tractGeometryByAbstract[bare] ||
+          tractGeometryByAbstract[`A-${bare}`] ||
+          tractGeometryByAbstract[wanted]
         if (geom) setSelectedTractGeometry(geom)
         setPendingUrlAbstract(null)
         if (pendingUrlOwner) {
