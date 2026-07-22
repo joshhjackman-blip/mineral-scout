@@ -36,7 +36,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      # checkout@v6 / setup-python@v6 ship on the Node 24 Actions
+      # runtime. v4/v5 still declare Node 20 and emit the
+      # "Node.js 20 is deprecated … forced to run on Node.js 24"
+      # warning on every run (GitHub forced the runtime switch
+      # 2026-06-16; Node 20 removed 2026-09-16).
+      - uses: actions/checkout@v6
 
       - name: Trigger Vercel RRC scrape
         # 5 min timeout because a fresh 12-county scrape takes ~40s
@@ -73,7 +78,7 @@ jobs:
             cat /tmp/scrape-response.json
           fi
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 

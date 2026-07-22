@@ -179,6 +179,31 @@ def require_env(name: str, aliases: tuple[str, ...] = ()) -> str:
     raise ValueError(f"Missing env: {name}")
 
 
+def normalize_supabase_url(raw: str) -> str:
+    """Return a supabase-py-safe project URL.
+
+    supabase-py 2.14 concatenates ``{url}/rest/v1`` with a naive string
+    join — it does **not** strip a trailing slash. So a secret stored as
+    ``https://xxx.supabase.co/`` becomes ``https://xxx.supabase.co//rest/v1/``,
+    which PostgREST rejects with PGRST125 ("Invalid path specified in
+    request URL"). Same failure if the secret already includes
+    ``/rest/v1``. The JS client used by the Vercel scrape endpoint
+    normalizes both cases, which is why upserts from Vercel succeed while
+    this Python compute pass fails on the first ``.table(...).select()``.
+
+    Strip trailing slashes and a trailing ``/rest/v1`` so create_client
+    always builds a clean ``https://xxx.supabase.co/rest/v1/`` base.
+    """
+    url = (raw or "").strip()
+    while url.endswith("/"):
+        url = url[:-1]
+    if url.lower().endswith("/rest/v1"):
+        url = url[: -len("/rest/v1")]
+        while url.endswith("/"):
+            url = url[:-1]
+    return url
+
+
 def clean_text(value: Any) -> str:
     if value is None:
         return ""
@@ -317,21 +342,19 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
     abstract_number / permit_status) and the pre-migration shape.
     Returns [] if the table itself doesn't exist yet.
 
-    Uses .range() offset pagination instead of keyset (.gt("id", ...)
-    + .order("id") + .limit()) — the keyset URL shape triggered
-    Supabase's edge-routing PGRST125 rejection on 2026-07-22 with
-    supabase-py 2.14. The .range() form generates a cleaner
-    `Range: 0-999` header that routes cleanly. Same total row count
-    fetched; only the paging URL structure differs.
+    Uses .range() offset pagination (not keyset) and an explicit column
+    list. Prior PGRST125 failures on this call site were traced to a
+    trailing slash / ``/rest/v1`` suffix on SUPABASE_URL — see
+    ``normalize_supabase_url`` — not to pagination or select width.
     """
     full_columns = (
-        "id, permit_number, api_number, operator_name, lease_name, "
-        "latitude, longitude, permit_type, status, filed_date, approved_date, "
-        "spud_date, completion_date, abstract_number, permit_status"
+        "id,permit_number,api_number,operator_name,lease_name,"
+        "latitude,longitude,permit_type,status,filed_date,approved_date,"
+        "spud_date,completion_date,abstract_number,permit_status"
     )
     minimal_columns = (
-        "id, permit_number, api_number, operator_name, lease_name, "
-        "latitude, longitude, permit_type, status, filed_date, approved_date"
+        "id,permit_number,api_number,operator_name,lease_name,"
+        "latitude,longitude,permit_type,status,filed_date,approved_date"
     )
     columns = full_columns
     rows: list[dict[str, Any]] = []
@@ -352,8 +375,6 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
             if "column" in message and columns == full_columns:
                 columns = minimal_columns
                 continue
-            # A missing table error means we don't ingest this county
-            # yet. Bail out with what we already have.
             if "relation" in message and "does not exist" in message:
                 return rows
             if "not find" in message and "table" in message:
@@ -367,7 +388,6 @@ def paginate_permits(client: Client, table: str) -> list[dict[str, Any]]:
             break
         offset += PAGE_SIZE
         if offset >= 50_000:
-            # Safety cap; no county should ever have 50k+ permits.
             break
     return rows
 
@@ -443,16 +463,13 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
     Gonzales's shape.
     """
     full_cols = (
-        "api_number, latitude, longitude, well_status, well_type, "
-        "abstract, completion_date, operator_name, lease_name"
+        "api_number,latitude,longitude,well_status,well_type,"
+        "abstract,completion_date,operator_name,lease_name"
     )
     minimal_cols = (
-        "api_number, latitude, longitude, well_status, well_type, "
-        "completion_date, operator_name, lease_name"
+        "api_number,latitude,longitude,well_status,well_type,"
+        "completion_date,operator_name,lease_name"
     )
-    # .range() offset pagination — same reason as paginate_permits:
-    # keyset .gt()+.order()+.limit() URLs triggered PGRST125 on
-    # Supabase's edge layer as of 2026-07-22.
     columns = full_cols
     rows: list[dict[str, Any]] = []
     offset = 0
@@ -467,10 +484,13 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
         except Exception as exc:
             message = str(exc).lower()
             # Missing column -> retry with the county-agnostic subset.
-            if "column" in message and "does not exist" in message and columns == full_cols:
+            if (
+                "column" in message
+                and "does not exist" in message
+                and columns == full_cols
+            ):
                 columns = minimal_cols
                 continue
-            # Missing table -> bail out with what we have.
             if "relation" in message and "does not exist" in message:
                 return rows
             if "not find" in message and "table" in message:
@@ -1160,25 +1180,43 @@ def process_county(client: Client, county: str, args: argparse.Namespace) -> Non
 
 def main() -> None:
     args = parse_args()
-    supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
+    supabase_url = normalize_supabase_url(
+        require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
+    )
     supabase_key = require_env("SUPABASE_KEY", ("SUPABASE_SERVICE_ROLE_KEY",))
     client = create_client(supabase_url, supabase_key)
+    # Safe diagnostic — host only, no key. Lets us confirm the secret
+    # was normalized before the first PostgREST call. A trailing slash
+    # on SUPABASE_URL shows up here as ``//rest/v1/`` (double slash).
+    session = getattr(client.postgrest, "session", None)
+    rest_base = getattr(session, "base_url", None) if session is not None else None
+    print(f"supabase rest base: {rest_base}", flush=True)
 
     counties = [c.strip().lower() for c in args.county.split(",") if c.strip()]
+    failures: list[str] = []
     for county in counties:
         try:
             process_county(client, county, args)
         except Exception as exc:
-            # Never let one county tank the whole cron run — but do
-            # print the full traceback so we can see where PGRST /
-            # network / Supabase errors are actually landing. The
-            # previous plain-`str(exc)` output was too terse to
-            # diagnose PGRST125 with (which surfaces as a bare
-            # {'code':'PGRST125','message':'Invalid path...'} dict
-            # with no stack context).
+            # Log the full traceback so PGRST / network errors are
+            # diagnosable, then keep going so the other counties still
+            # get a chance to compute. Exit non-zero at the end so the
+            # GH Actions step turns red instead of green-washing a
+            # total compute miss (as happened on 2026-07-22 when both
+            # howard and martin failed with PGRST125 but the job
+            # reported success).
             import traceback
             print(f"  ERROR processing {county}: {exc}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
+            failures.append(county)
+
+    if failures:
+        print(
+            f"ERROR: compute failed for {len(failures)} county(ies): "
+            f"{', '.join(failures)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 if __name__ == "__main__":
