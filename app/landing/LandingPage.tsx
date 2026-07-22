@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Barlow_Condensed } from 'next/font/google'
+import AppLogo from '@/app/components/AppLogo'
 import './coming-soon.css'
 
 const display = Barlow_Condensed({
@@ -84,9 +85,8 @@ export default function LandingPage() {
   return (
     <div className={`cs-root ${display.variable}`}>
       <nav className="cs-nav" aria-label="Primary">
-        <Link href="/landing" className="cs-brand-mark" aria-label="Mineral Map">
-          <span>Mineral</span>
-          <span>Map</span>
+        <Link href="/landing" className="cs-logo" aria-label="Mineral Map">
+          <AppLogo width={168} />
         </Link>
         <Link href="/auth" className="cs-login">
           Log in
