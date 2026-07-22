@@ -2188,13 +2188,32 @@ export default function Map({
     }
   }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
+  // Remember the last abstract/geometry we fitted so parcelsVersion
+  // bumps (async geojson load) don't re-fitBounds and cancel an
+  // in-flight county-center flyTo when nothing new was selected.
+  const lastFittedFocusKeyRef = useRef<string | null>(null)
+
   useEffect(() => {
-    if (mapLevel !== 'tract') return
+    if (mapLevel !== 'tract') {
+      lastFittedFocusKeyRef.current = null
+      return
+    }
     if (!map.current?.isStyleLoaded()) return
+
+    const normalizeAbstract = (raw: unknown) =>
+      String(raw ?? '')
+        .replace(/^A-\s*/i, '')
+        .trim()
+        .toUpperCase()
 
     // Prefer geometry handed up from the page (deep-link geojson index) —
     // available as soon as tracts load, without waiting on Mapbox sources.
     if (focusGeometry) {
+      const focusKey = `geom:${normalizeAbstract(
+        focusTarget?.abstract_label ?? focusTarget?.ABSTRACT_L ?? focusTarget?.CODE,
+      )}`
+      if (lastFittedFocusKeyRef.current === focusKey && focusKey !== 'geom:') return
+      lastFittedFocusKeyRef.current = focusKey
       fitGeometry(map.current, focusGeometry, {
         padding: 80,
         maxZoom: 15,
@@ -2203,21 +2222,21 @@ export default function Map({
       return
     }
 
-    if (!focusTarget) return
+    if (!focusTarget) {
+      lastFittedFocusKeyRef.current = null
+      return
+    }
 
     const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
     if (features.length === 0) return
-
-    const normalizeAbstract = (raw: unknown) =>
-      String(raw ?? '')
-        .replace(/^A-\s*/i, '')
-        .trim()
-        .toUpperCase()
 
     const selectedAbstract = normalizeAbstract(
       focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
     )
     if (!selectedAbstract) return
+
+    const focusKey = `abs:${selectedAbstract}`
+    if (lastFittedFocusKeyRef.current === focusKey) return
 
     const selectedSurvey = String(
       focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
@@ -2251,6 +2270,7 @@ export default function Map({
       })
 
     if (matched?.geometry) {
+      lastFittedFocusKeyRef.current = focusKey
       fitGeometry(map.current, matched.geometry, {
         padding: 80,
         maxZoom: 15,
@@ -2263,8 +2283,14 @@ export default function Map({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
       {mapReady && mapLevel === 'tract' && (
-        // County overview / tract mode: LEGEND + OVERLAYS top-left
-        // (replaces the old top-left tract search slot).
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 5, width: 288 }}>
+          <TractSearch
+            map={map.current}
+            geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
+          />
+        </div>
+      )}
+      {mapReady && mapLevel === 'tract' && (
         <LayerTogglePanel
           statusVisible={statusVisible}
           onStatus={setStatus}
@@ -2278,24 +2304,15 @@ export default function Map({
           onSubmittedGlow={setShowSubmittedGlow}
         />
       )}
-      {mapReady && mapLevel === 'tract' && (
-        <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 5, width: 288 }}>
-          <TractSearch
-            map={map.current}
-            geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
-          />
-        </div>
-      )}
     </div>
   )
 }
 
-// In-map layer control. Fixed to the top-left of the map viewport on
-// county overview / tract mode. Single unified LEGEND — one row per
-// UnifiedStatus, one color per status, one toggle per row. Checking a
-// row shows those tracts; unchecking hides them by dropping
-// fill-opacity to 0. Below the legend a single OVERLAYS section
-// carries permit halos + Active rigs.
+// In-map layer control. Fixed to the top-right of the map viewport.
+// Single unified LEGEND — one row per UnifiedStatus, one color per
+// status, one toggle per row. Checking a row shows those tracts;
+// unchecking hides them by dropping fill-opacity to 0. Below the
+// legend a single OVERLAYS section carries permit halos + Active rigs.
 function LayerTogglePanel({
   statusVisible, onStatus,
   statusPalette, statusLabels,
@@ -2333,7 +2350,7 @@ function LayerTogglePanel({
     <div
       style={{
         position: 'absolute',
-        left: 12,
+        right: 12,
         top: 12,
         background: 'rgba(255,255,255,0.97)',
         border: '1px solid #E5E7EB',
