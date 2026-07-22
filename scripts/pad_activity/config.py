@@ -25,7 +25,10 @@ COMPLETION_PROPENSITY_BUMP = 3
 PROPENSITY_SCORE_CAP = 10
 
 # Lookback for the Phase-1 RRC transition bridge (days).
-RRC_COMPLETION_LOOKBACK_DAYS = 14
+# 90d matches the permits page default — completion_date is sparse
+# on scraped rows, so approved/filed in the last quarter is the
+# volume signal that actually populates Pad Activity today.
+RRC_COMPLETION_LOOKBACK_DAYS = 90
 
 # Supabase Storage bucket + key prefix (matches existing Raw-Data pattern).
 STORAGE_BUCKET = "Raw-Data"

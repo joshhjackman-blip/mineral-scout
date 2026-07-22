@@ -1017,7 +1017,8 @@ type PadActivityEvent = {
 const SIGNATURE_LABEL: Record<string, string> = {
   COMPLETION_CREW: 'Completion crew',
   RRC_COMPLETION: 'RRC completion',
-  RIG_MOVE_IN: 'Rig move-in',
+  RRC_APPROVED: 'Permit approved',
+  RIG_MOVE_IN: 'Rig / spud',
   RIG_MOVE_OUT: 'Rig move-out',
   AMBIGUOUS: 'Needs review',
   NON_RELEVANT: 'Non-relevant',
