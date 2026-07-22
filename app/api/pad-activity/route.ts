@@ -23,6 +23,100 @@ type PadActivityEvent = {
   propensity_bump: number
   source: string
   created_at: string
+  raw?: Record<string, unknown> | null
+  latitude?: number | null
+  longitude?: number | null
+}
+
+function normalizeLeaseId(raw: string | null | undefined): string {
+  const text = String(raw || '').trim()
+  return text.replace(/^0+/, '') || text
+}
+
+/** Fill missing abstract / lease / coords so leads + map deep-links work. */
+async function hydrateAbstracts(
+  supabase: NonNullable<ReturnType<typeof adminClient>>,
+  events: PadActivityEvent[],
+): Promise<PadActivityEvent[]> {
+  if (events.length === 0) return events
+
+  // 1) Fill missing rrc_lease_id / lat/lon from wells by api_number.
+  const needWell = events.filter(
+    (e) => e.api_number && (!e.rrc_lease_id || !(e.raw as { latitude?: unknown } | null)?.latitude),
+  )
+  const apiToWell = new Map<string, { rrc_lease_id: string | null; latitude: number | null; longitude: number | null; abstract: string | null }>()
+  await Promise.all(
+    needWell.map(async (ev) => {
+      const key = `${ev.county_id}::${ev.api_number}`
+      if (apiToWell.has(key)) return
+      try {
+        const { data } = await supabase
+          .from(`${ev.county_id}_wells`)
+          .select('rrc_lease_id,latitude,longitude,abstract')
+          .eq('api_number', ev.api_number!)
+          .limit(1)
+        const row = data?.[0]
+        apiToWell.set(key, {
+          rrc_lease_id: row?.rrc_lease_id != null ? String(row.rrc_lease_id) : null,
+          latitude: row?.latitude != null ? Number(row.latitude) : null,
+          longitude: row?.longitude != null ? Number(row.longitude) : null,
+          abstract: row?.abstract != null ? String(row.abstract).trim() : null,
+        })
+      } catch {
+        apiToWell.set(key, { rrc_lease_id: null, latitude: null, longitude: null, abstract: null })
+      }
+    }),
+  )
+
+  const withWells = events.map((ev) => {
+    const raw = { ...((ev.raw || {}) as Record<string, unknown>) }
+    const well = ev.api_number ? apiToWell.get(`${ev.county_id}::${ev.api_number}`) : null
+    const rrc_lease_id = ev.rrc_lease_id || well?.rrc_lease_id || null
+    const abstract_number = ev.abstract_number || well?.abstract || null
+    if (well?.latitude != null && raw.latitude == null) raw.latitude = well.latitude
+    if (well?.longitude != null && raw.longitude == null) raw.longitude = well.longitude
+    return { ...ev, rrc_lease_id, abstract_number, raw }
+  })
+
+  // 2) Fill missing abstract from ownership via normalized lease id.
+  const missing = withWells.filter((e) => !e.abstract_number && e.rrc_lease_id)
+  const leaseToAbstract = new Map<string, string>()
+  await Promise.all(
+    missing.map(async (ev) => {
+      const lease = normalizeLeaseId(ev.rrc_lease_id)
+      const key = `${ev.county_id}::${lease}`
+      if (!lease || leaseToAbstract.has(key)) return
+      try {
+        const { data } = await supabase
+          .from(`${ev.county_id}_mineral_ownership`)
+          .select('abstract')
+          .eq('rrc_lease_id', lease)
+          .not('abstract', 'is', null)
+          .limit(1)
+        const abs = String(data?.[0]?.abstract || '').trim()
+        if (abs) leaseToAbstract.set(key, abs)
+      } catch {
+        // ignore
+      }
+    }),
+  )
+
+  return withWells.map((ev) => {
+    const raw = (ev.raw || {}) as Record<string, unknown>
+    const lat = Number(raw.latitude)
+    const lon = Number(raw.longitude)
+    const lease = normalizeLeaseId(ev.rrc_lease_id)
+    const abs =
+      ev.abstract_number ||
+      (lease ? leaseToAbstract.get(`${ev.county_id}::${lease}`) : null) ||
+      null
+    return {
+      ...ev,
+      abstract_number: abs,
+      latitude: Number.isFinite(lat) ? lat : null,
+      longitude: Number.isFinite(lon) ? lon : null,
+    }
+  })
 }
 
 function adminClient() {
@@ -85,7 +179,7 @@ export async function GET(request: NextRequest) {
   const selectCols =
     'id,county_id,rrc_lease_id,api_number,abstract_number,owner_name,lease_name,' +
     'operator_name,signature,confidence,change_score,summary,before_path,' +
-    'after_path,week_start,propensity_bump,source,created_at'
+    'after_path,week_start,propensity_bump,source,created_at,raw'
 
   // ── List feed for /pad-activity page ─────────────────────────────
   if (mode === 'list') {
@@ -140,10 +234,11 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const events = countyResults
+    const rawEvents = countyResults
       .flatMap((r) => (r.data || []) as unknown as PadActivityEvent[])
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
       .slice(0, limit)
+    const events = await hydrateAbstracts(supabase, rawEvents)
     const signed = await signPaths(supabase, events)
 
     // Unique leads affected (owner_name + county), newest first.

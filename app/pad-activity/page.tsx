@@ -36,6 +36,26 @@ type PadEvent = {
   propensity_bump: number
   source: string
   created_at: string
+  latitude?: number | null
+  longitude?: number | null
+}
+
+function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'latitude' | 'longitude' | 'owner_name'>): string {
+  const params = new URLSearchParams()
+  params.set('county', ev.county_id)
+  if (ev.abstract_number) {
+    params.set('abstract', ev.abstract_number)
+  } else if (
+    ev.latitude != null &&
+    ev.longitude != null &&
+    Number.isFinite(ev.latitude) &&
+    Number.isFinite(ev.longitude)
+  ) {
+    params.set('lat', String(ev.latitude))
+    params.set('lon', String(ev.longitude))
+  }
+  if (ev.owner_name) params.set('owner', ev.owner_name)
+  return `/?${params.toString()}`
 }
 
 type LeadRow = {
@@ -184,6 +204,18 @@ export default function PadActivityPage() {
     }
     return Array.from(map.values())
   }, [events])
+
+  useEffect(() => {
+    setExpanded((prev) => {
+      const next = { ...prev }
+      for (const card of cards) {
+        if (card.owners.length > 0 && next[card.sample.id] === undefined) {
+          next[card.sample.id] = true
+        }
+      }
+      return next
+    })
+  }, [cards])
 
   return (
     <div style={{ minHeight: '100dvh', background: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
@@ -357,13 +389,10 @@ export default function PadActivityPage() {
                 }
                 const beforeUrl = sample.before_path ? signed[sample.before_path] : null
                 const afterUrl = sample.after_path ? signed[sample.after_path] : null
-                const open = !!expanded[sample.id]
+                const open = expanded[sample.id] ?? owners.length > 0
                 const countyName = COUNTIES[sample.county_id]?.name || sample.county_id
                 const pct = Math.round((sample.confidence || 0) * 100)
-                const mapHref =
-                  sample.abstract_number
-                    ? `/?county=${encodeURIComponent(sample.county_id)}&abstract=${encodeURIComponent(sample.abstract_number)}`
-                    : `/?county=${encodeURIComponent(sample.county_id)}`
+                const mapHref = mapHrefForEvent(sample)
 
                 return (
                   <div
@@ -569,7 +598,7 @@ export default function PadActivityPage() {
                                   CRM
                                 </Link>
                                 <Link
-                                  href={mapHref}
+                                  href={mapHrefForEvent({ ...sample, owner_name: name })}
                                   style={{
                                     fontSize: 11,
                                     fontWeight: 600,
@@ -630,8 +659,8 @@ export default function PadActivityPage() {
                   const meta = SIGNATURE_LABEL[lead.latest_signature]
                   const abs = lead.abstracts[0]
                   const href = abs
-                    ? `/?county=${encodeURIComponent(lead.county_id)}&abstract=${encodeURIComponent(abs)}`
-                    : `/?county=${encodeURIComponent(lead.county_id)}`
+                    ? `/?county=${encodeURIComponent(lead.county_id)}&abstract=${encodeURIComponent(abs)}&owner=${encodeURIComponent(lead.owner_name)}`
+                    : `/?county=${encodeURIComponent(lead.county_id)}&owner=${encodeURIComponent(lead.owner_name)}`
                   return (
                     <Link
                       key={`${lead.county_id}-${lead.owner_name}`}

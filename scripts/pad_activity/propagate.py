@@ -23,7 +23,7 @@ def attach_owners(
     county: str,
     events: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Best-effort fill owner_name from {county}_mineral_ownership."""
+    """Best-effort fill owner_name + abstract from {county}_mineral_ownership."""
     if not events:
         return events
     table = f"{county}_mineral_ownership"
@@ -39,9 +39,13 @@ def attach_owners(
         abs_key = str(o.get("abstract") or "").strip()
         if abs_key:
             by_abstract.setdefault(abs_key, []).append(o)
-        lease_key = _normalize_lease(o.get("rrc_lease_id"))
+        raw_lease = str(o.get("rrc_lease_id") or "").strip()
+        lease_key = _normalize_lease(raw_lease)
         if lease_key:
             by_lease.setdefault(lease_key, []).append(o)
+        # Also index the raw (zero-padded) form so "04425" hits "4425".
+        if raw_lease and raw_lease != lease_key:
+            by_lease.setdefault(raw_lease, []).append(o)
 
     enriched: list[dict[str, Any]] = []
     for ev in events:
@@ -50,21 +54,32 @@ def attach_owners(
         if abs_key and abs_key in by_abstract:
             matches = by_abstract[abs_key]
         else:
-            lease_key = _normalize_lease(ev.get("rrc_lease_id"))
+            raw_lease = str(ev.get("rrc_lease_id") or "").strip()
+            lease_key = _normalize_lease(raw_lease)
             if lease_key and lease_key in by_lease:
                 matches = by_lease[lease_key]
+            elif raw_lease and raw_lease in by_lease:
+                matches = by_lease[raw_lease]
 
         if not matches:
             enriched.append(ev)
             continue
 
+        # Stamp abstract onto the pad event so "Open on map" can deep-link
+        # to the exact tract (ownership.abstract is the join key the map uses).
+        matched_abstract = abs_key or str(matches[0].get("abstract") or "").strip() or None
+
         # Emit one event per matched owner so each drawer lights up.
-        # Cap at 8 owners per pad to avoid fan-out explosions on
-        # heavily fractionalized abstracts.
-        for owner in matches[:8]:
+        # Cap at 25 owners per pad — enough for the review queue without
+        # exploding heavily fractionalized abstracts.
+        for owner in matches[:25]:
             clone = dict(ev)
             clone["owner_name"] = owner.get("owner_name")
             clone["_prior_propensity"] = owner.get("propensity_score")
+            if matched_abstract:
+                clone["abstract_number"] = matched_abstract
+            elif owner.get("abstract"):
+                clone["abstract_number"] = str(owner.get("abstract")).strip()
             enriched.append(clone)
     return enriched
 
