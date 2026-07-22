@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Weekly pad-activity job.
 
-Default path (Phase 1 — ships real signal today):
-  1. Scan {county}_permits / {county}_wells for recent completion_date
+Default path (Phase 1 — ships real signal today, no imagery needed):
+  1. Scan {county}_permits / {county}_wells for recent
+     completion_date, spud_date, or approved/filed_date (90d default)
   2. Attach mineral owners
   3. Upsert pad_activity_events
-  4. Bump propensity_score + tag CRM deals hot
+  4. Bump propensity_score + tag CRM deals hot (completion signals)
 
 Optional (`--enable-sentinel`):
   Plan / pull Sentinel-2 chips, run change+classify, write pad_change_log.
@@ -65,8 +66,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--lookback-days",
         type=int,
-        default=14,
-        help="RRC completion lookback window in days",
+        default=90,
+        help="RRC activity lookback window in days (default 90)",
     )
     return p.parse_args()
 

@@ -46,8 +46,9 @@ type WindowChoice = 7 | 14 | 30 | 90
 const SIGNATURE_LABEL: Record<string, { label: string; color: string }> = {
   COMPLETION_CREW: { label: 'Completion crew', color: '#059669' },
   RRC_COMPLETION:  { label: 'RRC completion',  color: '#059669' },
-  RIG_MOVE_IN:     { label: 'Rig move-in',     color: '#2563EB' },
-  RIG_MOVE_OUT:    { label: 'Rig move-out',    color: '#7C3AED' },
+  RRC_APPROVED:    { label: 'Permit approved', color: '#2563EB' },
+  RIG_MOVE_IN:     { label: 'Rig / spud',      color: '#7C3AED' },
+  RIG_MOVE_OUT:    { label: 'Rig move-out',    color: '#6B7280' },
   AMBIGUOUS:       { label: 'Needs review',    color: '#D97706' },
   NON_RELEVANT:    { label: 'Non-relevant',    color: '#6B7280' },
 }
@@ -60,7 +61,7 @@ export default function PadActivityPage() {
   const [signed, setSigned] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [windowDays, setWindowDays] = useState<WindowChoice>(30)
+  const [windowDays, setWindowDays] = useState<WindowChoice>(90)
   const [signatureFilter, setSignatureFilter] = useState<string>('all')
   const [countyFilter, setCountyFilter] = useState<string>('all')
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
@@ -241,28 +242,28 @@ export default function PadActivityPage() {
           <FilterGroup label="Signal">
             <Chip active={signatureFilter === 'all'} onClick={() => setSignatureFilter('all')} label="All" />
             <Chip
+              active={signatureFilter === 'RRC_APPROVED'}
+              onClick={() => setSignatureFilter('RRC_APPROVED')}
+              label="Approved"
+              color="#2563EB"
+            />
+            <Chip
               active={signatureFilter === 'RRC_COMPLETION'}
               onClick={() => setSignatureFilter('RRC_COMPLETION')}
               label="Completion"
               color="#059669"
             />
             <Chip
+              active={signatureFilter === 'RIG_MOVE_IN'}
+              onClick={() => setSignatureFilter('RIG_MOVE_IN')}
+              label="Spud"
+              color="#7C3AED"
+            />
+            <Chip
               active={signatureFilter === 'COMPLETION_CREW'}
               onClick={() => setSignatureFilter('COMPLETION_CREW')}
               label="Crew (imagery)"
               color="#059669"
-            />
-            <Chip
-              active={signatureFilter === 'RIG_MOVE_IN'}
-              onClick={() => setSignatureFilter('RIG_MOVE_IN')}
-              label="Rig in"
-              color="#2563EB"
-            />
-            <Chip
-              active={signatureFilter === 'AMBIGUOUS'}
-              onClick={() => setSignatureFilter('AMBIGUOUS')}
-              label="Review"
-              color="#D97706"
             />
           </FilterGroup>
         </div>
@@ -298,9 +299,10 @@ export default function PadActivityPage() {
               <EmptyBox>
                 No pad activity in this window yet.
                 <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
-                  Run the <strong>Pad activity weekly</strong> GitHub Action on{' '}
-                  <code>main</code> after applying the SQL migration — events
-                  will land here (and on owner Overview cards).
+                  Imagery is optional. Re-run{' '}
+                  <strong>Pad activity weekly</strong> on <code>main</code> —
+                  Phase 1 pulls recent approved / spud / completion permits
+                  from your RRC scrape (no satellite needed).
                 </div>
               </EmptyBox>
             ) : (

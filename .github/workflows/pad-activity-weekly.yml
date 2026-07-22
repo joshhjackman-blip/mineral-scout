@@ -23,9 +23,9 @@ on:
         required: false
         default: 'howard,martin'
       lookback_days:
-        description: 'RRC completion lookback window in days'
+        description: 'RRC activity lookback window in days (approved/spud/completion)'
         required: false
-        default: '14'
+        default: '90'
       dry_run:
         description: 'If true, skip DB writes'
         required: false
@@ -57,7 +57,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           COUNTIES="${{ github.event.inputs.counties || 'howard,martin' }}"
-          DAYS="${{ github.event.inputs.lookback_days || '14' }}"
+          DAYS="${{ github.event.inputs.lookback_days || '90' }}"
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
           EXTRA=""
           if [ "$DRY" = "true" ]; then EXTRA="--dry-run"; fi
