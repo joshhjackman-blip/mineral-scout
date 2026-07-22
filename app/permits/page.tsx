@@ -228,15 +228,20 @@ async function loadWellCoordsByApi(
   return out
 }
 
-// Three-tier permit -> abstract resolver:
+// Four-tier permit -> abstract resolver:
 //   1. permit.latitude/longitude valid    -> point-in-polygon (most accurate)
 //   2. permit.abstract_number populated   -> use directly (compute_development_status
 //                                            set it via spatial join on a prior run)
 //   3. permit.api_number matches a well   -> use that well's surface coords,
 //                                            run point-in-polygon
-// Prior version was tier 1 only, which meant every EWA-scraped permit
-// (RRC's HTML results page has no coordinate column) rendered
-// "Couldn't match this permit to a tract (missing lat/lon)".
+//   4. permit operator + lease-name prefix matches wells -> inherit their
+//                                            most common abstract
+// Tier 4 was added 2026-07-22 to cover BRAND-NEW permits from RRC EWA:
+// their results page has no lat/lon and no abstract, and if the permit
+// is for a not-yet-drilled well, tier 3 fails too because the well
+// isn't in the wells table. But operators drill on the same acreage
+// blocks year after year, so their existing wells' abstract is a
+// strong predictor of where the new permit will end up.
 async function abstractForPermit(permit: RawPermit, countyId: CountyKey): Promise<string | null> {
   // Tier 1: real lat/lon on the permit itself.
   const lat = Number(permit.latitude)
@@ -249,7 +254,7 @@ async function abstractForPermit(permit: RawPermit, countyId: CountyKey): Promis
     if (abstract) return abstract
     // If PIP fell through (permit lat/lon just outside every tract
     // polygon by a few meters, which happens near county borders),
-    // continue to tier 2 / 3 rather than giving up.
+    // continue to lower tiers rather than giving up.
   }
 
   // Tier 2: compute_development_status.py stamped the tract on a
@@ -260,9 +265,8 @@ async function abstractForPermit(permit: RawPermit, countyId: CountyKey): Promis
   if (stamped) return stamped
 
   // Tier 3: look up this permit's well by API and use its surface
-  // coords. RRC's wells shapefile carries lat/lon for essentially
-  // every drilled well, so this catches new EWA-scraped permits
-  // that fall in tier 1's blind spot.
+  // coords. Catches permits for wells that have already been drilled
+  // and appear in <county>_wells.
   const api = String(permit.api_number ?? '').trim()
   if (api) {
     const wellCoords = await loadWellCoordsByApi(countyId)
@@ -273,7 +277,112 @@ async function abstractForPermit(permit: RawPermit, countyId: CountyKey): Promis
     }
   }
 
+  // Tier 4: operator + lease-name prefix match against wells. For
+  // a permit like "THE PEAKS 29-17 A UNIT" (HighPeak Energy), pull
+  // every HighPeak well in Howard, keep those whose lease_name
+  // shares a token prefix ("PEAKS"), tally their abstracts, and
+  // return the most common. This is imperfect — different wells
+  // on the same lease-family CAN sit on different abstracts — but
+  // it's much better than "unresolved" for brand-new permits with
+  // no matching drilled well.
+  const inherited = await abstractByOperatorLease(
+    countyId,
+    permit.operator_name,
+    permit.lease_name,
+  )
+  if (inherited) return inherited
+
   return null
+}
+
+// Cache well-abstract lookups per (county, operator) tuple. The
+// permits page renders many cards, each of which independently
+// resolves; caching prevents an N+1 storm of identical Supabase
+// queries against the same operator.
+const wellAbstractCache = new Map<string, Map<string, string> | null>()
+
+// Return abstract for a permit by looking up existing wells of the
+// same operator whose lease_name shares a token prefix with the
+// permit's lease_name. Prefix is defined as: strip common noise
+// words ("THE", "A", "UNIT", etc.), take the first remaining
+// significant token, match case-insensitively. See the tier 4
+// comment in abstractForPermit for the motivation.
+async function abstractByOperatorLease(
+  countyId: CountyKey,
+  operatorName: string | null | undefined,
+  leaseName: string | null | undefined,
+): Promise<string | null> {
+  const op = String(operatorName ?? '').trim()
+  const lease = String(leaseName ?? '').trim()
+  if (!op || !lease) return null
+
+  const cacheKey = `${countyId}::${op.toLowerCase()}`
+  let leaseToAbstract = wellAbstractCache.get(cacheKey)
+  if (leaseToAbstract === undefined) {
+    leaseToAbstract = null
+    try {
+      const { data } = await supabase
+        .from(`${countyId}_wells`)
+        .select('lease_name, abstract')
+        .ilike('operator_name', op)
+        .not('abstract', 'is', null)
+        .not('lease_name', 'is', null)
+        .limit(1000)
+      if (data && data.length > 0) {
+        leaseToAbstract = new Map<string, string>()
+        for (const row of data as Array<Record<string, unknown>>) {
+          const ln = String(row.lease_name ?? '').trim()
+          const ab = String(row.abstract ?? '').trim()
+          if (ln && ab) leaseToAbstract.set(ln.toUpperCase(), ab)
+        }
+      }
+    } catch {
+      leaseToAbstract = null
+    }
+    wellAbstractCache.set(cacheKey, leaseToAbstract)
+  }
+  if (!leaseToAbstract || leaseToAbstract.size === 0) return null
+
+  // Strip common noise tokens so "THE PEAKS 29-17 A UNIT" and
+  // "PEAKS 29-17" both key on "PEAKS 29-17". Order matters:
+  // multi-word noise stripped first, then single words.
+  const cleanLease = (raw: string): string =>
+    raw
+      .toUpperCase()
+      .replace(/\bUNIT\b/g, ' ')
+      .replace(/\b(THE|A|AN|LEASE)\b/g, ' ')
+      .replace(/[^A-Z0-9\s-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const permitClean = cleanLease(lease)
+  if (!permitClean) return null
+  const permitTokens = permitClean.split(' ').filter(Boolean)
+  if (permitTokens.length === 0) return null
+  const permitHead = permitTokens.slice(0, 2).join(' ')
+
+  // Score each well-lease by how many leading tokens it shares
+  // with the permit lease. Prefer full prefix match, then first-
+  // two-tokens, then first-token. Tally abstracts by score.
+  const abstractScore = new Map<string, number>()
+  leaseToAbstract.forEach((wellAbstract, wellLease) => {
+    const wellClean = cleanLease(wellLease)
+    if (!wellClean) return
+    let score = 0
+    if (wellClean === permitClean) score = 100
+    else if (wellClean.startsWith(permitHead)) score = 50
+    else if (wellClean.split(' ')[0] === permitTokens[0]) score = 10
+    if (score === 0) return
+    abstractScore.set(
+      wellAbstract,
+      (abstractScore.get(wellAbstract) ?? 0) + score,
+    )
+  })
+  if (abstractScore.size === 0) return null
+  const scored: Array<[string, number]> = []
+  abstractScore.forEach((score, ab) => scored.push([ab, score]))
+  scored.sort((a, b) => b[1] - a[1])
+  return scored[0]?.[0] ?? null
 }
 
 // Broken out of abstractForPermit so both the direct lat/lon path
@@ -755,9 +864,11 @@ export default function PermitsPage() {
                     }}>
                       {!permit.abstract ? (
                         <div style={{ fontSize: 12, color: '#94A3B8', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                          Couldn&apos;t match this permit to a tract yet.
-                          {' '}Waiting on the next nightly compute pass to run
-                          the spatial join.
+                          Couldn&apos;t match this permit to a tract.
+                          {' '}RRC&apos;s public search doesn&apos;t include
+                          coordinates, and this operator has no prior wells on
+                          a similarly-named lease. The nightly compute pass may
+                          resolve it if the well gets drilled.
                         </div>
                       ) : loadingOwners ? (
                         <div style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
