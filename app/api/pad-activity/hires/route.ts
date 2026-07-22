@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient, padImageryProxyUrl } from '@/lib/supabase-admin'
 import {
   hiresStoragePath,
   padKeyFromEvent,
@@ -11,10 +11,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 function adminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  return createClient(url, key, { auth: { persistSession: false } })
+  return createAdminClient()
 }
 
 async function resolveCoords(
@@ -107,9 +104,6 @@ export async function POST(request: NextRequest) {
     existingSource === 'mapbox-satellite'
 
   if (cacheOk) {
-    const { data: signedData } = await supabase.storage
-      .from('Raw-Data')
-      .createSignedUrl(String(existingRaw.hires_path), 60 * 60)
     return NextResponse.json({
       success: true,
       data: {
@@ -117,7 +111,7 @@ export async function POST(request: NextRequest) {
         hires_date: existingRaw.hires_date ?? null,
         hires_source: existingSource,
         hires_label: existingRaw.hires_label ?? null,
-        signed_url: signedData?.signedUrl ?? null,
+        signed_url: padImageryProxyUrl(String(existingRaw.hires_path)),
         cached: true,
       },
       error: null,
@@ -231,10 +225,6 @@ export async function POST(request: NextRequest) {
     if (!error) updated += 1
   }
 
-  const { data: signedData } = await supabase.storage
-    .from('Raw-Data')
-    .createSignedUrl(storagePath, 60 * 60)
-
   return NextResponse.json({
     success: true,
     data: {
@@ -243,7 +233,7 @@ export async function POST(request: NextRequest) {
       hires_source: chip.source,
       hires_label: chip.label,
       hires_stale_survey: chip.isStaleSurvey,
-      signed_url: signedData?.signedUrl ?? null,
+      signed_url: padImageryProxyUrl(storagePath),
       updated,
       cached: false,
       ground_m_approx: chip.groundMApprox,

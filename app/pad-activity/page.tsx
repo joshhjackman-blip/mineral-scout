@@ -972,7 +972,7 @@ function ChipPanel({
           <br />
           <span style={{ fontSize: 11 }}>
             {broken
-              ? 'Signed URL expired or object missing in Storage'
+              ? 'Chip missing in Storage (or proxy failed)'
               : missingHint ||
                 'RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths'}
           </span>
