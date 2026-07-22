@@ -315,7 +315,7 @@ export default function Map({
     //     overlays — see `showPermitGlow` / `showSubmittedGlow`.
     //   - LEASING_ACTIVE has zero tracts and doesn't add signal for
     //     the current buyer workflow.
-    // Both statuses paint as FRONTIER slate when they somehow appear.
+    // Both statuses paint as True PUD emerald when they somehow appear.
     PUD_PERMITTED: true,
     PUD_INFILL: true,
     LEASING_ACTIVE: true,
@@ -574,56 +574,52 @@ export default function Map({
   const STATUS_FILL: Record<UnifiedStatus, string> = {
     PDP:            '#EAB308', // yellow — producing today
     PUD_DUC:        '#A855F7', // purple — drilled, awaiting completion
-    // TRUE_PUD merged into FRONTIER (2026-07-22). Palette entry
-    // kept for type completeness; deriveMapStatus remaps it.
-    TRUE_PUD:       '#94A3B8',
-    // PUD_PERMITTED + LEASING_ACTIVE paint as FRONTIER slate because
-    // permits are surfaced by the blue/teal glow overlays and leasing
-    // has been dropped from the visible palette (2026-07-17).
-    PUD_PERMITTED:  '#94A3B8',
+    // Undeveloped bucket (FRONTIER + legacy TRUE_PUD) paints emerald
+    // and labels as "True PUD" on the legend (2026-07-22).
+    TRUE_PUD:       '#10B981',
+    // PUD_PERMITTED + LEASING_ACTIVE paint as the same emerald True PUD
+    // fill — permits are the blue/teal glow overlays; leasing is unused.
+    PUD_PERMITTED:  '#10B981',
     PUD_INFILL:     '#F97316', // orange — spacing-gap infill candidate
-    LEASING_ACTIVE: '#94A3B8',
-    // Frontier = undeveloped bucket (ex-TRUE_PUD + ex-FRONTIER).
-    // Slate (not near-white) so the ~17–30 empty tracts per county
-    // actually read on the map; 0.18 on #E5E7EB was invisible.
-    FRONTIER:       '#94A3B8',
+    LEASING_ACTIVE: '#10B981',
+    FRONTIER:       '#10B981',
   }
   const STATUS_OUTLINE: Record<UnifiedStatus, string> = {
     PDP:            '#A16207',
     PUD_DUC:        '#6B21A8',
-    TRUE_PUD:       '#64748B',
-    PUD_PERMITTED:  '#64748B',
+    TRUE_PUD:       '#047857',
+    PUD_PERMITTED:  '#047857',
     PUD_INFILL:     '#C2410C',
-    LEASING_ACTIVE: '#64748B',
-    FRONTIER:       '#64748B',
+    LEASING_ACTIVE: '#047857',
+    FRONTIER:       '#047857',
   }
   const STATUS_LABEL: Record<UnifiedStatus, string> = {
     PDP:            'PDP',
     PUD_DUC:        'DUC',
-    TRUE_PUD:       'Frontier',
+    TRUE_PUD:       'True PUD',
     PUD_PERMITTED:  'PUD (Permitted)',
     PUD_INFILL:     'Infill',
     LEASING_ACTIVE: 'Leasing active',
-    FRONTIER:       'Frontier',
+    FRONTIER:       'True PUD',
   }
   // Baseline opacities per status (before per-status toggle is applied).
   const STATUS_OPACITY: Record<UnifiedStatus, number> = {
     PDP:            0.72,
     PUD_DUC:        0.82,
-    TRUE_PUD:       0.55,
-    PUD_PERMITTED:  0.55, // treated as frontier
+    TRUE_PUD:       0.78,
+    PUD_PERMITTED:  0.78, // treated as True PUD
     PUD_INFILL:     0.75,
-    LEASING_ACTIVE: 0.55, // treated as frontier
-    FRONTIER:       0.55,
+    LEASING_ACTIVE: 0.78, // treated as True PUD
+    FRONTIER:       0.78,
   }
   const STATUS_OUTLINE_WIDTH: Record<UnifiedStatus, number> = {
     PDP:            1.6,
     PUD_DUC:        2.0,
-    TRUE_PUD:       1.2,
-    PUD_PERMITTED:  1.2,
+    TRUE_PUD:       1.8,
+    PUD_PERMITTED:  1.8,
     PUD_INFILL:     1.5,
-    LEASING_ACTIVE: 1.2,
-    FRONTIER:       1.2,
+    LEASING_ACTIVE: 1.8,
+    FRONTIER:       1.8,
   }
 
   const selectedFillColorExpr = useMemo<mapboxgl.Expression>(
@@ -2226,11 +2222,10 @@ function LayerTogglePanel({
   submittedGlowVisible: boolean
   onSubmittedGlow: (v: boolean) => void
 }) {
-  // Legend row order for the four surviving primary classifications
-  // (PDP / PUD_DUC / PUD_INFILL / FRONTIER). TRUE_PUD was folded into
-  // FRONTIER on 2026-07-22. PUD_PERMITTED and LEASING_ACTIVE were
-  // pulled off earlier — permits via blue/teal glow overlays,
-  // leasing because zero tracts land there.
+  // Legend: PDP / DUC / Infill / True PUD. FRONTIER is the DB key for
+  // the undeveloped bucket but the swatch labels as "True PUD"
+  // (emerald). PUD_PERMITTED / LEASING_ACTIVE stay off the legend —
+  // permits via blue/teal glow, leasing unused.
   const statusKeys: UnifiedStatus[] = [
     'PDP', 'PUD_DUC', 'PUD_INFILL', 'FRONTIER',
   ]
