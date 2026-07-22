@@ -2124,6 +2124,26 @@ export default function Home() {
                   Recent permits
                 </a>
                 <a
+                  href="/pad-activity"
+                  style={{
+                    display: 'block',
+                    padding: '10px 16px',
+                    fontSize: 13,
+                    color: '#374151',
+                    textDecoration: 'none',
+                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                    borderBottom: '1px solid #F3F4F6',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#ECFDF5'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent'
+                  }}
+                >
+                  Pad activity
+                </a>
+                <a
                   href="/crm"
                   style={{
                     display: 'block',
@@ -2338,6 +2358,22 @@ export default function Home() {
             }}
           >
             Permits
+          </a>
+          <a
+            href="/pad-activity"
+            style={{
+              fontSize: 12,
+              color: '#059669',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid #059669',
+              fontWeight: 500,
+              fontFamily: 'Geist, Inter, system-ui, sans-serif',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Pad activity
           </a>
           <a
             href="/crm"

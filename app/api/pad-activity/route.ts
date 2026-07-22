@@ -32,12 +32,39 @@ function adminClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
+async function signPaths(
+  supabase: NonNullable<ReturnType<typeof adminClient>>,
+  events: PadActivityEvent[],
+  maxPaths = 40,
+): Promise<Record<string, string>> {
+  const signed: Record<string, string> = {}
+  const paths = Array.from(
+    new Set(
+      events.flatMap((e) => [e.before_path, e.after_path].filter(Boolean) as string[]),
+    ),
+  )
+  for (const path of paths.slice(0, maxPaths)) {
+    try {
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from('Raw-Data')
+        .createSignedUrl(path, 60 * 60)
+      if (!signErr && signedData?.signedUrl) {
+        signed[path] = signedData.signedUrl
+      }
+    } catch {
+      // ignore missing objects
+    }
+  }
+  return signed
+}
+
 /**
  * GET /api/pad-activity?county=howard&abstract=543
  * GET /api/pad-activity?county=howard&owner=SMITH%20JOHN
+ * GET /api/pad-activity?mode=list&counties=howard,martin&days=30
  *
- * Returns recent pad_activity_events for the OwnerDrawer Well Activity card.
- * Optional signed URLs for before/after chips when storage paths exist.
+ * Drawer queries use county + abstract/owner.
+ * The /pad-activity page uses mode=list for the feed of recent events.
  */
 export async function GET(request: NextRequest) {
   const supabase = adminClient()
@@ -49,11 +76,111 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = new URL(request.url)
+  const mode = (searchParams.get('mode') || '').trim().toLowerCase()
   const county = (searchParams.get('county') || '').trim().toLowerCase()
   const abstract = (searchParams.get('abstract') || '').trim()
   const owner = (searchParams.get('owner') || '').trim()
-  const limit = Math.min(Number(searchParams.get('limit') || '10') || 10, 50)
+  const limit = Math.min(Number(searchParams.get('limit') || (mode === 'list' ? '100' : '10')) || 10, 200)
 
+  const selectCols =
+    'id,county_id,rrc_lease_id,api_number,abstract_number,owner_name,lease_name,' +
+    'operator_name,signature,confidence,change_score,summary,before_path,' +
+    'after_path,week_start,propensity_bump,source,created_at'
+
+  // ── List feed for /pad-activity page ─────────────────────────────
+  if (mode === 'list') {
+    const countiesParam = (searchParams.get('counties') || 'howard,martin').trim()
+    const counties = countiesParam
+      .split(',')
+      .map((c) => c.trim().toLowerCase())
+      .filter(Boolean)
+    const days = Math.min(Math.max(Number(searchParams.get('days') || '30') || 30, 1), 365)
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+
+    let query = supabase
+      .from('pad_activity_events')
+      .select(selectCols)
+      .gte('week_start', since)
+      .order('week_start', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (counties.length === 1) {
+      query = query.eq('county_id', counties[0])
+    } else if (counties.length > 1) {
+      query = query.in('county_id', counties)
+    }
+
+    const signature = (searchParams.get('signature') || '').trim()
+    if (signature && signature !== 'all') {
+      query = query.eq('signature', signature)
+    }
+
+    const { data, error } = await query
+    if (error) {
+      const missing =
+        /pad_activity_events/i.test(error.message) ||
+        /does not exist/i.test(error.message) ||
+        error.code === '42P01'
+      return NextResponse.json({
+        success: true,
+        data: { events: [], signed: {}, leads: [], days },
+        error: missing ? null : error.message,
+      })
+    }
+
+    const events = (data || []) as unknown as PadActivityEvent[]
+    const signed = await signPaths(supabase, events)
+
+    // Unique leads affected (owner_name + county), newest first.
+    const leadMap = new Map<string, {
+      owner_name: string
+      county_id: string
+      event_count: number
+      latest_signature: string
+      latest_week: string
+      abstracts: string[]
+      propensity_bump_total: number
+    }>()
+    for (const ev of events) {
+      const name = (ev.owner_name || '').trim()
+      if (!name) continue
+      const key = `${ev.county_id}::${name.toUpperCase()}`
+      const existing = leadMap.get(key)
+      if (!existing) {
+        leadMap.set(key, {
+          owner_name: name,
+          county_id: ev.county_id,
+          event_count: 1,
+          latest_signature: ev.signature,
+          latest_week: ev.week_start,
+          abstracts: ev.abstract_number ? [ev.abstract_number] : [],
+          propensity_bump_total: ev.propensity_bump || 0,
+        })
+      } else {
+        existing.event_count += 1
+        existing.propensity_bump_total += ev.propensity_bump || 0
+        if (ev.abstract_number && !existing.abstracts.includes(ev.abstract_number)) {
+          existing.abstracts.push(ev.abstract_number)
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        events,
+        signed,
+        leads: Array.from(leadMap.values()),
+        days,
+      },
+      error: null,
+    })
+  }
+
+  // ── Drawer query (county + abstract|owner) ───────────────────────
   if (!county) {
     return NextResponse.json(
       { success: false, data: null, error: 'county required' },
@@ -62,25 +189,20 @@ export async function GET(request: NextRequest) {
   }
   if (!abstract && !owner) {
     return NextResponse.json(
-      { success: false, data: null, error: 'abstract or owner required' },
+      { success: false, data: null, error: 'abstract or owner required (or use mode=list)' },
       { status: 400 },
     )
   }
 
   let query = supabase
     .from('pad_activity_events')
-    .select(
-      'id,county_id,rrc_lease_id,api_number,abstract_number,owner_name,lease_name,' +
-        'operator_name,signature,confidence,change_score,summary,before_path,' +
-        'after_path,week_start,propensity_bump,source,created_at',
-    )
+    .select(selectCols)
     .eq('county_id', county)
     .order('week_start', { ascending: false })
     .order('created_at', { ascending: false })
     .limit(limit)
 
   if (abstract) {
-    // Bare abstract ("543") — strip A- prefix if the client sent it.
     const bare = abstract.replace(/^A-/i, '').replace(/^0+/, '') || abstract
     query = query.or(`abstract_number.eq.${bare},abstract_number.eq.${abstract}`)
   } else if (owner) {
@@ -89,7 +211,6 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query
   if (error) {
-    // Table may not exist until migration is applied — fail soft.
     const missing =
       /pad_activity_events/i.test(error.message) ||
       /does not exist/i.test(error.message) ||
@@ -102,27 +223,7 @@ export async function GET(request: NextRequest) {
   }
 
   const events = (data || []) as unknown as PadActivityEvent[]
-  const signed: Record<string, string> = {}
-
-  // Sign chip paths on demand (Raw-Data bucket). Soft-fail if storage
-  // isn't configured or the object is missing.
-  const paths = Array.from(
-    new Set(
-      events.flatMap((e) => [e.before_path, e.after_path].filter(Boolean) as string[]),
-    ),
-  )
-  for (const path of paths.slice(0, 20)) {
-    try {
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from('Raw-Data')
-        .createSignedUrl(path, 60 * 60)
-      if (!signErr && signedData?.signedUrl) {
-        signed[path] = signedData.signedUrl
-      }
-    } catch {
-      // ignore
-    }
-  }
+  const signed = await signPaths(supabase, events, 20)
 
   return NextResponse.json({
     success: true,
