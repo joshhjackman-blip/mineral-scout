@@ -626,7 +626,7 @@ export default function PermitsPage() {
             fontFamily: 'Geist, Inter, system-ui, sans-serif',
           }}
         >
-          Pad activity
+          Satellite Imagery
         </Link>
         <Link
           href="/"

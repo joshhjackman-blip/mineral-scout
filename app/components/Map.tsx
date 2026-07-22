@@ -281,6 +281,7 @@ export default function Map({
   mapLevel,
   onCountySelect,
   onCountySwitch,
+  onEnterTractMode,
   devStatusByAbstract,
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
@@ -290,6 +291,8 @@ export default function Map({
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
+  /** Enter tract mode before applying a tract-search selection. */
+  onEnterTractMode?: () => void
   devStatusByAbstract?: Record<string, DevStatusMapEntry>
 }) {
   // In-map layer toggles. Every tract on the map is classified into one
@@ -2247,6 +2250,14 @@ export default function Map({
         <TractSearch
           map={map.current}
           geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
+          onTractSelect={(abstractL) => {
+            // Tract search used to only fitBounds — at county overview that
+            // looked like a no-op because parcel layers aren't active yet.
+            if (mapLevel !== 'tract') {
+              onEnterTractMode?.()
+            }
+            onOwnerClick({ ABSTRACT_L: abstractL, abstract_label: abstractL })
+          }}
         />
       )}
       {mapReady && mapLevel === 'tract' && (

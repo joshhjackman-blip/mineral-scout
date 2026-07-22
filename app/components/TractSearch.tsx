@@ -7,6 +7,8 @@ interface TractFeature {
   abstract_l: string;
   abstract_n: string;
   level1_sur: string;
+  block: string;
+  legal: string;
   display: string;
   center: [number, number];
   bbox: [number, number, number, number];
@@ -37,8 +39,19 @@ export default function TractSearch({ map, geojsonUrl, onTractSelect }: TractSea
         for (const feature of gj.features) {
           const props = feature.properties ?? {};
           const abstractL: string = props.ABSTRACT_L ?? props.abstract_l ?? "";
-          const abstractN: string = props.ABSTRACT_N ?? props.abstract_n ?? "";
-          const level1Sur: string = props.LEVEL1_SUR ?? props.level1_sur ?? "";
+          const abstractN: string = String(props.ABSTRACT_N ?? props.abstract_n ?? "");
+          // Howard map geojson uses Surv_Name / DESC_ instead of LEVEL1_SUR.
+          const level1Sur: string = String(
+            props.LEVEL1_SUR ??
+              props.level1_sur ??
+              props.Surv_Name ??
+              props.surv_name ??
+              props.DESC_ ??
+              props.desc_ ??
+              "",
+          );
+          const block: string = String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? "");
+          const legal: string = String(props.legal_desc ?? "");
 
           if (!abstractL) continue;
 
@@ -56,7 +69,11 @@ export default function TractSearch({ map, geojsonUrl, onTractSelect }: TractSea
             abstract_l: abstractL,
             abstract_n: abstractN,
             level1_sur: level1Sur,
-            display: `${abstractN} ${abstractL}`.trim(),
+            block,
+            legal,
+            display: [abstractL, level1Sur || abstractN, block ? `Blk ${block}` : ""]
+              .filter(Boolean)
+              .join(" · "),
             center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
             bbox: [minLng, minLat, maxLng, maxLat],
           });
@@ -87,6 +104,8 @@ export default function TractSearch({ map, geojsonUrl, onTractSelect }: TractSea
         t.abstract_l.toLowerCase().includes(q) ||
         t.abstract_n.toLowerCase().includes(q) ||
         t.level1_sur.toLowerCase().includes(q) ||
+        t.block.toLowerCase().includes(q) ||
+        t.legal.toLowerCase().includes(q) ||
         t.display.toLowerCase().includes(q)
       )
       .slice(0, 12);

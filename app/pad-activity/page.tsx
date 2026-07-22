@@ -1,6 +1,6 @@
 'use client'
 
-// Pad Activity page — weekly rig → completion signals with
+// Satellite Imagery page — weekly rig → completion signals with
 // side-by-side before/after chips and the mineral owners affected.
 // Mirrors /permits chrome so brokers treat it as a peer workflow:
 // scan activity → expand leads → call / open on map / CRM.
@@ -96,6 +96,7 @@ export default function PadActivityPage() {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
   const [reviewingId, setReviewingId] = useState<number | null>(null)
   const [hiresLoadingId, setHiresLoadingId] = useState<number | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -113,7 +114,7 @@ export default function PadActivityPage() {
       const res = await fetch(`/api/pad-activity?${params.toString()}`)
       const json = await res.json()
       if (!json?.success) {
-        setError(json?.error || 'Failed to load pad activity')
+        setError(json?.error || 'Failed to load satellite imagery')
         setEvents([])
         setLeads([])
         setSigned({})
@@ -124,7 +125,7 @@ export default function PadActivityPage() {
       setSigned((json.data?.signed || {}) as Record<string, string>)
       if (json.error) setError(json.error)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load pad activity')
+      setError(err instanceof Error ? err.message : 'Failed to load satellite imagery')
       setEvents([])
       setLeads([])
     } finally {
@@ -233,6 +234,50 @@ export default function PadActivityPage() {
     return Array.from(map.values())
   }, [events])
 
+  const searchTerms = useMemo(
+    () =>
+      searchQuery
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((t) => t.length > 0),
+    [searchQuery],
+  )
+
+  const filteredCards = useMemo(() => {
+    if (searchTerms.length === 0) return cards
+    return cards.filter(({ sample, owners }) => {
+      const haystack = [
+        sample.lease_name,
+        sample.operator_name,
+        sample.api_number,
+        sample.abstract_number,
+        sample.rrc_lease_id,
+        sample.owner_name,
+        sample.summary,
+        ...owners,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return searchTerms.every((t) => haystack.includes(t))
+    })
+  }, [cards, searchTerms])
+
+  const filteredLeads = useMemo(() => {
+    if (searchTerms.length === 0) return leads
+    return leads.filter((lead) => {
+      const haystack = [
+        lead.owner_name,
+        lead.county_id,
+        ...lead.abstracts,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return searchTerms.every((t) => haystack.includes(t))
+    })
+  }, [leads, searchTerms])
+
   useEffect(() => {
     setExpanded((prev) => {
       const next = { ...prev }
@@ -266,7 +311,7 @@ export default function PadActivityPage() {
         </Link>
         <span style={{ fontSize: 12, color: '#6B7280' }}>·</span>
         <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
-          Pad Activity
+          Satellite Imagery
         </span>
         <div style={{ flex: 1 }} />
         <Link
@@ -301,16 +346,65 @@ export default function PadActivityPage() {
       <div style={{ maxWidth: 1280, width: '100%', margin: '0 auto', padding: '24px 20px 40px', flex: 1 }}>
         <div style={{ marginBottom: 20 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
-            Pad activity — last {windowDays} days
+            Satellite Imagery — last {windowDays} days
           </h1>
           <p style={{ fontSize: 14, color: '#6B7280', margin: 0 }}>
             {loading
-              ? 'Loading pad activity…'
-              : `${cards.length} pad event${cards.length === 1 ? '' : 's'} · ${completionCount} completion · ${leads.length} lead${leads.length === 1 ? '' : 's'} affected`}
+              ? 'Loading satellite imagery…'
+              : `${filteredCards.length} pad event${filteredCards.length === 1 ? '' : 's'} · ${completionCount} completion · ${filteredLeads.length} lead${filteredLeads.length === 1 ? '' : 's'} affected`}
           </p>
         </div>
 
-        {/* Filters */}
+        {/* Search + filters */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              flex: '1 1 260px',
+              maxWidth: 420,
+              background: '#FFFFFF',
+              border: '1px solid #E5E7EB',
+              borderRadius: 8,
+              padding: '8px 12px',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round">
+              <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search owner, lease, API, abstract…"
+              style={{
+                border: 'none',
+                outline: 'none',
+                background: 'transparent',
+                width: '100%',
+                fontSize: 13,
+                color: '#111827',
+              }}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#9CA3AF',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  padding: 0,
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
           <FilterGroup label="Window">
             {([7, 14, 30, 90] as WindowChoice[]).map((d) => (
@@ -398,10 +492,10 @@ export default function PadActivityPage() {
           {/* Event cards */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {loading ? (
-              <EmptyBox>Loading pad activity across counties…</EmptyBox>
+              <EmptyBox>Loading satellite imagery across counties…</EmptyBox>
             ) : cards.length === 0 ? (
               <EmptyBox>
-                No pad activity in this window yet.
+                No satellite imagery events in this window yet.
                 <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
                   Imagery is optional. Re-run{' '}
                   <strong>Pad activity weekly</strong> on <code>main</code> —
@@ -409,8 +503,15 @@ export default function PadActivityPage() {
                   from your RRC scrape (no satellite needed).
                 </div>
               </EmptyBox>
+            ) : filteredCards.length === 0 ? (
+              <EmptyBox>
+                No events match &quot;{searchQuery.trim()}&quot;.
+                <div style={{ marginTop: 8, fontSize: 12, color: '#9CA3AF' }}>
+                  Try a lease name, owner, API number, or abstract.
+                </div>
+              </EmptyBox>
             ) : (
-              cards.map(({ key, sample, owners }) => {
+              filteredCards.map(({ key, sample, owners }) => {
                 const meta = SIGNATURE_LABEL[sample.signature] || {
                   label: sample.signature,
                   color: '#6B7280',
@@ -438,12 +539,12 @@ export default function PadActivityPage() {
                 const hiresIsStale =
                   Boolean(sample.raw?.hires_stale_survey) ||
                   hiresSource === 'naip'
-                const canRequestHires =
-                  sample.signature === 'AMBIGUOUS' &&
-                  Boolean(
-                    (sample.latitude != null && sample.longitude != null) ||
-                      sample.api_number,
-                  )
+                const canRequestHires = Boolean(
+                  (sample.latitude != null && sample.longitude != null) ||
+                    sample.api_number ||
+                    sample.raw?.latitude != null ||
+                    sample.raw?.longitude != null,
+                )
                 const open = expanded[sample.id] ?? owners.length > 0
                 const countyName = COUNTIES[sample.county_id]?.name || sample.county_id
                 const pct = Math.round((sample.confidence || 0) * 100)
@@ -516,7 +617,7 @@ export default function PadActivityPage() {
                         subtitle="Sentinel-2 · 10 m"
                         missingHint={
                           beforeKey
-                            ? 'Chip path on file but URL failed to sign — re-check Storage'
+                            ? 'Chip path on file but image failed to load — re-check Storage'
                             : 'No before chip yet (run weekly with --enable-sentinel)'
                         }
                       />
@@ -527,7 +628,7 @@ export default function PadActivityPage() {
                         borderLeft
                         missingHint={
                           afterKey
-                            ? 'Chip path on file but URL failed to sign — re-check Storage'
+                            ? 'Chip path on file but image failed to load — re-check Storage'
                             : 'No after chip yet (run weekly with --enable-sentinel)'
                         }
                       />
@@ -547,23 +648,25 @@ export default function PadActivityPage() {
                         {sample.summary}
                       </p>
 
-                      {sample.signature === 'AMBIGUOUS' && (
+                      {(canRequestHires || sample.signature === 'AMBIGUOUS') && (
                         <div
                           style={{
                             marginTop: 12,
                             padding: '10px 12px',
                             borderRadius: 8,
-                            background: '#FFFBEB',
-                            border: '1px solid #FDE68A',
+                            background: sample.signature === 'AMBIGUOUS' ? '#FFFBEB' : '#F0FDFA',
+                            border: sample.signature === 'AMBIGUOUS' ? '1px solid #FDE68A' : '1px solid #99F6E4',
                             display: 'flex',
                             flexWrap: 'wrap',
                             gap: 8,
                             alignItems: 'center',
                           }}
                         >
-                          <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
-                            Human review
-                          </span>
+                          {sample.signature === 'AMBIGUOUS' && (
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginRight: 4 }}>
+                              Human review
+                            </span>
+                          )}
                           {canRequestHires && !hiresUrl && (
                             <button
                               type="button"
@@ -595,7 +698,7 @@ export default function PadActivityPage() {
                               )}
                             </>
                           )}
-                          {beforeUrl && afterUrl && (
+                          {sample.signature === 'AMBIGUOUS' && beforeUrl && afterUrl && (
                             <>
                               <button
                                 type="button"
@@ -765,7 +868,7 @@ export default function PadActivityPage() {
                 color: '#64748B',
               }}
             >
-              Leads affected · {leads.length}
+              Leads affected · {filteredLeads.length}
             </div>
             <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
               {loading ? (
@@ -774,8 +877,12 @@ export default function PadActivityPage() {
                 <div style={{ padding: 16, fontSize: 13, color: '#6B7280' }}>
                   No owner-linked events in this window.
                 </div>
+              ) : filteredLeads.length === 0 ? (
+                <div style={{ padding: 16, fontSize: 13, color: '#6B7280' }}>
+                  No leads match this search.
+                </div>
               ) : (
-                leads.map((lead) => {
+                filteredLeads.map((lead) => {
                   const meta = SIGNATURE_LABEL[lead.latest_signature]
                   const abs = lead.abstracts[0]
                   const href = abs
