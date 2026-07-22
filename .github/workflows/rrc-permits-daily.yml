@@ -1,26 +1,30 @@
-name: RRC permits daily (compute pass only)
+name: RRC permits daily (scrape + compute)
 
-# The RRC EWA scrape that used to live here moved to a Vercel Cron
-# endpoint on 2026-07-21 (see app/api/cron/scrape-permits/route.ts
-# + vercel.json). Root cause: RRC's public EWA server blocks
-# GitHub Actions IP ranges, and 8 rounds of ScrapingBee proxy
-# tuning all failed at the TLS handshake layer. Vercel's
-# serverless IPs aren't on RRC's block-list, so scraping from
-# there works directly with zero proxy cost.
+# Daily pipeline in two steps at 22:00 UTC (= 5 PM CDT / 4 PM CST):
 #
-# This workflow now only runs compute_development_status.py —
-# which reads Supabase and doesn't need to talk to RRC. Timing
-# nudged 30 minutes past the Vercel Cron (22:00 UTC) so we
-# reclassify against the freshest permit data:
+#   1. Fire the Vercel /api/cron/scrape-permits endpoint via curl.
+#      That endpoint runs the RRC EWA HTML scraper from Vercel's
+#      serverless infrastructure — which isn't on RRC's IP block-
+#      list (unlike GitHub Actions runners) — and upserts fresh
+#      permits into every county's _permits table.
 #
-#   22:00 UTC   Vercel Cron scrapes RRC -> upserts permits table
-#   22:30 UTC   This workflow recomputes tract_development_status
+#   2. Run compute_development_status.py to reclassify every
+#      abstract into PDP / PUD_DUC / TRUE_PUD / PUD_PERMITTED /
+#      PUD_INFILL / LEASING_ACTIVE / FRONTIER using the freshly-
+#      landed permit rows. This step reads exclusively from
+#      Supabase, so RRC's block doesn't matter here.
 #
-# Manual dispatch still supported for ad-hoc reruns.
+# Belt-and-suspenders architecture: Vercel Cron *should* also
+# fire the same scrape endpoint at 22:00 UTC (per vercel.json).
+# When both fire, the second one just re-updates the same rows
+# (idempotent upsert on api_number). So either path succeeding
+# is enough to keep the pipeline alive. If a user is on Vercel
+# Hobby (where crons are limited) or Vercel drops their cron
+# registration, this GH workflow is the backup.
 
 on:
   schedule:
-    - cron: '30 22 * * *'
+    - cron: '0 22 * * *'
   workflow_dispatch: {}
 
 concurrency:
@@ -28,11 +32,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  compute:
+  pipeline:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
+      - name: Trigger Vercel RRC scrape
+        # 5 min timeout because a fresh 12-county scrape takes ~40s
+        # end-to-end but RRC's form-slow-first-load can add
+        # another minute or two. --fail so non-2xx short-circuits
+        # the step with a real error message. --max-time bounds
+        # the whole thing so a Vercel outage doesn't hang the
+        # workflow.
+        # If VERCEL_CRON_URL isn't set, defaults to the main
+        # production URL. CRON_SECRET is optional — if the
+        # endpoint's auth is enabled we pass the Bearer header
+        # so the curl matches Vercel Cron's own auth pattern.
+        env:
+          VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_URL || 'https://mineral-map.vercel.app/api/cron/scrape-permits' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          echo "Hitting $VERCEL_CRON_URL"
+          HEADER=""
+          if [ -n "$CRON_SECRET" ]; then
+            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          fi
+          # -sS: silent but show errors. -o writes JSON to stdout
+          # via /dev/stdout so the ingest report shows in the log.
+          # -w emits the HTTP code + timing on a trailing line.
+          eval curl -sS --fail --max-time 300 $HEADER \
+            -o /tmp/scrape-response.json \
+            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
+            "$VERCEL_CRON_URL"
+          echo "--- ingest report ---"
+          # jq if available, else raw JSON
+          if command -v jq >/dev/null; then
+            jq '{ok, totals, elapsedMs, counties: (.counties | map({county, parsed, inserted, updated}))}' /tmp/scrape-response.json
+          else
+            cat /tmp/scrape-response.json
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -42,18 +81,16 @@ jobs:
         # compute_development_status.py needs geopandas + shapely
         # for the adjacency + point-in-polygon logic. supabase-py
         # for DB writes. pyshp so the wells-zip lateral loader can
-        # feed the infill-gap detection. No requests / bs4 /
-        # scrapingbee any more — the RRC scrape moved to Vercel
-        # Cron.
+        # feed the infill-gap detection.
         run: |
           python -m pip install --upgrade pip
           pip install supabase pyshp geopandas shapely
 
       - name: Recompute tract_development_status
-        # Reclassifies every abstract into PDP / PUD_DUC /
-        # TRUE_PUD / PUD_PERMITTED / PUD_INFILL / LEASING_ACTIVE /
-        # FRONTIER after the fresh permits landed via Vercel Cron
-        # 30 minutes ago.
+        # Reclassifies every abstract now that fresh permits landed
+        # ~30 seconds ago from the Vercel scrape step. If the scrape
+        # step failed, this still runs against whatever data is in
+        # Supabase — better to have a stale compute than no compute.
         env:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
