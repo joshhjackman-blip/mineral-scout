@@ -68,16 +68,17 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
+  align-items: start;
   min-height: calc(100dvh - 72px);
-  padding: 0 3vw 0 6vw;
+  padding: 4vh 4vw 0 6vw;
   gap: 0;
 }
 
 .cs-copy {
   max-width: 14ch;
-  padding-bottom: 12vh;
+  padding-top: 2vh;
+  padding-bottom: 0;
   position: relative;
   z-index: 2;
 }
@@ -110,21 +111,22 @@
 }
 
 .cs-rig {
-  position: relative;
-  width: 100%;
-  height: min(96vh, 980px);
+  position: absolute;
+  right: -2vw;
+  bottom: 0;
+  width: min(56vw, 720px);
+  height: min(78vh, 720px);
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
   pointer-events: none;
-  margin-right: -4vw;
 }
 
 .cs-rig svg,
 .cs-pumpjack {
-  width: min(118%, 920px);
+  width: 100%;
   height: auto;
-  max-height: 96vh;
+  max-height: 78vh;
   overflow: visible;
 }
 
