@@ -988,6 +988,177 @@ function OverviewPanel({
 
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
       {tractDevStatus && <DevTimeline status={tractDevStatus} />}
+      <WellActivityCard
+        countyId={county.id}
+        abstract={tractLabel}
+        ownerName={owner.owner_name}
+      />
+    </div>
+  )
+}
+
+type PadActivityEvent = {
+  id: number
+  county_id: string
+  api_number: string | null
+  abstract_number: string | null
+  lease_name: string | null
+  operator_name: string | null
+  signature: string
+  confidence: number
+  summary: string
+  before_path: string | null
+  after_path: string | null
+  week_start: string
+  propensity_bump: number
+  source: string
+}
+
+const SIGNATURE_LABEL: Record<string, string> = {
+  COMPLETION_CREW: 'Completion crew',
+  RRC_COMPLETION: 'RRC completion',
+  RIG_MOVE_IN: 'Rig move-in',
+  RIG_MOVE_OUT: 'Rig move-out',
+  AMBIGUOUS: 'Needs review',
+  NON_RELEVANT: 'Non-relevant',
+}
+
+function WellActivityCard({
+  countyId,
+  abstract,
+  ownerName,
+}: {
+  countyId: string
+  abstract: string | null
+  ownerName: string
+}) {
+  const [events, setEvents] = useState<PadActivityEvent[]>([])
+  const [signed, setSigned] = useState<Record<string, string>>({})
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const bareAbstract = useMemo(() => {
+    if (!abstract) return ''
+    return abstract.replace(/^A-/i, '').replace(/^0+/, '') || abstract
+  }, [abstract])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!countyId || (!bareAbstract && !ownerName)) return
+      setLoading(true)
+      setError(null)
+      try {
+        const params = new URLSearchParams({ county: countyId, limit: '5' })
+        if (bareAbstract) params.set('abstract', bareAbstract)
+        else params.set('owner', ownerName)
+        const res = await fetch(`/api/pad-activity?${params.toString()}`)
+        const json = await res.json()
+        if (cancelled) return
+        if (!json?.success) {
+          setError(json?.error || 'Failed to load pad activity')
+          setEvents([])
+          return
+        }
+        setEvents((json.data?.events || []) as PadActivityEvent[])
+        setSigned((json.data?.signed || {}) as Record<string, string>)
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load pad activity')
+          setEvents([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    void run()
+    return () => { cancelled = true }
+  }, [countyId, bareAbstract, ownerName])
+
+  if (loading && events.length === 0) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+          Well activity
+        </div>
+        <div className="mt-2 text-sm text-gray-500">Checking for pad activity…</div>
+      </div>
+    )
+  }
+
+  if (!loading && events.length === 0) {
+    // Quiet empty state — don't clutter every owner with a dead card.
+    if (error) return null
+    return null
+  }
+
+  const top = events[0]
+  const beforeUrl = top?.before_path ? signed[top.before_path] : null
+  const afterUrl = top?.after_path ? signed[top.after_path] : null
+  const label = SIGNATURE_LABEL[top.signature] || top.signature
+  const pct = Math.round((top.confidence || 0) * 100)
+
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-emerald-100 pb-2">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+          Well activity
+        </div>
+        <span className="rounded-full border border-emerald-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+          {label} · {pct}%
+        </span>
+      </div>
+
+      {(beforeUrl || afterUrl) && (
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="overflow-hidden rounded-lg border border-emerald-100 bg-white">
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              Before
+            </div>
+            {beforeUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={beforeUrl} alt="Before pad chip" className="h-28 w-full object-cover" />
+            ) : (
+              <div className="flex h-28 items-center justify-center text-xs text-gray-400">
+                No chip yet
+              </div>
+            )}
+          </div>
+          <div className="overflow-hidden rounded-lg border border-emerald-100 bg-white">
+            <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+              After
+            </div>
+            {afterUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={afterUrl} alt="After pad chip" className="h-28 w-full object-cover" />
+            ) : (
+              <div className="flex h-28 items-center justify-center text-xs text-gray-400">
+                No chip yet
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <p className="text-sm leading-relaxed text-gray-800">{top.summary}</p>
+
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-500">
+        {top.lease_name && <span>Lease: {top.lease_name}</span>}
+        {top.api_number && <span className="font-mono">API {top.api_number}</span>}
+        <span>Week of {top.week_start}</span>
+        {top.propensity_bump > 0 && (
+          <span className="font-semibold text-emerald-700">
+            +{top.propensity_bump} propensity
+          </span>
+        )}
+        <span className="uppercase tracking-wider">{top.source.replace('_', ' ')}</span>
+      </div>
+
+      {events.length > 1 && (
+        <div className="mt-3 border-t border-emerald-100 pt-2 text-[11px] text-gray-500">
+          +{events.length - 1} earlier event{events.length > 2 ? 's' : ''} on this tract
+        </div>
+      )}
     </div>
   )
 }
