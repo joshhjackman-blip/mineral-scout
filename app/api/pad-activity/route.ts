@@ -94,44 +94,56 @@ export async function GET(request: NextRequest) {
       .split(',')
       .map((c) => c.trim().toLowerCase())
       .filter(Boolean)
-    const days = Math.min(Math.max(Number(searchParams.get('days') || '30') || 30, 1), 365)
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10)
-
-    let query = supabase
-      .from('pad_activity_events')
-      .select(selectCols)
-      .gte('week_start', since)
-      .order('week_start', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(limit)
-
-    if (counties.length === 1) {
-      query = query.eq('county_id', counties[0])
-    } else if (counties.length > 1) {
-      query = query.in('county_id', counties)
-    }
-
+    const days = Math.min(Math.max(Number(searchParams.get('days') || '90') || 90, 1), 365)
+    // Prefer created_at for the window — every Phase-1 row is stamped
+    // with the current Monday as week_start, so filtering on week_start
+    // collapses "last 90 days of permit activity" into "detected this
+    // week". created_at matches when the weekly job wrote the event.
+    const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
     const signature = (searchParams.get('signature') || '').trim()
-    if (signature && signature !== 'all') {
-      query = query.eq('signature', signature)
-    }
 
-    const { data, error } = await query
-    if (error) {
+    // IMPORTANT: do NOT use .in('county_id', [...]) here. On this
+    // Supabase project that filter silently returns [] for some
+    // date windows (observed 2026-07-22: howard,martin + days=90
+    // → 0 rows; same query per-county with .eq → 100 rows each).
+    // Fan out with .eq per county and merge.
+    const perCountyLimit = Math.max(20, Math.ceil(limit / Math.max(counties.length, 1)))
+    const countyResults = await Promise.all(
+      (counties.length > 0 ? counties : ['howard', 'martin']).map(async (countyId) => {
+        let query = supabase
+          .from('pad_activity_events')
+          .select(selectCols)
+          .eq('county_id', countyId)
+          .gte('created_at', sinceIso)
+          .order('created_at', { ascending: false })
+          .limit(perCountyLimit)
+        if (signature && signature !== 'all') {
+          query = query.eq('signature', signature)
+        }
+        return query
+      }),
+    )
+
+    const errors = countyResults
+      .map((r) => r.error)
+      .filter(Boolean)
+    if (errors.length === countyResults.length && errors[0]) {
+      const message = errors[0].message || 'query failed'
       const missing =
-        /pad_activity_events/i.test(error.message) ||
-        /does not exist/i.test(error.message) ||
-        error.code === '42P01'
+        /pad_activity_events/i.test(message) ||
+        /does not exist/i.test(message) ||
+        errors[0].code === '42P01'
       return NextResponse.json({
         success: true,
         data: { events: [], signed: {}, leads: [], days },
-        error: missing ? null : error.message,
+        error: missing ? null : message,
       })
     }
 
-    const events = (data || []) as unknown as PadActivityEvent[]
+    const events = countyResults
+      .flatMap((r) => (r.data || []) as unknown as PadActivityEvent[])
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+      .slice(0, limit)
     const signed = await signPaths(supabase, events)
 
     // Unique leads affected (owner_name + county), newest first.
