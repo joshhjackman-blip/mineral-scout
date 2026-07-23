@@ -260,7 +260,6 @@ export default function SignInPage() {
           </div>
           <div className="si-left-footer">
             <a href="/landing">← Back to landing</a>
-            <a href="https://getmineralmap.com/pricing">Pricing</a>
           </div>
         </div>
 
