@@ -829,8 +829,8 @@ export default function DemoPage() {
                                 <div style={{ color: '#111827', fontSize: 12, fontWeight: 700 }}>{owner.phone}</div>
                                 <div style={{ color: '#2563EB', fontSize: 11, marginTop: 2 }}>{owner.email}</div>
                                 <div style={{ marginTop: 6, fontSize: 10, color: '#9CA3AF' }}>
-                                  <Link href="/pricing" style={{ color: '#9CA3AF', textDecoration: 'none' }}>
-                                    Sign up to skip trace real owners →
+                                  <Link href="/auth" style={{ color: '#9CA3AF', textDecoration: 'none' }}>
+                                    Sign in to skip trace real owners →
                                   </Link>
                                 </div>
                               </div>
