@@ -68,15 +68,21 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: stretch;
   min-height: calc(100dvh - 72px);
-  padding: 0 6vw 4vh;
-  gap: 2vw;
+  padding: 0 4vw 0 6vw;
+  gap: 0;
 }
 
 .cs-copy {
   max-width: 14ch;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
 }
 
 .cs-headline {
@@ -107,20 +113,24 @@
 }
 
 .cs-rig {
-  position: relative;
-  width: 100%;
-  height: min(86vh, 820px);
+  position: absolute;
+  right: 2vw;
+  bottom: 8vh;
+  left: auto;
+  width: min(48vw, 620px);
+  height: min(70vh, 640px);
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
+  z-index: 1;
 }
 
 .cs-rig svg,
 .cs-pumpjack {
-  width: min(100%, 640px);
+  width: 100%;
   height: auto;
-  max-height: 86vh;
+  max-height: 70vh;
   overflow: visible;
 }
 
@@ -139,7 +149,7 @@
 @keyframes cs-rig-in {
   from {
     opacity: 0;
-    transform: translateX(48px);
+    transform: translateX(24px);
   }
   to {
     opacity: 1;
@@ -151,10 +161,10 @@
 @keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(-16deg);
+    transform: rotate(-12deg);
   }
   50% {
-    transform: rotate(16deg);
+    transform: rotate(12deg);
   }
 }
 
@@ -182,7 +192,7 @@
 
 .cs-rig {
   animation: cs-rig-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) 180ms both;
-  transform-origin: 70% 100%;
+  transform-origin: 50% 50%;
 }
 
 .cs-pump-beam {
@@ -202,14 +212,17 @@
 
   .cs-stage {
     grid-template-columns: 1fr;
-    align-content: center;
+    align-content: stretch;
     min-height: calc(100dvh - 64px);
-    padding: 8vh 7vw 0;
+    padding: 0 7vw;
     gap: 0;
   }
 
   .cs-copy {
     max-width: none;
+    height: auto;
+    min-height: 42vh;
+    justify-content: center;
     position: relative;
     z-index: 2;
   }
@@ -224,17 +237,19 @@
 
   .cs-rig {
     position: absolute;
-    right: -8%;
-    bottom: 0;
-    width: 78%;
-    height: 58vh;
-    opacity: 0.92;
+    right: 4vw;
+    left: auto;
+    bottom: 6vh;
+    width: min(72vw, 420px);
+    height: 42vh;
+    opacity: 0.95;
     z-index: 1;
   }
 
-  .cs-rig svg {
+  .cs-rig svg,
+  .cs-pumpjack {
     width: 100%;
-    max-height: 58vh;
+    max-height: 42vh;
   }
 }
 
