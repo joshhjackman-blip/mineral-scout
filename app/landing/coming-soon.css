@@ -76,7 +76,7 @@
 }
 
 .cs-copy {
-  max-width: min(100%, 18ch);
+  max-width: min(100%, 34rem);
 }
 
 .cs-headline {
@@ -98,7 +98,7 @@
 
 .cs-subhead {
   margin: 0.7em 0 0;
-  max-width: 28ch;
+  max-width: none;
   font-family: var(--cs-display);
   font-weight: 500;
   font-size: clamp(18px, 2.35vw, 28px);
@@ -106,6 +106,12 @@
   letter-spacing: -0.01em;
   text-transform: none;
   color: rgba(255, 255, 255, 0.82);
+}
+
+/* Force exactly two lines — parent width used to re-wrap each half. */
+.cs-subhead-line {
+  display: block;
+  white-space: nowrap;
 }
 
 .cs-rig {
