@@ -119,11 +119,9 @@ export default function LandingPage() {
             Mineral <span className="cs-map">Map</span>
           </h1>
           <p className="cs-subhead">
-            Everything you need to find,
+            Everything you need to find, track,
             <br />
-            track, and close
-            <br />
-            Permian mineral deals.
+            and close Permian mineral deals.
           </p>
         </div>
 

@@ -98,11 +98,11 @@
 
 .cs-subhead {
   margin: 0.7em 0 0;
-  max-width: 16ch;
+  max-width: 28ch;
   font-family: var(--cs-display);
   font-weight: 500;
   font-size: clamp(18px, 2.35vw, 28px);
-  line-height: 1.3;
+  line-height: 1.35;
   letter-spacing: -0.01em;
   text-transform: none;
   color: rgba(255, 255, 255, 0.82);
