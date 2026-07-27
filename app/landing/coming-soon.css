@@ -76,34 +76,36 @@
 }
 
 .cs-copy {
-  max-width: 14ch;
+  max-width: min(100%, 18ch);
 }
 
 .cs-headline {
   margin: 0;
   font-family: var(--cs-display);
   font-weight: 800;
-  font-size: clamp(64px, 12.5vw, 148px);
-  line-height: 0.88;
-  letter-spacing: -0.01em;
+  font-size: clamp(52px, 9.5vw, 112px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
   text-transform: uppercase;
   color: var(--cs-white);
+  white-space: nowrap;
 }
 
 .cs-headline .cs-map {
   color: var(--cs-navy);
-  display: block;
+  display: inline;
 }
 
 .cs-subhead {
-  margin: 0.18em 0 0;
+  margin: 0.7em 0 0;
+  max-width: 28ch;
   font-family: var(--cs-display);
-  font-weight: 800;
-  font-size: clamp(40px, 7.5vw, 92px);
-  line-height: 0.9;
+  font-weight: 500;
+  font-size: clamp(18px, 2.35vw, 28px);
+  line-height: 1.35;
   letter-spacing: -0.01em;
-  text-transform: uppercase;
-  color: var(--cs-white);
+  text-transform: none;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .cs-rig {
@@ -209,17 +211,18 @@
   }
 
   .cs-copy {
-    max-width: none;
+    max-width: min(100%, 20ch);
     position: relative;
     z-index: 2;
   }
 
   .cs-headline {
-    font-size: clamp(56px, 18vw, 96px);
+    font-size: clamp(40px, 12.5vw, 64px);
   }
 
   .cs-subhead {
-    font-size: clamp(36px, 11vw, 64px);
+    max-width: 26ch;
+    font-size: clamp(16px, 4.2vw, 22px);
   }
 
   .cs-rig {
