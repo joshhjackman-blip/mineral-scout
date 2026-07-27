@@ -33,7 +33,8 @@ export async function middleware(req: NextRequest) {
     req.nextUrl.pathname.startsWith('/auth') ||
     req.nextUrl.pathname.startsWith('/landing') ||
     req.nextUrl.pathname.startsWith('/pricing') ||
-    req.nextUrl.pathname.startsWith('/demo')
+    req.nextUrl.pathname.startsWith('/demo') ||
+    req.nextUrl.pathname.startsWith('/book-demo')
   const isApiRoute = req.nextUrl.pathname.startsWith('/api')
 
   if (!session && !isPublicPage && !isApiRoute) {

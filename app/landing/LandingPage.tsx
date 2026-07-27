@@ -101,6 +101,8 @@ function PumpjackSilhouette() {
   )
 }
 
+const CONTACT_EMAIL = 'management@mineralmapllc.com'
+
 export default function LandingPage() {
   return (
     <div className={`cs-root ${display.variable}`}>
@@ -108,9 +110,14 @@ export default function LandingPage() {
         <Link href="/landing" className="cs-logo" aria-label="Mineral Map">
           <AppLogo width={168} />
         </Link>
-        <Link href="/auth" className="cs-login">
-          Log in
-        </Link>
+        <div className="cs-nav-actions">
+          <Link href="/book-demo" className="cs-nav-demo">
+            Book a demo
+          </Link>
+          <Link href="/auth" className="cs-login">
+            Log in
+          </Link>
+        </div>
       </nav>
 
       <main className="cs-stage">
@@ -126,6 +133,14 @@ export default function LandingPage() {
               and close Permian mineral deals.
             </span>
           </p>
+          <div className="cs-hero-actions">
+            <Link href="/book-demo" className="cs-btn-primary">
+              Book a demo
+            </Link>
+            <a href={`mailto:${CONTACT_EMAIL}`} className="cs-btn-email">
+              {CONTACT_EMAIL}
+            </a>
+          </div>
         </div>
 
         <div className="cs-rig" aria-hidden="true">
