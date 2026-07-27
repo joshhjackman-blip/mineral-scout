@@ -116,11 +116,14 @@ export default function LandingPage() {
       <main className="cs-stage">
         <div className="cs-copy">
           <h1 className="cs-headline">
-            Mineral
-            <span className="cs-map">Map</span>
+            Mineral <span className="cs-map">Map</span>
           </h1>
           <p className="cs-subhead">
-            Everything you need to find, track, and close Permian mineral deals.
+            Everything you need to find,
+            <br />
+            track, and close
+            <br />
+            Permian mineral deals.
           </p>
         </div>
 
