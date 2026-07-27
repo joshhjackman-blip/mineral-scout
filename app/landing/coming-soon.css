@@ -2,11 +2,11 @@
 
 .cs-root {
   --cs-navy: #0B2A5C;
-  /* Darker sunset amber — burnt orange into dusk umber */
-  --cs-amber: #C45F0C;
-  --cs-amber-deep: #7A2E0C;
-  --cs-amber-hot: #D97706;
-  --cs-amber-dusk: #4A1808;
+  /* Mid sunset — between the original bright amber and the darker dusk pass */
+  --cs-amber-hot: #E8A12E;
+  --cs-amber: #DC8A1A;
+  --cs-amber-deep: #B45309;
+  --cs-amber-dusk: #8B3A10;
   --cs-white: #FFFFFF;
   --cs-ink: #0A0A0A;
   --cs-display: var(--font-barlow-condensed), 'Arial Narrow', sans-serif;
@@ -18,10 +18,10 @@
   overflow: hidden;
   background:
     linear-gradient(
-      155deg,
+      150deg,
       var(--cs-amber-hot) 0%,
-      var(--cs-amber) 38%,
-      var(--cs-amber-deep) 72%,
+      var(--cs-amber) 42%,
+      var(--cs-amber-deep) 78%,
       var(--cs-amber-dusk) 100%
     );
   color: var(--cs-navy);
@@ -29,15 +29,15 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* Soft atmospheric wash — sunset glow + dusk depth */
+/* Soft atmospheric wash — warm glow + light dusk depth */
 .cs-root::before {
   content: '';
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 75% 55% at 20% 30%, rgba(255, 196, 120, 0.22), transparent 62%),
-    radial-gradient(ellipse 55% 45% at 85% 80%, rgba(40, 12, 4, 0.35), transparent 70%),
-    radial-gradient(ellipse 40% 35% at 70% 15%, rgba(11, 42, 92, 0.12), transparent 65%);
+    radial-gradient(ellipse 70% 55% at 18% 38%, rgba(255, 220, 160, 0.2), transparent 60%),
+    radial-gradient(ellipse 50% 40% at 82% 78%, rgba(74, 24, 8, 0.2), transparent 68%),
+    radial-gradient(ellipse 40% 35% at 72% 18%, rgba(11, 42, 92, 0.1), transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
