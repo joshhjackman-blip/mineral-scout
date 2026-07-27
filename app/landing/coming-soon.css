@@ -47,6 +47,12 @@
   text-decoration: none;
 }
 
+.cs-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
 .cs-login {
   color: var(--cs-navy);
   text-decoration: none;
@@ -62,6 +68,65 @@
 .cs-login:hover {
   border-bottom-color: rgba(11, 42, 92, 0.85);
   opacity: 0.95;
+}
+
+.cs-nav-demo {
+  color: var(--cs-navy);
+  text-decoration: none;
+  font-family: var(--cs-sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 8px 14px;
+  border: 1.5px solid rgba(11, 42, 92, 0.55);
+  border-radius: 999px;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.cs-nav-demo:hover {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: var(--cs-navy);
+}
+
+.cs-hero-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px 18px;
+  animation: cs-rise 900ms cubic-bezier(0.22, 1, 0.36, 1) 200ms both;
+}
+
+.cs-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: var(--cs-navy);
+  color: #FFFFFF;
+  font-family: var(--cs-sans);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  transition: opacity 140ms ease;
+}
+
+.cs-btn-primary:hover {
+  opacity: 0.92;
+}
+
+.cs-btn-email {
+  color: rgba(11, 42, 92, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(11, 42, 92, 0.35);
+}
+
+.cs-btn-email:hover {
+  border-bottom-color: var(--cs-navy);
 }
 
 .cs-stage {
