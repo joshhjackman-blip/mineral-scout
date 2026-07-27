@@ -119,7 +119,9 @@ export default function LandingPage() {
             Mineral
             <span className="cs-map">Map</span>
           </h1>
-          <p className="cs-subhead">Coming Soon</p>
+          <p className="cs-subhead">
+            Everything you need to find, track, and close Permian mineral deals.
+          </p>
         </div>
 
         <div className="cs-rig" aria-hidden="true">
