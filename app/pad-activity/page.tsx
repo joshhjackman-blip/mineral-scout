@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react'
 import AppLogo from '@/app/components/AppLogo'
+import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { COUNTIES } from '@/lib/counties'
 
 type PadEvent = {
@@ -445,19 +446,37 @@ export default function PadActivityPage() {
                       </div>
                     </div>
 
-                    {/* Side-by-side chips */}
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: '1fr 1fr',
-                        gap: 0,
-                        borderBottom: '1px solid #F3F4F6',
-                        background: '#F8FAFC',
-                      }}
-                    >
-                      <ChipPanel label="Before" url={beforeUrl} />
-                      <ChipPanel label="After" url={afterUrl} borderLeft />
-                    </div>
+                    {/* Chips: stored before/after when the weekly Sentinel
+                        job landed paths; otherwise pull the most recent
+                        Sentinel-2 preview on demand for this pad. */}
+                    {beforeUrl || afterUrl ? (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr',
+                          gap: 0,
+                          borderBottom: '1px solid #F3F4F6',
+                          background: '#F8FAFC',
+                        }}
+                      >
+                        <ChipPanel label="Before" url={beforeUrl} />
+                        <ChipPanel label="After" url={afterUrl} borderLeft />
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          borderBottom: '1px solid #F3F4F6',
+                          background: '#F8FAFC',
+                        }}
+                      >
+                        <SentinelLatestChip
+                          lat={sample.latitude}
+                          lon={sample.longitude}
+                          tall
+                          label="Latest imagery"
+                        />
+                      </div>
+                    )}
 
                     <div style={{ padding: '14px 16px' }}>
                       <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: '#1F2937' }}>
@@ -835,10 +854,10 @@ function ChipPanel({
             background: '#F8FAFC',
           }}
         >
-          No satellite chip yet
+          No satellite chip on file
           <br />
           <span style={{ fontSize: 11 }}>
-            RRC signals show without imagery; Sentinel before/after appears when the weekly job lands paths
+            Stored before/after chips appear after the weekly Sentinel job
           </span>
         </div>
       )}
