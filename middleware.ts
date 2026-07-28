@@ -62,41 +62,10 @@ export async function middleware(req: NextRequest) {
     return res
   }
 
-  if (session && !isPublicPage && !isApiRoute) {
-    const metaStatus = String(
-      (session.user.user_metadata as Record<string, unknown> | undefined)?.subscription_status ?? ''
-    ).toLowerCase()
-
-    // Fast path: trust fresh metadata when already active/trialing.
-    if (metaStatus === 'active' || metaStatus === 'trialing') {
-      return res
-    }
-
-    // Fallback path: metadata may be stale, so check subscriptions table directly.
-    const { data: sub } = await supabase
-      .from('subscriptions')
-      .select('status')
-      .eq('user_id', session.user.id)
-      .maybeSingle()
-
-    const subStatus = String(sub?.status ?? '').toLowerCase()
-    if (subStatus === 'active' || subStatus === 'trialing') {
-      return res
-    }
-
-    // Team members inherit access from the owner's active subscription.
-    const { data: teamMembership } = await supabase
-      .from('team_members')
-      .select('status')
-      .eq('member_id', session.user.id)
-      .eq('status', 'accepted')
-      .maybeSingle()
-    if (teamMembership?.status === 'accepted') {
-      return res
-    }
-
-    return NextResponse.redirect(new URL('/pricing', req.url))
-  }
+  // Stripe /pricing paywall archived (2026-07-23). Any authenticated
+  // Supabase user can use the app — no active subscription required.
+  // Restore the subscription_status / team_members gate from git when
+  // billing is turned back on.
 
   return res
 }
