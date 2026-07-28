@@ -140,8 +140,10 @@ type SkipTraceResult = {
 
 type OwnerSearchResult = {
   owner_name: string
+  mailing_address?: string | null
   mailing_city?: string | null
   mailing_state?: string | null
+  mailing_zip?: string | null
   propensity_score?: number | null
   rrc_lease_id?: string | number | null
   operator_name?: string | null
