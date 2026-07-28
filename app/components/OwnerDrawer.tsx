@@ -28,6 +28,8 @@ export type OwnerLike = {
   mailing_zip?: string | null
   address_1?: string | null
   mailing_address?: string | null
+  /** Distinct full mailing lines from the mineral roll (street · city ST ZIP). */
+  mailing_addresses?: string[] | null
   out_of_state?: boolean
   motivated?: boolean
   acreage?: number | null
@@ -145,6 +147,46 @@ function clean(value: unknown): string {
   const text = String(value).trim()
   if (!text || text.toLowerCase() === 'null' || text.toLowerCase() === 'none') return ''
   return text
+}
+
+/** Build 1+ display lines from roll / DB mailing fields. */
+export function mailingAddressLines(owner: OwnerLike, hydrated?: string): string[] {
+  const fromList = (owner.mailing_addresses ?? [])
+    .map((line) => clean(line))
+    .filter(Boolean)
+  if (fromList.length > 0) {
+    // Dedupe case-insensitively while preserving roll order.
+    const seen = new Set<string>()
+    const out: string[] = []
+    for (const line of fromList) {
+      const key = line.toUpperCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(line)
+    }
+    return out
+  }
+
+  const street = clean(owner.address_1) || clean(owner.mailing_address) || clean(hydrated)
+  // mailing_address may already contain "A | B" from the DB backfill.
+  const streetParts = street
+    ? street.split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean)
+    : []
+  const cityLine = [clean(owner.mailing_city), clean(owner.mailing_state), clean(owner.mailing_zip)]
+    .filter(Boolean)
+    .join(' ')
+
+  if (streetParts.length > 1) {
+    return streetParts.map((part) => (cityLine && !part.includes(cityLine) ? `${part} · ${cityLine}` : part))
+  }
+  if (streetParts.length === 1) {
+    const part = streetParts[0]
+    if (cityLine && !part.toUpperCase().includes(cityLine.toUpperCase())) {
+      return [`${part} · ${cityLine}`]
+    }
+    return [part]
+  }
+  return cityLine ? [cityLine] : []
 }
 
 function toNumber(value: unknown): number | null {
@@ -628,9 +670,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
 
   const [tab, setTab] = useState<'overview' | 'holdings' | 'wells' | 'notes'>('overview')
   // GeoJSON owners_json historically dropped Howard street lines when CAD
-  // put them in address2. Hydrate mailing_address from Supabase when the
-  // panel opens with only city/state/zip so Contact snapshot stays correct
-  // even before a full parcel re-enrich ships.
+  // put them in address2. Hydrate mailing_address rows from Supabase when
+  // the panel opens with no street so Contact snapshot still shows the
+  // mineral-roll address (and every distinct line when the roll has two).
   const [hydratedStreet, setHydratedStreet] = useState<string>('')
 
   useEffect(() => {
@@ -643,7 +685,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       return
     }
     const already =
-      clean(owner.address_1) || clean(owner.mailing_address)
+      (owner.mailing_addresses && owner.mailing_addresses.length > 0)
+      || clean(owner.address_1)
+      || clean(owner.mailing_address)
     if (already) {
       setHydratedStreet('')
       return
@@ -656,13 +700,24 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       .select('mailing_address')
       .ilike('owner_name', name)
       .not('mailing_address', 'is', null)
-      .limit(5)
+      .limit(25)
       .then(({ data, error }) => {
         if (cancelled || error) return
-        const street = (data ?? [])
-          .map((row) => clean((row as { mailing_address?: string | null }).mailing_address))
-          .find(Boolean)
-        setHydratedStreet(street || '')
+        const seen = new Set<string>()
+        const parts: string[] = []
+        for (const row of data ?? []) {
+          const raw = clean((row as { mailing_address?: string | null }).mailing_address)
+          if (!raw) continue
+          for (const part of raw.split(/\s*\|\s*/)) {
+            const line = part.trim()
+            if (!line) continue
+            const key = line.toUpperCase()
+            if (seen.has(key)) continue
+            seen.add(key)
+            parts.push(line)
+          }
+        }
+        setHydratedStreet(parts.join(' | '))
       })
     return () => {
       cancelled = true
@@ -673,6 +728,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     owner?.owner_name,
     owner?.address_1,
     owner?.mailing_address,
+    owner?.mailing_addresses,
     county.ownershipTable,
   ])
 
@@ -703,13 +759,8 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     ? Math.round((cumOil * (ownershipPct / 100) * ROYALTY_ESTIMATE_BOE_PRICE) / 12)
     : null
   const rrcLease = clean(owner.rrc_lease_id)
-  const streetLine =
-    clean(owner.address_1) || clean(owner.mailing_address) || hydratedStreet
-  const address = [
-    streetLine,
-    [clean(owner.mailing_city), clean(owner.mailing_state)].filter(Boolean).join(', '),
-    clean(owner.mailing_zip),
-  ].filter(Boolean).join(' · ')
+  const mailingLines = mailingAddressLines(owner, hydratedStreet)
+  const address = mailingLines.join(' · ')
   return (
     // Fills whatever the parent gives us. The parent controls whether
     // this is a side panel (~50vw × full height, laid out to the left
@@ -856,6 +907,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             rrcLease={rrcLease}
             county={county}
             tractDevStatus={tractDevStatus ?? null}
+            mailingLines={mailingLines}
           />
         )}
         {tab === 'holdings' && (
@@ -935,18 +987,27 @@ function SectionCard({ title, action, children }: { title: string; action?: Reac
   )
 }
 
-function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
+function KVRow({
+  k, v, mono, wrap,
+}: {
+  k: string
+  v: ReactNode
+  mono?: boolean
+  /** Allow multi-line values (e.g. two mineral-roll mailing addresses). */
+  wrap?: boolean
+}) {
   // Label on the left, value on the right, both on one line. The
   // 160px label column is fixed so field names line up across rows,
   // and the value cell truncates rather than wrapping — otherwise
   // long mailing addresses would still push the value down onto a
   // second line and defeat the whole one-line-per-field layout the
   // Contact snapshot / Lease context cards were redesigned for.
+  // Pass wrap for fields that intentionally list multiple lines.
   return (
-    <div className="grid grid-cols-[160px_1fr] items-baseline gap-3">
+    <div className={`grid grid-cols-[160px_1fr] gap-3 ${wrap ? 'items-start' : 'items-baseline'}`}>
       <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
       <div
-        className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'font-mono' : ''}`}
+        className={`text-sm text-gray-900 min-w-0 ${wrap ? 'whitespace-pre-line break-words' : 'truncate'} ${mono ? 'font-mono' : ''}`}
         title={typeof v === 'string' ? v : undefined}
       >
         {v}
@@ -958,6 +1019,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 function OverviewPanel({
   owner, ownershipPct, acreage, nra, royaltyEstimate, cumOil,
   tractLabel, tractLegalDescription, rrcLease, county, tractDevStatus,
+  mailingLines,
 }: {
   owner: OwnerLike
   ownershipPct: number | null
@@ -970,6 +1032,7 @@ function OverviewPanel({
   rrcLease: string
   county: County
   tractDevStatus: TractDevStatus | null
+  mailingLines: string[]
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -1005,13 +1068,9 @@ function OverviewPanel({
         <SectionCard title="Contact snapshot">
           <KVRow k="Owner name" v={owner.owner_name} mono />
           <KVRow
-            k="Mailing address"
-            v={
-              [
-                streetLine,
-                [owner.mailing_city, owner.mailing_state, owner.mailing_zip].filter(Boolean).join(' '),
-              ].filter(Boolean).join(' · ') || 'Not on file'
-            }
+            k={mailingLines.length > 1 ? 'Mailing addresses' : 'Mailing address'}
+            wrap={mailingLines.length > 1}
+            v={mailingLines.length > 0 ? mailingLines.join('\n') : 'Not on file'}
           />
           <KVRow k="Phone" v={owner.phone || 'Not on file — run skip trace above'} />
           <KVRow k="Email" v={owner.email || 'Not on file — run skip trace above'} />
