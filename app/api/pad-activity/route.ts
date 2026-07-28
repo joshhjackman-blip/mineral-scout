@@ -329,7 +329,10 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const events = (data || []) as unknown as PadActivityEvent[]
+  const events = await hydrateAbstracts(
+    supabase,
+    (data || []) as unknown as PadActivityEvent[],
+  )
   const signed = await signPaths(supabase, events, 20)
 
   return NextResponse.json({
