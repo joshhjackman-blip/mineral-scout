@@ -62,6 +62,7 @@ type EnrichedPermit = RawPermit & {
 type OwnerRow = {
   id?: number | string
   owner_name: string | null
+  mailing_address?: string | null
   mailing_city?: string | null
   mailing_state?: string | null
   mailing_zip?: string | null
@@ -422,8 +423,8 @@ async function loadOwnersForAbstract(
       .or(`abstract.eq.${bare},abstract.eq.A-${bare},abstract.eq.${abstract}`)
       .limit(200)
 
-  const HOWARD_COLS = 'id, owner_name, mailing_city, mailing_state, mailing_zip, acreage, ownership_pct'
-  const MIN_COLS    = 'id, owner_name, mailing_city, mailing_state'
+  const HOWARD_COLS = 'id, owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, acreage, ownership_pct'
+  const MIN_COLS    = 'id, owner_name, mailing_address, mailing_city, mailing_state'
 
   const isMissingColumnError = (msg: string) => {
     const m = msg.toLowerCase()
@@ -990,9 +991,12 @@ function OwnerRowCard({
           {owner.owner_name}
         </div>
         <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>
-          {(owner.mailing_city && owner.mailing_state)
-            ? `${owner.mailing_city}, ${owner.mailing_state}${owner.mailing_zip ? ' ' + owner.mailing_zip : ''}`
-            : 'Address on file'}
+          {([
+            owner.mailing_address,
+            (owner.mailing_city && owner.mailing_state)
+              ? `${owner.mailing_city}, ${owner.mailing_state}${owner.mailing_zip ? ' ' + owner.mailing_zip : ''}`
+              : null,
+          ].filter(Boolean).join(' · ')) || 'Address on file'}
           {nra != null && nra > 0 && (
             <> · <span style={{ fontFamily: 'monospace', color: '#374151' }}>{nra.toFixed(nra < 1 ? 3 : 2)} NMA</span></>
           )}

@@ -627,10 +627,54 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   } = useOwnerNote(county, owner, open)
 
   const [tab, setTab] = useState<'overview' | 'holdings' | 'wells' | 'notes'>('overview')
+  // GeoJSON owners_json historically dropped Howard street lines when CAD
+  // put them in address2. Hydrate mailing_address from Supabase when the
+  // panel opens with only city/state/zip so Contact snapshot stays correct
+  // even before a full parcel re-enrich ships.
+  const [hydratedStreet, setHydratedStreet] = useState<string>('')
 
   useEffect(() => {
     if (open) setTab('overview')
   }, [open, owner?.owner_name])
+
+  useEffect(() => {
+    if (!open || !owner) {
+      setHydratedStreet('')
+      return
+    }
+    const already =
+      clean(owner.address_1) || clean(owner.mailing_address)
+    if (already) {
+      setHydratedStreet('')
+      return
+    }
+    let cancelled = false
+    const name = clean(owner.owner_name)
+    if (!name) return
+    supabase
+      .from(county.ownershipTable)
+      .select('mailing_address')
+      .ilike('owner_name', name)
+      .not('mailing_address', 'is', null)
+      .limit(5)
+      .then(({ data, error }) => {
+        if (cancelled || error) return
+        const street = (data ?? [])
+          .map((row) => clean((row as { mailing_address?: string | null }).mailing_address))
+          .find(Boolean)
+        setHydratedStreet(street || '')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [
+    open,
+    owner,
+    owner?.owner_name,
+    owner?.address_1,
+    owner?.mailing_address,
+    county.ownershipTable,
+  ])
 
   useEffect(() => {
     if (!open) return
@@ -659,8 +703,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     ? Math.round((cumOil * (ownershipPct / 100) * ROYALTY_ESTIMATE_BOE_PRICE) / 12)
     : null
   const rrcLease = clean(owner.rrc_lease_id)
+  const streetLine =
+    clean(owner.address_1) || clean(owner.mailing_address) || hydratedStreet
   const address = [
-    clean(owner.address_1) || clean(owner.mailing_address),
+    streetLine,
     [clean(owner.mailing_city), clean(owner.mailing_state)].filter(Boolean).join(', '),
     clean(owner.mailing_zip),
   ].filter(Boolean).join(' · ')
@@ -962,7 +1008,7 @@ function OverviewPanel({
             k="Mailing address"
             v={
               [
-                owner.address_1 || owner.mailing_address,
+                streetLine,
                 [owner.mailing_city, owner.mailing_state, owner.mailing_zip].filter(Boolean).join(' '),
               ].filter(Boolean).join(' · ') || 'Not on file'
             }

@@ -515,6 +515,26 @@ def main() -> None:
                         return value.strip().lower() in {"1", "true", "yes", "y"}
                     return False
 
+                # Howard CAD often leaves address1 blank and puts the street
+                # in address2. Prefer mailing_address, then fall back to
+                # stitching address1..address4 out of raw_record when the
+                # normalized column was empty at load time.
+                street = (
+                    owner.get("address_1", "")
+                    or owner.get("address", "")
+                    or owner.get("mailing_address", "")
+                    or ""
+                )
+                if not str(street).strip():
+                    raw = owner.get("raw_record") or {}
+                    if isinstance(raw, dict):
+                        lower = {str(k).strip().lower(): v for k, v in raw.items()}
+                        parts = [
+                            str(lower.get(k) or "").strip()
+                            for k in ("address1", "address2", "address3", "address4")
+                        ]
+                        street = ", ".join(p for p in parts if p)
+
                 owners_for_panel.append(
                     {
                         "owner_name": owner.get("owner_name", "") or "",
@@ -522,10 +542,7 @@ def main() -> None:
                         "mailing_city": owner.get("mailing_city", "") or "",
                         "mailing_state": owner.get("mailing_state", "") or "",
                         "mailing_zip": owner.get("mailing_zip", "") or "",
-                        "address_1": owner.get("address_1", "")
-                        or owner.get("address", "")
-                        or owner.get("mailing_address", "")
-                        or "",
+                        "address_1": street or "",
                         "out_of_state": as_bool(owner.get("out_of_state", False)),
                         "motivated": as_bool(owner.get("motivated", False)),
                         "operator_name": owner.get("operator_name", "") or "",

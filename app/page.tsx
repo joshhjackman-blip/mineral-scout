@@ -1314,7 +1314,7 @@ export default function Home() {
         words.map((word) =>
           supabase
             .from(COUNTIES[countyKey].ownershipTable)
-            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
+            .select('id, owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
             .ilike('owner_name', `%${word}%`)
             .order('owner_name', { ascending: true })
             .limit(100)
