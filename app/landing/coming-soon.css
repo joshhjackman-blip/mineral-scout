@@ -224,10 +224,10 @@
 @keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(-16deg);
+    transform: rotate(-11deg);
   }
   50% {
-    transform: rotate(16deg);
+    transform: rotate(11deg);
   }
 }
 
