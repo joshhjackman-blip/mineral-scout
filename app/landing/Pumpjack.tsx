@@ -1,15 +1,13 @@
 /**
- * Exact approved silhouette split into base / beam / crank layers.
- *
- * Pivots (900×666 asset space), measured from the PNG:
- *   beam  — Samson saddle where the walking beam sits
- *   crank — center of the counterweight hub
- *
- * Pitman rides with the beam (nods). Only the hub + counterweight spin.
+ * Exact approved silhouette, layered for real pumpjack motion:
+ * - counterweight spins on the hub
+ * - walking beam + horsehead nod on the Samson saddle (underside contact)
+ * - polished rod translates straight up/down (does not swing with the beam)
  */
 export default function Pumpjack() {
-  // Measured from the PNG: beam sits ~y=200 at the Samson; hub hole ~y=488
-  const beamPivot = { x: 385, y: 201 }
+  // Underside of the beam where it sits on the Samson crown — not mid-beam,
+  // so the beam doesn't look like it's being pulled off the post.
+  const beamPivot = { x: 385, y: 216 }
   const crankPivot = { x: 628, y: 488 }
 
   return (
@@ -26,7 +24,7 @@ export default function Pumpjack() {
         preserveAspectRatio="xMidYMid meet"
       />
 
-      {/* Counterweight spins about the hub */}
+      {/* Counterweight — spin about hub */}
       <g transform={`translate(${crankPivot.x} ${crankPivot.y})`}>
         <g className="cs-pump-crank">
           <image
@@ -40,7 +38,17 @@ export default function Pumpjack() {
         </g>
       </g>
 
-      {/* Beam + horsehead + pitman nod about the Samson pin */}
+      {/* Polished rod — vertical stroke only */}
+      <g className="cs-pump-rod">
+        <image
+          href="/landing/pumpjack-rod.png"
+          width="900"
+          height="666"
+          preserveAspectRatio="xMidYMid meet"
+        />
+      </g>
+
+      {/* Beam + horsehead + pitman — nod about saddle pin */}
       <g transform={`translate(${beamPivot.x} ${beamPivot.y})`}>
         <g className="cs-pump-beam">
           <image

@@ -240,9 +240,9 @@
 }
 
 /*
- * Silhouette rest pose already has the horse head UP (beam tipped
- * down to the right). Nod from that pose to head-DOWN and back —
- * one nod per full crank revolution.
+ * Rest pose already has the horse head UP. Nod about the saddle pin
+ * (beam underside on the Samson) so the beam stays seated — not
+ * orbiting mid-beam and lifting off the post.
  */
 @keyframes cs-pump-nod {
   0%,
@@ -250,11 +250,21 @@
     transform: rotate(0deg);
   }
   50% {
-    transform: rotate(18deg);
+    transform: rotate(14deg);
   }
 }
 
-/* Counterweight spin — same period as the nod */
+/* Polished rod: straight vertical stroke with the horse head */
+@keyframes cs-pump-rod {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(72px);
+  }
+}
+
 @keyframes cs-pump-crank {
   from {
     transform: rotate(0deg);
@@ -269,9 +279,13 @@
   animation: cs-pump-nod 3.2s ease-in-out infinite;
 }
 
+.cs-pump-rod {
+  transform-origin: 0 0;
+  animation: cs-pump-rod 3.2s ease-in-out infinite;
+}
+
 .cs-pump-crank {
   transform-origin: 0 0;
-  /* Opposite direction so the weight drops as the horse head rises */
   animation: cs-pump-crank 3.2s linear infinite;
   animation-direction: reverse;
 }
@@ -327,6 +341,7 @@
   .cs-nav,
   .cs-rig,
   .cs-pump-beam,
+  .cs-pump-rod,
   .cs-pump-crank {
     animation: none;
   }
