@@ -126,6 +126,185 @@ function adminClient() {
   return createClient(url, key, { auth: { persistSession: false } })
 }
 
+function parseDate(raw: unknown): Date | null {
+  if (raw == null || raw === '') return null
+  const d = new Date(String(raw))
+  return Number.isFinite(d.getTime()) ? d : null
+}
+
+function mondayOf(d: Date): string {
+  const copy = new Date(d)
+  const day = copy.getUTCDay()
+  const diff = day === 0 ? -6 : 1 - day
+  copy.setUTCDate(copy.getUTCDate() + diff)
+  return copy.toISOString().slice(0, 10)
+}
+
+/**
+ * Live RRC bridge for the Pad Ops desk when `pad_activity_events` is empty
+ * (weekly job not run recently). Mirrors scripts/pad_activity/rrc_bridge.py
+ * so brokers still see approved / spud / completion signals.
+ */
+async function liveRrcSignals(
+  supabase: NonNullable<ReturnType<typeof adminClient>>,
+  counties: string[],
+  days: number,
+  limit: number,
+): Promise<PadActivityEvent[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  const weekStart = mondayOf(new Date())
+  const out: PadActivityEvent[] = []
+  let synthId = -1
+
+  for (const countyId of counties) {
+    const table = `${countyId}_permits`
+    // Pull a wide recent slice, then filter client-side across the four
+    // date columns (PostgREST OR across nullable dates is brittle).
+    const pageSize = Math.max(80, Math.ceil((limit * 3) / Math.max(counties.length, 1)))
+    const { data, error } = await supabase
+      .from(table)
+      .select(
+        'permit_number,api_number,operator_name,lease_name,abstract_number,latitude,longitude,permit_type,status,filed_date,approved_date,spud_date,completion_date',
+      )
+      .order('id', { ascending: false })
+      .limit(pageSize)
+
+    if (error || !data) continue
+
+    const claimed = new Set<string>()
+    type PermitRow = {
+      permit_number?: string | null
+      api_number?: string | null
+      operator_name?: string | null
+      lease_name?: string | null
+      abstract_number?: string | null
+      latitude?: number | null
+      longitude?: number | null
+      permit_type?: string | null
+      status?: string | null
+      filed_date?: string | null
+      approved_date?: string | null
+      spud_date?: string | null
+      completion_date?: string | null
+    }
+
+    const inWindow = (row: PermitRow): boolean => {
+      for (const key of ['completion_date', 'spud_date', 'approved_date', 'filed_date'] as const) {
+        const d = parseDate(row[key])
+        if (d && d >= since) return true
+      }
+      return false
+    }
+
+    const push = (
+      row: PermitRow,
+      signature: string,
+      confidence: number,
+      summary: string,
+      signalDate: Date,
+    ) => {
+      const api = String(row.api_number || '').trim() || null
+      const permit = String(row.permit_number || '').trim()
+      const key = api || (permit ? `permit:${permit}` : null)
+      if (key && claimed.has(key)) return
+      if (key) claimed.add(key)
+      const lat = row.latitude != null ? Number(row.latitude) : null
+      const lon = row.longitude != null ? Number(row.longitude) : null
+      out.push({
+        id: synthId--,
+        county_id: countyId,
+        rrc_lease_id: null,
+        api_number: api,
+        abstract_number: String(row.abstract_number || '').trim() || null,
+        owner_name: null,
+        lease_name: String(row.lease_name || '').trim() || null,
+        operator_name: String(row.operator_name || '').trim() || null,
+        signature,
+        confidence,
+        change_score: null,
+        summary,
+        before_path: null,
+        after_path: null,
+        week_start: weekStart,
+        propensity_bump: signature === 'RRC_COMPLETION' ? 8 : signature === 'RIG_MOVE_IN' ? 5 : 3,
+        source: 'rrc_live',
+        created_at: signalDate.toISOString(),
+        raw: {
+          permit_number: permit || null,
+          approved_date: row.approved_date,
+          filed_date: row.filed_date,
+          spud_date: row.spud_date,
+          completion_date: row.completion_date,
+          latitude: Number.isFinite(lat as number) ? lat : null,
+          longitude: Number.isFinite(lon as number) ? lon : null,
+          live_bridge: true,
+        },
+        latitude: Number.isFinite(lat as number) ? lat : null,
+        longitude: Number.isFinite(lon as number) ? lon : null,
+      })
+    }
+
+    const recent = (data as PermitRow[]).filter(inWindow)
+
+    // Pass 1 — completions
+    for (const row of recent) {
+      const completion = parseDate(row.completion_date)
+      if (!completion || completion < since) continue
+      const lease = String(row.lease_name || '').trim() || 'this lease'
+      const api = String(row.api_number || '').trim()
+      push(
+        row,
+        'RRC_COMPLETION',
+        0.85,
+        `RRC filing shows completion ${completion.toISOString().slice(0, 10)} on ${lease}` +
+          `${api ? ` (API ${api})` : ''}. Production / payout window — prioritize outreach.`,
+        completion,
+      )
+    }
+
+    // Pass 2 — spuds (not yet completed)
+    for (const row of recent) {
+      const spud = parseDate(row.spud_date)
+      const completion = parseDate(row.completion_date)
+      if (!spud || spud < since || completion) continue
+      const lease = String(row.lease_name || '').trim() || 'this lease'
+      const api = String(row.api_number || '').trim()
+      push(
+        row,
+        'RIG_MOVE_IN',
+        0.7,
+        `Spud ${spud.toISOString().slice(0, 10)} on ${lease}` +
+          `${api ? ` (API ${api})` : ''}. Drilling underway — watch for completion crew.`,
+        spud,
+      )
+    }
+
+    // Pass 3 — approved / filed permits
+    for (const row of recent) {
+      const approved = parseDate(row.approved_date)
+      const filed = parseDate(row.filed_date)
+      const signal =
+        approved && approved >= since ? approved : filed && filed >= since ? filed : null
+      if (!signal) continue
+      const kind = approved && signal.getTime() === approved.getTime() ? 'approved' : 'filed'
+      const lease = String(row.lease_name || '').trim() || 'this lease'
+      const permit = String(row.permit_number || '').trim()
+      push(
+        row,
+        'RRC_APPROVED',
+        kind === 'approved' ? 0.65 : 0.55,
+        `Drilling permit ${kind} ${signal.toISOString().slice(0, 10)} on ${lease}` +
+          `${permit ? ` (#${permit})` : ''}. Operator commitment — early outreach window.`,
+        signal,
+      )
+    }
+  }
+
+  return out
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+    .slice(0, limit)
+}
+
 async function signPaths(
   supabase: NonNullable<ReturnType<typeof adminClient>>,
   events: PadActivityEvent[],
@@ -234,10 +413,23 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const rawEvents = countyResults
+    let rawEvents = countyResults
       .flatMap((r) => (r.data || []) as unknown as PadActivityEvent[])
       .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
       .slice(0, limit)
+
+    // Desk stays empty when the weekly pad job hasn't written rows.
+    // Bridge live RRC permit activity so Pad Ops always has signals.
+    let feedSource: 'pad_activity_events' | 'rrc_live' | 'mixed' = 'pad_activity_events'
+    if (rawEvents.length === 0) {
+      let live = await liveRrcSignals(supabase, counties, days, limit)
+      if (signature && signature !== 'all') {
+        live = live.filter((e) => e.signature === signature)
+      }
+      rawEvents = live
+      feedSource = 'rrc_live'
+    }
+
     const events = await hydrateAbstracts(supabase, rawEvents)
     const signed = await signPaths(supabase, events)
 
@@ -282,6 +474,7 @@ export async function GET(request: NextRequest) {
         signed,
         leads: Array.from(leadMap.values()),
         days,
+        feed_source: feedSource,
       },
       error: null,
     })

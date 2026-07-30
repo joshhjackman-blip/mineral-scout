@@ -60,6 +60,7 @@ const LIFECYCLE = new Set([
   'RRC_COMPLETION',
   'RIG_MOVE_IN',
   'RIG_MOVE_OUT',
+  'RRC_APPROVED',
   'AMBIGUOUS',
 ])
 
@@ -104,6 +105,7 @@ export default function PadActivityPage() {
   const [reviewingId, setReviewingId] = useState<number | null>(null)
   const [skyfiBusy, setSkyfiBusy] = useState(false)
   const [skyfiNote, setSkyfiNote] = useState<string | null>(null)
+  const [feedSource, setFeedSource] = useState<string>('pad_activity_events')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,6 +135,7 @@ export default function PadActivityPage() {
       setEvents((json.data?.events || []) as PadEvent[])
       setLeads((json.data?.leads || []) as LeadRow[])
       setSigned((json.data?.signed || {}) as Record<string, string>)
+      setFeedSource(String(json.data?.feed_source || 'pad_activity_events'))
       if (json.error) setError(json.error)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pad activity')
@@ -296,6 +299,9 @@ export default function PadActivityPage() {
               : `${cards.length} signals · ${completionCount} completion`}
           </span>
           <span>{leads.length} leads in window</span>
+          {!loading && feedSource === 'rrc_live' && (
+            <span style={{ color: '#f5a524' }}>RRC live bridge</span>
+          )}
         </div>
         <nav className="pad-ops-nav">
           <Link href="/permits">Permits</Link>
@@ -328,7 +334,7 @@ export default function PadActivityPage() {
                 data-active={signalFilter === 'lifecycle'}
                 onClick={() => setSignalFilter('lifecycle')}
               >
-                Rig→Crew
+                Lifecycle
               </button>
               <button
                 type="button"
@@ -341,18 +347,26 @@ export default function PadActivityPage() {
               <button
                 type="button"
                 className="pad-ops-chip"
-                data-active={signalFilter === 'COMPLETION_CREW'}
-                onClick={() => setSignalFilter('COMPLETION_CREW')}
+                data-active={signalFilter === 'RRC_APPROVED'}
+                onClick={() => setSignalFilter('RRC_APPROVED')}
               >
-                Crew
+                Approved
               </button>
               <button
                 type="button"
                 className="pad-ops-chip"
-                data-active={signalFilter === 'AMBIGUOUS'}
-                onClick={() => setSignalFilter('AMBIGUOUS')}
+                data-active={signalFilter === 'RRC_COMPLETION'}
+                onClick={() => setSignalFilter('RRC_COMPLETION')}
               >
-                Review
+                Completion
+              </button>
+              <button
+                type="button"
+                className="pad-ops-chip"
+                data-active={signalFilter === 'COMPLETION_CREW'}
+                onClick={() => setSignalFilter('COMPLETION_CREW')}
+              >
+                Crew
               </button>
             </div>
             <div className="pad-ops-filters">
@@ -382,9 +396,13 @@ export default function PadActivityPage() {
             <div className="pad-ops-loading">Scanning pad change feed…</div>
           ) : cards.length === 0 ? (
             <div className="pad-ops-empty">
-              No lifecycle signals in this window.
+              {events.length > 0
+                ? `${events.length} signal${events.length === 1 ? '' : 's'} hidden by filter — try All.`
+                : 'No pad signals yet in this window.'}
               <br />
-              Weekly Sentinel change + RRC bridge populate this desk.
+              {events.length === 0
+                ? 'Check county permits scrape, or widen the 90d window.'
+                : 'Lifecycle includes approved / spud / completion / crew.'}
             </div>
           ) : (
             cards.map(({ key, sample }) => {
