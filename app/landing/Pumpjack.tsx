@@ -1,14 +1,16 @@
 /**
- * Exact approved silhouette (public/landing/pumpjack-*.png), split into
- * base / beam / crank layers so it can nod and spin without redrawing.
+ * Exact approved silhouette split into base / beam / crank layers.
  *
- * Pivots in the 900×666 asset space:
- *   beam  — Samson saddle ~(380, 325)
- *   crank — hub ~(640, 520)
+ * Pivots (900×666 asset space), measured from the PNG:
+ *   beam  — Samson saddle where the walking beam sits
+ *   crank — center of the counterweight hub
+ *
+ * Pitman rides with the beam (nods). Only the hub + counterweight spin.
  */
 export default function Pumpjack() {
-  const beamPivot = { x: 380, y: 325 }
-  const crankPivot = { x: 640, y: 520 }
+  // Measured from the PNG: beam sits ~y=200 at the Samson; hub hole ~y=488
+  const beamPivot = { x: 385, y: 201 }
+  const crankPivot = { x: 628, y: 488 }
 
   return (
     <svg
@@ -24,6 +26,7 @@ export default function Pumpjack() {
         preserveAspectRatio="xMidYMid meet"
       />
 
+      {/* Counterweight spins about the hub */}
       <g transform={`translate(${crankPivot.x} ${crankPivot.y})`}>
         <g className="cs-pump-crank">
           <image
@@ -37,6 +40,7 @@ export default function Pumpjack() {
         </g>
       </g>
 
+      {/* Beam + horsehead + pitman nod about the Samson pin */}
       <g transform={`translate(${beamPivot.x} ${beamPivot.y})`}>
         <g className="cs-pump-beam">
           <image

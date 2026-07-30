@@ -239,18 +239,22 @@
   transform-origin: 70% 100%;
 }
 
-/* Walking beam nods about the Samson pin */
+/*
+ * Silhouette rest pose already has the horse head UP (beam tipped
+ * down to the right). Nod from that pose to head-DOWN and back —
+ * one nod per full crank revolution.
+ */
 @keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(-10deg);
+    transform: rotate(0deg);
   }
   50% {
-    transform: rotate(10deg);
+    transform: rotate(18deg);
   }
 }
 
-/* Crank + counterweight spin — same period as the nod */
+/* Counterweight spin — same period as the nod */
 @keyframes cs-pump-crank {
   from {
     transform: rotate(0deg);
@@ -262,12 +266,14 @@
 
 .cs-pump-beam {
   transform-origin: 0 0;
-  animation: cs-pump-nod 2.8s ease-in-out 0.9s infinite;
+  animation: cs-pump-nod 3.2s ease-in-out infinite;
 }
 
 .cs-pump-crank {
   transform-origin: 0 0;
-  animation: cs-pump-crank 2.8s linear 0.9s infinite;
+  /* Opposite direction so the weight drops as the horse head rises */
+  animation: cs-pump-crank 3.2s linear infinite;
+  animation-direction: reverse;
 }
 
 @media (max-width: 860px) {
@@ -312,11 +318,6 @@
   .cs-rig .cs-pumpjack {
     width: 100%;
     max-height: 58vh;
-  }
-
-  .cs-pump-beam,
-  .cs-pump-crank {
-    animation: none;
   }
 }
 
