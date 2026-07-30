@@ -191,7 +191,7 @@
 
 .cs-rig svg,
 .cs-pumpjack {
-  width: min(100%, 640px);
+  width: min(100%, 680px);
   height: auto;
   max-height: 86vh;
   overflow: visible;
@@ -224,10 +224,10 @@
 @keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(-16deg);
+    transform: rotate(-12deg);
   }
   50% {
-    transform: rotate(16deg);
+    transform: rotate(12deg);
   }
 }
 
