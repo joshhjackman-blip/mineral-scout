@@ -76,8 +76,12 @@ const SIG_TONE: Record<string, 'signal' | 'warn' | 'muted'> = {
 function mapHrefForEvent(ev: PadEvent): string {
   const params = new URLSearchParams()
   params.set('county', ev.county_id)
-  if (ev.abstract_number) params.set('abstract', ev.abstract_number)
-  else if (
+  if (ev.abstract_number) {
+    params.set('abstract', String(ev.abstract_number).replace(/^A-\s*/i, '').trim())
+  }
+  // Always pass pad coords when we have them so the map zooms even if
+  // abstract label matching against slim map geojson fails.
+  if (
     ev.latitude != null &&
     ev.longitude != null &&
     Number.isFinite(ev.latitude) &&
@@ -289,7 +293,7 @@ export default function PadActivityPage() {
       <header className="pad-ops-top">
         <Link href="/" className="pad-ops-brand">
           <strong>Pad Ops</strong>
-          <span>Change desk · Sentinel</span>
+          <span>Catch crews before the filing</span>
         </Link>
         <div className="pad-ops-top-meta">
           <span className="live">Live desk</span>
@@ -300,7 +304,9 @@ export default function PadActivityPage() {
           </span>
           <span>{leads.length} leads in window</span>
           {!loading && feedSource === 'rrc_live' && (
-            <span style={{ color: '#f5a524' }}>RRC live bridge</span>
+            <span style={{ color: '#f5a524' }} title="Weekly Sentinel change not landed yet — showing public filings as a watchlist">
+              Filing watchlist · enable Sentinel for the real edge
+            </span>
           )}
         </div>
         <nav className="pad-ops-nav">
@@ -334,7 +340,7 @@ export default function PadActivityPage() {
                 data-active={signalFilter === 'lifecycle'}
                 onClick={() => setSignalFilter('lifecycle')}
               >
-                Lifecycle
+                Early edge
               </button>
               <button
                 type="button"
@@ -613,7 +619,7 @@ export default function PadActivityPage() {
                   href={mapHrefForEvent(selected.sample)}
                   className="pad-ops-btn primary"
                 >
-                  Open tract on map
+                  Open owners on map
                 </Link>
               </div>
 

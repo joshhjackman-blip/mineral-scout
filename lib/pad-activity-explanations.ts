@@ -26,22 +26,22 @@ export type SignatureBrief = {
 }
 
 const COMPLETION: SignatureBrief = {
-  headline: 'Rig → completion crew',
+  headline: 'Completion crew — before the filing',
   story:
-    'Sentinel-2 change detection picked up new bright clusters and edge growth on the pad — the signature we associate with completion equipment staging after a rig leaves.',
+    'Sentinel-2 caught new bright clusters and edge growth on the pad — the completion-crew signature — often days before RRC logs a completion date. Call owners now, before the public filing hits every competitor’s scrape.',
   bullets: [
-    'Multiple new bright clusters on pad surface',
-    'Edge density up vs prior scene (equipment footprint)',
-    'Follow mineral owners while payout window opens',
+    'Imagery change landed before public completion data',
+    'Multiple new bright clusters / equipment footprint',
+    'Reach mineral owners while the window is still quiet',
   ],
   beforeLabel: 'Prior Sentinel scene',
-  afterLabel: 'Latest change scene',
+  afterLabel: 'Crew signature',
   annotations: [
     { id: '1', label: 'Pad core', left: 32, top: 28, width: 36, height: 34, tone: 'signal' },
     { id: '2', label: 'Equipment cluster', left: 58, top: 48, width: 22, height: 20, tone: 'warn' },
     { id: '3', label: 'Access brightening', left: 18, top: 56, width: 18, height: 16, tone: 'muted' },
   ],
-  skyfiHint: 'Confirm with SkyFi hi-res if the Sentinel clusters look ambiguous.',
+  skyfiHint: 'Need higher confidence before dialing? Confirm the clusters with SkyFi hi-res.',
 }
 
 const RIG_IN: SignatureBrief = {
@@ -79,20 +79,20 @@ const RIG_OUT: SignatureBrief = {
 }
 
 const RRC_COMPLETION: SignatureBrief = {
-  headline: 'RRC completion filing',
+  headline: 'RRC completion — already public',
   story:
-    'Public RRC data shows a completion date. Pair with Sentinel change scenes when the weekly imagery job lands paths — or pull on-demand preview now.',
+    'The Commission already logged a completion date — competitors can see this too. Still worth a call, but the edge case is catching the crew on Sentinel before this filing exists.',
   bullets: [
-    'Completion date on file with the Commission',
-    'Imagery confirmation strengthens the call timing',
-    'Owners on this tract are high-priority outreach',
+    'Public completion date is already on file',
+    'Expect competition on owner outreach',
+    'Use imagery next time to get ahead of the scrape',
   ],
   beforeLabel: 'Baseline',
   afterLabel: 'Current pad',
   annotations: [
     { id: '1', label: 'Wellsite AOI', left: 30, top: 30, width: 40, height: 40, tone: 'signal' },
   ],
-  skyfiHint: 'Order SkyFi to visually confirm frac / flowback activity.',
+  skyfiHint: 'SkyFi can still confirm frac / flowback if you need visual proof on the call.',
 }
 
 const RRC_APPROVED: SignatureBrief = {
@@ -113,20 +113,20 @@ const RRC_APPROVED: SignatureBrief = {
 }
 
 const AMBIGUOUS: SignatureBrief = {
-  headline: 'Needs human review',
+  headline: 'Possible crew — confirm fast',
   story:
-    'Change score fired, but the cluster pattern did not cleanly match rig or completion. Confirm visually or escalate to SkyFi.',
+    'Sentinel saw a major pad change that did not cleanly score as completion crew. If this is equipment staging, you still have the pre-filing advantage — confirm with SkyFi or mark it yourself.',
   bullets: [
-    'MAJOR_CHANGE without a clean signature',
-    'Review before/after side by side',
-    'Confirm completion, rig, or dismiss',
+    'MAJOR_CHANGE before a clean signature',
+    'Could be the early crew window',
+    'Confirm completion, then call owners immediately',
   ],
   beforeLabel: 'Before',
   afterLabel: 'After',
   annotations: [
     { id: '1', label: 'Change region', left: 28, top: 28, width: 44, height: 42, tone: 'warn' },
   ],
-  skyfiHint: 'SkyFi is the right next step when Sentinel is inconclusive.',
+  skyfiHint: 'SkyFi is built for this moment — confirm crew before you burn dials.',
 }
 
 const DEFAULT_BRIEF: SignatureBrief = {
