@@ -195,6 +195,9 @@
   height: auto;
   max-height: 86vh;
   overflow: visible;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* Motion */
@@ -220,24 +223,18 @@
   }
 }
 
-/* Walking beam nod — horse head dips toward the wellhead */
+/*
+ * Whole-sketch nod about the Samson foot. Keeps the pad grounded
+ * while the horse head arcs — avoids orphaned spinning fragments
+ * from cropped layer animation.
+ */
 @keyframes cs-pump-nod {
   0%,
   100% {
-    transform: rotate(-11deg);
+    transform: rotate(-4.5deg);
   }
   50% {
-    transform: rotate(11deg);
-  }
-}
-
-/* Crank / counterweight spin — same period as the nod */
-@keyframes cs-pump-crank {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
+    transform: rotate(4.5deg);
   }
 }
 
@@ -258,14 +255,10 @@
   transform-origin: 70% 100%;
 }
 
-.cs-pump-beam {
-  transform-origin: 0 0;
+.cs-pump-nod {
+  transform-origin: 49% 72%;
   animation: cs-pump-nod 2.8s ease-in-out 0.9s infinite;
-}
-
-.cs-pump-crank {
-  transform-origin: 0 0;
-  animation: cs-pump-crank 2.8s linear 0.9s infinite;
+  will-change: transform;
 }
 
 @media (max-width: 860px) {
@@ -306,7 +299,8 @@
     z-index: 1;
   }
 
-  .cs-rig svg {
+  .cs-rig svg,
+  .cs-rig .cs-pumpjack {
     width: 100%;
     max-height: 58vh;
   }
@@ -317,8 +311,7 @@
   .cs-copy .cs-subhead,
   .cs-nav,
   .cs-rig,
-  .cs-pump-beam,
-  .cs-pump-crank {
+  .cs-pump-nod {
     animation: none;
   }
 }

@@ -13,57 +13,20 @@ const display = Barlow_Condensed({
 })
 
 /**
- * CAD wireframe pumpjack from a detailed sketch asset, split into
- * base / beam / crank layers so we keep the same motion:
- * walking beam nods about the samson saddle; crank spins about its hub.
+ * Full CAD wireframe sketch (single asset).
+ * Nods as one unit about the Samson foot so the horse head arcs
+ * up/down — no cropped fragments spinning on their own.
  */
 function PumpjackSilhouette() {
-  // Pivot points in the 1000×723 asset space
-  const beamPivot = { x: 512, y: 178 }
-  const crankPivot = { x: 690, y: 385 }
-
   return (
-    <svg
-      viewBox="0 0 1000 723"
-      xmlns="http://www.w3.org/2000/svg"
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/landing/pumpjack-wireframe.png"
+      alt=""
       aria-hidden="true"
-      className="cs-pumpjack"
-    >
-      <image
-        href="/landing/pumpjack-base.png"
-        width="1000"
-        height="723"
-        preserveAspectRatio="xMidYMid meet"
-      />
-
-      {/* Crank + counterweight */}
-      <g transform={`translate(${crankPivot.x} ${crankPivot.y})`}>
-        <g className="cs-pump-crank">
-          <image
-            href="/landing/pumpjack-crank.png"
-            x={-crankPivot.x}
-            y={-crankPivot.y}
-            width="1000"
-            height="723"
-            preserveAspectRatio="xMidYMid meet"
-          />
-        </g>
-      </g>
-
-      {/* Walking beam + horse head */}
-      <g transform={`translate(${beamPivot.x} ${beamPivot.y})`}>
-        <g className="cs-pump-beam">
-          <image
-            href="/landing/pumpjack-beam.png"
-            x={-beamPivot.x}
-            y={-beamPivot.y}
-            width="1000"
-            height="723"
-            preserveAspectRatio="xMidYMid meet"
-          />
-        </g>
-      </g>
-    </svg>
+      className="cs-pumpjack cs-pump-nod"
+      draggable={false}
+    />
   )
 }
 
