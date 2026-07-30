@@ -239,6 +239,37 @@
   transform-origin: 70% 100%;
 }
 
+/* Walking beam nods about the Samson pin */
+@keyframes cs-pump-nod {
+  0%,
+  100% {
+    transform: rotate(-14deg);
+  }
+  50% {
+    transform: rotate(14deg);
+  }
+}
+
+/* Crank + counterweight spin — same period as the nod */
+@keyframes cs-pump-crank {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cs-pump-beam {
+  transform-origin: 0 0;
+  animation: cs-pump-nod 2.8s ease-in-out 0.9s infinite;
+}
+
+.cs-pump-crank {
+  transform-origin: 0 0;
+  animation: cs-pump-crank 2.8s linear 0.9s infinite;
+}
+
 @media (max-width: 860px) {
   .cs-nav {
     padding: 18px 20px;

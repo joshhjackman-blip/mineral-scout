@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Barlow_Condensed } from 'next/font/google'
 import AppLogo from '@/app/components/AppLogo'
+import Pumpjack from './Pumpjack'
 import './coming-soon.css'
 
 const display = Barlow_Condensed({
@@ -11,20 +12,6 @@ const display = Barlow_Condensed({
   display: 'swap',
   variable: '--font-barlow-condensed',
 })
-
-/** Static solid pumpjack silhouette — no animation. */
-function PumpjackSilhouette() {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src="/landing/pumpjack.png"
-      alt=""
-      aria-hidden="true"
-      className="cs-pumpjack"
-      draggable={false}
-    />
-  )
-}
 
 const CONTACT_EMAIL = 'management@mineralmapllc.com'
 
@@ -69,7 +56,7 @@ export default function LandingPage() {
         </div>
 
         <div className="cs-rig" aria-hidden="true">
-          <PumpjackSilhouette />
+          <Pumpjack />
         </div>
       </main>
     </div>
