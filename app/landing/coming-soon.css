@@ -239,57 +239,6 @@
   transform-origin: 70% 100%;
 }
 
-/*
- * Rest pose already has the horse head UP. Nod about the saddle pin
- * (beam underside on the Samson) so the beam stays seated — not
- * orbiting mid-beam and lifting off the post.
- */
-@keyframes cs-pump-nod {
-  0%,
-  100% {
-    transform: rotate(0deg);
-  }
-  50% {
-    transform: rotate(14deg);
-  }
-}
-
-/* Polished rod: straight vertical stroke with the horse head */
-@keyframes cs-pump-rod {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(72px);
-  }
-}
-
-@keyframes cs-pump-crank {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.cs-pump-beam {
-  transform-origin: 0 0;
-  animation: cs-pump-nod 3.2s ease-in-out infinite;
-}
-
-.cs-pump-rod {
-  transform-origin: 0 0;
-  animation: cs-pump-rod 3.2s ease-in-out infinite;
-}
-
-.cs-pump-crank {
-  transform-origin: 0 0;
-  animation: cs-pump-crank 3.2s linear infinite;
-  animation-direction: reverse;
-}
-
 @media (max-width: 860px) {
   .cs-nav {
     padding: 18px 20px;
