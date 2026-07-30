@@ -1728,18 +1728,21 @@ export default function Home() {
       if (match) {
         // Prefer the geojson label form (often "A-316") so Map focus
         // matching against ABSTRACT_L succeeds.
+        const geom =
+          tractGeometryByAbstract[wanted] ||
+          tractGeometryByAbstract[`A-${wanted}`] ||
+          tractGeometryByAbstract[wanted.toLowerCase()]
+        const centerFromGeom = geometryCenter(geom)
         const selection = {
           ...toTractSelection(match),
           abstract_label:
             String(match.abstract_label ?? '').trim() ||
             (wanted ? `A-${wanted}` : ''),
+          // Stash pad coords so Map.tsx can flyTo if parcel label match fails.
+          latitude: pendingUrlPoint?.lat ?? centerFromGeom?.[1],
+          longitude: pendingUrlPoint?.lon ?? centerFromGeom?.[0],
         }
         setSelected(selection)
-        const bare = wanted
-        const geom =
-          tractGeometryByAbstract[bare] ||
-          tractGeometryByAbstract[`A-${bare}`] ||
-          tractGeometryByAbstract[wanted]
         if (geom) setSelectedTractGeometry(geom)
 
         // Zoom immediately. Relying only on Map focusTarget→parcel match
@@ -1751,9 +1754,8 @@ export default function Home() {
             zoom: 14,
           })
           setPendingUrlPoint(null)
-        } else {
-          const center = geometryCenter(geom)
-          if (center) setPendingFlyTo({ center, zoom: 14 })
+        } else if (centerFromGeom) {
+          setPendingFlyTo({ center: centerFromGeom, zoom: 14 })
         }
 
         setPendingUrlAbstract(null)
