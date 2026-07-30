@@ -191,7 +191,7 @@
 
 .cs-rig svg,
 .cs-pumpjack {
-  width: min(100%, 640px);
+  width: min(100%, 700px);
   height: auto;
   max-height: 86vh;
   overflow: visible;
