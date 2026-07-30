@@ -288,10 +288,7 @@
   .cs-copy .cs-headline,
   .cs-copy .cs-subhead,
   .cs-nav,
-  .cs-rig,
-  .cs-pump-beam,
-  .cs-pump-rod,
-  .cs-pump-crank {
+  .cs-rig {
     animation: none;
   }
 }
