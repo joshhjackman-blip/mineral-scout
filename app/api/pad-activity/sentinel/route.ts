@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { fetchLatestSentinel } from '@/lib/sentinel-latest'
+import { fetchLatestPadImagery } from '@/lib/pad-imagery'
+import { skyfiApiKey } from '@/lib/skyfi-latest'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -7,15 +8,18 @@ export const dynamic = 'force-dynamic'
 /**
  * GET /api/pad-activity/sentinel?lat=32.31&lon=-101.51
  *
- * Returns the most recent low-cloud Sentinel-2 preview for a pad point.
- * Used when RRC events have no before/after storage paths yet.
- * SkyFi hi-res can be layered in later via SKYFI_API_KEY without changing
- * the response shape (url / date / cloudCover / source).
+ * Latest pad preview for brokers:
+ *  1. SkyFi archive thumbnail when SKYFI_API_KEY is set (no paid order)
+ *  2. Else free Sentinel-2 preview via Element84 Earth Search
+ *
+ * Paywall: not enforced yet. Set SKYFI_PAYWALL_ENABLED=true later and
+ * implement credit/seat checks in skyfiAccessAllowed().
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const lat = Number(searchParams.get('lat'))
   const lon = Number(searchParams.get('lon'))
+  const prefer = (searchParams.get('prefer') || '').trim().toLowerCase()
 
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     return NextResponse.json(
@@ -25,12 +29,31 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const chip = await fetchLatestSentinel(lat, lon)
+    // Optional force: prefer=sentinel skips SkyFi (useful for A/B while testing).
+    let chip = null
+    if (prefer === 'sentinel') {
+      const { fetchLatestSentinel } = await import('@/lib/sentinel-latest')
+      const sentinel = await fetchLatestSentinel(lat, lon)
+      chip = sentinel
+        ? {
+            url: sentinel.url,
+            date: sentinel.date,
+            cloudCover: sentinel.cloudCover,
+            sceneId: sentinel.sceneId,
+            source: 'sentinel-2' as const,
+          }
+        : null
+    } else {
+      chip = await fetchLatestPadImagery(lat, lon)
+    }
+
     if (!chip) {
       return NextResponse.json({
         success: true,
         data: null,
-        error: 'No recent Sentinel-2 scene found for this point',
+        error: skyfiApiKey()
+          ? 'No recent SkyFi or Sentinel scene found for this point'
+          : 'No recent Sentinel-2 scene found (set SKYFI_API_KEY for hi-res)',
       })
     }
     return NextResponse.json({ success: true, data: chip, error: null })
@@ -39,7 +62,7 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         data: null,
-        error: err instanceof Error ? err.message : 'Sentinel lookup failed',
+        error: err instanceof Error ? err.message : 'Imagery lookup failed',
       },
       { status: 502 },
     )

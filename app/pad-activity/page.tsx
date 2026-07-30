@@ -446,9 +446,9 @@ export default function PadActivityPage() {
                       </div>
                     </div>
 
-                    {/* Chips: stored before/after when the weekly Sentinel
-                        job landed paths; otherwise pull the most recent
-                        Sentinel-2 preview on demand for this pad. */}
+                    {/* Chips: stored before/after when the weekly job landed
+                        paths; otherwise on-demand SkyFi (if keyed) or
+                        Sentinel-2 preview for this pad. */}
                     {beforeUrl || afterUrl ? (
                       <div
                         style={{

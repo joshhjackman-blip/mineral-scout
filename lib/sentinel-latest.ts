@@ -1,8 +1,9 @@
 /**
  * On-demand latest Sentinel-2 preview via Element84 Earth Search.
  *
- * Used when pad_activity_events has no before_path/after_path (RRC Phase-1
- * signals). SkyFi hi-res can replace/upgrade this later via SKYFI_API_KEY.
+ * Free fallback when pad_activity_events has no before_path/after_path and
+ * SkyFi is unavailable (missing SKYFI_API_KEY or no archive hit). Prefer
+ * lib/pad-imagery.ts in app routes so SkyFi is tried first.
  */
 
 export const STAC_API_URL = 'https://earth-search.aws.element84.com/v1/search'
