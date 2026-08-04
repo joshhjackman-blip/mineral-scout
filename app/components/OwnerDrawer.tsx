@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { CountyKey, County } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
+import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -1012,6 +1013,8 @@ type PadActivityEvent = {
   week_start: string
   propensity_bump: number
   source: string
+  latitude?: number | null
+  longitude?: number | null
 }
 
 const SIGNATURE_LABEL: Record<string, string> = {
@@ -1110,7 +1113,7 @@ function WellActivityCard({
         </span>
       </div>
 
-      {(beforeUrl || afterUrl) && (
+      {beforeUrl || afterUrl ? (
         <div className="mb-3 grid grid-cols-2 gap-2">
           <div className="overflow-hidden rounded-lg border border-emerald-100 bg-white">
             <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
@@ -1121,7 +1124,7 @@ function WellActivityCard({
               <img src={beforeUrl} alt="Before pad chip" className="h-28 w-full object-cover" />
             ) : (
               <div className="flex h-28 items-center justify-center text-xs text-gray-400">
-                No chip yet
+                No chip on file
               </div>
             )}
           </div>
@@ -1134,10 +1137,18 @@ function WellActivityCard({
               <img src={afterUrl} alt="After pad chip" className="h-28 w-full object-cover" />
             ) : (
               <div className="flex h-28 items-center justify-center text-xs text-gray-400">
-                No chip yet
+                No chip on file
               </div>
             )}
           </div>
+        </div>
+      ) : (
+        <div className="mb-3 overflow-hidden rounded-lg border border-emerald-100 bg-white">
+          <SentinelLatestChip
+            lat={top.latitude}
+            lon={top.longitude}
+            label="Latest imagery"
+          />
         </div>
       )}
 

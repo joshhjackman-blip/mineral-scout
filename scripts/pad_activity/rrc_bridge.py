@@ -81,6 +81,25 @@ def _load_wells(client: Client, county: str) -> list[dict[str, Any]]:
         raise
 
 
+def _coords(row: dict[str, Any]) -> dict[str, float | None]:
+    """Normalize lat/lon onto event.raw so the UI can fetch Sentinel chips."""
+    lat = row.get("latitude")
+    lon = row.get("longitude")
+    try:
+        lat_f = float(lat) if lat is not None else None
+    except (TypeError, ValueError):
+        lat_f = None
+    try:
+        lon_f = float(lon) if lon is not None else None
+    except (TypeError, ValueError):
+        lon_f = None
+    if lat_f is not None and not (-90.0 <= lat_f <= 90.0):
+        lat_f = None
+    if lon_f is not None and not (-180.0 <= lon_f <= 180.0):
+        lon_f = None
+    return {"latitude": lat_f, "longitude": lon_f}
+
+
 def _event(
     *,
     county: str,
@@ -167,6 +186,7 @@ def detect_rrc_completions(
                     "completion_date": completion.isoformat() if completion else None,
                     "spud_date": row.get("spud_date"),
                     "approved_date": row.get("approved_date"),
+                    **_coords(row),
                 },
             )
         )
@@ -201,6 +221,7 @@ def detect_rrc_completions(
                 raw={
                     "completion_date": completion.isoformat() if completion else None,
                     "well_status": row.get("well_status"),
+                    **_coords(row),
                 },
             )
         )
@@ -239,6 +260,7 @@ def detect_rrc_completions(
                     "permit_number": row.get("permit_number"),
                     "spud_date": spud.isoformat() if spud else None,
                     "approved_date": row.get("approved_date"),
+                    **_coords(row),
                 },
             )
         )
@@ -290,6 +312,7 @@ def detect_rrc_completions(
                     "filed_date": filed.isoformat() if filed else None,
                     "permit_type": row.get("permit_type"),
                     "status": row.get("status"),
+                    **_coords(row),
                 },
             )
         )
