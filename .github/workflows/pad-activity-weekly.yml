@@ -5,9 +5,10 @@ name: Pad activity weekly (rig → completion)
 # Phase 1 (default): RRC completion-transition bridge → writes
 # pad_activity_events, bumps propensity_score, tags CRM deals hot.
 #
-# Phase 2 (opt-in via workflow_dispatch): --enable-sentinel pulls
-# before/after Sentinel-2 chips, scores change, classifies signatures,
-# writes pad_change_log + pad_activity_events (with image paths).
+# Phase 2: --enable-sentinel pulls before/after Sentinel-2 chips, scores
+# change, classifies signatures, writes pad_change_log + pad_activity_events
+# (with image paths). Scheduled runs enable Sentinel by default; the Pad
+# Activity UI also shows an on-demand latest scene when paths are missing.
 
 on:
   schedule:
@@ -29,7 +30,7 @@ on:
       enable_sentinel:
         description: 'If true, pull Sentinel-2 pad chips (Phase 2)'
         required: false
-        default: 'false'
+        default: 'true'
       max_chips:
         description: 'Max Sentinel chips per county when enable_sentinel=true'
         required: false
@@ -65,7 +66,9 @@ jobs:
           COUNTIES="${{ github.event.inputs.counties || 'howard,martin' }}"
           DAYS="${{ github.event.inputs.lookback_days || '90' }}"
           DRY="${{ github.event.inputs.dry_run || 'false' }}"
-          SENTINEL="${{ github.event.inputs.enable_sentinel || 'false' }}"
+          # Scheduled cron has no inputs — default Sentinel ON so before/after
+          # paths land weekly. Manual runs can still set enable_sentinel=false.
+          SENTINEL="${{ github.event.inputs.enable_sentinel || 'true' }}"
           MAX_CHIPS="${{ github.event.inputs.max_chips || '25' }}"
           EXTRA=""
           if [ "$DRY" = "true" ]; then EXTRA="$EXTRA --dry-run"; fi

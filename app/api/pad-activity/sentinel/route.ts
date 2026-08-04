@@ -4,13 +4,18 @@ import { fetchLatestSentinel } from '@/lib/sentinel-latest'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+function proxiedUrl(request: NextRequest, remoteUrl: string): string {
+  const proxy = new URL('/api/pad-activity/sentinel/proxy', request.nextUrl.origin)
+  proxy.searchParams.set('url', remoteUrl)
+  return proxy.toString()
+}
+
 /**
  * GET /api/pad-activity/sentinel?lat=32.31&lon=-101.51
  *
  * Returns the most recent low-cloud Sentinel-2 preview for a pad point.
  * Used when RRC events have no before/after storage paths yet.
- * SkyFi hi-res can be layered in later via SKYFI_API_KEY without changing
- * the response shape (url / date / cloudCover / source).
+ * Image URL is same-origin proxied so the browser always gets a chip.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -33,7 +38,15 @@ export async function GET(request: NextRequest) {
         error: 'No recent Sentinel-2 scene found for this point',
       })
     }
-    return NextResponse.json({ success: true, data: chip, error: null })
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...chip,
+        url: proxiedUrl(request, chip.url),
+        remoteUrl: chip.url,
+      },
+      error: null,
+    })
   } catch (err) {
     return NextResponse.json(
       {

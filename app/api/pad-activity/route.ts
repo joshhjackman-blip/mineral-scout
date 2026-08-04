@@ -33,7 +33,12 @@ function normalizeLeaseId(raw: string | null | undefined): string {
   return text.replace(/^0+/, '') || text
 }
 
-/** Fill missing abstract / lease / coords so leads + map deep-links work. */
+function finiteCoord(value: unknown): number | null {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Fill missing abstract / lease / coords so leads + map deep-links + Sentinel work. */
 async function hydrateAbstracts(
   supabase: NonNullable<ReturnType<typeof adminClient>>,
   events: PadActivityEvent[],
@@ -42,7 +47,7 @@ async function hydrateAbstracts(
 
   // 1) Fill missing rrc_lease_id / lat/lon from wells by api_number.
   const needWell = events.filter(
-    (e) => e.api_number && (!e.rrc_lease_id || !(e.raw as { latitude?: unknown } | null)?.latitude),
+    (e) => e.api_number && (!e.rrc_lease_id || finiteCoord((e.raw as { latitude?: unknown } | null)?.latitude) == null),
   )
   const apiToWell = new Map<string, { rrc_lease_id: string | null; latitude: number | null; longitude: number | null; abstract: string | null }>()
   await Promise.all(
@@ -58,8 +63,8 @@ async function hydrateAbstracts(
         const row = data?.[0]
         apiToWell.set(key, {
           rrc_lease_id: row?.rrc_lease_id != null ? String(row.rrc_lease_id) : null,
-          latitude: row?.latitude != null ? Number(row.latitude) : null,
-          longitude: row?.longitude != null ? Number(row.longitude) : null,
+          latitude: finiteCoord(row?.latitude),
+          longitude: finiteCoord(row?.longitude),
           abstract: row?.abstract != null ? String(row.abstract).trim() : null,
         })
       } catch {
@@ -73,13 +78,59 @@ async function hydrateAbstracts(
     const well = ev.api_number ? apiToWell.get(`${ev.county_id}::${ev.api_number}`) : null
     const rrc_lease_id = ev.rrc_lease_id || well?.rrc_lease_id || null
     const abstract_number = ev.abstract_number || well?.abstract || null
-    if (well?.latitude != null && raw.latitude == null) raw.latitude = well.latitude
-    if (well?.longitude != null && raw.longitude == null) raw.longitude = well.longitude
+    if (well?.latitude != null && finiteCoord(raw.latitude) == null) raw.latitude = well.latitude
+    if (well?.longitude != null && finiteCoord(raw.longitude) == null) raw.longitude = well.longitude
     return { ...ev, rrc_lease_id, abstract_number, raw }
   })
 
+  // 1b) Existing RRC events often stored lat/lon only on the permit row, not
+  // in event.raw. Pull coords (and abstract) from {county}_permits so on-demand
+  // Sentinel chips have a point to query.
+  const needPermit = withWells.filter((e) => {
+    const raw = (e.raw || {}) as Record<string, unknown>
+    const missingCoords = finiteCoord(raw.latitude) == null || finiteCoord(raw.longitude) == null
+    const permit = String(raw.permit_number || '').trim()
+    return missingCoords && Boolean(e.api_number || permit)
+  })
+  const permitCoords = new Map<string, { latitude: number | null; longitude: number | null; abstract: string | null }>()
+  await Promise.all(
+    needPermit.map(async (ev) => {
+      const raw = (ev.raw || {}) as Record<string, unknown>
+      const permit = String(raw.permit_number || '').trim()
+      const key = `${ev.county_id}::${ev.api_number || ''}::${permit}`
+      if (permitCoords.has(key)) return
+      try {
+        let query = supabase
+          .from(`${ev.county_id}_permits`)
+          .select('latitude,longitude,abstract_number,api_number,permit_number')
+          .limit(1)
+        if (ev.api_number) query = query.eq('api_number', ev.api_number)
+        else query = query.eq('permit_number', permit)
+        const { data } = await query
+        const row = data?.[0]
+        permitCoords.set(key, {
+          latitude: finiteCoord(row?.latitude),
+          longitude: finiteCoord(row?.longitude),
+          abstract: row?.abstract_number != null ? String(row.abstract_number).trim() : null,
+        })
+      } catch {
+        permitCoords.set(key, { latitude: null, longitude: null, abstract: null })
+      }
+    }),
+  )
+
+  const withPermits = withWells.map((ev) => {
+    const raw = { ...((ev.raw || {}) as Record<string, unknown>) }
+    const permit = String(raw.permit_number || '').trim()
+    const hit = permitCoords.get(`${ev.county_id}::${ev.api_number || ''}::${permit}`)
+    if (hit?.latitude != null && finiteCoord(raw.latitude) == null) raw.latitude = hit.latitude
+    if (hit?.longitude != null && finiteCoord(raw.longitude) == null) raw.longitude = hit.longitude
+    const abstract_number = ev.abstract_number || hit?.abstract || null
+    return { ...ev, abstract_number, raw }
+  })
+
   // 2) Fill missing abstract from ownership via normalized lease id.
-  const missing = withWells.filter((e) => !e.abstract_number && e.rrc_lease_id)
+  const missing = withPermits.filter((e) => !e.abstract_number && e.rrc_lease_id)
   const leaseToAbstract = new Map<string, string>()
   await Promise.all(
     missing.map(async (ev) => {
@@ -101,10 +152,10 @@ async function hydrateAbstracts(
     }),
   )
 
-  return withWells.map((ev) => {
+  return withPermits.map((ev) => {
     const raw = (ev.raw || {}) as Record<string, unknown>
-    const lat = Number(raw.latitude)
-    const lon = Number(raw.longitude)
+    const lat = finiteCoord(raw.latitude)
+    const lon = finiteCoord(raw.longitude)
     const lease = normalizeLeaseId(ev.rrc_lease_id)
     const abs =
       ev.abstract_number ||
@@ -113,8 +164,8 @@ async function hydrateAbstracts(
     return {
       ...ev,
       abstract_number: abs,
-      latitude: Number.isFinite(lat) ? lat : null,
-      longitude: Number.isFinite(lon) ? lon : null,
+      latitude: lat,
+      longitude: lon,
     }
   })
 }
