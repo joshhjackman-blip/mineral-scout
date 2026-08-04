@@ -2,12 +2,16 @@
 
 import { useEffect, useState } from 'react'
 
-type SentinelChipData = {
+type ImageryChipData = {
   url: string
   date: string
   cloudCover: number | null
   sceneId: string
-  source: string
+  source: 'skyfi' | 'sentinel-2' | string
+  provider?: string | null
+  constellation?: string | null
+  resolution?: string | null
+  gsdCm?: number | null
 }
 
 type Props = {
@@ -18,9 +22,20 @@ type Props = {
   label?: string
 }
 
+function sourceLabel(chip: ImageryChipData | null): string {
+  if (!chip) return 'Imagery'
+  if (chip.source === 'skyfi') {
+    const bits = ['SkyFi']
+    if (chip.resolution) bits.push(String(chip.resolution))
+    else if (chip.gsdCm != null) bits.push(`${Math.round(chip.gsdCm)} cm`)
+    return bits.join(' · ')
+  }
+  return 'Sentinel-2'
+}
+
 /**
- * Shows the most recent Sentinel-2 preview for a pad lat/lon.
- * Falls back to a short empty state when coords or STAC are unavailable.
+ * Shows the best available on-demand pad preview (SkyFi when keyed,
+ * otherwise Sentinel-2) for a lat/lon.
  */
 export default function SentinelLatestChip({
   lat,
@@ -28,7 +43,7 @@ export default function SentinelLatestChip({
   tall = false,
   label = 'Latest',
 }: Props) {
-  const [chip, setChip] = useState<SentinelChipData | null>(null)
+  const [chip, setChip] = useState<ImageryChipData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,15 +67,15 @@ export default function SentinelLatestChip({
         if (cancelled) return
         if (!json?.success || !json?.data?.url) {
           setChip(null)
-          setError(json?.error || 'No Sentinel preview')
+          setError(json?.error || 'No imagery preview')
           return
         }
-        setChip(json.data as SentinelChipData)
+        setChip(json.data as ImageryChipData)
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setChip(null)
-        setError(err instanceof Error ? err.message : 'Sentinel lookup failed')
+        setError(err instanceof Error ? err.message : 'Imagery lookup failed')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -98,7 +113,14 @@ export default function SentinelLatestChip({
         }}
       >
         <span>{label}</span>
-        <span style={{ fontWeight: 500, color: '#CBD5E1' }}>Sentinel-2</span>
+        <span
+          style={{
+            fontWeight: 600,
+            color: chip?.source === 'skyfi' ? '#0F766E' : '#CBD5E1',
+          }}
+        >
+          {sourceLabel(chip)}
+        </span>
         {chip?.date && (
           <span style={{ fontWeight: 500, marginLeft: 'auto', color: '#64748B' }}>
             {chip.date}
@@ -110,7 +132,7 @@ export default function SentinelLatestChip({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={chip.url}
-          alt="Latest Sentinel-2 pad preview"
+          alt="Latest pad imagery preview"
           style={{
             width: '100%',
             height,
@@ -137,8 +159,8 @@ export default function SentinelLatestChip({
           {!hasCoords
             ? 'No coordinates on this lead yet'
             : loading
-              ? 'Loading latest Sentinel…'
-              : error || 'No recent Sentinel scene'}
+              ? 'Loading latest imagery…'
+              : error || 'No recent imagery'}
         </div>
       )}
     </div>

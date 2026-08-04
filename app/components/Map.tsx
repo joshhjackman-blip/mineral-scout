@@ -2237,6 +2237,24 @@ export default function Map({
         maxZoom: 15,
         duration: 900,
       })
+      return
+    }
+
+    // Deep-links sometimes select the sidebar tract (enriched geojson)
+    // while the slim map layer can't match the abstract label. Fall
+    // back to any lat/lon carried on the focus target so the camera
+    // still moves onto the pad.
+    const lat = Number(
+      (focusTarget as { latitude?: unknown }).latitude ??
+        (focusTarget as { lat?: unknown }).lat,
+    )
+    const lon = Number(
+      (focusTarget as { longitude?: unknown }).longitude ??
+        (focusTarget as { lon?: unknown }).lon ??
+        (focusTarget as { lng?: unknown }).lng,
+    )
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      map.current.flyTo({ center: [lon, lat], zoom: 14, duration: 900 })
     }
   }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
 
