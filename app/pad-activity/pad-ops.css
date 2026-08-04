@@ -329,7 +329,8 @@
 .pad-ops-frame-img-wrap img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  /* Chips are already pad-centered — contain avoids re-cropping the FOV. */
+  object-fit: contain;
   display: block;
   animation: pad-ops-fade 0.4s ease-out;
 }
