@@ -19,7 +19,6 @@ import {
 } from '@/lib/operator-filter'
 
 import OwnerDrawer from './components/OwnerDrawer'
-import OperatorMultiSelect from './components/OperatorMultiSelect'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
@@ -2109,6 +2108,13 @@ export default function Home() {
     )
   }, [tracts, selectedOperatorFilters])
 
+  const operatorMatchTractCount = useMemo(() => {
+    if (!operatorMatchAbstracts) return null
+    return new Set(
+      operatorMatchAbstracts.map((a) => a.replace(/^A-\s*/i, '').toUpperCase()),
+    ).size
+  }, [operatorMatchAbstracts])
+
   const cleanOwnersList = useMemo(() => {
     const cleaned = filteredOwnersList.filter((owner: TractOwner) => {
       const name = (owner.owner_name ?? '').trim()
@@ -3777,6 +3783,10 @@ export default function Home() {
               focusTarget={selected}
               devStatusByAbstract={devStatusByAbstract}
               operatorMatchAbstracts={operatorMatchAbstracts}
+              operatorOptions={operatorOptions}
+              selectedOperatorKeys={selectedOperatorKeys}
+              onOperatorKeysChange={setSelectedOperatorKeys}
+              operatorMatchTractCount={operatorMatchTractCount}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
@@ -4015,34 +4025,7 @@ export default function Home() {
           </select>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-          <span
-            style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}
-            title="Filter tracts by CAD tax-roll operator — duplicates merged, multi-select"
-          >
-            Operator:
-          </span>
-          <OperatorMultiSelect
-            options={operatorOptions}
-            selectedKeys={selectedOperatorKeys}
-            onChange={setSelectedOperatorKeys}
-            isMobile={isMobile}
-          />
-          {selectedOperatorKeys.length > 0 && (
-            <span style={{ fontSize: 10, color: '#B45309', whiteSpace: 'nowrap' }}>
-              {(operatorMatchAbstracts?.length ?? 0) > 0
-                ? `${new Set(
-                    (operatorMatchAbstracts || []).map((a) =>
-                      a.replace(/^A-\s*/i, '').toUpperCase(),
-                    ),
-                  ).size} tracts`
-                : '0 tracts'}
-            </span>
-          )}
-        </div>
-
-        {/* Bottom-toolbar "New permits" button was here; layer visibility
-            moved to the in-map toggle panel (top-right of the map).
+        {/* Operator filter lives in the map Legend/Overlays panel (top-right).
             CSV export was also here; removed intentionally — leads
             must stay on-platform (see PLATFORM-SERVICES-AGREEMENT.md
             non-circumvention clause). */}

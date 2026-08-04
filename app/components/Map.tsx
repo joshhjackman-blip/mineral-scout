@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
 import TractSearch from './TractSearch'
+import OperatorMultiSelect from './OperatorMultiSelect'
+import type { OperatorOption } from '@/lib/operator-filter'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -283,6 +285,10 @@ export default function Map({
   onCountySwitch,
   devStatusByAbstract,
   operatorMatchAbstracts = null,
+  operatorOptions = [],
+  selectedOperatorKeys = [],
+  onOperatorKeysChange,
+  operatorMatchTractCount = null,
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
@@ -294,6 +300,10 @@ export default function Map({
   devStatusByAbstract?: Record<string, DevStatusMapEntry>
   /** When set, dim tracts not in this abstract list and ring matches in amber. */
   operatorMatchAbstracts?: string[] | null
+  operatorOptions?: OperatorOption[]
+  selectedOperatorKeys?: string[]
+  onOperatorKeysChange?: (keys: string[]) => void
+  operatorMatchTractCount?: number | null
 }) {
   // In-map layer toggles. Every tract on the map is classified into one
   // of the 6 UnifiedStatus buckets (see deriveMapStatus at the top of
@@ -2336,6 +2346,10 @@ export default function Map({
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
           onSubmittedGlow={setShowSubmittedGlow}
+          operatorOptions={operatorOptions}
+          selectedOperatorKeys={selectedOperatorKeys}
+          onOperatorKeysChange={onOperatorKeysChange}
+          operatorMatchTractCount={operatorMatchTractCount}
         />
       )}
     </div>
@@ -2355,6 +2369,10 @@ function LayerTogglePanel({
   rigsVisible, onRigs,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
+  operatorOptions,
+  selectedOperatorKeys,
+  onOperatorKeysChange,
+  operatorMatchTractCount,
 }: {
   statusVisible: Record<UnifiedStatus, boolean>
   onStatus: (key: UnifiedStatus, v: boolean) => void
@@ -2366,6 +2384,10 @@ function LayerTogglePanel({
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
   onSubmittedGlow: (v: boolean) => void
+  operatorOptions: OperatorOption[]
+  selectedOperatorKeys: string[]
+  onOperatorKeysChange?: (keys: string[]) => void
+  operatorMatchTractCount?: number | null
 }) {
   // Legend: PDP / DUC / Infill / True PUD. FRONTIER is the DB key for
   // the undeveloped bucket but the swatch labels as "True PUD"
@@ -2402,6 +2424,7 @@ function LayerTogglePanel({
         gap: 10,
         minWidth: 210,
         maxWidth: 250,
+        overflow: 'visible',
       }}
     >
       <div>
@@ -2451,6 +2474,18 @@ function LayerTogglePanel({
           with no completion on file (SWDs excluded).
         </div>
       </div>
+
+      {onOperatorKeysChange && (
+        <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+          <div style={sectionHeadingStyle}>Operator</div>
+          <OperatorMultiSelect
+            options={operatorOptions}
+            selectedKeys={selectedOperatorKeys}
+            onChange={onOperatorKeysChange}
+            matchCount={operatorMatchTractCount}
+          />
+        </div>
+      )}
     </div>
   )
 }

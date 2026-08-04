@@ -4,20 +4,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { OperatorOption } from '@/lib/operator-filter'
 
 /**
- * Compact multi-select for CAD operator clusters (toolbar).
- * Options are already deduped A–Z by collectOperatorOptions.
+ * Compact multi-select for CAD operator clusters.
+ * Used in the map's right-side Legend/Overlays panel.
  */
 export default function OperatorMultiSelect({
   options,
   selectedKeys,
   onChange,
-  isMobile = false,
+  matchCount = null,
 }: {
   options: OperatorOption[]
   /** Selected cluster keys from OperatorOption.key */
   selectedKeys: string[]
   onChange: (keys: string[]) => void
-  isMobile?: boolean
+  /** Optional tract-match count shown next to the trigger. */
+  matchCount?: number | null
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -34,12 +35,15 @@ export default function OperatorMultiSelect({
     }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('keydown', onKey)
-    // Focus search when opened.
     requestAnimationFrame(() => searchRef.current?.focus())
     return () => {
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('keydown', onKey)
     }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) setQuery('')
   }, [open])
 
   const selectedSet = useMemo(() => new Set(selectedKeys), [selectedKeys])
@@ -70,45 +74,64 @@ export default function OperatorMultiSelect({
       : `${selectedKeys.length} selected`
 
   return (
-    <div ref={rootRef} style={{ position: 'relative', minWidth: 0 }}>
+    <div ref={rootRef} style={{ position: 'relative', width: '100%' }}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         title="Filter tracts by CAD tax-roll operator (multi-select)"
         style={{
-          fontSize: 11,
+          width: '100%',
+          fontSize: 12,
           border: active
             ? '1px solid rgba(239,159,39,0.7)'
             : '1px solid #E5E7EB',
           borderRadius: 6,
-          padding: '3px 8px',
+          padding: '6px 8px',
           background: active ? '#FFFBEB' : '#fff',
           color: '#374151',
-          width: isMobile ? 130 : 180,
-          minWidth: 110,
           textAlign: 'left',
           cursor: 'pointer',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
         }}
       >
-        {summary}
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontWeight: active ? 600 : 500,
+            color: active ? '#B45309' : '#374151',
+          }}
+        >
+          {summary}
+        </span>
+        <span style={{ color: '#9CA3AF', fontSize: 10, flexShrink: 0 }}>
+          {open ? '▲' : '▼'}
+        </span>
       </button>
+
+      {active && matchCount != null && (
+        <div style={{ marginTop: 4, fontSize: 10.5, color: '#B45309' }}>
+          {matchCount} tract{matchCount === 1 ? '' : 's'} match
+        </div>
+      )}
 
       {open && (
         <div
           style={{
             position: 'absolute',
-            bottom: 'calc(100% + 6px)',
+            top: 'calc(100% + 4px)',
             left: 0,
-            width: isMobile ? 260 : 320,
-            maxHeight: 320,
+            right: 0,
+            maxHeight: 280,
             background: '#fff',
             border: '1px solid #E5E7EB',
             borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(15,23,42,0.12)',
-            zIndex: 80,
+            boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
+            zIndex: 30,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -135,6 +158,7 @@ export default function OperatorMultiSelect({
                 borderRadius: 6,
                 padding: '4px 8px',
                 color: '#374151',
+                minWidth: 0,
               }}
             />
             {active && (
@@ -157,7 +181,7 @@ export default function OperatorMultiSelect({
             )}
           </div>
 
-          <div style={{ overflowY: 'auto', padding: '4px 0' }}>
+          <div style={{ overflowY: 'auto', padding: '4px 0', maxHeight: 230 }}>
             {filtered.length === 0 ? (
               <div style={{ fontSize: 11, color: '#9CA3AF', padding: '10px 12px' }}>
                 No operators match
