@@ -44,9 +44,13 @@ type PadEvent = {
 function mapHrefForEvent(ev: Pick<PadEvent, 'county_id' | 'abstract_number' | 'latitude' | 'longitude' | 'owner_name'>): string {
   const params = new URLSearchParams()
   params.set('county', ev.county_id)
+  // Prefer abstract for exact tract select; also pass lat/lon when we
+  // have them so the map can point-in-polygon as a fallback if the
+  // abstract string doesn't match the geojson label form.
   if (ev.abstract_number) {
     params.set('abstract', ev.abstract_number)
-  } else if (
+  }
+  if (
     ev.latitude != null &&
     ev.longitude != null &&
     Number.isFinite(ev.latitude) &&

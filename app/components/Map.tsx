@@ -276,8 +276,10 @@ export type DevStatusMapEntry = {
 export default function Map({
   onOwnerClick,
   focusTarget,
+  focusGeometry,
   selectedCounty,
   mapFlyToRef,
+  mapFitBoundsRef,
   mapLevel,
   onCountySelect,
   onCountySwitch,
@@ -285,8 +287,13 @@ export default function Map({
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
+  /** Optional polygon from the page-level geojson index — preferred for
+   *  deep-link fitBounds so we don't wait on Mapbox parcel source load. */
+  focusGeometry?: GeoJSON.Geometry | null
   selectedCounty: CountyKey
   mapFlyToRef?: React.MutableRefObject<((center: [number, number], zoom: number) => void) | null>
+  /** Imperative tract fitBounds used by Pad Activity / permit deep-links. */
+  mapFitBoundsRef?: React.MutableRefObject<((geometry: GeoJSON.Geometry) => void) | null>
   mapLevel: 'county' | 'tract'
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
@@ -466,6 +473,8 @@ export default function Map({
     }
 
     if (!bounds.isEmpty()) {
+      // Cancel any in-flight flyTo (e.g. county-center) so tract zoom wins.
+      mapInstance.stop()
       mapInstance.fitBounds(bounds, {
         padding: options?.padding ?? 120,
         duration: options?.duration ?? 800,
@@ -2094,6 +2103,32 @@ export default function Map({
   }, [mapFlyToRef])
 
   useEffect(() => {
+    if (!mapFitBoundsRef) return
+    mapFitBoundsRef.current = (geometry) => {
+      if (!map.current) return
+      // Wait for style if the map just mounted (deep-link cold load).
+      if (!map.current.isStyleLoaded()) {
+        map.current.once('load', () => {
+          if (map.current) fitGeometry(map.current, geometry, {
+            padding: 80,
+            maxZoom: 15,
+            duration: 900,
+          })
+        })
+        return
+      }
+      fitGeometry(map.current, geometry, {
+        padding: 80,
+        maxZoom: 15,
+        duration: 900,
+      })
+    }
+    return () => {
+      mapFitBoundsRef.current = null
+    }
+  }, [mapFitBoundsRef])
+
+  useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
     applyTractCountyStyles()
@@ -2182,12 +2217,23 @@ export default function Map({
     }
   }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
-  useEffect(() => {
-    if (mapLevel !== 'tract') return
-    if (!focusTarget || !map.current?.isStyleLoaded()) return
+  // Backup tract focus (sidebar click / deep-link). Primary deep-link
+  // path is page → mapFitBoundsRef; this effect retries when parcels
+  // finish loading or the map becomes ready after a cold start.
+  const lastFittedFocusKeyRef = useRef<string | null>(null)
 
-    const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
-    if (features.length === 0) return
+  useEffect(() => {
+    if (mapLevel !== 'tract') {
+      lastFittedFocusKeyRef.current = null
+      return
+    }
+    if (!focusGeometry && !focusTarget) {
+      lastFittedFocusKeyRef.current = null
+      return
+    }
+
+    let cancelled = false
+    let attempts = 0
 
     const normalizeAbstract = (raw: unknown) =>
       String(raw ?? '')
@@ -2195,59 +2241,97 @@ export default function Map({
         .trim()
         .toUpperCase()
 
-    const selectedAbstract = normalizeAbstract(
-      focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
-    )
-    if (!selectedAbstract) return
+    const tryFit = () => {
+      if (cancelled || !map.current) return
+      if (!map.current.isStyleLoaded()) {
+        if (attempts++ < 40) setTimeout(tryFit, 100)
+        return
+      }
 
-    const selectedSurvey = String(
-      focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
-    )
-      .trim()
-      .toUpperCase()
+      // Prefer geometry handed up from the page (deep-link geojson index).
+      if (focusGeometry) {
+        const focusKey = `geom:${normalizeAbstract(
+          focusTarget?.abstract_label ?? focusTarget?.ABSTRACT_L ?? focusTarget?.CODE,
+        )}`
+        if (lastFittedFocusKeyRef.current === focusKey && focusKey !== 'geom:') return
+        lastFittedFocusKeyRef.current = focusKey
+        fitGeometry(map.current, focusGeometry, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 900,
+        })
+        return
+      }
 
-    // Prefer abstract + survey when both sides have survey; otherwise
-    // match on bare abstract alone. Howard/Martin map geojson often has
-    // LEVEL1_SUR = null, and the old `!selectedSurvey` early-return meant
-    // deep-links from /pad-activity never fitBounds.
-    const matched =
-      features.find((feature) => {
-        const props = (feature.properties ?? {}) as Record<string, unknown>
-        const featureAbstract = normalizeAbstract(
-          props.abstract_label ?? props.ABSTRACT_L ?? props.CODE,
-        )
-        if (featureAbstract !== selectedAbstract) return false
-        if (!selectedSurvey) return true
-        const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '')
-          .trim()
-          .toUpperCase()
-        return !featureSurvey || featureSurvey === selectedSurvey
-      }) ??
-      features.find((feature) => {
-        const props = (feature.properties ?? {}) as Record<string, unknown>
-        return (
-          normalizeAbstract(props.abstract_label ?? props.ABSTRACT_L ?? props.CODE) ===
-          selectedAbstract
-        )
-      })
+      if (!focusTarget) return
 
-    if (matched?.geometry) {
-      fitGeometry(map.current, matched.geometry, {
-        padding: 80,
-        maxZoom: 15,
-        duration: 900,
-      })
+      const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
+      if (features.length === 0) {
+        // Parcels still loading — parcelsVersion bump will re-run this effect.
+        return
+      }
+
+      const selectedAbstract = normalizeAbstract(
+        focusTarget.abstract_label ?? focusTarget.ABSTRACT_L ?? focusTarget.CODE,
+      )
+      if (!selectedAbstract) return
+
+      const focusKey = `abs:${selectedAbstract}`
+      if (lastFittedFocusKeyRef.current === focusKey) return
+
+      const selectedSurvey = String(
+        focusTarget.level1_sur ?? focusTarget.LEVEL1_SUR ?? '',
+      )
+        .trim()
+        .toUpperCase()
+
+      const matched =
+        features.find((feature) => {
+          const props = (feature.properties ?? {}) as Record<string, unknown>
+          const featureAbstract = normalizeAbstract(
+            props.abstract_label ?? props.ABSTRACT_L ?? props.CODE,
+          )
+          if (featureAbstract !== selectedAbstract) return false
+          if (!selectedSurvey) return true
+          const featureSurvey = String(props.level1_sur ?? props.LEVEL1_SUR ?? '')
+            .trim()
+            .toUpperCase()
+          return !featureSurvey || featureSurvey === selectedSurvey
+        }) ??
+        features.find((feature) => {
+          const props = (feature.properties ?? {}) as Record<string, unknown>
+          return (
+            normalizeAbstract(props.abstract_label ?? props.ABSTRACT_L ?? props.CODE) ===
+            selectedAbstract
+          )
+        })
+
+      if (matched?.geometry) {
+        lastFittedFocusKeyRef.current = focusKey
+        fitGeometry(map.current, matched.geometry, {
+          padding: 80,
+          maxZoom: 15,
+          duration: 900,
+        })
+      }
     }
-  }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
+
+    tryFit()
+    return () => {
+      cancelled = true
+    }
+  }, [focusTarget, focusGeometry, mapLevel, selectedCounty, parcelsVersion, mapReady])
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-      {mapReady && (
-        <TractSearch
-          map={map.current}
-          geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
-        />
+      {mapReady && mapLevel === 'tract' && (
+        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 5, width: 288 }}>
+          <TractSearch
+            map={map.current}
+            geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
+          />
+        </div>
       )}
       {mapReady && mapLevel === 'tract' && (
         <LayerTogglePanel
@@ -2271,9 +2355,7 @@ export default function Map({
 // Single unified LEGEND — one row per UnifiedStatus, one color per
 // status, one toggle per row. Checking a row shows those tracts;
 // unchecking hides them by dropping fill-opacity to 0. Below the
-// legend a single OVERLAYS section carries the Active rigs dot
-// toggle, which is the one signal that doesn't collapse cleanly
-// into the primary tract classification.
+// legend a single OVERLAYS section carries permit halos + Active rigs.
 function LayerTogglePanel({
   statusVisible, onStatus,
   statusPalette, statusLabels,

@@ -559,6 +559,13 @@ const estimateMonthlyRoyalty = (
 export default function Home() {
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
+  // Imperative fitBounds for tract deep-links (Pad Activity → Open on map).
+  // Kept separate from mapFlyToRef so county zoom and tract zoom never
+  // share a skip-flag that one path can consume out from under the other.
+  const mapFitBoundsRef = useRef<((geometry: GeoJSON.Geometry) => void) | null>(null)
+  // Bumped on every county-camera request so in-flight tract fit retries
+  // abort instead of yanking the camera after the user changed counties.
+  const cameraGenerationRef = useRef(0)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
@@ -571,6 +578,43 @@ export default function Home() {
   const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(null)
   const [pendingUrlPoint, setPendingUrlPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [pendingUrlOwner, setPendingUrlOwner] = useState<string | null>(null)
+  // True while a tract deep-link is waiting to fitBounds. Blocks any
+  // accidental county fly until the tract camera lands (or user nav).
+  const tractDeepLinkActiveRef = useRef(false)
+
+  const flyToCountyView = useCallback((countyKey: CountyKey) => {
+    // County path owns the camera from here on.
+    tractDeepLinkActiveRef.current = false
+    cameraGenerationRef.current += 1
+    const target = COUNTIES[countyKey]
+    let attempts = 0
+    const tryFlyTo = () => {
+      attempts += 1
+      if (mapFlyToRef.current) {
+        mapFlyToRef.current(target.mapCenter, target.mapZoom)
+        return
+      }
+      if (attempts < 20) setTimeout(tryFlyTo, 150)
+    }
+    setTimeout(tryFlyTo, 100)
+  }, [])
+
+  const fitToTractGeometry = useCallback((geometry: GeoJSON.Geometry) => {
+    const gen = cameraGenerationRef.current
+    let attempts = 0
+    const tryFit = () => {
+      // Abort if the user started a county fly in the meantime.
+      if (gen !== cameraGenerationRef.current) return
+      attempts += 1
+      if (mapFitBoundsRef.current) {
+        mapFitBoundsRef.current(geometry)
+        tractDeepLinkActiveRef.current = false
+        return
+      }
+      if (attempts < 40) setTimeout(tryFit, 150)
+    }
+    setTimeout(tryFit, 100)
+  }, [])
 
   // Deep-link support from /permits, /pad-activity, etc:
   //   `/?county=<key>&abstract=<label>`
@@ -578,6 +622,13 @@ export default function Home() {
   //   optional `&owner=<name>` to highlight / expand that owner
   // Read the URL AFTER mount (not in useState factories) because
   // Next.js runs this client component through SSR first.
+  //
+  // Camera rule (both paths must work together):
+  //   • Tract deep-link (abstract / lat-lon) → NEVER county-fly; fitBounds
+  //     the tract once geometry resolves.
+  //   • County-only URL or UI county click → flyToCountyView only.
+  //   • No automatic fly on mapLevel/selectedCounty — that race is what
+  //     kept breaking one path when the other was fixed.
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
@@ -586,16 +637,30 @@ export default function Home() {
     const urlLat = Number(params.get('lat'))
     const urlLon = Number(params.get('lon'))
     const urlOwner = (params.get('owner') || '').trim()
+    const hasTractDeepLink =
+      Boolean(urlAbstractRaw) ||
+      (Number.isFinite(urlLat) && Number.isFinite(urlLon))
     if (urlCounty && urlCounty in COUNTIES) {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
+      if (hasTractDeepLink) {
+        tractDeepLinkActiveRef.current = true
+      } else {
+        // County-only deep link — zoom to county once the map mounts.
+        flyToCountyView(urlCounty)
+      }
     }
+    // Accept abstract and lat/lon together (pad-activity sends both).
+    // Abstract wins for selection; lat/lon is the geometry fallback.
     if (urlAbstractRaw) {
       setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
-    } else if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
+    }
+    if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
       setPendingUrlPoint({ lat: urlLat, lon: urlLon })
     }
     if (urlOwner) setPendingUrlOwner(urlOwner)
+    // flyToCountyView is stable (empty deps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
@@ -709,63 +774,113 @@ export default function Home() {
   const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyBreakdown = county.breakdown
   // Live per-county stat counts fetched from Supabase. Replaces the
-  // static county.stats values baked in lib/counties.ts, which
-  // drifted out of date whenever we added a county or ran a fresh
-  // scrape. Each county contributes six counts (owners, pdp, pud,
-  // permits24mo, abstracts, wells); the whole grid loads in one
-  // fan-out that finishes in ~200ms.
+  // Live county-overview cards (match map LEGEND / OVERLAYS):
+  // PDP, DUC, Infill, True PUD, permits approved/submitted, active rigs.
+  // totalOwners + permitsApproved also feed the All Counties list rows.
   type CountyLiveStats = {
     totalOwners: number | null
-    pdpTracts:   number | null
-    pudTracts:   number | null
-    newPermits:  number | null
-    abstracts:   number | null
+    pdpTracts: number | null
+    ducTracts: number | null
+    infillTracts: number | null
+    truePudTracts: number | null
+    permitsApproved: number | null
+    permitsSubmitted: number | null
+    activeRigs: number | null
+    /** @deprecated alias kept for All Counties row "new permits" */
+    newPermits: number | null
   }
   const [liveCountyStats, setLiveCountyStats] = useState<Partial<Record<CountyKey, CountyLiveStats>>>({})
 
   useEffect(() => {
     let cancelled = false
-    const cutoff = (() => {
+    const cutoff24 = (() => {
       const d = new Date()
       d.setMonth(d.getMonth() - 24)
       return d.toISOString().slice(0, 10)
     })()
+    const cutoff12 = (() => {
+      const d = new Date()
+      d.setFullYear(d.getFullYear() - 1)
+      return d.toISOString().slice(0, 10)
+    })()
+
+    const isDisposalWell = (row: Record<string, unknown>): boolean => {
+      const lease = String(row.lease_name ?? '').toUpperCase()
+      const type = String(row.permit_type ?? '').toUpperCase()
+      return (
+        /(^|\s)SWD(\s|$)/.test(lease) ||
+        lease.includes('DISPOSAL') ||
+        lease.includes('INJECTION') ||
+        lease.includes('WATER GATHERING') ||
+        type.includes('DISPOSAL') ||
+        type.includes('INJECTION')
+      )
+    }
 
     const perCounty = async (countyId: CountyKey): Promise<[CountyKey, CountyLiveStats]> => {
       const cfg = COUNTIES[countyId]
       const empty: CountyLiveStats = {
-        totalOwners: null, pdpTracts: null, pudTracts: null,
-        newPermits: null, abstracts: null,
+        totalOwners: null,
+        pdpTracts: null,
+        ducTracts: null,
+        infillTracts: null,
+        truePudTracts: null,
+        permitsApproved: null,
+        permitsSubmitted: null,
+        activeRigs: null,
+        newPermits: null,
       }
       if (!cfg) return [countyId, empty]
       const table = cfg.ownershipTable
       const permitsTable = `${cfg.id}_permits`
-      // `count: 'exact', head: true` gives us the count without pulling
-      // rows. Note: RLS-blocked reads return `count = 0` with NO error
-      // — PostgREST reports the count PostgreSQL saw after row-level
-      // filtering, and RLS filters silently. So if a table has RLS on
-      // but no policy for anon, the sidebar just shows 0 forever.
-      // See supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql.
-      // The "Active wells" stat card was removed from the sidebar on
-      // 2026-07-20 (user asked for it out — the county wells count
-      // didn't drive any decisions and hit the RLS trap on Martin).
-      const [owners, permits, pdp, pud, abstracts] = await Promise.all([
+      // Status counts from tract_development_status (map legend buckets).
+      // True PUD = FRONTIER + legacy TRUE_PUD + emerald lookalikes
+      // (PUD_PERMITTED / LEASING_ACTIVE paint as True PUD on the map).
+      const [owners, pdp, duc, infill, truePud, approved, recentPermits] = await Promise.all([
         supabase.from(table).select('id', { count: 'exact', head: true }),
-        supabase.from(permitsTable).select('id', { count: 'exact', head: true })
-          .gte('approved_date', cutoff),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
           .eq('county_id', cfg.id).eq('development_status', 'PDP'),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
-          .eq('county_id', cfg.id).in('development_status', ['PUD_DUC', 'PUD_PERMITTED', 'PUD_INFILL']),
+          .eq('county_id', cfg.id).eq('development_status', 'PUD_DUC'),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
-          .eq('county_id', cfg.id),
+          .eq('county_id', cfg.id).eq('development_status', 'PUD_INFILL'),
+        supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
+          .eq('county_id', cfg.id)
+          .in('development_status', ['FRONTIER', 'TRUE_PUD', 'PUD_PERMITTED', 'LEASING_ACTIVE']),
+        supabase.from(permitsTable).select('id', { count: 'exact', head: true })
+          .gte('approved_date', cutoff24),
+        // Lean rows for submitted + active-rig classification
+        // (same rules as Map.tsx overlays). Cap high enough for
+        // Howard/Martin permit volume.
+        supabase.from(permitsTable)
+          .select('status,filed_date,approved_date,spud_date,completion_date,lease_name,permit_type')
+          .or(`filed_date.gte.${cutoff24},spud_date.gte.${cutoff12}`)
+          .limit(10000),
       ])
-      // Diagnostic logging for the sidebar. Two failure modes:
-      //   1. .error is set — the query blew up (typo, network, etc).
-      //   2. .count === 0 for a table we KNOW is populated — almost
-      //      always an RLS policy missing for anon. Surface both to
-      //      the console so the source of a suspicious zero is one
-      //      click into DevTools away.
+
+      let permitsSubmitted: number | null = null
+      let activeRigs: number | null = null
+      if (!recentPermits.error && Array.isArray(recentPermits.data)) {
+        const rows = recentPermits.data as Record<string, unknown>[]
+        permitsSubmitted = rows.filter((row) => {
+          const filed = String(row.filed_date ?? '').slice(0, 10)
+          const approvedDate = String(row.approved_date ?? '').slice(0, 10)
+          const filedRecent = Boolean(filed && filed >= cutoff24)
+          const approvedRecent = Boolean(approvedDate && approvedDate >= cutoff24)
+          // Teal overlay: filed in last 24mo and not recently approved.
+          return filedRecent && !approvedRecent
+        }).length
+        activeRigs = rows.filter((row) => {
+          const spud = String(row.spud_date ?? '').slice(0, 10)
+          const completion = String(row.completion_date ?? '').trim()
+          if (!spud || spud < cutoff12) return false
+          if (completion) return false
+          return !isDisposalWell(row)
+        }).length
+      } else if (recentPermits.error) {
+        console.warn(`[liveStats] ${countyId}.recentPermits query error:`, recentPermits.error.message)
+      }
+
       const logIfSus = (label: string, res: { error: unknown; count: number | null }, populated: boolean) => {
         const err = (res.error as { message?: string } | null | undefined)?.message
         if (err) {
@@ -774,21 +889,25 @@ export default function Home() {
           console.warn(`[liveStats] ${countyId}.${label} returned 0 — check RLS policy on the anon role for this table.`)
         }
       }
-      // Howard + Martin are known-populated; the other 10 Permian
-      // counties may legitimately show 0 for permits/ownership until
-      // their data ships.
       const isPopulated = countyId === 'howard' || countyId === 'martin' || countyId === 'gonzales'
       logIfSus('totalOwners', owners, isPopulated)
-      logIfSus('permits', permits, isPopulated)
       logIfSus('pdp', pdp, isPopulated)
-      logIfSus('pud', pud, isPopulated)
-      logIfSus('abstracts', abstracts, isPopulated)
+      logIfSus('duc', duc, isPopulated)
+      logIfSus('infill', infill, isPopulated)
+      logIfSus('truePud', truePud, isPopulated)
+      logIfSus('approved', approved, isPopulated)
+
+      const approvedCount = approved.error ? null : (approved.count ?? 0)
       return [countyId, {
         totalOwners: owners.error ? null : (owners.count ?? 0),
-        pdpTracts:   pdp.error    ? null : (pdp.count ?? 0),
-        pudTracts:   pud.error    ? null : (pud.count ?? 0),
-        newPermits:  permits.error ? null : (permits.count ?? 0),
-        abstracts:   abstracts.error ? null : (abstracts.count ?? 0),
+        pdpTracts: pdp.error ? null : (pdp.count ?? 0),
+        ducTracts: duc.error ? null : (duc.count ?? 0),
+        infillTracts: infill.error ? null : (infill.count ?? 0),
+        truePudTracts: truePud.error ? null : (truePud.count ?? 0),
+        permitsApproved: approvedCount,
+        permitsSubmitted,
+        activeRigs,
+        newPermits: approvedCount,
       }]
     }
 
@@ -810,27 +929,29 @@ export default function Home() {
     if (!live) return {} as Record<string, string>
     const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString())
     return {
-      'Total owners':      fmt(live.totalOwners),
-      'PDP tracts':        fmt(live.pdpTracts),
-      'PUD tracts':        fmt(live.pudTracts),
-      'New permits':       fmt(live.newPermits),
-      'Survey abstracts':  fmt(live.abstracts),
+      'PDP': fmt(live.pdpTracts),
+      'DUC': fmt(live.ducTracts),
+      'Infill': fmt(live.infillTracts),
+      'True PUD': fmt(live.truePudTracts),
+      'Permits approved': fmt(live.permitsApproved),
+      'Permits submitted': fmt(live.permitsSubmitted),
+      'Active rigs': fmt(live.activeRigs),
+      'Total owners': fmt(live.totalOwners),
     } as Record<string, string>
   }, [liveCountyStats, selectedCounty])
 
-  // Same values as countyStatsByLabel but shaped as an array for the
-  // stat-card grid renderer (each card reads .val and .lbl). "Active
-  // wells" was removed on 2026-07-20 — it wasn't influencing any
-  // broker decisions and it hit the RLS silent-zero trap on Martin.
+  // County overview cards — aligned with map LEGEND + OVERLAYS.
   const liveCountyStatEntries = useMemo(() => {
     const live = liveCountyStats[selectedCounty]
     const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString())
     return [
-      { val: fmt(live?.totalOwners), lbl: 'Total owners' },
-      { val: fmt(live?.pdpTracts),   lbl: 'PDP tracts' },
-      { val: fmt(live?.pudTracts),   lbl: 'PUD tracts' },
-      { val: fmt(live?.newPermits),  lbl: 'New permits' },
-      { val: fmt(live?.abstracts),   lbl: 'Survey abstracts' },
+      { val: fmt(live?.pdpTracts), lbl: 'PDP' },
+      { val: fmt(live?.ducTracts), lbl: 'DUC' },
+      { val: fmt(live?.infillTracts), lbl: 'Infill' },
+      { val: fmt(live?.truePudTracts), lbl: 'True PUD' },
+      { val: fmt(live?.permitsApproved), lbl: 'Permits approved' },
+      { val: fmt(live?.permitsSubmitted), lbl: 'Permits submitted' },
+      { val: fmt(live?.activeRigs), lbl: 'Active rigs' },
     ]
   }, [liveCountyStats, selectedCounty])
   const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
@@ -839,7 +960,7 @@ export default function Home() {
   const rightArrowOffset = selected && !isMobile ? desktopPanelWidth + 8 : 8
   const hideSecondaryNavActions = !isMobile && windowWidth < 1100
   const backToAllLabel = !isMobile && windowWidth < 1100 ? '← All' : '← All Counties'
-  const countySummaryText = `${countyStatsByLabel['Survey abstracts'] ?? '—'} survey abstracts · ${countyStatsByLabel['Total owners'] ?? '—'} mineral owners`
+  const countySummaryText = `${countyStatsByLabel['PDP'] ?? '—'} PDP · ${countyStatsByLabel['True PUD'] ?? '—'} True PUD · ${countyStatsByLabel['Permits approved'] ?? '—'} permits`
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToastType(type)
@@ -857,8 +978,12 @@ export default function Home() {
     if (currentIndex === -1) return
     const nextIndex = currentIndex + offset
     if (nextIndex < 0 || nextIndex >= COUNTY_ORDER.length) return
-    setSelectedCounty(COUNTY_ORDER[nextIndex])
-  }, [selectedCounty])
+    const nextKey = COUNTY_ORDER[nextIndex]
+    setSelected(null)
+    setSelectedTractGeometry(null)
+    setSelectedCounty(nextKey)
+    flyToCountyView(nextKey)
+  }, [selectedCounty, flyToCountyView])
 
   useEffect(() => {
     countyRef.current = county
@@ -872,23 +997,11 @@ export default function Home() {
     setDrawerTractLabel(null)
   }, [selected?.abstract_label, selected?.ABSTRACT_L])
 
-  useEffect(() => {
-    if (mapLevel !== 'tract') return
-    const county = COUNTIES[selectedCounty]
-  let attempts = 0
-  const tryFlyTo = () => {
-    attempts += 1
-    if (mapFlyToRef.current) {
-      mapFlyToRef.current(county.mapCenter, county.mapZoom)
-      return
-    }
-    if (attempts < 10) {
-      setTimeout(tryFlyTo, 200)
-    }
-  }
-  const timer = setTimeout(tryFlyTo, 200)
-    return () => clearTimeout(timer)
-  }, [mapLevel, selectedCounty])
+  // NOTE: intentional absence of a mapLevel/selectedCounty → flyTo effect.
+  // County zoom is only triggered by flyToCountyView() (UI clicks / county-
+  // only URL). Tract zoom is only triggered by fitToTractGeometry() (deep-
+  // link resolver). Sharing one auto-effect between them caused the
+  // "fix one breaks the other" race.
 
   useEffect(() => {
     // 900px is the width at which the drawer's side-panel layout
@@ -976,6 +1089,7 @@ export default function Home() {
 
   useEffect(() => {
     setSelected(null)
+    setSelectedTractGeometry(null)
     setExpandedOwner(null)
     setSearchQuery('')
     setSearchResults([])
@@ -1662,72 +1776,103 @@ export default function Home() {
   useEffect(() => {
     if (tracts.length === 0) return
 
+    const resolveGeomFromPoint = (): {
+      bare: string
+      geom: GeoJSON.Geometry
+    } | null => {
+      if (!pendingUrlPoint) return null
+      const { lat, lon } = pendingUrlPoint
+      for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
+        if (isPointInGeometry(lon, lat, geom)) {
+          return {
+            bare: bare.replace(/^A-\s*/i, '').trim().toUpperCase(),
+            geom,
+          }
+        }
+      }
+      return null
+    }
+
+    const applyTractFocus = (
+      match: TractRecord,
+      geom: GeoJSON.Geometry | null | undefined,
+      labelOverride?: string,
+    ) => {
+      const selection = {
+        ...toTractSelection(match),
+        abstract_label:
+          labelOverride ||
+          String(match.abstract_label ?? '').trim() ||
+          '',
+      }
+      setSelected(selection)
+      if (geom) {
+        setSelectedTractGeometry(geom)
+        fitToTractGeometry(geom)
+      }
+      setPendingUrlAbstract(null)
+      setPendingUrlPoint(null)
+      if (pendingUrlOwner) {
+        setHighlightedOwner(pendingUrlOwner)
+        setPendingUrlOwner(null)
+      }
+    }
+
     if (pendingUrlAbstract) {
       const wanted = pendingUrlAbstract.replace(/^A-\s*/i, '').trim().toUpperCase()
       const match = tracts.find((t) => {
         const label = String(t.abstract_label ?? '')
           .replace(/^A-\s*/i, '')
+          .replace(/^\d{5}-/, '')
           .trim()
           .toUpperCase()
         return label === wanted
       })
       if (match) {
-        // Prefer the geojson label form (often "A-316") so Map focus
-        // matching against ABSTRACT_L succeeds.
-        const selection = {
-          ...toTractSelection(match),
-          abstract_label:
-            String(match.abstract_label ?? '').trim() ||
-            (wanted ? `A-${wanted}` : ''),
-        }
-        setSelected(selection)
         const bare = wanted
-        const geom =
+        let geom: GeoJSON.Geometry | undefined =
           tractGeometryByAbstract[bare] ||
           tractGeometryByAbstract[`A-${bare}`] ||
-          tractGeometryByAbstract[wanted]
-        if (geom) setSelectedTractGeometry(geom)
-        setPendingUrlAbstract(null)
-        if (pendingUrlOwner) {
-          setHighlightedOwner(pendingUrlOwner)
-          setPendingUrlOwner(null)
+          tractGeometryByAbstract[wanted] ||
+          tractGeometryByAbstract[
+            String(match.abstract_label ?? '')
+              .replace(/^A-\s*/i, '')
+              .trim()
+              .toUpperCase()
+          ]
+        // Abstract matched the sidebar row but geometry lookup missed —
+        // use lat/lon point-in-polygon so Open on map still zooms in.
+        if (!geom) {
+          geom = resolveGeomFromPoint()?.geom
         }
+        applyTractFocus(
+          match,
+          geom,
+          String(match.abstract_label ?? '').trim() || (wanted ? `A-${wanted}` : ''),
+        )
         return
       }
+      // Abstract string missed — fall through to lat/lon if present.
     }
 
     if (pendingUrlPoint) {
-      const { lat, lon } = pendingUrlPoint
-      let matchedBare: string | null = null
-      let matchedGeom: GeoJSON.Geometry | null = null
-      for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
-        if (isPointInGeometry(lon, lat, geom)) {
-          matchedBare = bare
-          matchedGeom = geom
-          break
-        }
-      }
-      if (matchedBare) {
+      const hit = resolveGeomFromPoint()
+      if (hit) {
         const match = tracts.find((t) => {
-          const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim()
-          return label === matchedBare
+          const label = String(t.abstract_label ?? '')
+            .replace(/^A-\s*/i, '')
+            .replace(/^\d{5}-/, '')
+            .trim()
+            .toUpperCase()
+          return label === hit.bare
         })
         if (match) {
-          setSelected(toTractSelection(match))
-          if (matchedGeom) setSelectedTractGeometry(matchedGeom)
-          if (mapFlyToRef.current) {
-            mapFlyToRef.current([lon, lat], 14)
-          }
-          setPendingUrlPoint(null)
-          if (pendingUrlOwner) {
-            setHighlightedOwner(pendingUrlOwner)
-            setPendingUrlOwner(null)
-          }
+          applyTractFocus(match, hit.geom)
         }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracts, pendingUrlAbstract, pendingUrlPoint, tractGeometryByAbstract, pendingUrlOwner])
+  }, [tracts, pendingUrlAbstract, pendingUrlPoint, tractGeometryByAbstract, pendingUrlOwner, fitToTractGeometry])
 
   const toTractSelection = (tract: TractRecord): TractSelection => ({
     abstract_label: tract.abstract_label,
@@ -1769,7 +1914,9 @@ export default function Home() {
         setSelectedCounty(resultCounty)
       }
       setMapLevel('tract')
+      flyToCountyView(resultCounty)
       setSelected(null)
+      setSelectedTractGeometry(null)
       setExpandedOwner(null)
       setOwnerWells({})
       setTractWells([])
@@ -2230,8 +2377,11 @@ export default function Home() {
             {mapLevel === 'tract' && (
               <button
                 onClick={() => {
+                  tractDeepLinkActiveRef.current = false
+                  cameraGenerationRef.current += 1
                   setMapLevel('county')
                   setSelected(null)
+                  setSelectedTractGeometry(null)
                   setExpandedOwner(null)
                   setSearchQuery('')
                   setSearchResults([])
@@ -2256,7 +2406,13 @@ export default function Home() {
             )}
             <select
               value={selectedCounty}
-              onChange={(event) => setSelectedCounty(event.target.value as CountyKey)}
+              onChange={(event) => {
+                const next = event.target.value as CountyKey
+                setSelected(null)
+                setSelectedTractGeometry(null)
+                setSelectedCounty(next)
+                if (mapLevel === 'tract') flyToCountyView(next)
+              }}
               style={{
                 height: 26,
                 border: '1px solid #E5E7EB',
@@ -2571,6 +2727,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setSelected(null)
+                  setSelectedTractGeometry(null)
                   // If we're in an owner-tracts session, keep the list so the
                   // user can pick a different tract for the same owner.
                   if (!ownerTractsName) {
@@ -3259,11 +3416,7 @@ export default function Home() {
               {mapLevel === 'tract' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {liveCountyStatEntries.map((card, idx, arr) => {
-                    // If the total count is odd, stretch the last card
-                    // across both columns so we don't leave a lone card
-                    // hanging in the second row. With the "Active wells"
-                    // card removed we're at 5 stat cards, so the 5th
-                    // (Survey abstracts) spans the row.
+                    // 7 cards (legend/overlay counts): last card spans full width.
                     const isLastOdd = idx === arr.length - 1 && arr.length % 2 === 1
                     return (
                       <div
@@ -3325,8 +3478,12 @@ export default function Home() {
                         <div
                           key={c.id}
                           onClick={() => {
-                            setSelectedCounty(c.id as CountyKey)
+                            const key = c.id as CountyKey
+                            setSelected(null)
+                            setSelectedTractGeometry(null)
+                            setSelectedCounty(key)
                             setMapLevel('tract')
+                            flyToCountyView(key)
                           }}
                           style={{
                             background: '#FFFFFF',
@@ -3595,13 +3752,18 @@ export default function Home() {
             <MineralMap
               selectedCounty={selectedCounty}
               mapFlyToRef={mapFlyToRef}
+              mapFitBoundsRef={mapFitBoundsRef}
               mapLevel={mapLevel}
               focusTarget={selected}
+              focusGeometry={selectedTractGeometry}
               devStatusByAbstract={devStatusByAbstract}
               onCountySwitch={(countyId) => {
-                setSelectedCounty(countyId as CountyKey)
-                setMapLevel('tract')
+                const key = countyId as CountyKey
                 setSelected(null)
+                setSelectedTractGeometry(null)
+                setSelectedCounty(key)
+                setMapLevel('tract')
+                flyToCountyView(key)
                 setExpandedOwner(null)
                 setSearchQuery('')
                 setSearchResults([])

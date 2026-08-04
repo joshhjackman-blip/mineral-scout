@@ -156,7 +156,7 @@ export default function TractSearch({ map, geojsonUrl, onTractSelect }: TractSea
   };
 
   return (
-    <div ref={containerRef} className="absolute top-4 left-4 z-10 w-72">
+    <div ref={containerRef} className="relative z-10 w-full">
       <div className="relative">
         <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
           <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
