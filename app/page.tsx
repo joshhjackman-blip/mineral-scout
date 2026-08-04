@@ -16,7 +16,19 @@ import {
   abstractsMatchingOperators,
   collectOperatorOptions,
   operatorMatchesAny,
+  operatorRoot,
 } from '@/lib/operator-filter'
+import {
+  applyOwnerOverride,
+  deleteOwnerOverride,
+  fetchOwnerOverrides,
+  isHiddenOverride,
+  mirrorOverrideToDeal,
+  pickOwnerOverride,
+  upsertOwnerOverride,
+  type OwnerOverride,
+} from '@/lib/owner-overrides'
+import type { OwnerDetailsPatch } from '@/app/components/OwnerDrawer'
 
 import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
@@ -43,6 +55,7 @@ const UPCOMING_PERMIAN_COUNTIES = [
 type TractOwner = {
   id?: string
   owner_name: string
+  display_name?: string | null
   propensity_score: number
   operator_name?: string
   mailing_city?: string
@@ -712,6 +725,9 @@ export default function Home() {
   // The tract label active at the moment the drawer opened, so the
   // drawer stays anchored to that tract even if the sidebar changes.
   const [drawerTractLabel, setDrawerTractLabel] = useState<string | null>(null)
+  // Soft corrections / hides for CAD owners (does not mutate tax-roll tables).
+  const [ownerOverrides, setOwnerOverrides] = useState<OwnerOverride[]>([])
+  const [showHiddenOwners, setShowHiddenOwners] = useState(false)
   const [wellsExpanded, setWellsExpanded] = useState(false)
   const [tractWells, setTractWells] = useState<WellSummary[]>([])
   const [tractWellsLoaded, setTractWellsLoaded] = useState(false)
@@ -925,6 +941,24 @@ export default function Home() {
   useEffect(() => {
     countyRef.current = county
   }, [county])
+
+  // Soft owner corrections / hides for the active county.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const { data, error } = await fetchOwnerOverrides(selectedCounty)
+      if (cancelled) return
+      if (error) {
+        console.error('Failed to load owner overrides:', error)
+        setOwnerOverrides([])
+        return
+      }
+      setOwnerOverrides(data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCounty])
 
   // Close the owner drawer whenever the active tract changes so a stale
   // drawer from another tract doesn't stay visible after the user
@@ -2078,6 +2112,23 @@ export default function Home() {
     [tracts],
   )
 
+  // Canonical label for a CAD operator spelling (sidebar Op: lines).
+  const operatorLabelByRoot = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const op of operatorOptions) map.set(op.key, op.label)
+    return map
+  }, [operatorOptions])
+
+  const canonicalOperatorLabel = useCallback(
+    (raw: string | null | undefined) => {
+      const label = String(raw || '').trim()
+      if (!label) return ''
+      const root = operatorRoot(label)
+      return (root && operatorLabelByRoot.get(root)) || label
+    },
+    [operatorLabelByRoot],
+  )
+
   // Drop selections that disappear after a county switch / data reload.
   useEffect(() => {
     if (selectedOperatorKeys.length === 0) return
@@ -2115,15 +2166,36 @@ export default function Home() {
     ).size
   }, [operatorMatchAbstracts])
 
+  const tractAbstractForOverrides = useMemo(
+    () =>
+      String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').trim(),
+    [selected?.abstract_label, selected?.ABSTRACT_L],
+  )
+
   const cleanOwnersList = useMemo(() => {
-    const cleaned = filteredOwnersList.filter((owner: TractOwner) => {
-      const name = (owner.owner_name ?? '').trim()
-      if (!name || name.length < 3) return false
-      if (/^MAP\d{4}/.test(name)) return false
-      if (/^\d+$/.test(name)) return false
-      if (name === 'UNKNOWN' || name === 'N/A') return false
-      return true
-    })
+    const cleaned = filteredOwnersList
+      .filter((owner: TractOwner) => {
+        const name = (owner.owner_name ?? '').trim()
+        if (!name || name.length < 3) return false
+        if (/^MAP\d{4}/.test(name)) return false
+        if (/^\d+$/.test(name)) return false
+        if (name === 'UNKNOWN' || name === 'N/A') return false
+        const override = pickOwnerOverride(
+          ownerOverrides,
+          name,
+          tractAbstractForOverrides,
+        )
+        if (!showHiddenOwners && isHiddenOverride(override)) return false
+        return true
+      })
+      .map((owner) => {
+        const override = pickOwnerOverride(
+          ownerOverrides,
+          owner.owner_name,
+          tractAbstractForOverrides,
+        )
+        return applyOwnerOverride(owner, override)
+      })
     if (selectedOperatorFilters.length === 0) return cleaned
     // Surface CAD operator matches first; keep the rest for tract context.
     return [...cleaned].sort((a, b) => {
@@ -2131,7 +2203,258 @@ export default function Home() {
       const bHit = operatorMatchesAny(b.operator_name, selectedOperatorFilters) ? 0 : 1
       return aHit - bHit
     })
-  }, [filteredOwnersList, selectedOperatorFilters])
+  }, [
+    filteredOwnersList,
+    ownerOverrides,
+    showHiddenOwners,
+    tractAbstractForOverrides,
+    selectedOperatorFilters,
+  ])
+
+  const hiddenOwnerCount = useMemo(() => {
+    return filteredOwnersList.filter((owner) => {
+      const override = pickOwnerOverride(
+        ownerOverrides,
+        owner.owner_name,
+        tractAbstractForOverrides,
+      )
+      return isHiddenOverride(override)
+    }).length
+  }, [filteredOwnersList, ownerOverrides, tractAbstractForOverrides])
+
+  const drawerOwnerOverride = useMemo(() => {
+    if (!drawerOwner) return null
+    return pickOwnerOverride(
+      ownerOverrides,
+      drawerOwner.owner_name,
+      drawerTractLabel || tractAbstractForOverrides,
+    )
+  }, [
+    drawerOwner,
+    ownerOverrides,
+    drawerTractLabel,
+    tractAbstractForOverrides,
+  ])
+
+  const drawerOwnerView = useMemo(() => {
+    if (!drawerOwner) return null
+    return applyOwnerOverride(drawerOwner, drawerOwnerOverride)
+  }, [drawerOwner, drawerOwnerOverride])
+
+  const handleSaveOwnerDetails = useCallback(
+    async (owner: { owner_name: string }, patch: OwnerDetailsPatch) => {
+      const abstract = drawerTractLabel || tractAbstractForOverrides
+      const { data, error } = await upsertOwnerOverride({
+        countyId: selectedCounty,
+        ownerName: owner.owner_name,
+        abstract,
+        status: isHiddenOverride(
+          pickOwnerOverride(ownerOverrides, owner.owner_name, abstract),
+        )
+          ? 'hidden'
+          : 'updated',
+        patch,
+      })
+      if (error || !data) {
+        showToast(error || 'Failed to save owner details', 'error')
+        return { success: false, error: error || 'Failed to save' }
+      }
+      setOwnerOverrides((prev) => {
+        const keyName = owner.owner_name.trim().toUpperCase()
+        const keyAbs = String(data.abstract || '').toUpperCase()
+        const next = prev.filter(
+          (row) =>
+            !(
+              row.owner_name.trim().toUpperCase() === keyName &&
+              String(row.abstract || '').toUpperCase() === keyAbs
+            ),
+        )
+        next.push(data)
+        return next
+      })
+      setDrawerOwner((prev) =>
+        prev && prev.owner_name === owner.owner_name
+          ? applyOwnerOverride(prev, data)
+          : prev,
+      )
+      void mirrorOverrideToDeal({
+        countyId: selectedCounty,
+        ownerName: owner.owner_name,
+        patch,
+      })
+      showToast('Owner details updated')
+      trackEvent('owner_details_updated', {
+        owner_name: owner.owner_name,
+        county: selectedCounty,
+      })
+      return { success: true }
+    },
+    [
+      drawerTractLabel,
+      ownerOverrides,
+      selectedCounty,
+      tractAbstractForOverrides,
+    ],
+  )
+
+  const handleRemoveOwner = useCallback(
+    async (
+      owner: { owner_name: string },
+      opts: { status: 'hidden' | 'incorrect'; note?: string },
+    ) => {
+      const abstract = drawerTractLabel || tractAbstractForOverrides
+      const existing = pickOwnerOverride(
+        ownerOverrides,
+        owner.owner_name,
+        abstract,
+      )
+      const { data, error } = await upsertOwnerOverride({
+        countyId: selectedCounty,
+        ownerName: owner.owner_name,
+        abstract,
+        status: opts.status,
+        patch: {
+          display_name: existing?.display_name ?? null,
+          mailing_address: existing?.mailing_address ?? null,
+          mailing_city: existing?.mailing_city ?? null,
+          mailing_state: existing?.mailing_state ?? null,
+          mailing_zip: existing?.mailing_zip ?? null,
+          phone: existing?.phone ?? null,
+          email: existing?.email ?? null,
+          note: opts.note ?? existing?.note ?? null,
+        },
+      })
+      if (error || !data) {
+        showToast(error || 'Failed to remove owner', 'error')
+        return { success: false, error: error || 'Failed to remove' }
+      }
+      setOwnerOverrides((prev) => {
+        const keyName = owner.owner_name.trim().toUpperCase()
+        const keyAbs = String(data.abstract || '').toUpperCase()
+        const next = prev.filter(
+          (row) =>
+            !(
+              row.owner_name.trim().toUpperCase() === keyName &&
+              String(row.abstract || '').toUpperCase() === keyAbs
+            ),
+        )
+        next.push(data)
+        return next
+      })
+      void mirrorOverrideToDeal({
+        countyId: selectedCounty,
+        ownerName: owner.owner_name,
+        patch: {},
+        tag: 'bad_lead',
+      })
+      setDrawerOwner(null)
+      setDrawerTractLabel(null)
+      showToast('Owner removed from your list (CAD record kept)')
+      trackEvent('owner_removed_from_list', {
+        owner_name: owner.owner_name,
+        county: selectedCounty,
+        status: opts.status,
+      })
+      return { success: true }
+    },
+    [
+      drawerTractLabel,
+      ownerOverrides,
+      selectedCounty,
+      tractAbstractForOverrides,
+    ],
+  )
+
+  const handleRestoreOwner = useCallback(
+    async (owner: { owner_name: string }) => {
+      const abstract = drawerTractLabel || tractAbstractForOverrides
+      const existing = pickOwnerOverride(
+        ownerOverrides,
+        owner.owner_name,
+        abstract,
+      )
+      // If there are contact corrections, keep them as status=updated;
+      // otherwise delete the override row entirely.
+      const hasContactPatch = Boolean(
+        existing &&
+          (existing.display_name ||
+            existing.mailing_address ||
+            existing.mailing_city ||
+            existing.phone ||
+            existing.email),
+      )
+      if (hasContactPatch && existing) {
+        const { data, error } = await upsertOwnerOverride({
+          countyId: selectedCounty,
+          ownerName: owner.owner_name,
+          abstract: existing.abstract,
+          status: 'updated',
+          patch: {
+            display_name: existing.display_name,
+            mailing_address: existing.mailing_address,
+            mailing_city: existing.mailing_city,
+            mailing_state: existing.mailing_state,
+            mailing_zip: existing.mailing_zip,
+            phone: existing.phone,
+            email: existing.email,
+            note: existing.note,
+          },
+        })
+        if (error || !data) {
+          showToast(error || 'Failed to restore owner', 'error')
+          return { success: false, error: error || 'Failed to restore' }
+        }
+        setOwnerOverrides((prev) => {
+          const keyName = owner.owner_name.trim().toUpperCase()
+          const keyAbs = String(data.abstract || '').toUpperCase()
+          const next = prev.filter(
+            (row) =>
+              !(
+                row.owner_name.trim().toUpperCase() === keyName &&
+                String(row.abstract || '').toUpperCase() === keyAbs
+              ),
+          )
+          next.push(data)
+          return next
+        })
+      } else {
+        const { error } = await deleteOwnerOverride({
+          countyId: selectedCounty,
+          ownerName: owner.owner_name,
+          abstract: existing?.abstract ?? abstract,
+        })
+        if (error) {
+          showToast(error, 'error')
+          return { success: false, error }
+        }
+        setOwnerOverrides((prev) =>
+          prev.filter(
+            (row) =>
+              !(
+                row.owner_name.trim().toUpperCase() ===
+                  owner.owner_name.trim().toUpperCase() &&
+                String(row.abstract || '').toUpperCase() ===
+                  String((existing?.abstract ?? abstract) || '')
+                    .replace(/^A-\s*/i, '')
+                    .toUpperCase()
+              ),
+          ),
+        )
+      }
+      showToast('Owner restored to list')
+      trackEvent('owner_restored_to_list', {
+        owner_name: owner.owner_name,
+        county: selectedCounty,
+      })
+      return { success: true }
+    },
+    [
+      drawerTractLabel,
+      ownerOverrides,
+      selectedCounty,
+      tractAbstractForOverrides,
+    ],
+  )
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
@@ -2652,7 +2975,7 @@ export default function Home() {
           >
             <OwnerDrawer
               open={Boolean(drawerOwner)}
-              owner={drawerOwner}
+              owner={drawerOwnerView}
               tractLabel={drawerTractLabel}
               tractLegalDescription={buildLegalDescription(selected) || null}
               countyId={selectedCounty}
@@ -2662,6 +2985,10 @@ export default function Home() {
                 String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
               ] ?? null}
               highlightOperators={selectedOperatorFilters}
+              ownerIsHidden={isHiddenOverride(drawerOwnerOverride)}
+              onSaveOwnerDetails={handleSaveOwnerDetails}
+              onRemoveOwner={handleRemoveOwner}
+              onRestoreOwner={handleRestoreOwner}
               onClose={() => {
                 setDrawerOwner(null)
                 setDrawerTractLabel(null)
@@ -3053,9 +3380,29 @@ export default function Home() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  All owners in tract ({filteredOwnersList.length})
+                  All owners in tract ({cleanOwnersList.length})
                 </div>
-                <div style={{ display: 'flex', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                  {hiddenOwnerCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHiddenOwners((v) => !v)}
+                      title="Owners you removed stay in CAD; toggle to review them"
+                      style={{
+                        fontSize: 10,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                        fontWeight: 600,
+                        background: showHiddenOwners ? '#FFE4E6' : 'transparent',
+                        border: '1px solid #FECDD3',
+                        color: '#BE123C',
+                      }}
+                    >
+                      {showHiddenOwners ? 'Hide removed' : `${hiddenOwnerCount} removed`}
+                    </button>
+                  )}
                   {([
                     { key: 'az',       label: 'A–Z',    title: 'Sort owners A to Z' },
                     { key: 'za',       label: 'Z–A',    title: 'Sort owners Z to A' },
@@ -3115,14 +3462,23 @@ export default function Home() {
                     county.ownershipPctIsDecimal
                   )
                   const ownershipDecimalValue = ownershipPctValue / 100
+                  const rowOverride = pickOwnerOverride(
+                    ownerOverrides,
+                    owner.owner_name,
+                    tractAbstractForOverrides,
+                  )
+                  const rowHidden = isHiddenOverride(rowOverride)
+                  const rowDisplayName =
+                    (owner.display_name || owner.owner_name || '').trim() || owner.owner_name
 
                   return (
                     <div
                       key={`${owner.owner_name}-${i}`}
                       style={{
                         borderBottom: '1px solid #F3F4F6',
-                        opacity:
-                          selectedOperatorFilters.length > 0 && !operatorHit
+                        opacity: rowHidden
+                          ? 0.55
+                          : selectedOperatorFilters.length > 0 && !operatorHit
                             ? 0.45
                             : 1,
                       }}
@@ -3182,7 +3538,7 @@ export default function Home() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
-                              {i + 1}. {owner.owner_name}
+                              {i + 1}. {rowDisplayName}
                               {operatorHit && (
                                 <span
                                   style={{
@@ -3201,6 +3557,23 @@ export default function Home() {
                                   title={`CAD operator: ${owner.operator_name || ''}`}
                                 >
                                   Operator match
+                                </span>
+                              )}
+                              {rowHidden && (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    color: '#BE123C',
+                                    background: '#FFE4E6',
+                                    border: '1px solid #FECDD3',
+                                    borderRadius: 4,
+                                    padding: '1px 5px',
+                                    verticalAlign: 'middle',
+                                  }}
+                                >
+                                  Removed
                                 </span>
                               )}
                             </div>
@@ -3225,9 +3598,9 @@ export default function Home() {
                                   marginTop: 2,
                                   fontWeight: operatorHit ? 600 : 400,
                                 }}
-                                title="CAD tax-roll operator"
+                                title={`CAD tax-roll operator: ${owner.operator_name.trim()}`}
                               >
-                                Op: {owner.operator_name.trim()}
+                                Op: {canonicalOperatorLabel(owner.operator_name)}
                               </div>
                             )}
                             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
@@ -3863,7 +4236,7 @@ export default function Home() {
         >
           <OwnerDrawer
             open={Boolean(drawerOwner)}
-            owner={drawerOwner}
+            owner={drawerOwnerView}
             tractLabel={drawerTractLabel}
             tractLegalDescription={buildLegalDescription(selected) || null}
             countyId={selectedCounty}
@@ -3873,6 +4246,10 @@ export default function Home() {
               String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
             ] ?? null}
             highlightOperators={selectedOperatorFilters}
+            ownerIsHidden={isHiddenOverride(drawerOwnerOverride)}
+            onSaveOwnerDetails={handleSaveOwnerDetails}
+            onRemoveOwner={handleRemoveOwner}
+            onRestoreOwner={handleRestoreOwner}
             onClose={() => {
               setDrawerOwner(null)
               setDrawerTractLabel(null)

@@ -23,6 +23,8 @@ import { operatorMatchesAny } from '@/lib/operator-filter'
 export type OwnerLike = {
   id?: string | number
   owner_name: string
+  /** Corrected label from owner_overrides; CAD owner_name stays the join key. */
+  display_name?: string | null
   propensity_score?: number
   operator_name?: string | null
   mailing_city?: string | null
@@ -41,6 +43,17 @@ export type OwnerLike = {
   email?: string | null
   rrc_lease_id?: string | number | null
   sptb_code?: string | null
+}
+
+export type OwnerDetailsPatch = {
+  display_name?: string | null
+  mailing_address?: string | null
+  mailing_city?: string | null
+  mailing_state?: string | null
+  mailing_zip?: string | null
+  phone?: string | null
+  email?: string | null
+  note?: string | null
 }
 
 export type OwnerDrawerHolding = {
@@ -140,6 +153,22 @@ export type OwnerDrawerProps = {
   tractDevStatus?: TractDevStatus | null
   /** CAD operator filter keys/labels from the map toolbar — highlight matching leases/wells. */
   highlightOperators?: string[] | null
+  /** Save contact / display-name corrections (does not mutate CAD ownership). */
+  onSaveOwnerDetails?: (
+    owner: OwnerLike,
+    patch: OwnerDetailsPatch,
+  ) => Promise<{ success: boolean; error?: string }>
+  /** Soft-remove from the working tract list (CAD row stays). */
+  onRemoveOwner?: (
+    owner: OwnerLike,
+    opts: { status: 'hidden' | 'incorrect'; note?: string },
+  ) => Promise<{ success: boolean; error?: string }>
+  /** Undo a prior remove/hide. */
+  onRestoreOwner?: (
+    owner: OwnerLike,
+  ) => Promise<{ success: boolean; error?: string }>
+  /** When true, this owner is currently hidden from the tract list. */
+  ownerIsHidden?: boolean
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -612,6 +641,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     onClose, onSkipTrace, onAddToPipeline, onShowAllTracts, legalDescByAbstract,
     tractDevStatus,
     highlightOperators = null,
+    onSaveOwnerDetails,
+    onRemoveOwner,
+    onRestoreOwner,
+    ownerIsHidden = false,
   } = props
 
   const county = COUNTIES[countyId]
@@ -632,9 +665,20 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   } = useOwnerNote(county, owner, open)
 
   const [tab, setTab] = useState<'overview' | 'holdings' | 'wells' | 'notes'>('overview')
+  const [editingContact, setEditingContact] = useState(false)
+  const [removing, setRemoving] = useState(false)
+  const [removeNote, setRemoveNote] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) setTab('overview')
+    if (open) {
+      setTab('overview')
+      setEditingContact(false)
+      setRemoving(false)
+      setRemoveNote('')
+      setActionError(null)
+    }
   }, [open, owner?.owner_name])
 
   useEffect(() => {
@@ -648,6 +692,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
 
   if (!open || !owner) return null
 
+  const displayName = clean(owner.display_name) || owner.owner_name
   const phone = formatPhone(owner.phone)
   const email = formatEmail(owner.email)
   const badges = ownerBadges(owner)
@@ -685,9 +730,19 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
             <div className="text-2xl font-serif font-bold text-gray-900 truncate">
-              {owner.owner_name}
+              {displayName}
             </div>
+            {ownerIsHidden && (
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                Removed from list
+              </span>
+            )}
           </div>
+          {clean(owner.display_name) && clean(owner.display_name) !== owner.owner_name && (
+            <div className="mt-1 text-xs text-gray-500">
+              CAD name: <span className="font-mono">{owner.owner_name}</span>
+            </div>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
             {tractLabel && (
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-slate-700">
@@ -741,6 +796,50 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           ⚡ Skip trace
         </button>
         <div className="flex-1" />
+        {onSaveOwnerDetails && (
+          <button
+            type="button"
+            onClick={() => {
+              setTab('overview')
+              setEditingContact(true)
+              setRemoving(false)
+              setActionError(null)
+            }}
+            className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            Update owner
+          </button>
+        )}
+        {ownerIsHidden && onRestoreOwner ? (
+          <button
+            type="button"
+            disabled={actionBusy}
+            onClick={async () => {
+              setActionBusy(true)
+              setActionError(null)
+              const result = await onRestoreOwner(owner)
+              setActionBusy(false)
+              if (!result.success) {
+                setActionError(result.error || 'Failed to restore owner')
+              }
+            }}
+            className="rounded-md border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
+          >
+            Restore to list
+          </button>
+        ) : onRemoveOwner ? (
+          <button
+            type="button"
+            onClick={() => {
+              setRemoving(true)
+              setEditingContact(false)
+              setActionError(null)
+            }}
+            className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+          >
+            Remove from list
+          </button>
+        ) : null}
         <button
           onClick={() => onAddToPipeline(owner)}
           className={`rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${
@@ -760,6 +859,61 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           </button>
         )}
       </div>
+
+      {removing && onRemoveOwner && (
+        <div className="border-b border-rose-100 bg-rose-50/60 px-6 py-3">
+          <div className="text-sm font-semibold text-rose-800">
+            Remove from your working list?
+          </div>
+          <p className="mt-1 text-xs text-rose-700/90">
+            Hides this owner on this tract for you. The CAD tax-roll record is not deleted.
+          </p>
+          <input
+            value={removeNote}
+            onChange={(e) => setRemoveNote(e.target.value)}
+            placeholder="Optional reason (wrong payee, deceased, sold…)"
+            className="mt-2 w-full rounded-md border border-rose-200 bg-white px-3 py-2 text-sm text-gray-800"
+          />
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={async () => {
+                setActionBusy(true)
+                setActionError(null)
+                const result = await onRemoveOwner(owner, {
+                  status: 'incorrect',
+                  note: removeNote.trim() || undefined,
+                })
+                setActionBusy(false)
+                if (!result.success) {
+                  setActionError(result.error || 'Failed to remove owner')
+                  return
+                }
+                setRemoving(false)
+                setRemoveNote('')
+              }}
+              className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {actionBusy ? 'Removing…' : 'Confirm remove'}
+            </button>
+            <button
+              type="button"
+              disabled={actionBusy}
+              onClick={() => {
+                setRemoving(false)
+                setRemoveNote('')
+              }}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+          </div>
+          {actionError && (
+            <div className="mt-2 text-xs text-rose-700">{actionError}</div>
+          )}
+        </div>
+      )}
 
       <nav className="flex items-center gap-1 border-b border-gray-100 px-6 pt-2">
         {[
@@ -815,6 +969,29 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             rrcLease={rrcLease}
             county={county}
             tractDevStatus={tractDevStatus ?? null}
+            editingContact={editingContact}
+            onCancelEdit={() => {
+              setEditingContact(false)
+              setActionError(null)
+            }}
+            onSaveDetails={
+              onSaveOwnerDetails
+                ? async (patch) => {
+                    setActionBusy(true)
+                    setActionError(null)
+                    const result = await onSaveOwnerDetails(owner, patch)
+                    setActionBusy(false)
+                    if (!result.success) {
+                      setActionError(result.error || 'Failed to save owner details')
+                      return false
+                    }
+                    setEditingContact(false)
+                    return true
+                  }
+                : undefined
+            }
+            saveBusy={actionBusy}
+            saveError={actionError}
           />
         )}
         {tab === 'holdings' && (
@@ -923,6 +1100,11 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 function OverviewPanel({
   owner, ownershipPct, acreage, nra, royaltyEstimate, cumOil,
   tractLabel, tractLegalDescription, rrcLease, county, tractDevStatus,
+  editingContact = false,
+  onCancelEdit,
+  onSaveDetails,
+  saveBusy = false,
+  saveError = null,
 }: {
   owner: OwnerLike
   ownershipPct: number | null
@@ -935,7 +1117,35 @@ function OverviewPanel({
   rrcLease: string
   county: County
   tractDevStatus: TractDevStatus | null
+  editingContact?: boolean
+  onCancelEdit?: () => void
+  onSaveDetails?: (patch: OwnerDetailsPatch) => Promise<boolean>
+  saveBusy?: boolean
+  saveError?: string | null
 }) {
+  const [displayName, setDisplayName] = useState(
+    clean(owner.display_name) || owner.owner_name,
+  )
+  const [mailingAddress, setMailingAddress] = useState(
+    clean(owner.address_1) || clean(owner.mailing_address),
+  )
+  const [mailingCity, setMailingCity] = useState(clean(owner.mailing_city))
+  const [mailingState, setMailingState] = useState(clean(owner.mailing_state))
+  const [mailingZip, setMailingZip] = useState(clean(owner.mailing_zip))
+  const [phoneValue, setPhoneValue] = useState(clean(owner.phone))
+  const [emailValue, setEmailValue] = useState(clean(owner.email))
+
+  useEffect(() => {
+    if (!editingContact) return
+    setDisplayName(clean(owner.display_name) || owner.owner_name)
+    setMailingAddress(clean(owner.address_1) || clean(owner.mailing_address))
+    setMailingCity(clean(owner.mailing_city))
+    setMailingState(clean(owner.mailing_state))
+    setMailingZip(clean(owner.mailing_zip))
+    setPhoneValue(clean(owner.phone))
+    setEmailValue(clean(owner.email))
+  }, [editingContact, owner])
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
@@ -968,18 +1178,84 @@ function OverviewPanel({
           full-width lets each field sit on one line. */}
       <div className="flex flex-col gap-4">
         <SectionCard title="Contact snapshot">
-          <KVRow k="Owner name" v={owner.owner_name} mono />
-          <KVRow
-            k="Mailing address"
-            v={
-              [
-                owner.address_1 || owner.mailing_address,
-                [owner.mailing_city, owner.mailing_state, owner.mailing_zip].filter(Boolean).join(' '),
-              ].filter(Boolean).join(' · ') || 'Not on file'
-            }
-          />
-          <KVRow k="Phone" v={owner.phone || 'Not on file — run skip trace above'} />
-          <KVRow k="Email" v={owner.email || 'Not on file — run skip trace above'} />
+          {editingContact && onSaveDetails ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                Corrections apply to your working list. The CAD tax-roll name stays as the source key.
+              </p>
+              <OwnerField
+                label="Display name"
+                value={displayName}
+                onChange={setDisplayName}
+              />
+              <OwnerField
+                label="Mailing address"
+                value={mailingAddress}
+                onChange={setMailingAddress}
+              />
+              <div className="grid grid-cols-3 gap-2">
+                <OwnerField label="City" value={mailingCity} onChange={setMailingCity} />
+                <OwnerField label="State" value={mailingState} onChange={setMailingState} />
+                <OwnerField label="ZIP" value={mailingZip} onChange={setMailingZip} />
+              </div>
+              <OwnerField label="Phone" value={phoneValue} onChange={setPhoneValue} />
+              <OwnerField label="Email" value={emailValue} onChange={setEmailValue} />
+              <div className="flex flex-wrap gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={saveBusy}
+                  onClick={async () => {
+                    await onSaveDetails({
+                      display_name: displayName.trim() || owner.owner_name,
+                      mailing_address: mailingAddress.trim() || null,
+                      mailing_city: mailingCity.trim() || null,
+                      mailing_state: mailingState.trim() || null,
+                      mailing_zip: mailingZip.trim() || null,
+                      phone: phoneValue.trim() || null,
+                      email: emailValue.trim() || null,
+                    })
+                  }}
+                  className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+                >
+                  {saveBusy ? 'Saving…' : 'Save changes'}
+                </button>
+                <button
+                  type="button"
+                  disabled={saveBusy}
+                  onClick={onCancelEdit}
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+              </div>
+              {saveError && (
+                <div className="text-xs text-rose-700">{saveError}</div>
+              )}
+            </div>
+          ) : (
+            <>
+              <KVRow
+                k="Owner name"
+                v={clean(owner.display_name) || owner.owner_name}
+                mono
+              />
+              {clean(owner.display_name) &&
+                clean(owner.display_name) !== owner.owner_name && (
+                  <KVRow k="CAD name" v={owner.owner_name} mono />
+                )}
+              <KVRow
+                k="Mailing address"
+                v={
+                  [
+                    owner.address_1 || owner.mailing_address,
+                    [owner.mailing_city, owner.mailing_state, owner.mailing_zip].filter(Boolean).join(' '),
+                  ].filter(Boolean).join(' · ') || 'Not on file'
+                }
+              />
+              <KVRow k="Phone" v={owner.phone || 'Not on file — run skip trace above'} />
+              <KVRow k="Email" v={owner.email || 'Not on file — run skip trace above'} />
+            </>
+          )}
         </SectionCard>
 
         <SectionCard title="Lease context">
@@ -1005,6 +1281,27 @@ function OverviewPanel({
         ownerName={owner.owner_name}
       />
     </div>
+  )
+}
+
+function OwnerField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-gray-500">{label}</span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+      />
+    </label>
   )
 }
 
