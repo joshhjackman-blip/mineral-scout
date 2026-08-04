@@ -1,32 +1,22 @@
 'use client'
 
-// Account page — restructured 2026-07-20.
+// Account page — restructured 2026-07-20, team seats 2026-08-04.
 //
-// Everything about the old $300/mo Prospector plan / $499/mo Team
-// upgrade / 200-skip-trace-cap was cut because the platform runs on
-// the free-until-you-close model now (10% success fee on Platform
-// Leads, no monthly fee, no seat charge, unlimited skip traces).
-// See the Platform Services Agreement + the /landing hero.
-//
-// Sections in order:
-//   1. Identity     — email + member since
-//   2. Billing      — Free plan + 10% success fee + link to agreement
-//   3. Usage        — skip traces this month, INFORMATIONAL (no cap)
-//   4. Team         — open-ended teammate invites, no seat gate
-//   5. Password     — change password
-//   6. Session      — sign out
-//
-// The subscriptions Supabase table read was removed from this page.
-// If a legacy paid Stripe subscription is still active on your row,
-// billing side effects are unchanged; this page just doesn't
-// display / offer to cancel it. That's an intentional trade — no
-// stale $300/mo copy in the UI while the business model settles.
+// Free-until-you-close model (10% success fee). Team seats are
+// provisioned by Mineral Map platform admins: we assign a team admin
+// + seat count, then that admin invites members from this page.
+// Members cannot manage seats and cannot access /admin.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
-import { User, LogOut, MapPin, BarChart2, FileText } from 'lucide-react'
+import { User, LogOut, MapPin, BarChart2, FileText, Shield } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
+import {
+  inviteSeatCapacity,
+  resolveTeamRole,
+  type TeamRole,
+} from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,6 +24,12 @@ type TeamMemberRow = {
   id: string
   invite_email: string
   status: 'pending' | 'accepted' | 'revoked' | string
+}
+
+type SubRow = {
+  status?: string | null
+  seat_count?: number | null
+  team_owner_id?: string | null
 }
 
 export default function Account() {
@@ -45,7 +41,13 @@ export default function Account() {
       ),
     []
   )
-  const [user, setUser] = useState<{ id?: string; email?: string; created_at?: string } | null>(null)
+  const [user, setUser] = useState<{
+    id?: string
+    email?: string
+    created_at?: string
+    user_metadata?: Record<string, unknown>
+  } | null>(null)
+  const [subscription, setSubscription] = useState<SubRow | null>(null)
   const [skipTraceCount, setSkipTraceCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [passwordForm, setPasswordForm] = useState({ new: '', confirm: '' })
@@ -54,6 +56,23 @@ export default function Account() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviting, setInviting] = useState(false)
   const [inviteMessage, setInviteMessage] = useState('')
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
+
+  const teamRole: TeamRole = useMemo(
+    () =>
+      resolveTeamRole({
+        metadata: user?.user_metadata,
+        email: user?.email,
+        subscription,
+      }),
+    [user?.user_metadata, user?.email, subscription],
+  )
+
+  const seatCount = Number(subscription?.seat_count ?? 0)
+  const inviteCapacity = inviteSeatCapacity(seatCount)
+  const seatsUsed = teamRole === 'team_admin' || teamRole === 'platform_admin'
+    ? 1 + teamMembers.length
+    : 0
 
   const fetchTeamMembers = useCallback(
     async (ownerId: string) => {
@@ -81,10 +100,6 @@ export default function Account() {
       }
       setUser(session.user)
 
-      // Skip trace count — informational only. The 200/mo cap was
-      // removed 2026-07-16 (unlimited skip traces), so no gating
-      // logic here; we just display the number so a broker knows
-      // how much they've used the tool.
       const currentMonth = new Date().toISOString().slice(0, 7)
       const { data: usage } = await supabase
         .from('skip_trace_usage')
@@ -93,7 +108,33 @@ export default function Account() {
         .eq('month', currentMonth)
         .maybeSingle()
       setSkipTraceCount((usage as { count?: number } | null)?.count ?? 0)
-      await fetchTeamMembers(session.user.id)
+
+      const { data: sub } = await supabase
+        .from('subscriptions')
+        .select('status, seat_count, team_owner_id')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+      setSubscription((sub as SubRow | null) ?? null)
+
+      const metaOwner = String(session.user.user_metadata?.team_owner_id ?? '').trim()
+      const subOwner = String((sub as SubRow | null)?.team_owner_id ?? '').trim()
+      const teamOwnerId = metaOwner || subOwner
+
+      if (teamOwnerId) {
+        // Member view — do not load invite management.
+        setTeamMembers([])
+        // Best-effort owner email for display (may be blocked by RLS).
+        const { data: ownerRows } = await supabase
+          .from('team_members')
+          .select('owner_id, invite_email')
+          .eq('owner_id', teamOwnerId)
+          .eq('invite_email', (session.user.email ?? '').toLowerCase())
+          .maybeSingle()
+        void ownerRows
+        setOwnerEmail(null)
+      } else {
+        await fetchTeamMembers(session.user.id)
+      }
 
       setLoading(false)
     }
@@ -158,6 +199,10 @@ export default function Account() {
     await fetchTeamMembers(user.id)
   }
 
+  const canManageTeam = teamRole === 'team_admin' || teamRole === 'platform_admin'
+  const isMember = teamRole === 'team_member'
+  const isPlatformAdmin = teamRole === 'platform_admin'
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-5 shrink-0">
@@ -173,6 +218,11 @@ export default function Account() {
           <Link href="/crm" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <BarChart2 size={13} />CRM
           </Link>
+          {isPlatformAdmin && (
+            <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
+              <Shield size={13} />Admin
+            </Link>
+          )}
           <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <LogOut size={13} />Sign out
           </button>
@@ -196,6 +246,17 @@ export default function Account() {
                     year: 'numeric',
                   })
                   : '—'}
+              </div>
+              <div className="mt-1">
+                <span className="inline-flex text-xs font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
+                  {isPlatformAdmin
+                    ? 'Platform admin'
+                    : canManageTeam
+                      ? 'Team admin'
+                      : isMember
+                        ? 'Team member'
+                        : 'Individual'}
+                </span>
               </div>
             </div>
           </div>
@@ -247,61 +308,98 @@ export default function Account() {
           </div>
         </div>
 
-        {/* ── Team members (open-ended, no seat cap) ── */}
+        {/* ── Team seats ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Team
           </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Invite teammates to your workspace. They&apos;ll get the same map,
-            CRM, and skip trace access as you.
-          </p>
 
-          <div className="flex gap-2 mb-4">
-            <input
-              type="email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="teammate@company.com"
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
-            />
-            <button
-              onClick={() => {
-                void handleInvite()
-              }}
-              disabled={inviting || !inviteEmail}
-              className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
-            >
-              {inviting ? 'Sending...' : 'Send invite'}
-            </button>
-          </div>
-
-          {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
-
-          {teamMembers.length > 0 ? (
-            <div className="space-y-2">
-              {teamMembers.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
-                >
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{member.invite_email}</div>
-                    <div className="text-xs text-gray-400 capitalize">{member.status}</div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      void handleRevoke(member.invite_email)
-                    }}
-                    className="text-xs text-red-400 hover:text-red-600"
-                  >
-                    Revoke
-                  </button>
-                </div>
-              ))}
+          {isMember ? (
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                You&apos;re on a team workspace as a <strong>member</strong>.
+              </p>
+              <p className="text-sm text-gray-500">
+                Your team admin manages seats and invites. Members can use the
+                map and CRM, but cannot open the platform Admin console.
+                {ownerEmail ? ` Admin: ${ownerEmail}.` : ''}
+              </p>
             </div>
+          ) : canManageTeam ? (
+            <>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <p className="text-sm text-gray-500">
+                  Invite teammates to your workspace. They get map + CRM access
+                  but cannot see the Admin page.
+                </p>
+                <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                  {seatsUsed}/{seatCount || '—'} seats
+                </span>
+              </div>
+
+              <div className="flex gap-2 mb-4">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="teammate@company.com"
+                  className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400"
+                />
+                <button
+                  onClick={() => {
+                    void handleInvite()
+                  }}
+                  disabled={inviting || !inviteEmail || teamMembers.length >= inviteCapacity}
+                  className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {inviting ? 'Sending...' : 'Send invite'}
+                </button>
+              </div>
+
+              {inviteCapacity < 1 && (
+                <p className="text-sm text-amber-700 mb-4">
+                  No member seats available. Ask Mineral Map to increase your seat count.
+                </p>
+              )}
+
+              {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
+
+              {teamMembers.length > 0 ? (
+                <div className="space-y-2">
+                  {teamMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{member.invite_email}</div>
+                        <div className="text-xs text-gray-400 capitalize">{member.status}</div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          void handleRevoke(member.invite_email)
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600"
+                      >
+                        Revoke
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">No team members yet.</p>
+              )}
+            </>
           ) : (
-            <p className="text-sm text-gray-400">No team members yet.</p>
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                Team seats are assigned by Mineral Map when we onboard your group.
+              </p>
+              <p className="text-sm text-gray-500">
+                Once you&apos;re set as a team admin, you can invite members from this page.
+                Contact us if you need a multi-seat workspace.
+              </p>
+            </div>
           )}
         </div>
 

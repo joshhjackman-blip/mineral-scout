@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { isPlatformAdmin } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,7 +68,13 @@ export async function GET(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session?.user?.user_metadata?.is_admin) {
+  if (
+    !session?.user ||
+    !isPlatformAdmin(
+      session.user.user_metadata as Record<string, unknown>,
+      session.user.email,
+    )
+  ) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -114,7 +121,7 @@ export async function GET(req: NextRequest) {
       email: user.email ?? '',
       created_at: user.created_at ?? new Date(0).toISOString(),
       subscription_status: subscriptionStatus,
-      is_admin: Boolean(metadata.is_admin),
+      is_admin: isPlatformAdmin(metadata, user.email),
       subscription: sub,
       skip_traces: usageByUserId.get(user.id) ?? 0,
     }

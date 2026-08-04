@@ -6,6 +6,7 @@ import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 import { ArrowLeft } from 'lucide-react'
 
 import AppLogo from '@/app/components/AppLogo'
+import { isPlatformAdmin } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -91,7 +92,12 @@ export default function AdminReviewPage() {
         data: { session },
       } = await supabase.auth.getSession()
 
-      if (!session?.user?.user_metadata?.is_admin) {
+      if (
+        !isPlatformAdmin(
+          session?.user?.user_metadata as Record<string, unknown> | undefined,
+          session?.user?.email,
+        )
+      ) {
         window.location.href = '/'
         return
       }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient } from '@supabase/supabase-js'
+import { isPlatformAdmin } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -50,7 +51,13 @@ async function requireAdmin(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session?.user?.user_metadata?.is_admin) {
+  if (
+    !session?.user ||
+    !isPlatformAdmin(
+      session.user.user_metadata as Record<string, unknown>,
+      session.user.email,
+    )
+  ) {
     return { session: null as null, error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 

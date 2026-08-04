@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { logEmailSend } from '@/lib/usage-log'
+import { getTeamOwnerId, inviteSeatCapacity, resolveTeamRole } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,12 +43,44 @@ export async function POST(req: NextRequest) {
 
   const { data: sub } = await adminClient
     .from('subscriptions')
-    .select('status, seat_count, stripe_subscription_id')
+    .select('status, seat_count, team_owner_id')
     .eq('user_id', session.user.id)
-    .single()
+    .maybeSingle()
 
-  if (!sub || sub.status !== 'active') {
-    return NextResponse.json({ error: 'Active subscription required' }, { status: 403 })
+  const metadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
+  const role = resolveTeamRole({
+    metadata,
+    email: session.user.email,
+    subscription: sub,
+  })
+
+  // Team members (and unprovisioned users) cannot invite.
+  if (role === 'team_member') {
+    return NextResponse.json(
+      { error: 'Only your team admin can invite members.' },
+      { status: 403 },
+    )
+  }
+  if (role === 'unprovisioned') {
+    return NextResponse.json(
+      {
+        error:
+          'Your account is not provisioned for team seats yet. Ask Mineral Map to assign you as a team admin.',
+      },
+      { status: 403 },
+    )
+  }
+
+  // Belt-and-suspenders: metadata/sub team_owner_id means member.
+  if (getTeamOwnerId(metadata, sub?.team_owner_id)) {
+    return NextResponse.json(
+      { error: 'Only your team admin can invite members.' },
+      { status: 403 },
+    )
+  }
+
+  if (normalizedEmail === (session.user.email ?? '').toLowerCase()) {
+    return NextResponse.json({ error: 'You cannot invite yourself.' }, { status: 400 })
   }
 
   const { data: existingMembers } = await adminClient
@@ -55,22 +89,24 @@ export async function POST(req: NextRequest) {
     .eq('owner_id', session.user.id)
     .neq('status', 'revoked')
 
-  const seatLimit = Number(sub.seat_count ?? 1)
-  if (seatLimit < 3) {
+  const seatLimit = Number(sub?.seat_count ?? 1)
+  const capacity = inviteSeatCapacity(seatLimit)
+  if (capacity < 1) {
     return NextResponse.json(
       {
-        error: 'Team plan required to invite members. Upgrade to Team at $499/mo.',
+        error:
+          'No member seats available. Ask Mineral Map to increase your seat count.',
       },
-      { status: 403 }
+      { status: 403 },
     )
   }
 
-  if ((existingMembers?.length ?? 0) >= seatLimit - 1) {
+  if ((existingMembers?.length ?? 0) >= capacity) {
     return NextResponse.json(
       {
-        error: `Seat limit reached. Your plan includes ${seatLimit} seats.`,
+        error: `Seat limit reached. Your team includes ${seatLimit} seats (1 admin + ${capacity} members).`,
       },
-      { status: 403 }
+      { status: 403 },
     )
   }
 
@@ -122,10 +158,25 @@ export async function POST(req: NextRequest) {
     if (!emailRes.ok) {
       console.error('Resend error:', await emailRes.text())
       // Keep success because invite persistence succeeded.
+    } else {
+      await logEmailSend(adminClient, {
+        kind: 'team_invite',
+        toEmail: normalizedEmail,
+        userId: session.user.id,
+        meta: { invite_url: inviteUrl },
+      })
     }
   } else {
     console.warn('RESEND_API_KEY missing; invite email not sent')
   }
 
-  return NextResponse.json({ success: true, email: normalizedEmail })
+  return NextResponse.json({
+    success: true,
+    email: normalizedEmail,
+    seats: {
+      total: seatLimit,
+      used: 1 + (existingMembers?.length ?? 0) + 1,
+      capacity,
+    },
+  })
 }
