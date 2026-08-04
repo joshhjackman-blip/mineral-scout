@@ -28,7 +28,11 @@ import type { County, CountyKey } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
 import { MapPin, Search, User, Flame, TrendingUp, XCircle, ThumbsDown, CheckCircle2, DollarSign, Clock } from 'lucide-react'
 import OwnerDrawer from '@/app/components/OwnerDrawer'
-import type { OwnerLike } from '@/app/components/OwnerDrawer'
+import type { OwnerDetailsPatch, OwnerLike } from '@/app/components/OwnerDrawer'
+import {
+  deleteOwnerOverride,
+  upsertOwnerOverride,
+} from '@/lib/owner-overrides'
 
 export const dynamic = 'force-dynamic'
 
@@ -245,6 +249,156 @@ export default function CRM() {
     return derived === 'unknown' ? ('martin' as CountyKey) : derived
   }, [selected])
 
+  const handleSaveOwnerDetails = useCallback(
+    async (owner: OwnerLike, patch: OwnerDetailsPatch) => {
+      const deal = deals.find((d) => d.id === owner.id) ?? selected
+      if (!deal) return { success: false, error: 'Deal not found' }
+
+      const countyId = (() => {
+        const d = getDealCounty(deal)
+        return d === 'unknown' ? selectedCountyId : d
+      })()
+
+      const updatePayload: Record<string, unknown> = {
+        mailing_address: patch.mailing_address ?? null,
+        mailing_city: patch.mailing_city ?? null,
+        mailing_state: patch.mailing_state ?? null,
+        mailing_zip: patch.mailing_zip ?? null,
+        phone: patch.phone ?? null,
+        email: patch.email ?? null,
+        updated_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabase
+        .from('deals')
+        .update(updatePayload)
+        .eq('id', deal.id)
+      if (error) return { success: false, error: error.message }
+
+      const { error: overrideError } = await upsertOwnerOverride({
+        countyId,
+        ownerName: deal.owner_name,
+        abstract: deal.tract_abstract,
+        status: 'updated',
+        patch: {
+          ...patch,
+          display_name: patch.display_name || deal.owner_name,
+        },
+      })
+      if (overrideError) {
+        // Deal write succeeded; override is best-effort.
+        console.error('owner_overrides upsert failed:', overrideError)
+      }
+
+      const nextPatch: Partial<Deal> = {
+        mailing_address: patch.mailing_address ?? null,
+        mailing_city: patch.mailing_city ?? null,
+        mailing_state: patch.mailing_state ?? null,
+        mailing_zip: patch.mailing_zip ?? null,
+        phone: patch.phone ?? null,
+        email: patch.email ?? null,
+      }
+      setDeals((prev) =>
+        prev.map((d) => (d.id === deal.id ? { ...d, ...nextPatch } : d)),
+      )
+      setSelected((prev) =>
+        prev?.id === deal.id ? ({ ...prev, ...nextPatch } as Deal) : prev,
+      )
+      return { success: true }
+    },
+    [deals, selected, selectedCountyId],
+  )
+
+  const handleRemoveOwner = useCallback(
+    async (
+      owner: OwnerLike,
+      opts: { status: 'hidden' | 'incorrect'; note?: string },
+    ) => {
+      const deal = deals.find((d) => d.id === owner.id) ?? selected
+      if (!deal) return { success: false, error: 'Deal not found' }
+
+      const countyId = (() => {
+        const d = getDealCounty(deal)
+        return d === 'unknown' ? selectedCountyId : d
+      })()
+
+      const { error } = await supabase
+        .from('deals')
+        .update({
+          tag: 'bad_lead',
+          notes: opts.note
+            ? `${deal.notes ? `${deal.notes}\n` : ''}Removed: ${opts.note}`
+            : deal.notes,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', deal.id)
+      if (error) return { success: false, error: error.message }
+
+      await upsertOwnerOverride({
+        countyId,
+        ownerName: deal.owner_name,
+        abstract: deal.tract_abstract,
+        status: opts.status,
+        patch: {
+          mailing_address: deal.mailing_address,
+          mailing_city: deal.mailing_city,
+          mailing_state: deal.mailing_state,
+          mailing_zip: deal.mailing_zip,
+          phone: deal.phone,
+          email: deal.email,
+          note: opts.note,
+        },
+      })
+
+      setDeals((prev) =>
+        prev.map((d) =>
+          d.id === deal.id ? { ...d, tag: 'bad_lead' } : d,
+        ),
+      )
+      setSelected(null)
+      return { success: true }
+    },
+    [deals, selected, selectedCountyId],
+  )
+
+  const handleRestoreOwner = useCallback(
+    async (owner: OwnerLike) => {
+      const deal = deals.find((d) => d.id === owner.id) ?? selected
+      if (!deal) return { success: false, error: 'Deal not found' }
+
+      const countyId = (() => {
+        const d = getDealCounty(deal)
+        return d === 'unknown' ? selectedCountyId : d
+      })()
+
+      const { error } = await supabase
+        .from('deals')
+        .update({
+          tag: 'prospect',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', deal.id)
+      if (error) return { success: false, error: error.message }
+
+      await deleteOwnerOverride({
+        countyId,
+        ownerName: deal.owner_name,
+        abstract: deal.tract_abstract,
+      })
+
+      setDeals((prev) =>
+        prev.map((d) =>
+          d.id === deal.id ? { ...d, tag: 'prospect' } : d,
+        ),
+      )
+      setSelected((prev) =>
+        prev?.id === deal.id ? ({ ...prev, tag: 'prospect' } as Deal) : prev,
+      )
+      return { success: true }
+    },
+    [deals, selected, selectedCountyId],
+  )
+
   // Memoize the Deal -> OwnerLike mapping so we hand OwnerDrawer a
   // STABLE reference across CRM re-renders. The drawer's internal
   // hooks (useOwnerHoldings, useOwnerWells, useOwnerNote) all have
@@ -254,14 +408,21 @@ export default function CRM() {
   // which cancels the in-flight Leases fetch before it can set state.
   // Result: the Leases tab shows "0 leases" forever even though the
   // Supabase query would have returned data. Reported 2026-07-21;
-  // the fix is this one useMemo. The dependency is selected.id
-  // rather than the whole selected object because Deal fields
-  // (phone, email, tag) get patched in place after skip trace and
-  // we don't want a phone-number change to blow the drawer state.
+  // Contact fields are included so Update owner / skip-trace patches
+  // refresh the drawer without remounting holdings.
   const drawerOwner: OwnerLike | null = useMemo(
     () => (selected ? dealToOwner(selected) : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selected.id is the identity key; rest of selected can update in place
-    [selected?.id],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      selected?.id,
+      selected?.phone,
+      selected?.email,
+      selected?.mailing_address,
+      selected?.mailing_city,
+      selected?.mailing_state,
+      selected?.mailing_zip,
+      selected?.tag,
+    ],
   )
 
   return (
@@ -414,10 +575,15 @@ export default function CRM() {
               open={true}
               owner={drawerOwner}
               countyId={selectedCountyId}
+              tractLabel={selected?.tract_abstract ?? null}
               inPipeline={true}
+              ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
               onClose={() => setSelected(null)}
               onSkipTrace={handleSkipTrace}
               onAddToPipeline={handleAddToPipeline}
+              onSaveOwnerDetails={handleSaveOwnerDetails}
+              onRemoveOwner={handleRemoveOwner}
+              onRestoreOwner={handleRestoreOwner}
             />
           ) : (
             <div className="h-full flex items-center justify-center flex-1">
