@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
-import { User, LogOut, MapPin, BarChart2, FileText, Shield } from 'lucide-react'
+import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import {
   inviteSeatCapacity,
@@ -224,6 +224,9 @@ export default function Account() {
           </Link>
           <Link href="/crm" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <BarChart2 size={13} />CRM
+          </Link>
+          <Link href="/help" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
+            <LifeBuoy size={13} />Help
           </Link>
           {isStaffAdmin && (
             <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
@@ -450,6 +453,24 @@ export default function Account() {
           >
             Update password
           </button>
+        </div>
+
+        {/* ── Help ── */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
+            Help desk
+          </div>
+          <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+            Need a hand with the map, seats, or billing? Submit a ticket and it
+            goes straight to management@mineralmapllc.com.
+          </p>
+          <Link
+            href="/help"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-500 rounded-lg hover:bg-amber-600 transition-colors"
+          >
+            <LifeBuoy size={14} />
+            Open help desk
+          </Link>
         </div>
 
         {/* ── Session ── */}
