@@ -1,6 +1,6 @@
 'use client'
 
-// Pad Ops — Sentinel change desk.
+// Satellite Imagery (Pad Ops) — Sentinel change desk.
 // Imagery-first premium surface for rig → completion detection.
 // Distinct from the light CRM/map chrome on purpose.
 
@@ -288,12 +288,50 @@ export default function PadActivityPage() {
     }
   }, [selected])
 
+  const requestHires = useCallback(async () => {
+    if (!selected) return
+    const { latitude: lat, longitude: lon, id } = selected.sample
+    if (lat == null || lon == null) {
+      setSkyfiNote('No coordinates on this pad — cannot pull hi-res.')
+      return
+    }
+    setSkyfiBusy(true)
+    setSkyfiNote(null)
+    try {
+      const body =
+        id > 0
+          ? { event_id: id, force: true }
+          : { lat, lon, county_id: selected.sample.county_id, api_number: selected.sample.api_number }
+      const res = await fetch('/api/pad-activity/hires', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json()
+      if (!json?.success) {
+        setSkyfiNote(json?.error || 'Hi-res pull failed')
+        return
+      }
+      const url = json.data?.signed_url as string | undefined
+      setSkyfiNote(
+        `${json.data?.hires_label || 'Hi-res'} ready` +
+          (json.data?.hires_source ? ` · ${json.data.hires_source}` : ''),
+      )
+      if (url) window.open(url, '_blank', 'noopener,noreferrer')
+      if (id > 0) await load()
+    } catch (err) {
+      setSkyfiNote(err instanceof Error ? err.message : 'Hi-res pull failed')
+    } finally {
+      setSkyfiBusy(false)
+    }
+  }, [selected, load])
+
   return (
     <div className="pad-ops">
       <header className="pad-ops-top">
         <Link href="/" className="pad-ops-brand">
-          <strong>Pad Ops</strong>
-          <span>Catch crews before the filing</span>
+          <strong>Satellite Imagery</strong>
+          <span>Pad Ops · catch crews before the filing</span>
         </Link>
         <div className="pad-ops-top-meta">
           <span className="live">Live desk</span>
@@ -304,8 +342,8 @@ export default function PadActivityPage() {
           </span>
           <span>{leads.length} leads in window</span>
           {!loading && feedSource === 'rrc_live' && (
-            <span style={{ color: '#f5a524' }} title="Weekly Sentinel change not landed yet — showing public filings as a watchlist">
-              Filing watchlist · enable Sentinel for the real edge
+            <span style={{ color: '#f5a524' }} title="Stored before/after chips land when the weekly Sentinel job finishes — showing public filings as a watchlist until then">
+              Filing watchlist · before/after chips pending weekly job
             </span>
           )}
         </div>
@@ -561,9 +599,9 @@ export default function PadActivityPage() {
               )}
 
               <div className="pad-ops-skyfi">
-                <div className="title">SkyFi confirm</div>
+                <div className="title">Confirm imagery</div>
                 <p>{brief.skyfiHint}</p>
-                <div style={{ marginTop: 10 }}>
+                <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                   <button
                     type="button"
                     className="pad-ops-btn amber"
@@ -572,6 +610,15 @@ export default function PadActivityPage() {
                     style={{ width: '100%' }}
                   >
                     {skyfiBusy ? 'Querying archive…' : 'Confirm with SkyFi'}
+                  </button>
+                  <button
+                    type="button"
+                    className="pad-ops-btn"
+                    disabled={skyfiBusy}
+                    onClick={() => void requestHires()}
+                    style={{ width: '100%' }}
+                  >
+                    {skyfiBusy ? 'Pulling…' : 'Request Mapbox / NAIP hi-res'}
                   </button>
                 </div>
                 {skyfiNote && (

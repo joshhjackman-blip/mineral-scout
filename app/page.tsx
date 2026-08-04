@@ -2258,7 +2258,7 @@ export default function Home() {
                     e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  Pad activity
+                  Satellite Imagery
                 </a>
                 <a
                   href="/crm"
@@ -2490,7 +2490,7 @@ export default function Home() {
               whiteSpace: 'nowrap',
             }}
           >
-            Pad activity
+            Satellite Imagery
           </a>
           <a
             href="/crm"
