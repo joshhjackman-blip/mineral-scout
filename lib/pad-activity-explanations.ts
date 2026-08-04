@@ -26,113 +26,117 @@ export type SignatureBrief = {
 }
 
 const COMPLETION: SignatureBrief = {
-  headline: 'Completion crew — before the filing',
+  headline: 'Completion activity — pre-filing',
   story:
-    'Sentinel-2 caught new bright clusters and edge growth on the pad — the completion-crew signature — often days before RRC logs a completion date. Call owners now, before the public filing hits every competitor’s scrape.',
+    'Sentinel-2 indicates new bright clusters and pad-edge growth consistent with completion operations, often preceding the public RRC completion date. Prioritize owner outreach before the filing is broadly visible.',
   bullets: [
-    'Imagery change landed before public completion data',
-    'Multiple new bright clusters / equipment footprint',
-    'Reach mineral owners while the window is still quiet',
+    'Imagery change precedes public completion records',
+    'Multiple bright clusters suggest equipment footprint',
+    'Owner contact window remains comparatively quiet',
   ],
-  beforeLabel: 'Prior Sentinel scene',
-  afterLabel: 'Crew signature',
+  beforeLabel: 'Prior scene',
+  afterLabel: 'Current scene',
   annotations: [
     { id: '1', label: 'Pad core', left: 32, top: 28, width: 36, height: 34, tone: 'signal' },
     { id: '2', label: 'Equipment cluster', left: 58, top: 48, width: 22, height: 20, tone: 'warn' },
     { id: '3', label: 'Access brightening', left: 18, top: 56, width: 18, height: 16, tone: 'muted' },
   ],
-  skyfiHint: 'Need higher confidence before dialing? Confirm the clusters with SkyFi hi-res.',
+  skyfiHint: 'For higher confidence before outreach, confirm clusters with a SkyFi archive scene.',
 }
 
 const RIG_IN: SignatureBrief = {
   headline: 'Rig / pad construction',
   story:
-    'A compact structural change appeared — typically a new pad or rig footprint. Watch this location for a later completion-crew signature.',
+    'A compact structural change is present — typically a new pad or rig footprint. Monitor for a subsequent completion signature.',
   bullets: [
-    '1–2 new structural clusters',
-    'Spectral jump consistent with bare earth / steel',
-    'Queue for completion watchlist',
+    'One to two new structural clusters',
+    'Spectral change consistent with bare earth or steel',
+    'Add to completion watchlist',
   ],
-  beforeLabel: 'Prior Sentinel scene',
-  afterLabel: 'New activity',
+  beforeLabel: 'Prior scene',
+  afterLabel: 'Current scene',
   annotations: [
     { id: '1', label: 'New structure', left: 36, top: 34, width: 28, height: 28, tone: 'signal' },
   ],
-  skyfiHint: 'SkyFi can resolve whether this is a rig mast vs tankage.',
+  skyfiHint: 'SkyFi can help distinguish a rig mast from tankage.',
 }
 
 const RIG_OUT: SignatureBrief = {
   headline: 'Rig move-out',
   story:
-    'Edge density dropped while the pad remains disturbed — often the gap between drilling and completion.',
+    'Structural density has declined while the pad remains disturbed — commonly the interval between drilling and completion.',
   bullets: [
-    'Structure signature reduced vs prior scene',
-    'Pad still spectrally active',
-    'Prime window before completion crew arrives',
+    'Structure signature reduced versus prior scene',
+    'Pad remains spectrally active',
+    'Monitor for subsequent completion activity',
   ],
-  beforeLabel: 'Rig present',
-  afterLabel: 'Rig cleared',
+  beforeLabel: 'Prior scene',
+  afterLabel: 'Current scene',
   annotations: [
     { id: '1', label: 'Cleared pad', left: 34, top: 32, width: 32, height: 30, tone: 'warn' },
   ],
-  skyfiHint: 'Optional SkyFi check if you need mast confirmation.',
+  skyfiHint: 'Optional SkyFi review if mast confirmation is required.',
 }
 
 const RRC_COMPLETION: SignatureBrief = {
-  headline: 'RRC completion — already public',
+  headline: 'RRC completion — public record',
   story:
-    'The Commission already logged a completion date — competitors can see this too. Still worth a call, but the edge case is catching the crew on Sentinel before this filing exists.',
+    'The Commission has already logged a completion date. Outreach may still be warranted, though competitors can observe the same filing. Imagery advantage is greatest when change is detected before this record exists.',
   bullets: [
     'Public completion date is already on file',
-    'Expect competition on owner outreach',
-    'Use imagery next time to get ahead of the scrape',
+    'Expect concurrent owner outreach',
+    'Use imagery to identify pre-filing windows on future pads',
   ],
   beforeLabel: 'Baseline',
-  afterLabel: 'Current pad',
+  afterLabel: 'Current scene',
   annotations: [
     { id: '1', label: 'Wellsite AOI', left: 30, top: 30, width: 40, height: 40, tone: 'signal' },
   ],
-  skyfiHint: 'SkyFi can still confirm frac / flowback if you need visual proof on the call.',
+  skyfiHint: 'SkyFi can still confirm frac or flowback if visual evidence is needed.',
 }
 
 const RRC_APPROVED: SignatureBrief = {
   headline: 'Permit approved',
   story:
-    'A drilling permit cleared. Early signal — watch for rig move-in on the next Sentinel pass.',
+    'A drilling permit has been approved. Monitor subsequent Sentinel passes for rig move-in and pad construction.',
   bullets: [
-    'Approved permit in the lookback window',
-    'No completion yet — monitor for pad cut',
-    'Early owner contact before competitors',
+    'Approved permit within the lookback window',
+    'No completion recorded yet',
+    'Early owner contact may precede broader awareness',
   ],
-  beforeLabel: 'Pre-permit',
+  beforeLabel: 'Prior scene',
   afterLabel: 'Latest scene',
   annotations: [
     { id: '1', label: 'Expected pad', left: 34, top: 34, width: 32, height: 32, tone: 'muted' },
   ],
-  skyfiHint: 'Usually wait for Sentinel change; SkyFi only if you need same-week clarity.',
+  skyfiHint: 'Prefer Sentinel change detection; use SkyFi when same-week clarity is required.',
 }
 
 const AMBIGUOUS: SignatureBrief = {
-  headline: 'Possible crew — confirm fast',
+  headline: 'Possible completion activity',
   story:
-    'Sentinel saw a major pad change that did not cleanly score as completion crew. If this is equipment staging, you still have the pre-filing advantage — confirm with SkyFi or mark it yourself.',
+    'Sentinel registered a material pad change that did not classify cleanly as a completion signature. Confirm with higher-resolution imagery or human review before outreach.',
   bullets: [
-    'MAJOR_CHANGE before a clean signature',
-    'Could be the early crew window',
-    'Confirm completion, then call owners immediately',
+    'Major change without a clean signature match',
+    'May represent early equipment staging',
+    'Confirm classification, then contact owners',
   ],
   beforeLabel: 'Before',
   afterLabel: 'After',
   annotations: [
     { id: '1', label: 'Change region', left: 28, top: 28, width: 44, height: 42, tone: 'warn' },
   ],
-  skyfiHint: 'SkyFi is built for this moment — confirm crew before you burn dials.',
+  skyfiHint: 'Use SkyFi archive confirmation before initiating owner contact.',
 }
 
 const DEFAULT_BRIEF: SignatureBrief = {
   headline: 'Pad signal',
   story: 'Activity detected on this pad. Review imagery and filing context before outreach.',
-  bullets: ['Inspect before/after scenes', 'Check owners on the tract', 'Confirm with SkyFi if unsure'],
+  bullets: [
+    'Inspect before and after scenes',
+    'Review mineral owners on the tract',
+    'Confirm with SkyFi if classification is uncertain',
+  ],
   beforeLabel: 'Before',
   afterLabel: 'After',
   annotations: [
