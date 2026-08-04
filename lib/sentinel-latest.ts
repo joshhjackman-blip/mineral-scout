@@ -100,11 +100,13 @@ export function buildTitilerCropUrl(
   opts?: { groundM?: number; maxSize?: number },
 ): string {
   const [minx, miny, maxx, maxy] = padChipBbox(lat, lon, opts?.groundM ?? PAD_CHIP_GROUND_M)
-  const maxSize = opts?.maxSize ?? PAD_CHIP_MAX_SIZE
+  // Native FOV is ~128 px at 10 m/px; request an upscaled square for the desk.
+  const size = opts?.maxSize ?? PAD_CHIP_MAX_SIZE
   const path = `https://titiler.xyz/cog/bbox/${minx},${miny},${maxx},${maxy}.jpg`
   const url = new URL(path)
   url.searchParams.set('url', cogUrl)
-  url.searchParams.set('max_size', String(maxSize))
+  url.searchParams.set('width', String(size))
+  url.searchParams.set('height', String(size))
   return url.toString()
 }
 
