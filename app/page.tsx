@@ -45,6 +45,7 @@ type TractOwner = {
   mailing_zip?: string
   address_1?: string
   mailing_address?: string
+  mailing_addresses?: string[]
   out_of_state?: boolean
   motivated?: boolean
   acreage?: number
@@ -140,8 +141,10 @@ type SkipTraceResult = {
 
 type OwnerSearchResult = {
   owner_name: string
+  mailing_address?: string | null
   mailing_city?: string | null
   mailing_state?: string | null
+  mailing_zip?: string | null
   propensity_score?: number | null
   rrc_lease_id?: string | number | null
   operator_name?: string | null
@@ -1314,7 +1317,7 @@ export default function Home() {
         words.map((word) =>
           supabase
             .from(COUNTIES[countyKey].ownershipTable)
-            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
+            .select('id, owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
             .ilike('owner_name', `%${word}%`)
             .order('owner_name', { ascending: true })
             .limit(100)
@@ -1389,7 +1392,11 @@ export default function Home() {
       mailing_city: owner.mailing_city ?? '',
       mailing_state: owner.mailing_state ?? '',
       mailing_zip: owner.mailing_zip ?? '',
-      mailing_address: owner.address_1 ?? owner.mailing_address ?? '',
+      mailing_address: (
+        owner.mailing_addresses && owner.mailing_addresses.length > 0
+          ? owner.mailing_addresses.join(' | ')
+          : (owner.address_1 ?? owner.mailing_address ?? '')
+      ),
       acreage: owner.acreage ?? null,
       source: 'map',
       tag: pipelineTag,
@@ -1935,6 +1942,34 @@ export default function Home() {
   const selectedOwners = tractOwners
   const deduplicatedOwners = useMemo(() => {
     const seen = new Map<string, TractOwner>()
+    const mergeMailing = (a: TractOwner, b: TractOwner): string[] | undefined => {
+      const lines: string[] = []
+      const push = (raw: unknown) => {
+        if (Array.isArray(raw)) {
+          for (const item of raw) {
+            const text = String(item ?? '').trim()
+            if (text) lines.push(text)
+          }
+          return
+        }
+        const text = String(raw ?? '').trim()
+        if (text) lines.push(text)
+      }
+      push(a.mailing_addresses)
+      push(b.mailing_addresses)
+      push(a.address_1 ?? a.mailing_address)
+      push(b.address_1 ?? b.mailing_address)
+      if (lines.length === 0) return undefined
+      const out: string[] = []
+      const keys = new Set<string>()
+      for (const line of lines) {
+        const key = line.toUpperCase()
+        if (keys.has(key)) continue
+        keys.add(key)
+        out.push(line)
+      }
+      return out
+    }
     for (const owner of selectedOwners) {
       const name = String(owner.owner_name ?? '').trim()
       if (!name) continue
@@ -1942,11 +1977,29 @@ export default function Home() {
       // Keep the row with the largest NRA when the same owner
       // appears on multiple leases; that preserves the "biggest
       // stake" version of the record, which is what brokers care
-      // about now that scoring is gone.
+      // about now that scoring is gone. Still merge every distinct
+      // mineral-roll mailing address onto the kept row.
       const currentNRA = getNRA(owner, selected, county) ?? 0
       const existingNRA = existing ? (getNRA(existing, selected, county) ?? 0) : -1
       if (!existing || currentNRA > existingNRA) {
-        seen.set(name, owner)
+        const mergedAddresses = existing ? mergeMailing(owner, existing) : (owner.mailing_addresses ?? (
+          owner.address_1 || owner.mailing_address
+            ? [String(owner.address_1 ?? owner.mailing_address)]
+            : undefined
+        ))
+        seen.set(name, {
+          ...owner,
+          mailing_addresses: mergedAddresses,
+          address_1: owner.address_1 || existing?.address_1,
+          mailing_address: owner.mailing_address || existing?.mailing_address,
+        })
+      } else if (existing) {
+        seen.set(name, {
+          ...existing,
+          mailing_addresses: mergeMailing(existing, owner),
+          address_1: existing.address_1 || owner.address_1,
+          mailing_address: existing.mailing_address || owner.mailing_address,
+        })
       }
     }
     return Array.from(seen.values())

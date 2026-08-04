@@ -286,6 +286,9 @@ def build_payload(
         column = column_lookup.get(name)
         return row.get(column) if column else None
 
+    # Howard CAD frequently leaves address1 blank and stores the street in
+    # address2 (city/state/zip still populate). Always join 1..4 so we don't
+    # drop the only street line when address1 is whitespace.
     address_parts = [clean_str(src("address1")), clean_str(src("address2"))]
     extra_address = [clean_str(src("address3")), clean_str(src("address4"))]
     address_parts.extend(extra_address)
