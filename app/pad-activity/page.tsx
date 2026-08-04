@@ -1,14 +1,10 @@
 import { redirect } from 'next/navigation'
-import { SATELLITE_IMAGERY_ENABLED } from '@/lib/feature-flags'
 
 /**
- * Satellite Imagery (Pad Ops) — archived for now.
- * Full implementation remains in git history / API routes; re-enable via
- * SATELLITE_IMAGERY_ENABLED in lib/feature-flags.ts.
+ * Satellite Imagery (Pad Ops) — archived 2026-08-04.
+ * Re-enable UI via SATELLITE_IMAGERY_ENABLED in lib/feature-flags.ts
+ * (API routes and components remain in the repo).
  */
-export default function PadActivityPage() {
-  if (!SATELLITE_IMAGERY_ENABLED) {
-    redirect('/')
-  }
+export default function PadActivityArchivedPage() {
   redirect('/')
 }
