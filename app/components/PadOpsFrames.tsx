@@ -130,10 +130,10 @@ export default function PadOpsFrames({
 
   if (!hasPair) {
     const label = onDemand
-      ? `Live ${onDemand.source === 'skyfi' ? 'SkyFi' : 'Sentinel'} · ${onDemand.date || 'latest'}`
+      ? `${onDemand.source === 'skyfi' ? 'SkyFi' : 'Sentinel'} pad chip · ${onDemand.date || 'latest'}`
       : loadingOd
-        ? 'Acquiring live scene…'
-        : 'Live scene'
+        ? 'Cropping pad scene…'
+        : 'Pad scene'
     return (
       <div className="pad-ops-frames" style={{ gridTemplateColumns: '1fr' }}>
         <Frame
@@ -142,7 +142,7 @@ export default function PadOpsFrames({
           annotations={onDemand ? annotations : undefined}
           emptyHint={
             loadingOd
-              ? 'Querying Sentinel / SkyFi archive for this pad…'
+              ? 'Cropping a pad-centered Sentinel scene for this well…'
               : 'No coordinates or scene available yet for this signal.'
           }
         />

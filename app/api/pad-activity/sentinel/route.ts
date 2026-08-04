@@ -6,7 +6,9 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 function proxiedUrl(request: NextRequest, remoteUrl: string): string {
-  // Only proxy public Sentinel COG thumbs; SkyFi URLs are already CDN-ready.
+  // Same-origin pad chips (/api/.../chip) are already browser-safe.
+  if (remoteUrl.startsWith('/')) return remoteUrl
+  // Only proxy public Sentinel thumbs; SkyFi URLs are already CDN-ready.
   try {
     const host = new URL(remoteUrl).hostname
     if (
@@ -28,9 +30,8 @@ function proxiedUrl(request: NextRequest, remoteUrl: string): string {
  *
  * Latest pad preview for brokers:
  *  1. SkyFi archive thumbnail when SKYFI_API_KEY is set (no paid order)
- *  2. Else free Sentinel-2 preview via Element84 Earth Search
+ *  2. Else free Sentinel-2 pad-centered COG crop (~1.3 km) via /sentinel/chip
  *
- * Sentinel image URLs are same-origin proxied so the browser always gets a chip.
  * Paywall: not enforced yet. Set SKYFI_PAYWALL_ENABLED=true later and
  * implement credit/seat checks in skyfiAccessAllowed().
  */
