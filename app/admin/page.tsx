@@ -14,7 +14,7 @@ import {
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { isPlatformAdmin } from '@/lib/team'
+import { isPlatformAdmin, isPlatformOwner } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,7 +84,20 @@ type TeamRow = {
   is_platform_admin?: boolean
 }
 
-type AdminTab = 'usage' | 'teams' | 'users'
+type AdminAccountRow = {
+  id: string
+  email: string
+  role: 'platform_owner' | 'platform_admin' | 'team_admin'
+  role_label: string
+  created_at: string | null
+  last_sign_in_at: string | null
+  seat_count: number
+  seats_used: number | null
+  is_owner: boolean
+  can_revoke: boolean
+}
+
+type AdminTab = 'usage' | 'admins' | 'teams' | 'users'
 
 export default function AdminDashboard() {
   const supabase = useMemo(
@@ -108,10 +121,16 @@ export default function AdminDashboard() {
   })
   const [usage, setUsage] = useState<UsagePayload | null>(null)
   const [teams, setTeams] = useState<TeamRow[]>([])
+  const [admins, setAdmins] = useState<AdminAccountRow[]>([])
+  const [viewerIsOwner, setViewerIsOwner] = useState(false)
   const [provisionEmail, setProvisionEmail] = useState('')
   const [provisionSeats, setProvisionSeats] = useState(4)
   const [provisionMsg, setProvisionMsg] = useState<string | null>(null)
   const [provisioning, setProvisioning] = useState(false)
+  const [grantAdminEmail, setGrantAdminEmail] = useState('')
+  const [grantAdminMsg, setGrantAdminMsg] = useState<string | null>(null)
+  const [grantingAdmin, setGrantingAdmin] = useState(false)
+  const [sessionEmail, setSessionEmail] = useState<string | null>(null)
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
     []
@@ -120,10 +139,11 @@ export default function AdminDashboard() {
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [usersRes, usageRes, teamsRes] = await Promise.all([
+      const [usersRes, usageRes, teamsRes, adminsRes] = await Promise.all([
         fetch('/api/admin/users', { cache: 'no-store' }),
         fetch('/api/admin/usage', { cache: 'no-store' }),
         fetch('/api/admin/teams', { cache: 'no-store' }),
+        fetch('/api/admin/admins', { cache: 'no-store' }),
       ])
       if (!usersRes.ok) {
         window.location.href = '/'
@@ -155,6 +175,17 @@ export default function AdminDashboard() {
         setTeams(teamData.teams ?? [])
       } else {
         setTeams([])
+      }
+
+      if (adminsRes.ok) {
+        const adminData = (await adminsRes.json()) as {
+          admins?: AdminAccountRow[]
+          viewer_is_owner?: boolean
+        }
+        setAdmins(adminData.admins ?? [])
+        setViewerIsOwner(Boolean(adminData.viewer_is_owner))
+      } else {
+        setAdmins([])
       }
       setLastUpdated(new Date())
     } finally {
@@ -214,6 +245,55 @@ export default function AdminDashboard() {
     await refresh()
   }
 
+  const handleGrantAdmin = async () => {
+    if (!grantAdminEmail.trim()) return
+    setGrantingAdmin(true)
+    setGrantAdminMsg(null)
+    try {
+      const res = await fetch('/api/admin/admins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: grantAdminEmail.trim() }),
+      })
+      const data = (await res.json()) as {
+        success?: boolean
+        invited?: boolean
+        error?: string
+        admin?: { email: string }
+      }
+      if (!res.ok || !data.success) {
+        setGrantAdminMsg(data.error || 'Failed to grant admin')
+        return
+      }
+      setGrantAdminMsg(
+        data.invited
+          ? `Invite sent to ${data.admin?.email} as platform admin.`
+          : `Granted platform admin to ${data.admin?.email}.`,
+      )
+      setGrantAdminEmail('')
+      await refresh()
+    } catch {
+      setGrantAdminMsg('Failed to grant admin')
+    } finally {
+      setGrantingAdmin(false)
+    }
+  }
+
+  const handleRevokeAdmin = async (userId: string, email: string) => {
+    if (!confirm(`Revoke platform admin from ${email}?`)) return
+    const res = await fetch('/api/admin/admins', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, action: 'revoke' }),
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok) {
+      alert(data.error || 'Failed to revoke admin')
+      return
+    }
+    await refresh()
+  }
+
   useEffect(() => {
     const load = async () => {
       const {
@@ -229,6 +309,8 @@ export default function AdminDashboard() {
         window.location.href = '/'
         return
       }
+      setSessionEmail(session?.user?.email ?? null)
+      setViewerIsOwner(isPlatformOwner(session?.user?.email))
       await refresh()
     }
 
@@ -261,7 +343,9 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-3">
           <AppLogo variant="light" width={120} />
           <span className="text-gray-600">·</span>
-          <span className="text-sm text-gray-400">Admin</span>
+          <span className="text-sm text-gray-400">
+            {viewerIsOwner || isPlatformOwner(sessionEmail) ? 'Owner' : 'Admin'}
+          </span>
         </div>
         <Link
           href="/"
@@ -278,6 +362,7 @@ export default function AdminDashboard() {
             {(
               [
                 { key: 'usage' as const, label: 'Usage' },
+                { key: 'admins' as const, label: 'Admins' },
                 { key: 'teams' as const, label: 'Teams' },
                 { key: 'users' as const, label: 'Users' },
               ] as const
@@ -504,6 +589,134 @@ export default function AdminDashboard() {
               )}
             </div>
           </>
+        ) : tab === 'admins' ? (
+          <>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
+              <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
+                Owner console — track every admin
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                <strong className="text-gray-700">Owner</strong>{' '}
+                (management@mineralmapllc.com) sits above every other admin.
+                Platform admins can open this console. Team admins run customer
+                workspaces and cannot see Owner/Admin pages.
+              </p>
+              {viewerIsOwner ? (
+                <div className="flex flex-wrap gap-2 items-end">
+                  <label className="flex flex-col gap-1 min-w-[220px] flex-1">
+                    <span className="text-xs text-gray-500">Grant platform admin</span>
+                    <input
+                      type="email"
+                      value={grantAdminEmail}
+                      onChange={(e) => setGrantAdminEmail(e.target.value)}
+                      placeholder="staff@mineralmapllc.com"
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={grantingAdmin || !grantAdminEmail.trim()}
+                    onClick={() => {
+                      void handleGrantAdmin()
+                    }}
+                    className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                  >
+                    {grantingAdmin ? 'Granting…' : 'Add admin'}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                  Only the owner account can grant or revoke platform admins.
+                </p>
+              )}
+              {grantAdminMsg && (
+                <p className="mt-3 text-sm text-gray-600">{grantAdminMsg}</p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-serif text-lg font-bold text-gray-900">All admins</h2>
+                <span className="text-xs text-gray-400">{admins.length} accounts</span>
+              </div>
+              {loading ? (
+                <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+              ) : admins.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-400">
+                  No admin accounts found yet.
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full min-w-[720px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {['Email', 'Role', 'Seats', 'Last sign-in', ''].map((h) => (
+                          <th
+                            key={h || 'actions'}
+                            className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {admins.map((admin) => (
+                        <tr key={admin.id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                            {admin.email}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span
+                              className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                                admin.role === 'platform_owner'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                  : admin.role === 'platform_admin'
+                                    ? 'bg-slate-900 text-white border-slate-900'
+                                    : 'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}
+                            >
+                              {admin.role_label}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {admin.seats_used != null
+                              ? `${admin.seats_used}/${admin.seat_count || '—'}`
+                              : '—'}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-500">
+                            {admin.last_sign_in_at
+                              ? new Date(admin.last_sign_in_at).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric',
+                                })
+                              : '—'}
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            {admin.can_revoke && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleRevokeAdmin(admin.id, admin.email)
+                                }}
+                                className="text-xs font-semibold text-red-600 hover:text-red-700"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                            {admin.is_owner && (
+                              <span className="text-xs text-gray-400">Protected</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
         ) : tab === 'teams' ? (
           <>
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
@@ -511,8 +724,8 @@ export default function AdminDashboard() {
                 Provision team admin
               </h2>
               <p className="text-sm text-gray-500 mb-4">
-                Assign a team admin and seat count when onboarding a customer.
-                That admin invites members from Account. Members cannot open this Admin console.
+                Assign a customer team admin and seat count when onboarding.
+                That admin invites members from Account. Members cannot open this console.
               </p>
               <div className="flex flex-wrap gap-2 items-end">
                 <label className="flex flex-col gap-1 min-w-[220px] flex-1">
