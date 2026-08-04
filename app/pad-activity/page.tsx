@@ -331,19 +331,19 @@ export default function PadActivityPage() {
       <header className="pad-ops-top">
         <Link href="/" className="pad-ops-brand">
           <strong>Satellite Imagery</strong>
-          <span>Pad Ops · catch crews before the filing</span>
+          <span>Operational change desk</span>
         </Link>
         <div className="pad-ops-top-meta">
-          <span className="live">Live desk</span>
+          <span className="live">Active</span>
           <span>
             {loading
-              ? 'syncing…'
+              ? 'Updating…'
               : `${cards.length} signals · ${completionCount} completion`}
           </span>
-          <span>{leads.length} leads in window</span>
+          <span>{leads.length} owners in window</span>
           {!loading && feedSource === 'rrc_live' && (
             <span style={{ color: '#f5a524' }} title="Stored before/after chips land when the weekly Sentinel job finishes — showing public filings as a watchlist until then">
-              Filing watchlist · before/after chips pending weekly job
+              Filing watchlist — paired imagery pending
             </span>
           )}
         </div>
@@ -378,7 +378,7 @@ export default function PadActivityPage() {
                 data-active={signalFilter === 'lifecycle'}
                 onClick={() => setSignalFilter('lifecycle')}
               >
-                Early edge
+                Pre-filing
               </button>
               <button
                 type="button"
@@ -386,7 +386,7 @@ export default function PadActivityPage() {
                 data-active={signalFilter === 'all'}
                 onClick={() => setSignalFilter('all')}
               >
-                All
+                All signals
               </button>
               <button
                 type="button"
@@ -490,17 +490,16 @@ export default function PadActivityPage() {
                 border: '1px solid rgba(251,113,133,0.45)',
                 background: 'rgba(251,113,133,0.08)',
                 color: '#fecdd3',
-                fontFamily: 'IBM Plex Mono, monospace',
-                fontSize: 12,
+                fontSize: 13,
               }}
             >
               {error}
             </div>
           )}
 
-          {!selected ? (
+              {!selected ? (
             <div className="pad-ops-empty" style={{ margin: 'auto' }}>
-              Select a signal to open the change desk.
+              Select a signal to open the imagery desk.
             </div>
           ) : (
             <>
@@ -545,7 +544,7 @@ export default function PadActivityPage() {
         {/* Right: explanation + actions */}
         <aside className="pad-ops-brief">
           <div className="pad-ops-brief-head">
-            <h2>Readout</h2>
+            <h2>Assessment</h2>
           </div>
           {!selected ? (
             <div className="pad-ops-empty">Waiting for selection…</div>
@@ -584,15 +583,15 @@ export default function PadActivityPage() {
                 <div>
                   <div
                     style={{
-                      fontFamily: 'IBM Plex Mono, monospace',
-                      fontSize: 9,
-                      letterSpacing: '0.12em',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: '0.07em',
                       textTransform: 'uppercase',
-                      color: '#8b9bb8',
+                      color: '#9aa3b2',
                       marginBottom: 6,
                     }}
                   >
-                    Filing / model note
+                    Filing note
                   </div>
                   <p>{selected.sample.summary}</p>
                 </div>
@@ -609,7 +608,7 @@ export default function PadActivityPage() {
                     onClick={() => void confirmWithSkyfi()}
                     style={{ width: '100%' }}
                   >
-                    {skyfiBusy ? 'Querying archive…' : 'Confirm with SkyFi'}
+                    {skyfiBusy ? 'Querying archive…' : 'Confirm with SkyFi archive'}
                   </button>
                   <button
                     type="button"
@@ -618,7 +617,7 @@ export default function PadActivityPage() {
                     onClick={() => void requestHires()}
                     style={{ width: '100%' }}
                   >
-                    {skyfiBusy ? 'Pulling…' : 'Request Mapbox / NAIP hi-res'}
+                    {skyfiBusy ? 'Retrieving…' : 'Request high-resolution scene'}
                   </button>
                 </div>
                 {skyfiNote && (
@@ -666,26 +665,26 @@ export default function PadActivityPage() {
                   href={mapHrefForEvent(selected.sample)}
                   className="pad-ops-btn primary"
                 >
-                  Open owners on map
+                  Open mineral owners
                 </Link>
               </div>
 
               <div>
                 <div
                   style={{
-                    fontFamily: 'IBM Plex Mono, monospace',
-                    fontSize: 9,
-                    letterSpacing: '0.12em',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    letterSpacing: '0.07em',
                     textTransform: 'uppercase',
-                    color: '#8b9bb8',
+                    color: '#9aa3b2',
                     marginBottom: 8,
                   }}
                 >
                   Mineral owners
                 </div>
                 {selected.owners.length === 0 ? (
-                  <p style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#8b9bb8' }}>
-                    No owner names on this event row yet — open the map tract for the full list.
+                  <p style={{ fontSize: 12, color: '#9aa3b2', lineHeight: 1.45 }}>
+                    No owner names on this event yet. Open the map tract for the full list.
                   </p>
                 ) : (
                   <div className="pad-ops-owners">
