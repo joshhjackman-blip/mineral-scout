@@ -2889,21 +2889,38 @@ export default function Home() {
             CRM →
           </a>
           {!hideSecondaryNavActions && (
-            <a
-              href="/account"
-              style={{
-                fontSize: 12,
-                color: '#6B7280',
-                textDecoration: 'none',
-                padding: '6px 12px',
-                borderRadius: 6,
-                border: '1px solid #E5E7EB',
-                fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              Account
-            </a>
+            <>
+              <a
+                href="/help"
+                style={{
+                  fontSize: 12,
+                  color: '#6B7280',
+                  textDecoration: 'none',
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #E5E7EB',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Help
+              </a>
+              <a
+                href="/account"
+                style={{
+                  fontSize: 12,
+                  color: '#6B7280',
+                  textDecoration: 'none',
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  border: '1px solid #E5E7EB',
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Account
+              </a>
+            </>
           )}
           <button
             onClick={() => {

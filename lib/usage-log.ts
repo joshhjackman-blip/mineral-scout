@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
-export type EmailSendKind = 'team_invite' | 'demo_booking' | 'other'
+export type EmailSendKind = 'team_invite' | 'demo_booking' | 'help_ticket' | 'other'
 export type UsageEventType = 'call_clicked' | 'email_clicked' | 'other'
 
 /** Best-effort Resend send log for the admin Usage tab (server). */
