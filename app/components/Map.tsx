@@ -282,6 +282,7 @@ export default function Map({
   onCountySelect,
   onCountySwitch,
   devStatusByAbstract,
+  operatorMatchAbstracts = null,
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
@@ -291,6 +292,8 @@ export default function Map({
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
   devStatusByAbstract?: Record<string, DevStatusMapEntry>
+  /** When set, dim tracts not in this abstract list and ring matches in amber. */
+  operatorMatchAbstracts?: string[] | null
 }) {
   // In-map layer toggles. Every tract on the map is classified into one
   // of the 6 UnifiedStatus buckets (see deriveMapStatus at the top of
@@ -655,20 +658,37 @@ export default function Map({
   // Toggling a status off drops its fill-opacity to 0. That's cheaper
   // than a `filter` update (no source refresh needed) and keeps the
   // outline/label layers in sync via the same trick below.
+  // When an operator filter is active, non-matching tracts dim so CAD
+  // operator hits read clearly (amber ring layer is added separately).
   const selectedFillOpacityExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
-      'PDP',            statusVisible.PDP            ? STATUS_OPACITY.PDP            : 0,
-      'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OPACITY.PUD_DUC        : 0,
-      'TRUE_PUD',       statusVisible.TRUE_PUD       ? STATUS_OPACITY.TRUE_PUD       : 0,
-      'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OPACITY.PUD_PERMITTED  : 0,
-      'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OPACITY.PUD_INFILL     : 0,
-      'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
-      statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
-    ],
+    () => {
+      const byStatus: mapboxgl.Expression = [
+        'match',
+        ['coalesce', ['get', 'map_status'], 'FRONTIER'],
+        'PDP',            statusVisible.PDP            ? STATUS_OPACITY.PDP            : 0,
+        'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OPACITY.PUD_DUC        : 0,
+        'TRUE_PUD',       statusVisible.TRUE_PUD       ? STATUS_OPACITY.TRUE_PUD       : 0,
+        'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OPACITY.PUD_PERMITTED  : 0,
+        'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OPACITY.PUD_INFILL     : 0,
+        'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
+        statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
+      ]
+      if (operatorMatchAbstracts == null) return byStatus
+      if (operatorMatchAbstracts.length === 0) {
+        return ['*', byStatus, 0.12] as mapboxgl.Expression
+      }
+      // Cap literal size — Mapbox handles large `in` lists, but keep
+      // the expression bounded for pathological counties.
+      const literals = operatorMatchAbstracts.slice(0, 8000)
+      return [
+        'case',
+        ['in', ['get', 'ABSTRACT_L'], ['literal', literals]],
+        byStatus,
+        ['*', byStatus, 0.12],
+      ] as mapboxgl.Expression
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusVisible]
+    [statusVisible, operatorMatchAbstracts]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
@@ -2100,6 +2120,43 @@ export default function Map({
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
+  // Amber ring around tracts whose CAD ownership matches the operator filter.
+  useEffect(() => {
+    const mapInstance = map.current
+    if (!mapInstance?.isStyleLoaded() || mapLevel !== 'tract') return
+
+    const countyId = COUNTIES[selectedCounty]?.id
+    if (!countyId) return
+    const sourceId = `parcels-${countyId}`
+    const layerId = `parcels-operator-match-${countyId}`
+
+    if (mapInstance.getLayer(layerId)) {
+      mapInstance.removeLayer(layerId)
+    }
+
+    if (
+      operatorMatchAbstracts == null ||
+      operatorMatchAbstracts.length === 0 ||
+      !mapInstance.getSource(sourceId)
+    ) {
+      return
+    }
+
+    const literals = operatorMatchAbstracts.slice(0, 8000)
+    mapInstance.addLayer({
+      id: layerId,
+      type: 'line',
+      source: sourceId,
+      filter: ['in', ['get', 'ABSTRACT_L'], ['literal', literals]],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': '#EF9F27',
+        'line-width': 3.5,
+        'line-opacity': 0.95,
+      },
+    })
+  }, [operatorMatchAbstracts, selectedCounty, mapLevel, mapReady])
+
   // When any per-status toggle flips, applyTractCountyStyles's own
   // "same county, nothing to repaint" optimization would swallow the
   // update. Force a repaint by invalidating the last-styled ref before
@@ -2107,7 +2164,7 @@ export default function Map({
   // the fill/opacity expressions, which depend on statusVisible).
   useEffect(() => {
     lastStyledSelectedCountyRef.current = null
-  }, [statusVisible])
+  }, [statusVisible, operatorMatchAbstracts])
 
   // Re-inject development_status + secondary flags onto every loaded
   // feature when the per-county dev-status lookup changes (initial

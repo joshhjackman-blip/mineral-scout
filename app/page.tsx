@@ -12,6 +12,11 @@ import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { COUNTIES } from '@/lib/counties'
+import {
+  abstractsMatchingOperator,
+  collectOperatorOptions,
+  operatorMatches,
+} from '@/lib/operator-filter'
 
 import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
@@ -686,6 +691,9 @@ export default function Home() {
   // comment near ActivityChip explains why it's not yet wired into Map.tsx
   // as a layer filter.
   const [activityFilter, setActivityFilter] = useState<'all' | 'pdp' | 'pud' | 'new_permit' | 'pending_permit'>('all')
+  // CAD tax-roll operator (entity listed against the lease / NRI interest).
+  // Empty string = no filter. Matching is contains/normalized.
+  const [operatorFilter, setOperatorFilter] = useState('')
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
@@ -2065,8 +2073,18 @@ export default function Home() {
     })
   }, [county, sortedOwners, ownerTypeFilter, largeInterestOnly, minNRA, selected])
 
+  const operatorOptions = useMemo(
+    () => collectOperatorOptions(tracts, parseOwners),
+    [tracts],
+  )
+
+  const operatorMatchAbstracts = useMemo(() => {
+    if (!operatorFilter.trim()) return null
+    return abstractsMatchingOperator(tracts, operatorFilter, parseOwners)
+  }, [tracts, operatorFilter])
+
   const cleanOwnersList = useMemo(() => {
-    return filteredOwnersList.filter((owner: TractOwner) => {
+    const cleaned = filteredOwnersList.filter((owner: TractOwner) => {
       const name = (owner.owner_name ?? '').trim()
       if (!name || name.length < 3) return false
       if (/^MAP\d{4}/.test(name)) return false
@@ -2074,7 +2092,14 @@ export default function Home() {
       if (name === 'UNKNOWN' || name === 'N/A') return false
       return true
     })
-  }, [filteredOwnersList])
+    if (!operatorFilter.trim()) return cleaned
+    // Surface CAD operator matches first; keep the rest for tract context.
+    return [...cleaned].sort((a, b) => {
+      const aHit = operatorMatches(a.operator_name, operatorFilter) ? 0 : 1
+      const bHit = operatorMatches(b.operator_name, operatorFilter) ? 0 : 1
+      return aHit - bHit
+    })
+  }, [filteredOwnersList, operatorFilter])
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
@@ -2604,6 +2629,7 @@ export default function Home() {
               tractDevStatus={devStatusByAbstract[
                 String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
               ] ?? null}
+              highlightOperator={operatorFilter.trim() || null}
               onClose={() => {
                 setDrawerOwner(null)
                 setDrawerTractLabel(null)
@@ -3031,6 +3057,9 @@ export default function Home() {
                   const isExpanded = expandedOwner === i
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName
+                  const operatorHit = Boolean(
+                    operatorFilter.trim() && operatorMatches(owner.operator_name, operatorFilter),
+                  )
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
                   // ownerWells / ownerWellsLoading are still populated when a
@@ -3055,7 +3084,14 @@ export default function Home() {
                   const ownershipDecimalValue = ownershipPctValue / 100
 
                   return (
-                    <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <div
+                      key={`${owner.owner_name}-${i}`}
+                      style={{
+                        borderBottom: '1px solid #F3F4F6',
+                        opacity:
+                          operatorFilter.trim() && !operatorHit ? 0.45 : 1,
+                      }}
+                    >
                       <div
                         id={ownerElementId}
                         onClick={() => {
@@ -3085,15 +3121,25 @@ export default function Home() {
                         style={{
                           padding: '10px 16px',
                           cursor: 'pointer',
-                          background: isHighlighted ? '#FEF3C7' : isExpanded ? '#FFFBEB' : 'transparent',
-                          borderLeft: isHighlighted ? '3px solid #EF9F27' : '3px solid transparent',
+                          background: operatorHit
+                            ? '#FEF3C7'
+                            : isHighlighted
+                              ? '#FEF3C7'
+                              : isExpanded
+                                ? '#FFFBEB'
+                                : 'transparent',
+                          borderLeft: operatorHit || isHighlighted
+                            ? '3px solid #EF9F27'
+                            : '3px solid transparent',
                           transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          if (!isExpanded && !isHighlighted) e.currentTarget.style.background = '#F9FAFB'
+                          if (!isExpanded && !isHighlighted && !operatorHit) {
+                            e.currentTarget.style.background = '#F9FAFB'
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          if (!isExpanded && !isHighlighted) {
+                          if (!isExpanded && !isHighlighted && !operatorHit) {
                             e.currentTarget.style.background = 'transparent'
                           }
                         }}
@@ -3102,6 +3148,26 @@ export default function Home() {
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
                               {i + 1}. {owner.owner_name}
+                              {operatorHit && (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                    color: '#B45309',
+                                    background: '#FDE68A',
+                                    border: '1px solid #F59E0B',
+                                    borderRadius: 4,
+                                    padding: '1px 5px',
+                                    verticalAlign: 'middle',
+                                  }}
+                                  title={`CAD operator: ${owner.operator_name || ''}`}
+                                >
+                                  Operator match
+                                </span>
+                              )}
                             </div>
                             {tractLegalDescription && (
                               <div
@@ -3114,6 +3180,19 @@ export default function Home() {
                                 }}
                               >
                                 {tractLegalDescription}
+                              </div>
+                            )}
+                            {owner.operator_name?.trim() && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: operatorHit ? '#B45309' : '#9CA3AF',
+                                  marginTop: 2,
+                                  fontWeight: operatorHit ? 600 : 400,
+                                }}
+                                title="CAD tax-roll operator"
+                              >
+                                Op: {owner.operator_name.trim()}
                               </div>
                             )}
                             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
@@ -3668,6 +3747,7 @@ export default function Home() {
               mapLevel={mapLevel}
               focusTarget={selected}
               devStatusByAbstract={devStatusByAbstract}
+              operatorMatchAbstracts={operatorMatchAbstracts}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
@@ -3680,6 +3760,7 @@ export default function Home() {
                 setTractWells([])
                 setTractWellsLoaded(false)
                 setWellsExpanded(false)
+                setOperatorFilter('')
               }}
               onOwnerClick={(tract) => {
                 // The Mapbox layer is fed by the slim *_parcels_map.geojson
@@ -3752,6 +3833,7 @@ export default function Home() {
             tractDevStatus={devStatusByAbstract[
               String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
             ] ?? null}
+            highlightOperator={operatorFilter.trim() || null}
             onClose={() => {
               setDrawerOwner(null)
               setDrawerTractLabel(null)
@@ -3902,6 +3984,68 @@ export default function Home() {
             <option value={25}>25+</option>
             <option value={50}>50+</option>
           </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+          <span
+            style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}
+            title="Filter tracts by the CAD tax-roll operator (entity listed on the mineral interest / NRI)"
+          >
+            Operator:
+          </span>
+          <input
+            list="cad-operator-options"
+            value={operatorFilter}
+            onChange={(e) => setOperatorFilter(e.target.value)}
+            placeholder="e.g. Diamondback"
+            style={{
+              fontSize: 11,
+              border: operatorFilter.trim()
+                ? '1px solid rgba(239,159,39,0.7)'
+                : '1px solid #E5E7EB',
+              borderRadius: 6,
+              padding: '3px 8px',
+              background: operatorFilter.trim() ? '#FFFBEB' : '#fff',
+              color: '#374151',
+              width: isMobile ? 120 : 160,
+              minWidth: 100,
+            }}
+          />
+          <datalist id="cad-operator-options">
+            {operatorOptions.slice(0, 80).map((op) => (
+              <option key={op.label} value={op.label}>
+                {op.count} tracts
+              </option>
+            ))}
+          </datalist>
+          {operatorFilter.trim() && (
+            <>
+              <span style={{ fontSize: 10, color: '#B45309', whiteSpace: 'nowrap' }}>
+                {(operatorMatchAbstracts?.length ?? 0) > 0
+                  ? `${new Set(
+                      (operatorMatchAbstracts || []).map((a) =>
+                        a.replace(/^A-\s*/i, '').toUpperCase(),
+                      ),
+                    ).size} tracts`
+                  : '0 tracts'}
+              </span>
+              <button
+                type="button"
+                onClick={() => setOperatorFilter('')}
+                style={{
+                  fontSize: 10,
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  border: '1px solid #E5E7EB',
+                  background: '#fff',
+                  color: '#6B7280',
+                  cursor: 'pointer',
+                }}
+              >
+                Clear
+              </button>
+            </>
+          )}
         </div>
 
         {/* Bottom-toolbar "New permits" button was here; layer visibility
