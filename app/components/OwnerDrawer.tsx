@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { CountyKey, County } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
 import SentinelLatestChip from '@/app/components/SentinelLatestChip'
+import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
@@ -782,12 +783,26 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           label={phone ? phone.display : 'No phone on file'}
           href={phone?.href}
           disabled={!phone}
+          onActivate={() => {
+            void logUsageEvent({
+              eventType: 'call_clicked',
+              countyId,
+              ownerName: owner.owner_name,
+            })
+          }}
         />
         <ContactPill
           icon="✉︎"
           label={email ? email.display : 'No email on file'}
           href={email?.href}
           disabled={!email}
+          onActivate={() => {
+            void logUsageEvent({
+              eventType: 'email_clicked',
+              countyId,
+              ownerName: owner.owner_name,
+            })
+          }}
         />
         <button
           onClick={() => onSkipTrace(owner)}
@@ -1029,12 +1044,13 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
 }
 
 function ContactPill({
-  icon, label, href, disabled,
+  icon, label, href, disabled, onActivate,
 }: {
   icon: string
   label: string
   href?: string
   disabled: boolean
+  onActivate?: () => void
 }) {
   if (disabled || !href) {
     return (
@@ -1047,6 +1063,7 @@ function ContactPill({
   return (
     <a
       href={href}
+      onClick={() => onActivate?.()}
       className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
     >
       <span aria-hidden>{icon}</span>

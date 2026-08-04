@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { logEmailSend } from '@/lib/usage-log'
 
 export const dynamic = 'force-dynamic'
 
@@ -122,6 +123,13 @@ export async function POST(req: NextRequest) {
     if (!emailRes.ok) {
       console.error('Resend error:', await emailRes.text())
       // Keep success because invite persistence succeeded.
+    } else {
+      await logEmailSend(adminClient, {
+        kind: 'team_invite',
+        toEmail: normalizedEmail,
+        userId: session.user.id,
+        meta: { invite_url: inviteUrl },
+      })
     }
   } else {
     console.warn('RESEND_API_KEY missing; invite email not sent')
