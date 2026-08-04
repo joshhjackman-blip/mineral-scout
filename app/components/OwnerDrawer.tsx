@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { CountyKey, County } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
 import SentinelLatestChip from '@/app/components/SentinelLatestChip'
-import { operatorMatches } from '@/lib/operator-filter'
+import { operatorMatchesAny } from '@/lib/operator-filter'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -138,8 +138,8 @@ export type OwnerDrawerProps = {
   // Ticket 1.3 dev-lifecycle status for the tract the owner is on.
   // Missing / undefined -> render a subtle "no status computed yet" chip.
   tractDevStatus?: TractDevStatus | null
-  /** CAD operator filter from the map toolbar — highlight matching leases/wells. */
-  highlightOperator?: string | null
+  /** CAD operator filter keys/labels from the map toolbar — highlight matching leases/wells. */
+  highlightOperators?: string[] | null
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -611,7 +611,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     open, owner, tractLabel, tractLegalDescription, countyId, inPipeline,
     onClose, onSkipTrace, onAddToPipeline, onShowAllTracts, legalDescByAbstract,
     tractDevStatus,
-    highlightOperator = null,
+    highlightOperators = null,
   } = props
 
   const county = COUNTIES[countyId]
@@ -824,7 +824,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             county={county}
             legalDescByAbstract={legalDescByAbstract}
             errorMessages={holdingsErrors}
-            highlightOperator={highlightOperator}
+            highlightOperators={highlightOperators}
           />
         )}
         {tab === 'wells' && (
@@ -832,7 +832,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             wells={wells}
             loading={wellsLoading}
             county={county}
-            highlightOperator={highlightOperator}
+            highlightOperators={highlightOperators}
           />
         )}
         {tab === 'notes' && (
@@ -1186,14 +1186,14 @@ function WellActivityCard({
 }
 
 function HoldingsPanel({
-  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperator,
+  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators,
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
   county: County
   legalDescByAbstract: Record<string, string> | undefined
   errorMessages?: Array<{ county: CountyKey; message: string }>
-  highlightOperator?: string | null
+  highlightOperators?: string[] | null
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -1295,8 +1295,9 @@ function HoldingsPanel({
               const bare = abstractKey(h.abstract)
               const abstractLabel = bare ? `A-${bare}` : ''
               const opHit = Boolean(
-                highlightOperator?.trim() &&
-                  operatorMatches(h.operator_name, highlightOperator),
+                highlightOperators &&
+                  highlightOperators.length > 0 &&
+                  operatorMatchesAny(h.operator_name, highlightOperators),
               )
               // Only the active county has a pre-computed legal
               // description available — legalDescByAbstract is built
@@ -1443,12 +1444,12 @@ function HoldingsPanel({
 }
 
 function WellsPanel({
-  wells, loading, county, highlightOperator,
+  wells, loading, county, highlightOperators,
 }: {
   wells: OwnerDrawerWell[]
   loading: boolean
   county: County
-  highlightOperator?: string | null
+  highlightOperators?: string[] | null
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Looking up wells across all counties…</div>
@@ -1512,8 +1513,9 @@ function WellsPanel({
                 const isGas = clean(well.oil_gas_code).toUpperCase() === 'G'
                 const isHz = clean(well.well_type).toUpperCase() === 'HORIZONTAL'
                 const opHit = Boolean(
-                  highlightOperator?.trim() &&
-                    operatorMatches(well.operator_name, highlightOperator),
+                  highlightOperators &&
+                    highlightOperators.length > 0 &&
+                    operatorMatchesAny(well.operator_name, highlightOperators),
                 )
                 return (
                   <div

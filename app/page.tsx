@@ -13,12 +13,13 @@ import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { COUNTIES } from '@/lib/counties'
 import {
-  abstractsMatchingOperator,
+  abstractsMatchingOperators,
   collectOperatorOptions,
-  operatorMatches,
+  operatorMatchesAny,
 } from '@/lib/operator-filter'
 
 import OwnerDrawer from './components/OwnerDrawer'
+import OperatorMultiSelect from './components/OperatorMultiSelect'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
@@ -691,9 +692,9 @@ export default function Home() {
   // comment near ActivityChip explains why it's not yet wired into Map.tsx
   // as a layer filter.
   const [activityFilter, setActivityFilter] = useState<'all' | 'pdp' | 'pud' | 'new_permit' | 'pending_permit'>('all')
-  // CAD tax-roll operator (entity listed against the lease / NRI interest).
-  // Empty string = no filter. Matching is contains/normalized.
-  const [operatorFilter, setOperatorFilter] = useState('')
+  // CAD tax-roll operator clusters (entity listed against the lease / NRI).
+  // Empty = no filter. Keys come from collectOperatorOptions().key.
+  const [selectedOperatorKeys, setSelectedOperatorKeys] = useState<string[]>([])
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
@@ -2078,10 +2079,35 @@ export default function Home() {
     [tracts],
   )
 
+  // Drop selections that disappear after a county switch / data reload.
+  useEffect(() => {
+    if (selectedOperatorKeys.length === 0) return
+    const valid = new Set(operatorOptions.map((o) => o.key))
+    const next = selectedOperatorKeys.filter((k) => valid.has(k))
+    if (next.length !== selectedOperatorKeys.length) {
+      setSelectedOperatorKeys(next)
+    }
+  }, [operatorOptions, selectedOperatorKeys])
+
+  const selectedOperatorFilters = useMemo(() => {
+    if (selectedOperatorKeys.length === 0) return [] as string[]
+    const byKey = new Map(operatorOptions.map((o) => [o.key, o]))
+    // Match against cluster key + canonical label so CAD aliases resolve
+    // through operatorRoot / operatorMatches.
+    return selectedOperatorKeys.flatMap((key) => {
+      const op = byKey.get(key)
+      return op ? [op.key, op.label] : [key]
+    })
+  }, [operatorOptions, selectedOperatorKeys])
+
   const operatorMatchAbstracts = useMemo(() => {
-    if (!operatorFilter.trim()) return null
-    return abstractsMatchingOperator(tracts, operatorFilter, parseOwners)
-  }, [tracts, operatorFilter])
+    if (selectedOperatorFilters.length === 0) return null
+    return abstractsMatchingOperators(
+      tracts,
+      selectedOperatorFilters,
+      parseOwners,
+    )
+  }, [tracts, selectedOperatorFilters])
 
   const cleanOwnersList = useMemo(() => {
     const cleaned = filteredOwnersList.filter((owner: TractOwner) => {
@@ -2092,14 +2118,14 @@ export default function Home() {
       if (name === 'UNKNOWN' || name === 'N/A') return false
       return true
     })
-    if (!operatorFilter.trim()) return cleaned
+    if (selectedOperatorFilters.length === 0) return cleaned
     // Surface CAD operator matches first; keep the rest for tract context.
     return [...cleaned].sort((a, b) => {
-      const aHit = operatorMatches(a.operator_name, operatorFilter) ? 0 : 1
-      const bHit = operatorMatches(b.operator_name, operatorFilter) ? 0 : 1
+      const aHit = operatorMatchesAny(a.operator_name, selectedOperatorFilters) ? 0 : 1
+      const bHit = operatorMatchesAny(b.operator_name, selectedOperatorFilters) ? 0 : 1
       return aHit - bHit
     })
-  }, [filteredOwnersList, operatorFilter])
+  }, [filteredOwnersList, selectedOperatorFilters])
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
@@ -2629,7 +2655,7 @@ export default function Home() {
               tractDevStatus={devStatusByAbstract[
                 String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
               ] ?? null}
-              highlightOperator={operatorFilter.trim() || null}
+              highlightOperators={selectedOperatorFilters}
               onClose={() => {
                 setDrawerOwner(null)
                 setDrawerTractLabel(null)
@@ -3058,7 +3084,8 @@ export default function Home() {
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName
                   const operatorHit = Boolean(
-                    operatorFilter.trim() && operatorMatches(owner.operator_name, operatorFilter),
+                    selectedOperatorFilters.length > 0 &&
+                      operatorMatchesAny(owner.operator_name, selectedOperatorFilters),
                   )
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
@@ -3089,7 +3116,9 @@ export default function Home() {
                       style={{
                         borderBottom: '1px solid #F3F4F6',
                         opacity:
-                          operatorFilter.trim() && !operatorHit ? 0.45 : 1,
+                          selectedOperatorFilters.length > 0 && !operatorHit
+                            ? 0.45
+                            : 1,
                       }}
                     >
                       <div
@@ -3760,7 +3789,7 @@ export default function Home() {
                 setTractWells([])
                 setTractWellsLoaded(false)
                 setWellsExpanded(false)
-                setOperatorFilter('')
+                setSelectedOperatorKeys([])
               }}
               onOwnerClick={(tract) => {
                 // The Mapbox layer is fed by the slim *_parcels_map.geojson
@@ -3833,7 +3862,7 @@ export default function Home() {
             tractDevStatus={devStatusByAbstract[
               String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
             ] ?? null}
-            highlightOperator={operatorFilter.trim() || null}
+            highlightOperators={selectedOperatorFilters}
             onClose={() => {
               setDrawerOwner(null)
               setDrawerTractLabel(null)
@@ -3989,62 +4018,26 @@ export default function Home() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <span
             style={{ fontSize: 11, color: '#6B7280', whiteSpace: 'nowrap' }}
-            title="Filter tracts by the CAD tax-roll operator (entity listed on the mineral interest / NRI)"
+            title="Filter tracts by CAD tax-roll operator — duplicates merged, multi-select"
           >
             Operator:
           </span>
-          <input
-            list="cad-operator-options"
-            value={operatorFilter}
-            onChange={(e) => setOperatorFilter(e.target.value)}
-            placeholder="e.g. Diamondback"
-            style={{
-              fontSize: 11,
-              border: operatorFilter.trim()
-                ? '1px solid rgba(239,159,39,0.7)'
-                : '1px solid #E5E7EB',
-              borderRadius: 6,
-              padding: '3px 8px',
-              background: operatorFilter.trim() ? '#FFFBEB' : '#fff',
-              color: '#374151',
-              width: isMobile ? 120 : 160,
-              minWidth: 100,
-            }}
+          <OperatorMultiSelect
+            options={operatorOptions}
+            selectedKeys={selectedOperatorKeys}
+            onChange={setSelectedOperatorKeys}
+            isMobile={isMobile}
           />
-          <datalist id="cad-operator-options">
-            {operatorOptions.slice(0, 80).map((op) => (
-              <option key={op.label} value={op.label}>
-                {op.count} tracts
-              </option>
-            ))}
-          </datalist>
-          {operatorFilter.trim() && (
-            <>
-              <span style={{ fontSize: 10, color: '#B45309', whiteSpace: 'nowrap' }}>
-                {(operatorMatchAbstracts?.length ?? 0) > 0
-                  ? `${new Set(
-                      (operatorMatchAbstracts || []).map((a) =>
-                        a.replace(/^A-\s*/i, '').toUpperCase(),
-                      ),
-                    ).size} tracts`
-                  : '0 tracts'}
-              </span>
-              <button
-                type="button"
-                onClick={() => setOperatorFilter('')}
-                style={{
-                  fontSize: 10,
-                  padding: '3px 8px',
-                  borderRadius: 6,
-                  border: '1px solid #E5E7EB',
-                  background: '#fff',
-                  color: '#6B7280',
-                  cursor: 'pointer',
-                }}
-              >
-                Clear
-              </button>
-            </>
+          {selectedOperatorKeys.length > 0 && (
+            <span style={{ fontSize: 10, color: '#B45309', whiteSpace: 'nowrap' }}>
+              {(operatorMatchAbstracts?.length ?? 0) > 0
+                ? `${new Set(
+                    (operatorMatchAbstracts || []).map((a) =>
+                      a.replace(/^A-\s*/i, '').toUpperCase(),
+                    ),
+                  ).size} tracts`
+                : '0 tracts'}
+            </span>
           )}
         </div>
 
