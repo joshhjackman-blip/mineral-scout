@@ -59,7 +59,17 @@ type UsagePayload = {
   warnings?: string[]
 }
 
-type AdminTab = 'users' | 'usage'
+type TeamRow = {
+  owner_id: string
+  owner_email: string
+  status: string
+  seat_count: number
+  seats_used: number
+  members: Array<{ email: string; status: string }>
+  is_platform_admin?: boolean
+}
+
+type AdminTab = 'usage' | 'teams' | 'users'
 
 export default function AdminDashboard() {
   const supabase = useMemo(
@@ -82,6 +92,11 @@ export default function AdminDashboard() {
     totalSkipTraces: 0,
   })
   const [usage, setUsage] = useState<UsagePayload | null>(null)
+  const [teams, setTeams] = useState<TeamRow[]>([])
+  const [provisionEmail, setProvisionEmail] = useState('')
+  const [provisionSeats, setProvisionSeats] = useState(4)
+  const [provisionMsg, setProvisionMsg] = useState<string | null>(null)
+  const [provisioning, setProvisioning] = useState(false)
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
     []
@@ -90,9 +105,10 @@ export default function AdminDashboard() {
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [usersRes, usageRes] = await Promise.all([
+      const [usersRes, usageRes, teamsRes] = await Promise.all([
         fetch('/api/admin/users', { cache: 'no-store' }),
         fetch('/api/admin/usage', { cache: 'no-store' }),
+        fetch('/api/admin/teams', { cache: 'no-store' }),
       ])
       if (!usersRes.ok) {
         window.location.href = '/'
@@ -118,12 +134,70 @@ export default function AdminDashboard() {
       } else {
         setUsage(null)
       }
+
+      if (teamsRes.ok) {
+        const teamData = (await teamsRes.json()) as { teams?: TeamRow[] }
+        setTeams(teamData.teams ?? [])
+      } else {
+        setTeams([])
+      }
       setLastUpdated(new Date())
     } finally {
       setRefreshing(false)
       setLoading(false)
     }
   }, [])
+
+  const handleProvisionTeam = async () => {
+    if (!provisionEmail.trim()) return
+    setProvisioning(true)
+    setProvisionMsg(null)
+    try {
+      const res = await fetch('/api/admin/teams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: provisionEmail.trim(),
+          seatCount: provisionSeats,
+        }),
+      })
+      const data = (await res.json()) as {
+        success?: boolean
+        invited?: boolean
+        error?: string
+        team?: { owner_email: string; seat_count: number }
+      }
+      if (!res.ok || !data.success) {
+        setProvisionMsg(data.error || 'Failed to provision team')
+        return
+      }
+      setProvisionMsg(
+        data.invited
+          ? `Invite sent to ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats).`
+          : `Provisioned ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats).`,
+      )
+      setProvisionEmail('')
+      await refresh()
+    } catch {
+      setProvisionMsg('Failed to provision team')
+    } finally {
+      setProvisioning(false)
+    }
+  }
+
+  const handleUpdateSeats = async (ownerId: string, seatCount: number) => {
+    const res = await fetch('/api/admin/teams', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ownerId, seatCount }),
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok) {
+      alert(data.error || 'Failed to update seats')
+      return
+    }
+    await refresh()
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -184,6 +258,7 @@ export default function AdminDashboard() {
             {(
               [
                 { key: 'usage' as const, label: 'Usage' },
+                { key: 'teams' as const, label: 'Teams' },
                 { key: 'users' as const, label: 'Users' },
               ] as const
             ).map((t) => (
@@ -331,6 +406,131 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-sm text-gray-400 mt-1">Est. success fee this month</div>
               </div>
+            </div>
+          </>
+        ) : tab === 'teams' ? (
+          <>
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
+              <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
+                Provision team admin
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Assign a team admin and seat count when onboarding a customer.
+                That admin invites members from Account. Members cannot open this Admin console.
+              </p>
+              <div className="flex flex-wrap gap-2 items-end">
+                <label className="flex flex-col gap-1 min-w-[220px] flex-1">
+                  <span className="text-xs text-gray-500">Team admin email</span>
+                  <input
+                    type="email"
+                    value={provisionEmail}
+                    onChange={(e) => setProvisionEmail(e.target.value)}
+                    placeholder="admin@brokerage.com"
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 w-28">
+                  <span className="text-xs text-gray-500">Seats</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={provisionSeats}
+                    onChange={(e) => setProvisionSeats(Number(e.target.value) || 1)}
+                    className="text-sm border border-gray-200 rounded-lg px-3 py-2"
+                  />
+                </label>
+                <button
+                  type="button"
+                  disabled={provisioning || !provisionEmail.trim()}
+                  onClick={() => {
+                    void handleProvisionTeam()
+                  }}
+                  className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+                >
+                  {provisioning ? 'Provisioning…' : 'Assign admin'}
+                </button>
+              </div>
+              {provisionMsg && (
+                <p className="mt-3 text-sm text-gray-600">{provisionMsg}</p>
+              )}
+              <p className="mt-3 text-xs text-gray-400">
+                Seats include the admin (e.g. 4 seats = 1 admin + 3 members).
+              </p>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-serif text-lg font-bold text-gray-900">Provisioned teams</h2>
+                <span className="text-xs text-gray-400">{teams.length} teams</span>
+              </div>
+              {loading ? (
+                <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+              ) : teams.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-400">
+                  No teams provisioned yet. Assign an admin above.
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full min-w-[720px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {['Team admin', 'Seats used', 'Seat limit', 'Members', ''].map((h) => (
+                          <th
+                            key={h || 'actions'}
+                            className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {teams.map((team) => (
+                        <tr key={team.owner_id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                            {team.owner_email}
+                            {team.is_platform_admin && (
+                              <span className="ml-2 text-[10px] font-semibold uppercase text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                                staff
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.seats_used}
+                          </td>
+                          <td className="px-5 py-3">
+                            <input
+                              type="number"
+                              min={team.seats_used}
+                              max={100}
+                              defaultValue={team.seat_count}
+                              key={`${team.owner_id}-${team.seat_count}`}
+                              onBlur={(e) => {
+                                const next = Number(e.target.value) || team.seat_count
+                                if (next !== team.seat_count) {
+                                  void handleUpdateSeats(team.owner_id, next)
+                                }
+                              }}
+                              className="w-20 text-sm border border-gray-200 rounded-md px-2 py-1"
+                            />
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-500">
+                            {team.members.length === 0
+                              ? '—'
+                              : team.members
+                                  .map((m) => `${m.email} (${m.status})`)
+                                  .join(', ')}
+                          </td>
+                          <td className="px-5 py-3 text-xs text-gray-400 capitalize">
+                            {team.status}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         ) : (

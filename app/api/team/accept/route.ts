@@ -40,6 +40,53 @@ export async function POST(req: NextRequest) {
   )
 
   const email = (session.user.email ?? '').toLowerCase().trim()
+  if (!email) {
+    return NextResponse.json({ error: 'Account email required' }, { status: 400 })
+  }
+
+  // Must have a pending (or already accepted) invite for this email.
+  const { data: invite, error: inviteLookupError } = await adminClient
+    .from('team_members')
+    .select('id, status')
+    .eq('owner_id', ownerId)
+    .eq('invite_email', email)
+    .maybeSingle()
+
+  if (inviteLookupError) {
+    return NextResponse.json({ error: inviteLookupError.message }, { status: 500 })
+  }
+  if (!invite || invite.status === 'revoked') {
+    return NextResponse.json(
+      { error: 'No valid invite found for this email.' },
+      { status: 404 },
+    )
+  }
+
+  // Enforce seat capacity at accept time too.
+  const { data: ownerSub } = await adminClient
+    .from('subscriptions')
+    .select('seat_count')
+    .eq('user_id', ownerId)
+    .maybeSingle()
+
+  const { data: existingMembers } = await adminClient
+    .from('team_members')
+    .select('id, invite_email, status')
+    .eq('owner_id', ownerId)
+    .neq('status', 'revoked')
+
+  const seatLimit = Number(ownerSub?.seat_count ?? 1)
+  const capacity = Math.max(0, seatLimit - 1)
+  const others = (existingMembers ?? []).filter(
+    (m) => (m.invite_email ?? '').toLowerCase() !== email,
+  )
+  if (others.length >= capacity && invite.status !== 'accepted') {
+    return NextResponse.json(
+      { error: 'This team has no open seats. Ask your admin to free a seat.' },
+      { status: 403 },
+    )
+  }
+
   const { error } = await adminClient
     .from('team_members')
     .update({
@@ -59,15 +106,21 @@ export async function POST(req: NextRequest) {
       user_id: session.user.id,
       status: 'active',
       team_owner_id: ownerId,
+      seat_count: 1,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
   )
 
+  const existingMeta = (session.user.user_metadata ?? {}) as Record<string, unknown>
   await adminClient.auth.admin.updateUserById(session.user.id, {
     user_metadata: {
+      ...existingMeta,
       subscription_status: 'active',
       team_owner_id: ownerId,
+      team_role: 'member',
+      // Members never get the platform admin console.
+      is_admin: false,
     },
   })
 
