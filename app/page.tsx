@@ -331,6 +331,34 @@ const isPointInRing = (
   return inside
 }
 
+/** Rough centroid for deep-link zoom when Map parcel match fails. */
+const geometryCenter = (
+  geometry: GeoJSON.Geometry | null | undefined,
+): [number, number] | null => {
+  if (!geometry) return null
+  const rings: number[][][] =
+    geometry.type === 'Polygon'
+      ? (geometry.coordinates as unknown as number[][][])
+      : geometry.type === 'MultiPolygon'
+        ? (geometry.coordinates as unknown as number[][][][]).flat()
+        : []
+  const ring = rings[0]
+  if (!ring || ring.length === 0) return null
+  let sumLon = 0
+  let sumLat = 0
+  let n = 0
+  for (const coord of ring) {
+    const lon = Number(coord[0])
+    const lat = Number(coord[1])
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue
+    sumLon += lon
+    sumLat += lat
+    n += 1
+  }
+  if (n === 0) return null
+  return [sumLon / n, sumLat / n]
+}
+
 const isPointInGeometry = (
   lon: number,
   lat: number,
@@ -571,6 +599,29 @@ export default function Home() {
   const [pendingUrlAbstract, setPendingUrlAbstract] = useState<string | null>(null)
   const [pendingUrlPoint, setPendingUrlPoint] = useState<{ lat: number; lon: number } | null>(null)
   const [pendingUrlOwner, setPendingUrlOwner] = useState<string | null>(null)
+  // Deep-link zoom can resolve before Mapbox finishes init — queue a
+  // flyTo and retry until mapFlyToRef is wired.
+  const [pendingFlyTo, setPendingFlyTo] = useState<{
+    center: [number, number]
+    zoom: number
+  } | null>(null)
+
+  useEffect(() => {
+    if (!pendingFlyTo) return
+    let tries = 0
+    const tick = () => {
+      tries += 1
+      if (mapFlyToRef.current) {
+        mapFlyToRef.current(pendingFlyTo.center, pendingFlyTo.zoom)
+        setPendingFlyTo(null)
+        return
+      }
+      if (tries > 50) setPendingFlyTo(null)
+    }
+    tick()
+    const id = window.setInterval(tick, 100)
+    return () => window.clearInterval(id)
+  }, [pendingFlyTo])
 
   // Deep-link support from /permits, /pad-activity, etc:
   //   `/?county=<key>&abstract=<label>`
@@ -590,9 +641,12 @@ export default function Home() {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
     }
+    // Keep both when present: abstract selects the sidebar tract; lat/lon
+    // guarantees a zoom even if the slim map geojson label doesn't match.
     if (urlAbstractRaw) {
       setPendingUrlAbstract(urlAbstractRaw.replace(/^A-\s*/i, '').trim())
-    } else if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
+    }
+    if (Number.isFinite(urlLat) && Number.isFinite(urlLon)) {
       setPendingUrlPoint({ lat: urlLat, lon: urlLon })
     }
     if (urlOwner) setPendingUrlOwner(urlOwner)
@@ -1674,19 +1728,36 @@ export default function Home() {
       if (match) {
         // Prefer the geojson label form (often "A-316") so Map focus
         // matching against ABSTRACT_L succeeds.
+        const geom =
+          tractGeometryByAbstract[wanted] ||
+          tractGeometryByAbstract[`A-${wanted}`] ||
+          tractGeometryByAbstract[wanted.toLowerCase()]
+        const centerFromGeom = geometryCenter(geom)
         const selection = {
           ...toTractSelection(match),
           abstract_label:
             String(match.abstract_label ?? '').trim() ||
             (wanted ? `A-${wanted}` : ''),
+          // Stash pad coords so Map.tsx can flyTo if parcel label match fails.
+          latitude: pendingUrlPoint?.lat ?? centerFromGeom?.[1],
+          longitude: pendingUrlPoint?.lon ?? centerFromGeom?.[0],
         }
         setSelected(selection)
-        const bare = wanted
-        const geom =
-          tractGeometryByAbstract[bare] ||
-          tractGeometryByAbstract[`A-${bare}`] ||
-          tractGeometryByAbstract[wanted]
         if (geom) setSelectedTractGeometry(geom)
+
+        // Zoom immediately. Relying only on Map focusTarget→parcel match
+        // left Pad Ops deep-links selected in the sidebar but never
+        // fitBounds when slim map geojson labels diverge.
+        if (pendingUrlPoint) {
+          setPendingFlyTo({
+            center: [pendingUrlPoint.lon, pendingUrlPoint.lat],
+            zoom: 14,
+          })
+          setPendingUrlPoint(null)
+        } else if (centerFromGeom) {
+          setPendingFlyTo({ center: centerFromGeom, zoom: 14 })
+        }
+
         setPendingUrlAbstract(null)
         if (pendingUrlOwner) {
           setHighlightedOwner(pendingUrlOwner)
@@ -1702,7 +1773,7 @@ export default function Home() {
       let matchedGeom: GeoJSON.Geometry | null = null
       for (const [bare, geom] of Object.entries(tractGeometryByAbstract)) {
         if (isPointInGeometry(lon, lat, geom)) {
-          matchedBare = bare
+          matchedBare = bare.replace(/^A-\s*/i, '').trim()
           matchedGeom = geom
           break
         }
@@ -1710,20 +1781,19 @@ export default function Home() {
       if (matchedBare) {
         const match = tracts.find((t) => {
           const label = String(t.abstract_label ?? '').replace(/^A-\s*/i, '').trim()
-          return label === matchedBare
+          return label === matchedBare || label.toUpperCase() === matchedBare.toUpperCase()
         })
         if (match) {
           setSelected(toTractSelection(match))
           if (matchedGeom) setSelectedTractGeometry(matchedGeom)
-          if (mapFlyToRef.current) {
-            mapFlyToRef.current([lon, lat], 14)
-          }
-          setPendingUrlPoint(null)
-          if (pendingUrlOwner) {
-            setHighlightedOwner(pendingUrlOwner)
-            setPendingUrlOwner(null)
-          }
         }
+      }
+      // Always zoom to the pad point — even if PIP missed a tract label.
+      setPendingFlyTo({ center: [lon, lat], zoom: 14 })
+      setPendingUrlPoint(null)
+      if (pendingUrlOwner) {
+        setHighlightedOwner(pendingUrlOwner)
+        setPendingUrlOwner(null)
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2188,7 +2258,7 @@ export default function Home() {
                     e.currentTarget.style.background = 'transparent'
                   }}
                 >
-                  Pad activity
+                  Satellite Imagery
                 </a>
                 <a
                   href="/crm"
@@ -2420,7 +2490,7 @@ export default function Home() {
               whiteSpace: 'nowrap',
             }}
           >
-            Pad activity
+            Satellite Imagery
           </a>
           <a
             href="/crm"
