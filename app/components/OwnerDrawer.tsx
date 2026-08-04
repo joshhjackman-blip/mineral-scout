@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import type { CountyKey, County } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
 import SentinelLatestChip from '@/app/components/SentinelLatestChip'
+import { operatorMatchesAny } from '@/lib/operator-filter'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -137,6 +138,8 @@ export type OwnerDrawerProps = {
   // Ticket 1.3 dev-lifecycle status for the tract the owner is on.
   // Missing / undefined -> render a subtle "no status computed yet" chip.
   tractDevStatus?: TractDevStatus | null
+  /** CAD operator filter keys/labels from the map toolbar — highlight matching leases/wells. */
+  highlightOperators?: string[] | null
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -608,6 +611,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     open, owner, tractLabel, tractLegalDescription, countyId, inPipeline,
     onClose, onSkipTrace, onAddToPipeline, onShowAllTracts, legalDescByAbstract,
     tractDevStatus,
+    highlightOperators = null,
   } = props
 
   const county = COUNTIES[countyId]
@@ -820,10 +824,16 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             county={county}
             legalDescByAbstract={legalDescByAbstract}
             errorMessages={holdingsErrors}
+            highlightOperators={highlightOperators}
           />
         )}
         {tab === 'wells' && (
-          <WellsPanel wells={wells} loading={wellsLoading} county={county} />
+          <WellsPanel
+            wells={wells}
+            loading={wellsLoading}
+            county={county}
+            highlightOperators={highlightOperators}
+          />
         )}
         {tab === 'notes' && (
           <NotesPanel
@@ -1176,13 +1186,14 @@ function WellActivityCard({
 }
 
 function HoldingsPanel({
-  holdings, loading, county, legalDescByAbstract, errorMessages,
+  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators,
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
   county: County
   legalDescByAbstract: Record<string, string> | undefined
   errorMessages?: Array<{ county: CountyKey; message: string }>
+  highlightOperators?: string[] | null
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -1283,6 +1294,11 @@ function HoldingsPanel({
               const isActive = rowCountyId === activeCountyId
               const bare = abstractKey(h.abstract)
               const abstractLabel = bare ? `A-${bare}` : ''
+              const opHit = Boolean(
+                highlightOperators &&
+                  highlightOperators.length > 0 &&
+                  operatorMatchesAny(h.operator_name, highlightOperators),
+              )
               // Only the active county has a pre-computed legal
               // description available — legalDescByAbstract is built
               // from the tracts currently loaded on the map.
@@ -1353,8 +1369,12 @@ function HoldingsPanel({
                 <tr
                   key={`${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`}
                   className={`text-gray-800 ${
-                    isActive ? 'bg-amber-50/40' : ''
-                  } ${i % 2 === 0 ? '' : 'bg-gray-50/40'}`}
+                    opHit
+                      ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
+                      : isActive
+                        ? 'bg-amber-50/40'
+                        : ''
+                  } ${!opHit && i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
                 >
                   <td
                     className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-medium text-gray-900"
@@ -1375,10 +1395,17 @@ function HoldingsPanel({
                   <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.block || '—'}</td>
                   <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.range || '—'}</td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5"
+                    className={`whitespace-nowrap border-b border-gray-100 px-2 py-1.5 ${
+                      opHit ? 'font-semibold text-amber-900' : ''
+                    }`}
                     title={clean(h.operator_name) || undefined}
                   >
                     {clean(h.operator_name) || '—'}
+                    {opHit && (
+                      <span className="ml-1 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                        Match
+                      </span>
+                    )}
                   </td>
                   <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5" title={cfg.displayName}>
                     <span
@@ -1417,11 +1444,12 @@ function HoldingsPanel({
 }
 
 function WellsPanel({
-  wells, loading, county,
+  wells, loading, county, highlightOperators,
 }: {
   wells: OwnerDrawerWell[]
   loading: boolean
   county: County
+  highlightOperators?: string[] | null
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Looking up wells across all counties…</div>
@@ -1484,17 +1512,31 @@ function WellsPanel({
               {rows.map((well, i) => {
                 const isGas = clean(well.oil_gas_code).toUpperCase() === 'G'
                 const isHz = clean(well.well_type).toUpperCase() === 'HORIZONTAL'
+                const opHit = Boolean(
+                  highlightOperators &&
+                    highlightOperators.length > 0 &&
+                    operatorMatchesAny(well.operator_name, highlightOperators),
+                )
                 return (
                   <div
                     key={`${countyKey}-${well.api_number ?? 'well'}-${i}`}
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                    className={`grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-lg border p-3 ${
+                      opHit
+                        ? 'border-amber-400 bg-amber-50'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
                   >
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold text-gray-900">
                         {clean(well.lease_name) || 'Unknown lease'}
                       </div>
-                      <div className="mt-0.5 text-xs text-gray-500">
+                      <div className={`mt-0.5 text-xs ${opHit ? 'font-semibold text-amber-900' : 'text-gray-500'}`}>
                         {clean(well.operator_name) || 'Unknown operator'}
+                        {opHit && (
+                          <span className="ml-2 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                            Match
+                          </span>
+                        )}
                         {clean(well.api_number) && (
                           <span className="ml-2 font-mono text-gray-400">API {clean(well.api_number)}</span>
                         )}

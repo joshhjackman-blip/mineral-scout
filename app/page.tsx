@@ -12,6 +12,11 @@ import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { COUNTIES } from '@/lib/counties'
+import {
+  abstractsMatchingOperators,
+  collectOperatorOptions,
+  operatorMatchesAny,
+} from '@/lib/operator-filter'
 
 import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
@@ -686,6 +691,9 @@ export default function Home() {
   // comment near ActivityChip explains why it's not yet wired into Map.tsx
   // as a layer filter.
   const [activityFilter, setActivityFilter] = useState<'all' | 'pdp' | 'pud' | 'new_permit' | 'pending_permit'>('all')
+  // CAD tax-roll operator clusters (entity listed against the lease / NRI).
+  // Empty = no filter. Keys come from collectOperatorOptions().key.
+  const [selectedOperatorKeys, setSelectedOperatorKeys] = useState<string[]>([])
   const [skipTracing, setSkipTracing] = useState<TractOwner | null>(null)
   const [skipTraceLoading, setSkipTraceLoading] = useState(false)
   const [skipTraceResult, setSkipTraceResult] = useState<SkipTraceResult | null>(null)
@@ -2065,8 +2073,50 @@ export default function Home() {
     })
   }, [county, sortedOwners, ownerTypeFilter, largeInterestOnly, minNRA, selected])
 
+  const operatorOptions = useMemo(
+    () => collectOperatorOptions(tracts, parseOwners),
+    [tracts],
+  )
+
+  // Drop selections that disappear after a county switch / data reload.
+  useEffect(() => {
+    if (selectedOperatorKeys.length === 0) return
+    const valid = new Set(operatorOptions.map((o) => o.key))
+    const next = selectedOperatorKeys.filter((k) => valid.has(k))
+    if (next.length !== selectedOperatorKeys.length) {
+      setSelectedOperatorKeys(next)
+    }
+  }, [operatorOptions, selectedOperatorKeys])
+
+  const selectedOperatorFilters = useMemo(() => {
+    if (selectedOperatorKeys.length === 0) return [] as string[]
+    const byKey = new Map(operatorOptions.map((o) => [o.key, o]))
+    // Match against cluster key + canonical label so CAD aliases resolve
+    // through operatorRoot / operatorMatches.
+    return selectedOperatorKeys.flatMap((key) => {
+      const op = byKey.get(key)
+      return op ? [op.key, op.label] : [key]
+    })
+  }, [operatorOptions, selectedOperatorKeys])
+
+  const operatorMatchAbstracts = useMemo(() => {
+    if (selectedOperatorFilters.length === 0) return null
+    return abstractsMatchingOperators(
+      tracts,
+      selectedOperatorFilters,
+      parseOwners,
+    )
+  }, [tracts, selectedOperatorFilters])
+
+  const operatorMatchTractCount = useMemo(() => {
+    if (!operatorMatchAbstracts) return null
+    return new Set(
+      operatorMatchAbstracts.map((a) => a.replace(/^A-\s*/i, '').toUpperCase()),
+    ).size
+  }, [operatorMatchAbstracts])
+
   const cleanOwnersList = useMemo(() => {
-    return filteredOwnersList.filter((owner: TractOwner) => {
+    const cleaned = filteredOwnersList.filter((owner: TractOwner) => {
       const name = (owner.owner_name ?? '').trim()
       if (!name || name.length < 3) return false
       if (/^MAP\d{4}/.test(name)) return false
@@ -2074,7 +2124,14 @@ export default function Home() {
       if (name === 'UNKNOWN' || name === 'N/A') return false
       return true
     })
-  }, [filteredOwnersList])
+    if (selectedOperatorFilters.length === 0) return cleaned
+    // Surface CAD operator matches first; keep the rest for tract context.
+    return [...cleaned].sort((a, b) => {
+      const aHit = operatorMatchesAny(a.operator_name, selectedOperatorFilters) ? 0 : 1
+      const bHit = operatorMatchesAny(b.operator_name, selectedOperatorFilters) ? 0 : 1
+      return aHit - bHit
+    })
+  }, [filteredOwnersList, selectedOperatorFilters])
   const abstractLabel = selected?.abstract_label ?? selected?.ABSTRACT_L ?? 'Unknown'
   const selectedDescRaw = (selected?.desc_ ?? selected?.DESC_ ?? '').trim()
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
@@ -2604,6 +2661,7 @@ export default function Home() {
               tractDevStatus={devStatusByAbstract[
                 String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
               ] ?? null}
+              highlightOperators={selectedOperatorFilters}
               onClose={() => {
                 setDrawerOwner(null)
                 setDrawerTractLabel(null)
@@ -3031,6 +3089,10 @@ export default function Home() {
                   const isExpanded = expandedOwner === i
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName
+                  const operatorHit = Boolean(
+                    selectedOperatorFilters.length > 0 &&
+                      operatorMatchesAny(owner.operator_name, selectedOperatorFilters),
+                  )
                   const ownerElementId = ownerRowDomId(String(owner.owner_name ?? ''))
                   const ownerKey = String(owner.id ?? `${normalizedOwnerName}-${normalizeLeaseId(owner.rrc_lease_id) || i}`)
                   // ownerWells / ownerWellsLoading are still populated when a
@@ -3055,7 +3117,16 @@ export default function Home() {
                   const ownershipDecimalValue = ownershipPctValue / 100
 
                   return (
-                    <div key={`${owner.owner_name}-${i}`} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <div
+                      key={`${owner.owner_name}-${i}`}
+                      style={{
+                        borderBottom: '1px solid #F3F4F6',
+                        opacity:
+                          selectedOperatorFilters.length > 0 && !operatorHit
+                            ? 0.45
+                            : 1,
+                      }}
+                    >
                       <div
                         id={ownerElementId}
                         onClick={() => {
@@ -3085,15 +3156,25 @@ export default function Home() {
                         style={{
                           padding: '10px 16px',
                           cursor: 'pointer',
-                          background: isHighlighted ? '#FEF3C7' : isExpanded ? '#FFFBEB' : 'transparent',
-                          borderLeft: isHighlighted ? '3px solid #EF9F27' : '3px solid transparent',
+                          background: operatorHit
+                            ? '#FEF3C7'
+                            : isHighlighted
+                              ? '#FEF3C7'
+                              : isExpanded
+                                ? '#FFFBEB'
+                                : 'transparent',
+                          borderLeft: operatorHit || isHighlighted
+                            ? '3px solid #EF9F27'
+                            : '3px solid transparent',
                           transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
-                          if (!isExpanded && !isHighlighted) e.currentTarget.style.background = '#F9FAFB'
+                          if (!isExpanded && !isHighlighted && !operatorHit) {
+                            e.currentTarget.style.background = '#F9FAFB'
+                          }
                         }}
                         onMouseLeave={(e) => {
-                          if (!isExpanded && !isHighlighted) {
+                          if (!isExpanded && !isHighlighted && !operatorHit) {
                             e.currentTarget.style.background = 'transparent'
                           }
                         }}
@@ -3102,6 +3183,26 @@ export default function Home() {
                           <div style={{ flex: 1, marginRight: 8 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
                               {i + 1}. {owner.owner_name}
+                              {operatorHit && (
+                                <span
+                                  style={{
+                                    marginLeft: 6,
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                    color: '#B45309',
+                                    background: '#FDE68A',
+                                    border: '1px solid #F59E0B',
+                                    borderRadius: 4,
+                                    padding: '1px 5px',
+                                    verticalAlign: 'middle',
+                                  }}
+                                  title={`CAD operator: ${owner.operator_name || ''}`}
+                                >
+                                  Operator match
+                                </span>
+                              )}
                             </div>
                             {tractLegalDescription && (
                               <div
@@ -3114,6 +3215,19 @@ export default function Home() {
                                 }}
                               >
                                 {tractLegalDescription}
+                              </div>
+                            )}
+                            {owner.operator_name?.trim() && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: operatorHit ? '#B45309' : '#9CA3AF',
+                                  marginTop: 2,
+                                  fontWeight: operatorHit ? 600 : 400,
+                                }}
+                                title="CAD tax-roll operator"
+                              >
+                                Op: {owner.operator_name.trim()}
                               </div>
                             )}
                             <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
@@ -3668,6 +3782,11 @@ export default function Home() {
               mapLevel={mapLevel}
               focusTarget={selected}
               devStatusByAbstract={devStatusByAbstract}
+              operatorMatchAbstracts={operatorMatchAbstracts}
+              operatorOptions={operatorOptions}
+              selectedOperatorKeys={selectedOperatorKeys}
+              onOperatorKeysChange={setSelectedOperatorKeys}
+              operatorMatchTractCount={operatorMatchTractCount}
               onCountySwitch={(countyId) => {
                 setSelectedCounty(countyId as CountyKey)
                 setMapLevel('tract')
@@ -3680,6 +3799,7 @@ export default function Home() {
                 setTractWells([])
                 setTractWellsLoaded(false)
                 setWellsExpanded(false)
+                setSelectedOperatorKeys([])
               }}
               onOwnerClick={(tract) => {
                 // The Mapbox layer is fed by the slim *_parcels_map.geojson
@@ -3752,6 +3872,7 @@ export default function Home() {
             tractDevStatus={devStatusByAbstract[
               String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '').replace(/^A-\s*/i, '').trim()
             ] ?? null}
+            highlightOperators={selectedOperatorFilters}
             onClose={() => {
               setDrawerOwner(null)
               setDrawerTractLabel(null)
@@ -3904,8 +4025,7 @@ export default function Home() {
           </select>
         </div>
 
-        {/* Bottom-toolbar "New permits" button was here; layer visibility
-            moved to the in-map toggle panel (top-right of the map).
+        {/* Operator filter lives in the map Legend/Overlays panel (top-right).
             CSV export was also here; removed intentionally — leads
             must stay on-platform (see PLATFORM-SERVICES-AGREEMENT.md
             non-circumvention clause). */}
