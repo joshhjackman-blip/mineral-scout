@@ -48,7 +48,11 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   const metadata = (session.user.user_metadata ?? {}) as Record<string, unknown>
-  const role = resolveTeamRole({ metadata, subscription: sub })
+  const role = resolveTeamRole({
+    metadata,
+    email: session.user.email,
+    subscription: sub,
+  })
 
   // Team members (and unprovisioned users) cannot invite.
   if (role === 'team_member') {

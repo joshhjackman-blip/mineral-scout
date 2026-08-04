@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isPlatformAdmin } from '@/lib/team'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
@@ -48,8 +49,9 @@ export async function middleware(req: NextRequest) {
   const isAdminPath =
     req.nextUrl.pathname.startsWith('/admin') ||
     req.nextUrl.pathname.startsWith('/api/admin')
-  const isAdmin = Boolean(
-    (session?.user?.user_metadata as Record<string, unknown> | undefined)?.is_admin
+  const isAdmin = isPlatformAdmin(
+    session?.user?.user_metadata as Record<string, unknown> | undefined,
+    session?.user?.email,
   )
 
   if (isAdminPath) {

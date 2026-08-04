@@ -39,7 +39,13 @@ async function requirePlatformAdmin(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
-  if (!session?.user || !isPlatformAdmin(session.user.user_metadata as Record<string, unknown>)) {
+  if (
+    !session?.user ||
+    !isPlatformAdmin(
+      session.user.user_metadata as Record<string, unknown>,
+      session.user.email,
+    )
+  ) {
     return { error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
 
@@ -136,7 +142,10 @@ export async function GET(req: NextRequest) {
       members,
       created_at: sub.created_at,
       updated_at: sub.updated_at,
-      is_platform_admin: Boolean(user?.user_metadata?.is_admin),
+      is_platform_admin: isPlatformAdmin(
+        user?.user_metadata as Record<string, unknown> | undefined,
+        user?.email,
+      ),
     }
   })
 

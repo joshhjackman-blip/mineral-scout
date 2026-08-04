@@ -2,20 +2,37 @@
  * Team seat helpers.
  *
  * Roles:
- * - platform admin  → user_metadata.is_admin (Mineral Map staff only)
+ * - platform admin  → user_metadata.is_admin OR allowlisted master email
+ *                     (Mineral Map staff only; sees /admin)
  * - team admin      → owns the workspace (subscriptions.team_owner_id IS NULL,
  *                     provisioned with seat_count); can invite members
  * - team member     → subscriptions.team_owner_id / user_metadata.team_owner_id set
  *
- * Platform /admin stays locked to is_admin. Team admins manage seats on /account.
+ * Platform /admin stays locked to platform admins. Team admins manage seats on /account.
  */
 
 export type TeamRole = 'platform_admin' | 'team_admin' | 'team_member' | 'unprovisioned'
 
+/** Hardcoded master admins — always treated as platform admin. */
+export const PLATFORM_ADMIN_EMAILS = [
+  'management@mineralmapllc.com',
+] as const
+
+export function normalizeEmail(email: string | null | undefined): string {
+  return String(email ?? '').toLowerCase().trim()
+}
+
+export function isAllowlistedPlatformAdmin(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email)
+  return (PLATFORM_ADMIN_EMAILS as readonly string[]).includes(normalized)
+}
+
 export function isPlatformAdmin(
   metadata: Record<string, unknown> | null | undefined,
+  email?: string | null,
 ): boolean {
-  return Boolean(metadata?.is_admin)
+  if (Boolean(metadata?.is_admin)) return true
+  return isAllowlistedPlatformAdmin(email)
 }
 
 export function getTeamOwnerId(
@@ -30,21 +47,21 @@ export function getTeamOwnerId(
 
 export function resolveTeamRole(input: {
   metadata?: Record<string, unknown> | null
+  email?: string | null
   subscription?: {
     status?: string | null
     seat_count?: number | null
     team_owner_id?: string | null
   } | null
 }): TeamRole {
-  if (isPlatformAdmin(input.metadata)) return 'platform_admin'
+  if (isPlatformAdmin(input.metadata, input.email)) return 'platform_admin'
 
   const ownerId = getTeamOwnerId(input.metadata, input.subscription?.team_owner_id)
   if (ownerId) return 'team_member'
 
   const seats = Number(input.subscription?.seat_count ?? 0)
   const status = String(input.subscription?.status ?? '').toLowerCase()
-  // Provisioned team admin: active (or free) sub with at least 2 seats
-  // (admin + 1 member) OR explicit seat_count >= 1 with status active.
+  // Provisioned team admin: active sub with at least 1 seat.
   if (status === 'active' && seats >= 1) return 'team_admin'
 
   return 'unprovisioned'

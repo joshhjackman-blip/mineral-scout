@@ -14,6 +14,7 @@ import {
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
+import { isPlatformAdmin } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +39,19 @@ type StatsRow = {
   totalSkipTraces: number
 }
 
+type TeamSpendRow = {
+  owner_id: string
+  owner_email: string
+  seat_count: number
+  member_count: number
+  skip_traces: number
+  call_clicks: number
+  emails_sent: number
+  closed_deal_count: number
+  closed_deal_volume: number
+  estimated_success_fee: number
+}
+
 type UsagePayload = {
   month: string
   callVolume: {
@@ -56,6 +70,7 @@ type UsagePayload = {
     sent: number
     byKind: Record<string, number>
   }
+  teams?: TeamSpendRow[]
   warnings?: string[]
 }
 
@@ -205,7 +220,12 @@ export default function AdminDashboard() {
         data: { session },
       } = await supabase.auth.getSession()
 
-      if (!session?.user?.user_metadata?.is_admin) {
+      if (
+        !isPlatformAdmin(
+          session?.user?.user_metadata as Record<string, unknown> | undefined,
+          session?.user?.email,
+        )
+      ) {
         window.location.href = '/'
         return
       }
@@ -385,7 +405,7 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <div className="bg-gray-900 rounded-xl p-5 flex items-center justify-between flex-wrap gap-4">
+            <div className="bg-gray-900 rounded-xl p-5 flex items-center justify-between flex-wrap gap-4 mb-6">
               <div>
                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">
                   Legacy Stripe MRR (footnote)
@@ -406,6 +426,82 @@ export default function AdminDashboard() {
                 </div>
                 <div className="text-sm text-gray-400 mt-1">Est. success fee this month</div>
               </div>
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="font-serif text-lg font-bold text-gray-900">
+                  Spending by team — {currentMonth}
+                </h2>
+                <span className="text-xs text-gray-400">
+                  {(usage?.teams ?? []).length} teams
+                </span>
+              </div>
+              {loading ? (
+                <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+              ) : (usage?.teams ?? []).length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-400">
+                  No team activity this month yet. Provision teams under the Teams tab.
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full min-w-[800px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {[
+                          'Team admin',
+                          'Seats',
+                          'Calls',
+                          'Skip traces',
+                          'Emails',
+                          'Closed deals',
+                          'Est. fee (10%)',
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {(usage?.teams ?? []).map((team) => (
+                        <tr key={team.owner_id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                            {team.owner_email}
+                            <div className="text-xs text-gray-400 font-normal">
+                              {team.member_count} member{team.member_count === 1 ? '' : 's'}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {1 + team.member_count}/{team.seat_count}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.call_clicks.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.skip_traces.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.emails_sent.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.closed_deal_count}{' '}
+                            <span className="text-gray-400">
+                              (${team.closed_deal_volume.toLocaleString()})
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
+                            ${team.estimated_success_fee.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </>
         ) : tab === 'teams' ? (

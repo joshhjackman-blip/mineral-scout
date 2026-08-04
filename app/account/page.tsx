@@ -62,9 +62,10 @@ export default function Account() {
     () =>
       resolveTeamRole({
         metadata: user?.user_metadata,
+        email: user?.email,
         subscription,
       }),
-    [user?.user_metadata, subscription],
+    [user?.user_metadata, user?.email, subscription],
   )
 
   const seatCount = Number(subscription?.seat_count ?? 0)
