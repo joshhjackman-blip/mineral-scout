@@ -2418,7 +2418,7 @@ function LayerTogglePanel({
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: 12,
         color: '#0F172A',
-        zIndex: 5,
+        zIndex: 20,
         display: 'flex',
         flexDirection: 'column',
         gap: 10,
