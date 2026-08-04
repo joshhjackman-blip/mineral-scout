@@ -13,12 +13,10 @@
 //           over the map when you click an owner) rendered as the
 //           main content instead of a bottom drawer.
 //
-// The pipeline / PSA / deed / tasks / activity-log UI was removed
-// because none of it was pulling weight now that Skip Trace is the
-// only action a broker takes on this screen. The `deals` table
-// schema is preserved (skip trace still writes phone/email/tag/
-// county back to the deal row) so we can re-introduce pipeline
-// features later without a data migration.
+// CRM is a two-panel view (leads list + OwnerDrawer). Offer documents
+// (PSA / Mineral Deed) were restored 2026-07-28 so brokers can send
+// fast offers from a selected lead. Skip trace still writes phone /
+// email / tag back to the deal row.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -29,6 +27,7 @@ import AppLogo from '@/app/components/AppLogo'
 import { MapPin, Search, User, Flame, TrendingUp, XCircle, ThumbsDown, CheckCircle2, DollarSign, Clock } from 'lucide-react'
 import OwnerDrawer from '@/app/components/OwnerDrawer'
 import type { OwnerLike } from '@/app/components/OwnerDrawer'
+import OfferDocuments from '@/app/components/OfferDocuments'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,6 +233,24 @@ export default function CRM() {
     // No-op. Every deal in the CRM is already in the pipeline.
   }, [])
 
+  const handleOfferSent = useCallback(async (dealId: string) => {
+    const updated_at = new Date().toISOString()
+    try {
+      await supabase
+        .from('deals')
+        .update({ tag: 'offer_sent', updated_at })
+        .eq('id', dealId)
+    } catch (err) {
+      console.error('Failed to mark offer_sent:', err)
+    }
+    setDeals((prev) =>
+      prev.map((d) => (d.id === dealId ? { ...d, tag: 'offer_sent', updated_at } : d)),
+    )
+    setSelected((prev) =>
+      prev?.id === dealId ? { ...prev, tag: 'offer_sent', updated_at } : prev,
+    )
+  }, [])
+
   // Derive the countyId for the selected deal. OwnerDrawer needs a
   // CountyKey so it knows which per-county tables to query for
   // holdings / wells / notes. When we can't figure out the county
@@ -408,17 +425,26 @@ export default function CRM() {
             selected, empty state otherwise. OwnerDrawer fills whatever
             container we give it via `flex flex-1 h-full`, so a plain
             flex parent is all we need. */}
-        <main className="flex-1 overflow-hidden flex bg-white">
+        <main className="flex-1 overflow-hidden flex flex-col bg-white">
           {selected && drawerOwner ? (
-            <OwnerDrawer
-              open={true}
-              owner={drawerOwner}
-              countyId={selectedCountyId}
-              inPipeline={true}
-              onClose={() => setSelected(null)}
-              onSkipTrace={handleSkipTrace}
-              onAddToPipeline={handleAddToPipeline}
-            />
+            <>
+              <OfferDocuments
+                deal={selected}
+                countyLabel={COUNTIES[selectedCountyId]?.name ?? selectedCountyId}
+                onOfferSent={handleOfferSent}
+              />
+              <div className="flex-1 overflow-hidden min-h-0">
+                <OwnerDrawer
+                  open={true}
+                  owner={drawerOwner}
+                  countyId={selectedCountyId}
+                  inPipeline={true}
+                  onClose={() => setSelected(null)}
+                  onSkipTrace={handleSkipTrace}
+                  onAddToPipeline={handleAddToPipeline}
+                />
+              </div>
+            </>
           ) : (
             <div className="h-full flex items-center justify-center flex-1">
               <div className="text-center">
@@ -426,7 +452,9 @@ export default function CRM() {
                   <User size={20} className="text-gray-400" />
                 </div>
                 <div className="text-sm font-medium text-gray-500">Select a lead</div>
-                <div className="text-xs text-gray-400 mt-1">Choose a lead from the list to view details and skip trace.</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Choose a lead to skip trace or generate a PSA / mineral deed offer.
+                </div>
               </div>
             </div>
           )}
