@@ -70,9 +70,12 @@ export default function Account() {
 
   const seatCount = Number(subscription?.seat_count ?? 0)
   const inviteCapacity = inviteSeatCapacity(seatCount)
-  const seatsUsed = teamRole === 'team_admin' || teamRole === 'platform_admin'
-    ? 1 + teamMembers.length
-    : 0
+  const seatsUsed =
+    teamRole === 'team_admin' ||
+    teamRole === 'platform_admin' ||
+    teamRole === 'platform_owner'
+      ? 1 + teamMembers.length
+      : 0
 
   const fetchTeamMembers = useCallback(
     async (ownerId: string) => {
@@ -199,9 +202,13 @@ export default function Account() {
     await fetchTeamMembers(user.id)
   }
 
-  const canManageTeam = teamRole === 'team_admin' || teamRole === 'platform_admin'
+  const canManageTeam =
+    teamRole === 'team_admin' ||
+    teamRole === 'platform_admin' ||
+    teamRole === 'platform_owner'
   const isMember = teamRole === 'team_member'
-  const isPlatformAdmin = teamRole === 'platform_admin'
+  const isStaffAdmin = teamRole === 'platform_admin' || teamRole === 'platform_owner'
+  const isOwner = teamRole === 'platform_owner'
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -218,9 +225,9 @@ export default function Account() {
           <Link href="/crm" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <BarChart2 size={13} />CRM
           </Link>
-          {isPlatformAdmin && (
+          {isStaffAdmin && (
             <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
-              <Shield size={13} />Admin
+              <Shield size={13} />{isOwner ? 'Owner' : 'Admin'}
             </Link>
           )}
           <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
@@ -248,14 +255,22 @@ export default function Account() {
                   : '—'}
               </div>
               <div className="mt-1">
-                <span className="inline-flex text-xs font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
-                  {isPlatformAdmin
-                    ? 'Platform admin'
-                    : canManageTeam
-                      ? 'Team admin'
-                      : isMember
-                        ? 'Team member'
-                        : 'Individual'}
+                <span
+                  className={`inline-flex text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                    isOwner
+                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                      : 'bg-slate-50 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  {isOwner
+                    ? 'Owner'
+                    : teamRole === 'platform_admin'
+                      ? 'Platform admin'
+                      : canManageTeam
+                        ? 'Team admin'
+                        : isMember
+                          ? 'Team member'
+                          : 'Individual'}
                 </span>
               </div>
             </div>

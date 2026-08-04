@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { isPlatformAdmin } from '@/lib/team'
+import { isPlatformAdmin, isPlatformOwner } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,14 +102,16 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   )
 
-  // Keep allowlisted master admin metadata in sync so JWT clients stay consistent.
+  // Keep allowlisted owner/admin metadata in sync so JWT clients stay consistent.
   if (!session.user.user_metadata?.is_admin) {
     try {
       await adminClient.auth.admin.updateUserById(session.user.id, {
         user_metadata: {
           ...(session.user.user_metadata ?? {}),
           is_admin: true,
-          team_role: 'platform_admin',
+          team_role: isPlatformOwner(session.user.email)
+            ? 'platform_owner'
+            : 'platform_admin',
         },
       })
     } catch {
