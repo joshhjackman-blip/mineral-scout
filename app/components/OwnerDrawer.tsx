@@ -1292,11 +1292,7 @@ function OverviewPanel({
 
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
       {tractDevStatus && <DevTimeline status={tractDevStatus} />}
-      <WellActivityCard
-        countyId={county.id}
-        abstract={tractLabel}
-        ownerName={owner.owner_name}
-      />
+      {/* Satellite Imagery / pad activity archived — see lib/feature-flags.ts */}
     </div>
   )
 }

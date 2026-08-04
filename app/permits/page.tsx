@@ -613,21 +613,7 @@ export default function PermitsPage() {
           Recent Permits
         </span>
         <div style={{ flex: 1 }} />
-        <Link
-          href="/pad-activity"
-          style={{
-            fontSize: 12,
-            color: '#059669',
-            textDecoration: 'none',
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: '1px solid #059669',
-            fontWeight: 500,
-            fontFamily: 'Geist, Inter, system-ui, sans-serif',
-          }}
-        >
-          Satellite Imagery
-        </Link>
+        {/* Satellite Imagery archived — see lib/feature-flags.ts */}
         <Link
           href="/"
           style={{
