@@ -133,11 +133,11 @@
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.2fr);
   align-items: center;
   min-height: calc(100dvh - 72px);
-  padding: 0 6vw 4vh;
-  gap: 2vw;
+  padding: 0 4vw 2vh 6vw;
+  gap: 1vw;
 }
 
 .cs-copy {
@@ -182,18 +182,18 @@
 .cs-rig {
   position: relative;
   width: 100%;
-  height: min(86vh, 820px);
+  height: min(92vh, 920px);
   display: flex;
   align-items: stretch;
-  justify-content: flex-end;
+  justify-content: stretch;
   pointer-events: none;
 }
 
 /* Mapbox Texas map */
 .cs-mbx-map {
-  width: min(100%, 720px);
+  width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 520px;
   border-radius: 0;
   overflow: hidden;
   background: transparent;
@@ -224,50 +224,6 @@
   opacity: 0.7;
 }
 
-.cs-mbx-pin {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  transform: translateY(0);
-  animation: cs-pin-drop 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.cs-mbx-pin-live {
-  animation-delay: 500ms;
-  z-index: 2;
-}
-
-.cs-mbx-pin-soon {
-  animation-delay: 750ms;
-  opacity: 0.92;
-  z-index: 1;
-}
-
-.cs-mbx-pin-mark {
-  filter: drop-shadow(0 3px 6px rgba(11, 42, 92, 0.35));
-  line-height: 0;
-}
-
-.cs-mbx-pin-label {
-  margin-top: 2px;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--cs-navy);
-  font-family: var(--cs-sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  box-shadow: 0 1px 4px rgba(11, 42, 92, 0.18);
-}
-
-.cs-mbx-pin-soon .cs-mbx-pin-label {
-  font-size: 9px;
-  font-weight: 600;
-  opacity: 0.9;
-}
-
 /* Motion */
 @keyframes cs-rise {
   from {
@@ -288,21 +244,6 @@
   to {
     opacity: 1;
     transform: translateX(0);
-  }
-}
-
-@keyframes cs-pin-drop {
-  0% {
-    opacity: 0;
-    transform: translateY(-28px) scale(0.7);
-  }
-  60% {
-    opacity: 1;
-    transform: translateY(4px) scale(1.05);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
@@ -354,11 +295,11 @@
 
   .cs-rig {
     position: absolute;
-    right: -6%;
+    right: -4%;
     bottom: 0;
-    width: 82%;
-    height: 58vh;
-    opacity: 0.95;
+    width: 92%;
+    height: 62vh;
+    opacity: 0.96;
     z-index: 1;
   }
 
@@ -372,8 +313,7 @@
   .cs-copy .cs-headline,
   .cs-copy .cs-subhead,
   .cs-nav,
-  .cs-rig,
-  .cs-mbx-pin {
+  .cs-rig {
     animation: none;
   }
 }
