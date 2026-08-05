@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import PostHogProvider from "@/app/components/PostHogProvider"
+import HelpChatWidget from "@/app/components/HelpChatWidget"
 
 import "./globals.css"
 
@@ -44,6 +45,7 @@ export default function RootLayout({
         <PostHogProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </PostHogProvider>
+        <HelpChatWidget />
         <Toaster richColors position="top-right" />
       </body>
     </html>
