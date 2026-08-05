@@ -10,7 +10,6 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 const NAVY = '#0B2A5C'
 const NAVY_LINE = '#071E42'
 const AMBER = '#EF9F27'
-const AMBER_DEEP = '#D97706'
 
 /** Same Permian roadmap counties as the in-app county overview. */
 const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = [
