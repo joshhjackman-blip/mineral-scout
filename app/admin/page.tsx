@@ -97,7 +97,7 @@ type AdminAccountRow = {
   can_revoke: boolean
 }
 
-type AdminTab = 'usage' | 'admins' | 'teams' | 'users'
+type AdminTab = 'overview' | 'usage' | 'admins' | 'teams' | 'users'
 
 export default function AdminDashboard() {
   const supabase = useMemo(
@@ -108,7 +108,7 @@ export default function AdminDashboard() {
       ),
     []
   )
-  const [tab, setTab] = useState<AdminTab>('usage')
+  const [tab, setTab] = useState<AdminTab>('overview')
   const [users, setUsers] = useState<UserRow[]>([])
   const [loading, setLoading] = useState(true)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
@@ -309,8 +309,11 @@ export default function AdminDashboard() {
         window.location.href = '/'
         return
       }
-      setSessionEmail(session?.user?.email ?? null)
-      setViewerIsOwner(isPlatformOwner(session?.user?.email))
+      const email = session?.user?.email ?? null
+      setSessionEmail(email)
+      const owner = isPlatformOwner(email)
+      setViewerIsOwner(owner)
+      setTab(owner ? 'overview' : 'usage')
       await refresh()
     }
 
@@ -336,6 +339,22 @@ export default function AdminDashboard() {
   const callClicks = usage?.callVolume.callClicks ?? 0
   const skipTraces = usage?.callVolume.skipTraces ?? stats.totalSkipTraces
   const emailsSent = usage?.email.sent ?? 0
+  const isOwnerView = viewerIsOwner || isPlatformOwner(sessionEmail)
+  const teamRows = usage?.teams ?? []
+  const activeTeams = teamRows.length
+
+  const ownerTabs = [
+    { key: 'overview' as const, label: 'Overview' },
+    { key: 'admins' as const, label: 'Admins' },
+    { key: 'teams' as const, label: 'Provision' },
+    { key: 'users' as const, label: 'Users' },
+  ]
+  const staffTabs = [
+    { key: 'usage' as const, label: 'Usage' },
+    { key: 'admins' as const, label: 'Admins' },
+    { key: 'teams' as const, label: 'Teams' },
+    { key: 'users' as const, label: 'Users' },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -344,7 +363,7 @@ export default function AdminDashboard() {
           <AppLogo variant="light" width={120} />
           <span className="text-gray-600">·</span>
           <span className="text-sm text-gray-400">
-            {viewerIsOwner || isPlatformOwner(sessionEmail) ? 'Owner' : 'Admin'}
+            {isOwnerView ? 'Owner console' : 'Admin'}
           </span>
         </div>
         <Link
@@ -357,16 +376,19 @@ export default function AdminDashboard() {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
+        {isOwnerView && (
+          <div className="mb-6">
+            <h1 className="font-serif text-2xl font-bold text-gray-900">
+              Platform owner overview
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Monitor every team&apos;s activity and estimated success-fee spend across Mineral Map.
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
           <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
-            {(
-              [
-                { key: 'usage' as const, label: 'Usage' },
-                { key: 'admins' as const, label: 'Admins' },
-                { key: 'teams' as const, label: 'Teams' },
-                { key: 'users' as const, label: 'Users' },
-              ] as const
-            ).map((t) => (
+            {(isOwnerView ? ownerTabs : staffTabs).map((t) => (
               <button
                 key={t.key}
                 type="button"
@@ -407,7 +429,126 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {tab === 'usage' ? (
+        {tab === 'overview' ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+              <UsageCard
+                label="Teams"
+                icon={<Users size={18} className="text-gray-400" />}
+                value={loading ? '—' : activeTeams.toLocaleString()}
+                hint="Provisioned customer workspaces"
+                sub={`${stats.totalUsers} total users on platform`}
+              />
+              <UsageCard
+                label="Platform $"
+                icon={<DollarSign size={18} className="text-emerald-500" />}
+                value={loading ? '—' : `$${fee.toLocaleString()}`}
+                hint={`Est. 10% success fee · ${currentMonth}`}
+                sub={`Closed volume $${loading ? '—' : volume.toLocaleString()}`}
+              />
+              <UsageCard
+                label="Calls"
+                icon={<Phone size={18} className="text-amber-500" />}
+                value={loading ? '—' : callClicks.toLocaleString()}
+                hint={`${currentMonth} · all teams`}
+                sub={`Skip traces: ${loading ? '—' : skipTraces.toLocaleString()}`}
+              />
+              <UsageCard
+                label="Email"
+                icon={<Mail size={18} className="text-blue-500" />}
+                value={loading ? '—' : emailsSent.toLocaleString()}
+                hint={`${currentMonth} · Resend sends`}
+                sub="Across every workspace"
+              />
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h2 className="font-serif text-lg font-bold text-gray-900">
+                    Every team — {currentMonth}
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Spending and activity rolled up by team admin workspace
+                  </p>
+                </div>
+                <span className="text-xs text-gray-400">{teamRows.length} teams</span>
+              </div>
+              {loading ? (
+                <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+              ) : teamRows.length === 0 ? (
+                <div className="p-8 text-center text-sm text-gray-400">
+                  No teams yet. Provision a team admin under Provision.
+                </div>
+              ) : (
+                <div className="overflow-auto">
+                  <table className="w-full min-w-[800px]">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {[
+                          'Team admin',
+                          'Seats',
+                          'Calls',
+                          'Skip traces',
+                          'Emails',
+                          'Closed deals',
+                          'Est. fee (10%)',
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {teamRows.map((team) => (
+                        <tr key={team.owner_id} className="hover:bg-gray-50">
+                          <td className="px-5 py-3 text-sm font-medium text-gray-900">
+                            {team.owner_email}
+                            <div className="text-xs text-gray-400 font-normal">
+                              {team.member_count} member
+                              {team.member_count === 1 ? '' : 's'}
+                            </div>
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {1 + team.member_count}/{team.seat_count}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.call_clicks.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.skip_traces.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.emails_sent.toLocaleString()}
+                          </td>
+                          <td className="px-5 py-3 text-sm text-gray-600">
+                            {team.closed_deal_count}{' '}
+                            <span className="text-gray-400">
+                              (${team.closed_deal_volume.toLocaleString()})
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
+                            ${team.estimated_success_fee.toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {usage?.warnings && usage.warnings.length > 0 && (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                Some metrics may be incomplete: {usage.warnings.join(' · ')}
+              </div>
+            )}
+          </>
+        ) : tab === 'usage' ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <UsageCard

@@ -1,14 +1,12 @@
 /**
  * Access roles (highest → lowest):
  *
- * - platform_owner  → Mineral Map owner account (admin of admins).
- *                     Hardcoded allowlist. Tracks every other admin.
+ * - platform_owner  → Mineral Map software owner (management@…).
+ *                     /admin Overview = portfolio of EVERY team’s activity/$.
  * - platform_admin  → Staff with /admin access (granted by owner via is_admin).
- * - team_admin      → Customer workspace owner (provisioned seats; invites members).
- * - team_member     → Invited seat; map/CRM only — never /admin.
- *
- * Platform /admin is locked to platform_owner + platform_admin.
- * Team admins manage seats on /account only.
+ * - team_admin      → Customer workspace manager.
+ *                     /team = that team’s activity/$ only; invites on /account.
+ * - team_member     → Invited seat; map/CRM only — never /admin or /team.
  */
 
 export type TeamRole =
