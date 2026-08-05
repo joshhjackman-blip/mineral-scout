@@ -209,6 +209,7 @@ export default function Account() {
   const isMember = teamRole === 'team_member'
   const isStaffAdmin = teamRole === 'platform_admin' || teamRole === 'platform_owner'
   const isOwner = teamRole === 'platform_owner'
+  const isTeamAdminOnly = teamRole === 'team_admin'
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -228,6 +229,11 @@ export default function Account() {
           <Link href="/help" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <LifeBuoy size={13} />Help
           </Link>
+          {isTeamAdminOnly && (
+            <Link href="/team" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
+              <BarChart2 size={13} />Team
+            </Link>
+          )}
           {isStaffAdmin && (
             <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
               <Shield size={13} />{isOwner ? 'Owner' : 'Admin'}
@@ -328,8 +334,18 @@ export default function Account() {
 
         {/* ── Team seats ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
-          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
-            Team
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+              Team
+            </div>
+            {isTeamAdminOnly && (
+              <Link
+                href="/team"
+                className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+              >
+                Open team dashboard →
+              </Link>
+            )}
           </div>
 
           {isMember ? (
