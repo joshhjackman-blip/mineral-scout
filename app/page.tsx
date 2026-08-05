@@ -2855,38 +2855,21 @@ export default function Home() {
             CRM →
           </a>
           {!hideSecondaryNavActions && (
-            <>
-              <a
-                href="/help"
-                style={{
-                  fontSize: 12,
-                  color: '#6B7280',
-                  textDecoration: 'none',
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  border: '1px solid #E5E7EB',
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Help
-              </a>
-              <a
-                href="/account"
-                style={{
-                  fontSize: 12,
-                  color: '#6B7280',
-                  textDecoration: 'none',
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  border: '1px solid #E5E7EB',
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Account
-              </a>
-            </>
+            <a
+              href="/account"
+              style={{
+                fontSize: 12,
+                color: '#6B7280',
+                textDecoration: 'none',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid #E5E7EB',
+                fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Account
+            </a>
           )}
           <button
             onClick={() => {
@@ -4367,56 +4350,29 @@ export default function Home() {
           ))}
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            marginLeft: 'auto',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ fontSize: 11, color: '#6B7280' }}>Min NMA:</span>
-            <select
-              value={minNRA}
-              onChange={(e) => setMinNRA(Number(e.target.value))}
-              style={{ fontSize: 11, border: '1px solid #E5E7EB', borderRadius: 6, padding: '2px 6px', background: '#fff', color: '#374151' }}
-            >
-              <option value={0}>Any</option>
-              <option value={0.1}>0.1+</option>
-              <option value={0.5}>0.5+</option>
-              <option value={1}>1+</option>
-              <option value={5}>5+</option>
-              <option value={10}>10+</option>
-              <option value={25}>25+</option>
-              <option value={50}>50+</option>
-            </select>
-          </div>
-          <a
-            href="/help"
-            title="Help desk"
-            style={{
-              fontSize: 11,
-              color: '#92400E',
-              textDecoration: 'none',
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid #FBBF24',
-              background: '#FFFBEB',
-              fontWeight: 600,
-              fontFamily: 'Geist, Inter, system-ui, sans-serif',
-              whiteSpace: 'nowrap',
-            }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 11, color: '#6B7280' }}>Min NMA:</span>
+          <select
+            value={minNRA}
+            onChange={(e) => setMinNRA(Number(e.target.value))}
+            style={{ fontSize: 11, border: '1px solid #E5E7EB', borderRadius: 6, padding: '2px 6px', background: '#fff', color: '#374151' }}
           >
-            Help
-          </a>
+            <option value={0}>Any</option>
+            <option value={0.1}>0.1+</option>
+            <option value={0.5}>0.5+</option>
+            <option value={1}>1+</option>
+            <option value={5}>5+</option>
+            <option value={10}>10+</option>
+            <option value={25}>25+</option>
+            <option value={50}>50+</option>
+          </select>
         </div>
 
         {/* Operator filter lives in the map Legend/Overlays panel (top-right).
             CSV export was also here; removed intentionally — leads
             must stay on-platform (see PLATFORM-SERVICES-AGREEMENT.md
-            non-circumvention clause). */}
+            non-circumvention clause).
+            Help desk is the corner chat widget (HelpChatWidget). */}
       </div>
 
       {toast && (
