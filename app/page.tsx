@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { isPlatformOwner } from '@/lib/team'
+import ThemeToggle from '@/app/components/ThemeToggle'
 import { COUNTIES } from '@/lib/counties'
 import {
   abstractsMatchingOperators,
@@ -2509,8 +2510,8 @@ export default function Home() {
     <div
       style={{
         height: '100dvh',
-        background: '#FFFFFF',
-        color: '#111827',
+        background: 'var(--mm-chrome-bg)',
+        color: 'var(--mm-chrome-fg)',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: 'system-ui, sans-serif',
@@ -2521,14 +2522,13 @@ export default function Home() {
         style={{
           height: isMobile ? 56 : 52,
           // Subtle photo texture behind the top bar. The Permian hero
-          // sits at 4% opacity underneath a solid white base, which
-          // gives the header a hint of warmth / place without hurting
-          // the readability of nav copy or the map beneath.
+          // sits underneath a solid chrome overlay so light/dark both
+          // keep a hint of place without hurting nav readability.
           background:
-            "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(255,255,255,0.98) 100%), " +
+            "var(--mm-chrome-header-overlay), " +
             "url('/hero-permian.jpg') center/cover no-repeat",
           backgroundBlendMode: 'normal',
-          borderBottom: '1px solid #E5E7EB',
+          borderBottom: '1px solid var(--mm-chrome-border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -2545,9 +2545,9 @@ export default function Home() {
                 width: 30,
                 height: 30,
                 borderRadius: 6,
-                border: '1px solid #E5E7EB',
-                background: '#FFFFFF',
-                color: '#111827',
+                border: '1px solid var(--mm-chrome-border)',
+                background: 'var(--mm-chrome-bg)',
+                color: 'var(--mm-chrome-fg)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -2564,9 +2564,9 @@ export default function Home() {
                   width: 12,
                 }}
               >
-                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
-                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
-                <span style={{ display: 'block', height: 1.5, background: '#111827' }} />
+                <span style={{ display: 'block', height: 1.5, background: 'var(--mm-chrome-fg)' }} />
+                <span style={{ display: 'block', height: 1.5, background: 'var(--mm-chrome-fg)' }} />
+                <span style={{ display: 'block', height: 1.5, background: 'var(--mm-chrome-fg)' }} />
               </span>
             </button>
             {navMenuOpen && (
@@ -2576,8 +2576,8 @@ export default function Home() {
                   top: 36,
                   left: 0,
                   zIndex: 1200,
-                  background: '#FFFFFF',
-                  border: '1px solid #E5E7EB',
+                  background: 'var(--mm-chrome-panel)',
+                  border: '1px solid var(--mm-chrome-border)',
                   borderRadius: 8,
                   minWidth: 220,
                   overflow: 'hidden',
@@ -2999,9 +2999,9 @@ export default function Home() {
           style={{
             width: drawerOwner ? 0 : (isMobile ? '100%' : 'clamp(300px, 30vw, 420px)'),
             minWidth: drawerOwner ? 0 : (isMobile ? 0 : 'clamp(300px, 30vw, 420px)'),
-            background: '#F8F8F8',
-            borderRight: drawerOwner ? 'none' : (isMobile ? 'none' : '1px solid #E5E7EB'),
-            borderTop: isMobile ? '1px solid #E5E7EB' : 'none',
+            background: 'var(--mm-chrome-surface)',
+            borderRight: drawerOwner ? 'none' : (isMobile ? 'none' : '1px solid var(--mm-chrome-border)'),
+            borderTop: isMobile ? '1px solid var(--mm-chrome-border)' : 'none',
             overflowY: 'auto',
             padding: drawerOwner ? 0 : 14,
             order: isMobile ? 2 : 1,
@@ -4262,20 +4262,20 @@ export default function Home() {
         style={{
           height: isMobile ? 58 : 44,
           minHeight: isMobile ? 58 : 44,
-          background: '#FFFFFF',
-          borderTop: '1px solid #E5E7EB',
+          background: 'var(--mm-chrome-bg)',
+          borderTop: '1px solid var(--mm-chrome-border)',
           display: 'flex',
           alignItems: 'center',
           gap: isMobile ? 14 : 20,
           padding: isMobile ? '0 10px' : '0 16px',
-          color: '#374151',
+          color: 'var(--mm-chrome-fg)',
           fontSize: 11,
           boxShadow: '0 -1px 3px rgba(0,0,0,0.04)',
           overflowX: 'auto',
           whiteSpace: 'nowrap',
         }}
       >
-        <span style={{ fontSize: 12, color: '#374151', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>Out of state</span>
+        <span style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>Out of state</span>
         <button
           onClick={() => setOutOfStateOnly((prev) => !prev)}
           style={{
@@ -4374,11 +4374,18 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, color: '#6B7280' }}>Min NMA:</span>
+          <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)' }}>Min NMA:</span>
           <select
             value={minNRA}
             onChange={(e) => setMinNRA(Number(e.target.value))}
-            style={{ fontSize: 11, border: '1px solid #E5E7EB', borderRadius: 6, padding: '2px 6px', background: '#fff', color: '#374151' }}
+            style={{
+              fontSize: 11,
+              border: '1px solid var(--mm-chrome-border)',
+              borderRadius: 6,
+              padding: '2px 6px',
+              background: 'var(--mm-chrome-bg)',
+              color: 'var(--mm-chrome-fg)',
+            }}
           >
             <option value={0}>Any</option>
             <option value={0.1}>0.1+</option>
@@ -4389,6 +4396,11 @@ export default function Home() {
             <option value={25}>25+</option>
             <option value={50}>50+</option>
           </select>
+        </div>
+
+        {/* Theme toggle — right edge of the map footer. */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
+          <ThemeToggle size="sm" />
         </div>
 
         {/* Operator filter lives in the map Legend/Overlays panel (top-right).
