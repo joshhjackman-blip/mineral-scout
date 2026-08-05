@@ -2003,10 +2003,10 @@ export default function Map({
             'text-color': [
               'case',
               ['==', ['get', 'role'], 'active'],
-              '#0F172A',
+              isDarkRef.current ? '#FFFFFF' : '#0F172A',
               isDarkRef.current ? '#CBD5E1' : '#64748B',
             ],
-            'text-halo-color': isDarkRef.current ? '#0F172A' : '#FFFFFF',
+            'text-halo-color': isDarkRef.current ? '#92400E' : '#FFFFFF',
             'text-halo-width': 2,
             'text-halo-blur': 0.5,
           },
