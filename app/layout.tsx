@@ -4,6 +4,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import PostHogProvider from "@/app/components/PostHogProvider"
 import HelpChatWidget from "@/app/components/HelpChatWidget"
+import ThemeProvider from "@/app/components/ThemeProvider"
+import ThemeDock from "@/app/components/ThemeDock"
 
 import "./globals.css"
 
@@ -22,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -42,11 +44,14 @@ export default function RootLayout({
         />
       </head>
       <body style={{ margin: 0, padding: 0 }}>
-        <PostHogProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </PostHogProvider>
-        <HelpChatWidget />
-        <Toaster richColors position="top-right" />
+        <ThemeProvider>
+          <PostHogProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </PostHogProvider>
+          <ThemeDock />
+          <HelpChatWidget />
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   )

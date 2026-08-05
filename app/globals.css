@@ -109,15 +109,79 @@
   --font-display: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-body: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
+
+  /* Map / app chrome tokens — used by header, bottom bar, theme toggle. */
+  --mm-chrome-bg: #ffffff;
+  --mm-chrome-fg: #111827;
+  --mm-chrome-muted: #6b7280;
+  --mm-chrome-border: #e5e7eb;
+  --mm-chrome-surface: #f4f5f7;
+  --mm-chrome-panel: #ffffff;
+  --mm-chrome-header-overlay: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
+}
+
+.dark {
+  --mm-chrome-bg: #111827;
+  --mm-chrome-fg: #f3f4f6;
+  --mm-chrome-muted: #9ca3af;
+  --mm-chrome-border: #374151;
+  --mm-chrome-surface: #0b1220;
+  --mm-chrome-panel: #1f2937;
+  --mm-chrome-header-overlay: linear-gradient(
+    180deg,
+    rgba(17, 24, 39, 0.94) 0%,
+    rgba(17, 24, 39, 0.98) 100%
+  );
 }
 
 body {
   font-family: var(--font-body);
-  background: #F4F5F7;
-  color: #111827;
+  background: var(--mm-chrome-surface);
+  color: var(--mm-chrome-fg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   font-feature-settings: 'ss01', 'ss02', 'cv01';
+}
+
+/* Soft dark pass for Tailwind gray shells (account / CRM / admin / owner). */
+.dark .bg-gray-50 {
+  background-color: #0b1220 !important;
+}
+.dark .bg-white {
+  background-color: #111827 !important;
+}
+.dark .border-gray-100,
+.dark .border-gray-200 {
+  border-color: #374151 !important;
+}
+.dark .text-gray-900 {
+  color: #f3f4f6 !important;
+}
+.dark .text-gray-800 {
+  color: #e5e7eb !important;
+}
+.dark .text-gray-700 {
+  color: #d1d5db !important;
+}
+.dark .text-gray-600 {
+  color: #9ca3af !important;
+}
+.dark .text-gray-500,
+.dark .text-gray-400 {
+  color: #9ca3af !important;
+}
+.dark .hover\:bg-gray-50:hover {
+  background-color: #1f2937 !important;
+}
+.dark .bg-gray-100 {
+  background-color: #1f2937 !important;
+}
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #374151;
 }
 
 /* Display type — h1..h4 and anything opting in via .font-display or
@@ -143,6 +207,8 @@ h1, h2, h3, h4, .font-display {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+.dark ::-webkit-scrollbar-thumb { background: #4B5563; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #6B7280; }
 
 /* Focus rings */
 *:focus-visible {
