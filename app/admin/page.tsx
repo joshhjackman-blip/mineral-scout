@@ -145,9 +145,13 @@ export default function AdminDashboard() {
         fetch('/api/admin/teams', { cache: 'no-store' }),
         fetch('/api/admin/admins', { cache: 'no-store' }),
       ])
-      if (!usersRes.ok) {
+      if (usersRes.status === 401) {
         window.location.href = '/'
         return
+      }
+      if (!usersRes.ok) {
+        // Don't bounce the whole console on a soft API failure.
+        console.error('Admin users API failed', usersRes.status)
       }
 
       const data = (await usersRes.json()) as {
@@ -313,7 +317,16 @@ export default function AdminDashboard() {
       setSessionEmail(email)
       const owner = isPlatformOwner(email)
       setViewerIsOwner(owner)
-      setTab(owner ? 'overview' : 'usage')
+      const params = new URLSearchParams(window.location.search)
+      const tabParam = params.get('tab') as AdminTab | null
+      const allowed: AdminTab[] = owner
+        ? ['overview', 'admins', 'teams', 'users']
+        : ['usage', 'admins', 'teams', 'users']
+      if (tabParam && allowed.includes(tabParam)) {
+        setTab(tabParam)
+      } else {
+        setTab(owner ? 'overview' : 'usage')
+      }
       await refresh()
     }
 
@@ -365,27 +378,46 @@ export default function AdminDashboard() {
           <AppLogo variant="light" width={120} />
           <span className="text-gray-600">·</span>
           <span className="text-sm text-gray-400">
-            {isOwnerView ? 'Owner console' : 'Admin'}
+            {isOwnerView ? 'Ops console' : 'Admin'}
           </span>
         </div>
-        <Link
-          href="/"
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors"
-        >
-          <ArrowLeft size={13} />
-          Back to map
-        </Link>
+        <nav className="flex items-center gap-1">
+          {isOwnerView && (
+            <Link
+              href="/owner"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors"
+            >
+              Owner portfolio
+            </Link>
+          )}
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors"
+          >
+            <ArrowLeft size={13} />
+            Back to map
+          </Link>
+        </nav>
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-8">
         {isOwnerView && (
-          <div className="mb-6">
-            <h1 className="font-serif text-2xl font-bold text-gray-900">
-              Platform owner overview
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Monitor every team&apos;s activity and estimated success-fee spend across Mineral Map.
-            </p>
+          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-gray-900">
+                Ops console
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Provision teams, manage staff admins, and review flagged deeds.
+                Cross-team spend lives on the Owner portfolio.
+              </p>
+            </div>
+            <Link
+              href="/owner"
+              className="shrink-0 inline-flex px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+            >
+              Open owner portfolio →
+            </Link>
           </div>
         )}
         <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">

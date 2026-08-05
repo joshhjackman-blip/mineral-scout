@@ -48,6 +48,7 @@ export async function middleware(req: NextRequest) {
 
   const isAdminPath =
     req.nextUrl.pathname.startsWith('/admin') ||
+    req.nextUrl.pathname.startsWith('/owner') ||
     req.nextUrl.pathname.startsWith('/api/admin')
   const isAdmin = isPlatformAdmin(
     session?.user?.user_metadata as Record<string, unknown> | undefined,
