@@ -72,13 +72,14 @@ export default function BasinActivityWidget() {
 
   return (
     <div style={{
-      background: '#FFFFFF',
-      border: '1px solid #E5E7EB',
+      background: 'var(--mm-chrome-panel)',
+      border: '1px solid var(--mm-chrome-border)',
       borderRadius: 10,
       padding: '14px 16px 12px',
       marginBottom: 16,
       fontFamily: 'Geist, Inter, system-ui, sans-serif',
       boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+      color: 'var(--mm-chrome-fg)',
     }}>
       <div style={{
         display: 'flex',
@@ -91,7 +92,7 @@ export default function BasinActivityWidget() {
           fontWeight: 600,
           letterSpacing: '0.12em',
           textTransform: 'uppercase',
-          color: '#475569',
+          color: 'var(--mm-chrome-muted)',
         }}>
           Basin Activity
         </div>
@@ -157,7 +158,7 @@ export default function BasinActivityWidget() {
               padding: '4px 0',
               fontSize: 10,
               fontWeight: 600,
-              color: '#64748B',
+              color: 'var(--mm-chrome-muted)',
               letterSpacing: '0.06em',
               textTransform: 'uppercase',
             }}
@@ -166,7 +167,7 @@ export default function BasinActivityWidget() {
             <span style={{ transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>▾</span>
           </button>
           {expanded && (
-            <div style={{ marginTop: 6, borderTop: '1px solid #F1F5F9', paddingTop: 8 }}>
+            <div style={{ marginTop: 6, borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 }}>
               {data.counties.map((c) => (
                 <div key={c.countyId} style={{
                   display: 'grid',
@@ -175,7 +176,7 @@ export default function BasinActivityWidget() {
                   padding: '4px 0',
                   alignItems: 'baseline',
                 }}>
-                  <span style={{ fontSize: 11, color: '#334155', fontWeight: 500 }}>
+                  <span style={{ fontSize: 11, color: 'var(--mm-chrome-fg)', fontWeight: 500 }}>
                     {c.displayName.replace(' County, TX', '')}
                   </span>
                   <span style={{
@@ -223,8 +224,8 @@ export default function BasinActivityWidget() {
 function StatCell({ value, label, sublabel, color }: { value: number; label: string; sublabel: string; color: string }) {
   return (
     <div style={{
-      background: '#F8FAFC',
-      border: '1px solid #E5E7EB',
+      background: 'var(--mm-chrome-muted-fill)',
+      border: '1px solid var(--mm-chrome-border)',
       borderRadius: 8,
       padding: '10px 8px',
       textAlign: 'center',
@@ -241,7 +242,7 @@ function StatCell({ value, label, sublabel, color }: { value: number; label: str
       </div>
       <div style={{
         fontSize: 10,
-        color: '#0F172A',
+        color: 'var(--mm-chrome-fg)',
         fontWeight: 600,
         marginTop: 6,
       }}>
@@ -249,7 +250,7 @@ function StatCell({ value, label, sublabel, color }: { value: number; label: str
       </div>
       <div style={{
         fontSize: 9,
-        color: '#94A3B8',
+        color: 'var(--mm-chrome-muted)',
         marginTop: 1,
         letterSpacing: '0.02em',
       }}>

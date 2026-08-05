@@ -1,5 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTheme } from 'next-themes'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
@@ -10,6 +11,9 @@ import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
+
+const MAP_STYLE_LIGHT = 'mapbox://styles/mapbox/streets-v12'
+const MAP_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
 
 // Flatten a GeoJSON polygon/multipolygon geometry into a flat array of [lng, lat]
 // coordinate pairs so we can compute a rough bbox-based centroid without adding
@@ -313,6 +317,19 @@ export default function Map({
   // it drives a red-dot overlay showing wells currently drilling,
   // which is a live signal that's meaningful regardless of the tract's
   // primary classification.
+  const { resolvedTheme } = useTheme()
+  const isDarkTheme = resolvedTheme === 'dark'
+  const isDarkRef = useRef(isDarkTheme)
+  const basemapStyleRef = useRef(
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
+      ? MAP_STYLE_DARK
+      : MAP_STYLE_LIGHT,
+  )
+
+  useEffect(() => {
+    isDarkRef.current = isDarkTheme
+  }, [isDarkTheme])
+
   const [statusVisible, setStatusVisible] = useState<Record<UnifiedStatus, boolean>>({
     PDP: true,
     PUD_DUC: true,
@@ -1236,19 +1253,26 @@ export default function Map({
       data: { type: 'FeatureCollection', features: texasFeatures },
     })
 
+    const dark = isDarkRef.current
     if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-fill',
       type: 'fill',
       source: 'tx-counties',
-      paint: { 'fill-color': '#E5E7EB', 'fill-opacity': 0.35 },
+      paint: {
+        'fill-color': dark ? '#334155' : '#E5E7EB',
+        'fill-opacity': dark ? 0.45 : 0.35,
+      },
     })
     if (!map.current) return
     map.current.addLayer({
       id: 'tx-counties-outline',
       type: 'line',
       source: 'tx-counties',
-      paint: { 'line-color': '#D1D5DB', 'line-width': 0.5 },
+      paint: {
+        'line-color': dark ? '#475569' : '#D1D5DB',
+        'line-width': 0.5,
+      },
     })
     if (!map.current) return
     map.current.addLayer({
@@ -1398,10 +1422,11 @@ export default function Map({
         paint: {
           'text-color': [
             'case',
-            ['==', ['coalesce', ['get', 'active'], false], true], '#0F172A',
-            '#64748B',
+            ['==', ['coalesce', ['get', 'active'], false], true],
+            '#0F172A',
+            dark ? '#CBD5E1' : '#64748B',
           ],
-          'text-halo-color': '#FFFFFF',
+          'text-halo-color': dark ? '#0F172A' : '#FFFFFF',
           'text-halo-width': 2,
           'text-halo-blur': 0.5,
         },
@@ -1426,8 +1451,8 @@ export default function Map({
           'text-ignore-placement': true,
         },
         paint: {
-          'text-color': '#64748B',
-          'text-halo-color': '#FFFFFF',
+          'text-color': dark ? '#94A3B8' : '#64748B',
+          'text-halo-color': dark ? '#0F172A' : '#FFFFFF',
           'text-halo-width': 1.5,
         },
       })
@@ -1975,10 +2000,11 @@ export default function Map({
           paint: {
             'text-color': [
               'case',
-              ['==', ['get', 'role'], 'active'], '#0F172A',
-              '#64748B',
+              ['==', ['get', 'role'], 'active'],
+              '#0F172A',
+              isDarkRef.current ? '#CBD5E1' : '#64748B',
             ],
-            'text-halo-color': '#FFFFFF',
+            'text-halo-color': isDarkRef.current ? '#0F172A' : '#FFFFFF',
             'text-halo-width': 2,
             'text-halo-blur': 0.5,
           },
@@ -2041,8 +2067,8 @@ export default function Map({
             'text-ignore-placement': true,
           },
           paint: {
-            'text-color': '#64748B',
-            'text-halo-color': '#FFFFFF',
+            'text-color': isDarkRef.current ? '#94A3B8' : '#64748B',
+            'text-halo-color': isDarkRef.current ? '#0F172A' : '#FFFFFF',
             'text-halo-width': 1.5,
           },
         })
@@ -2071,9 +2097,15 @@ export default function Map({
   useEffect(() => {
     if (map.current || !mapContainer.current) return
 
+    const initialStyle = document.documentElement.classList.contains('dark')
+      ? MAP_STYLE_DARK
+      : MAP_STYLE_LIGHT
+    basemapStyleRef.current = initialStyle
+    isDarkRef.current = initialStyle === MAP_STYLE_DARK
+
     const mapInstance = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: initialStyle,
       center: TEXAS_OVERVIEW_CENTER,
       zoom: TEXAS_OVERVIEW_ZOOM,
     })
@@ -2101,6 +2133,28 @@ export default function Map({
       renderTokenRef.current += 1
     }
   }, [])
+
+  // Swap Mapbox basemap when the user toggles night mode. setStyle wipes
+  // custom layers — rebuild via renderForCurrentLevel after style.load.
+  useEffect(() => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+    if (resolvedTheme !== 'light' && resolvedTheme !== 'dark') return
+
+    const nextStyle = resolvedTheme === 'dark' ? MAP_STYLE_DARK : MAP_STYLE_LIGHT
+    if (basemapStyleRef.current === nextStyle) return
+    basemapStyleRef.current = nextStyle
+    isDarkRef.current = resolvedTheme === 'dark'
+
+    clearCountyMarkers()
+    setMapReady(false)
+
+    mapInstance.once('style.load', () => {
+      setMapReady(true)
+      void renderForCurrentLevelRef.current()
+    })
+    mapInstance.setStyle(nextStyle)
+  }, [resolvedTheme, clearCountyMarkers])
 
   useEffect(() => {
     if (!map.current) return
@@ -2410,14 +2464,14 @@ function LayerTogglePanel({
         position: 'absolute',
         right: 12,
         top: 12,
-        background: 'rgba(255,255,255,0.97)',
-        border: '1px solid #E5E7EB',
+        background: 'var(--mm-chrome-panel)',
+        border: '1px solid var(--mm-chrome-border)',
         borderRadius: 8,
         padding: '10px 12px',
-        boxShadow: '0 4px 16px rgba(15,23,42,0.10)',
+        boxShadow: '0 4px 16px rgba(15,23,42,0.28)',
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: 12,
-        color: '#0F172A',
+        color: 'var(--mm-chrome-fg)',
         zIndex: 20,
         display: 'flex',
         flexDirection: 'column',
@@ -2436,7 +2490,7 @@ function LayerTogglePanel({
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+      <div style={{ borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 }}>
         <div style={sectionHeadingStyle}>Overlays</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <ToggleRow
@@ -2467,7 +2521,15 @@ function LayerTogglePanel({
             }}
           />
         </div>
-        <div style={{ marginTop: 6, marginLeft: 22, fontSize: 10.5, color: '#64748B', lineHeight: 1.35 }}>
+        <div
+          style={{
+            marginTop: 6,
+            marginLeft: 22,
+            fontSize: 10.5,
+            color: 'var(--mm-chrome-muted)',
+            lineHeight: 1.35,
+          }}
+        >
           Blue halo: permit APPROVED in the last 24 months.
           Teal halo: permit FILED but not yet approved.
           Red dot: oil/gas well spudded in the last 12 months
@@ -2476,7 +2538,7 @@ function LayerTogglePanel({
       </div>
 
       {onOperatorKeysChange && (
-        <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 8 }}>
+        <div style={{ borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 }}>
           <div style={sectionHeadingStyle}>Operator</div>
           <OperatorMultiSelect
             options={operatorOptions}
@@ -2494,7 +2556,7 @@ const sectionHeadingStyle: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: 0.4,
   textTransform: 'uppercase',
-  color: '#475569',
+  color: 'var(--mm-chrome-muted)',
   fontSize: 10,
   marginBottom: 6,
 }
@@ -2577,7 +2639,9 @@ function ToggleRow({
           />
         )}
       </span>
-      <span style={{ color: row.checked ? '#0F172A' : '#94A3B8' }}>{row.label}</span>
+      <span style={{ color: row.checked ? 'var(--mm-chrome-fg)' : 'var(--mm-chrome-muted)' }}>
+        {row.label}
+      </span>
     </label>
   )
 }

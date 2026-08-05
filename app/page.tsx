@@ -321,7 +321,7 @@ function TractActivityBadge({
         {label}
       </span>
       {detail && (
-        <span style={{ fontSize: 10, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+        <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
           {detail}
         </span>
       )}
@@ -2590,10 +2590,10 @@ export default function Home() {
                     display: 'block',
                     padding: '10px 16px',
                     fontSize: 13,
-                    color: '#374151',
+                    color: 'var(--mm-chrome-fg)',
                     textDecoration: 'none',
                     fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    borderBottom: '1px solid #F3F4F6',
+                    borderBottom: '1px solid var(--mm-chrome-border)',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#FEF3C7'
@@ -2610,10 +2610,10 @@ export default function Home() {
                     display: 'block',
                     padding: '10px 16px',
                     fontSize: 13,
-                    color: '#374151',
+                    color: 'var(--mm-chrome-fg)',
                     textDecoration: 'none',
                     fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    borderBottom: '1px solid #F3F4F6',
+                    borderBottom: '1px solid var(--mm-chrome-border)',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#EFF6FF'
@@ -2631,10 +2631,10 @@ export default function Home() {
                     display: 'block',
                     padding: '10px 16px',
                     fontSize: 13,
-                    color: '#374151',
+                    color: 'var(--mm-chrome-fg)',
                     textDecoration: 'none',
                     fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    borderBottom: '1px solid #F3F4F6',
+                    borderBottom: '1px solid var(--mm-chrome-border)',
                   }}
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#FEF3C7'
@@ -2646,10 +2646,10 @@ export default function Home() {
                   CRM & Pipeline
                 </a>
                 <div style={{ borderTop: '1px solid #E5E7EB', margin: '2px 0 0' }} />
-                <div style={{ padding: '10px 16px 4px', fontSize: 11, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <div style={{ padding: '10px 16px 4px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   {navCountyLabel}
                 </div>
-                <div style={{ padding: '0 16px 12px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <div style={{ padding: '0 16px 12px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   {countySummaryText}
                 </div>
               </div>
@@ -2658,7 +2658,7 @@ export default function Home() {
           <AppLogo width={150} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 8 }}>
             {!isMobile && (
-              <span style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif', whiteSpace: 'nowrap' }}>
                 {navCountyLabel}
               </span>
             )}
@@ -2676,10 +2676,10 @@ export default function Home() {
                 }}
                 style={{
                   height: 26,
-                  border: '1px solid #E5E7EB',
+                  border: '1px solid var(--mm-chrome-border)',
                   borderRadius: 6,
-                  background: '#FFFFFF',
-                  color: '#6B7280',
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-muted)',
                   fontSize: 11,
                   fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   padding: '0 8px',
@@ -2694,10 +2694,10 @@ export default function Home() {
               onChange={(event) => setSelectedCounty(event.target.value as CountyKey)}
               style={{
                 height: 26,
-                border: '1px solid #E5E7EB',
+                border: '1px solid var(--mm-chrome-border)',
                 borderRadius: 6,
-                background: '#FFFFFF',
-                color: '#6B7280',
+                background: 'var(--mm-chrome-panel)',
+                color: 'var(--mm-chrome-muted)',
                 fontSize: 11,
                 fontFamily: 'Geist, Inter, system-ui, sans-serif',
                 padding: '0 8px',
@@ -2716,7 +2716,7 @@ export default function Home() {
           <div style={{ position: 'relative', flex: 1, maxWidth: 360, margin: '0 16px' }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
-              background: '#F3F4F6', border: '1px solid #E5E7EB',
+              background: 'var(--mm-chrome-muted-fill)', border: '1px solid var(--mm-chrome-border)',
               borderRadius: 8, padding: '6px 12px',
               transition: 'all 0.15s'
             }}>
@@ -2732,7 +2732,7 @@ export default function Home() {
                 onBlur={() => setTimeout(() => setSearchOpen(false), 200)}
                 style={{
                   border: 'none', background: 'transparent', outline: 'none',
-                  fontSize: 13, color: '#111827', width: '100%',
+                  fontSize: 13, color: 'var(--mm-chrome-fg)', width: '100%',
                   fontFamily: 'Geist, Inter, system-ui, sans-serif'
                 }}
               />
@@ -2744,7 +2744,7 @@ export default function Home() {
             {searchOpen && searchResults.length > 0 && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
+                background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 10,
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000, overflow: 'hidden'
               }}>
                 {searchResults.map((result, i) => (
@@ -2764,20 +2764,20 @@ export default function Home() {
                       onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
                     >
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{result.owner_name}</div>
-                        <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>{result.owner_name}</div>
+                        <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2 }}>
                           {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
                           {result.countyName ? ` · ${result.countyName}` : ''}
                           {Number(result.leaseCount ?? 1) > 1 ? (
                             <span
                               style={{
                                 marginLeft: 6,
-                                background: '#F3F4F6',
-                                border: '1px solid #E5E7EB',
+                                background: 'var(--mm-chrome-muted-fill)',
+                                border: '1px solid var(--mm-chrome-border)',
                                 borderRadius: 4,
                                 padding: '1px 5px',
                                 fontSize: 10,
-                                color: '#6B7280',
+                                color: 'var(--mm-chrome-muted)',
                               }}
                             >
                               {result.leaseCount} leases
@@ -2786,13 +2786,13 @@ export default function Home() {
                         </div>
                       </div>
                       {result.acreage ? (
-                        <span style={{ fontSize: 10, color: '#9CA3AF' }}>
+                        <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }}>
                           {Number(result.acreage).toFixed(1)} ac
                         </span>
                       ) : null}
                     </div>
                 ))}
-                <div style={{ padding: '8px 14px', fontSize: 11, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', background: '#FAFAFA' }}>
+                <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--mm-chrome-muted)', borderTop: '1px solid var(--mm-chrome-border)', background: 'var(--mm-chrome-surface)' }}>
                   {searchResults.length} results
                 </div>
               </div>
@@ -2801,8 +2801,8 @@ export default function Home() {
             {searchOpen && searchQuery.length >= 3 && searchResults.length === 0 && !searching && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
-                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10,
-                padding: '16px 14px', fontSize: 13, color: '#9CA3AF', textAlign: 'center',
+                background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 10,
+                padding: '16px 14px', fontSize: 13, color: 'var(--mm-chrome-muted)', textAlign: 'center',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000
               }}>
                 No owners found for &quot;{searchQuery}&quot;
@@ -2882,11 +2882,11 @@ export default function Home() {
               href="/account"
               style={{
                 fontSize: 12,
-                color: '#6B7280',
+                color: 'var(--mm-chrome-muted)',
                 textDecoration: 'none',
                 padding: '6px 12px',
                 borderRadius: 6,
-                border: '1px solid #E5E7EB',
+                border: '1px solid var(--mm-chrome-border)',
                 fontFamily: 'Geist, Inter, system-ui, sans-serif',
                 whiteSpace: 'nowrap',
               }}
@@ -2901,7 +2901,7 @@ export default function Home() {
             }}
             style={{
               fontSize: 12,
-              color: '#6B7280',
+              color: 'var(--mm-chrome-muted)',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
@@ -2919,11 +2919,11 @@ export default function Home() {
             }}
             style={{
               fontSize: 12,
-              color: '#6B7280',
+              color: 'var(--mm-chrome-muted)',
               padding: '6px 12px',
               borderRadius: 6,
-              border: '1px solid #E5E7EB',
-              background: '#FFFFFF',
+              border: '1px solid var(--mm-chrome-border)',
+              background: 'var(--mm-chrome-panel)',
               cursor: 'pointer',
               fontFamily: 'Geist, Inter, system-ui, sans-serif',
               whiteSpace: 'nowrap',
@@ -2958,7 +2958,7 @@ export default function Home() {
               flexDirection: 'column',
               overflow: 'hidden',
               borderRight: '1px solid #E5E7EB',
-              background: '#FFFFFF',
+              background: 'var(--mm-chrome-panel)',
               order: 0,
             }}
           >
@@ -3025,7 +3025,7 @@ export default function Home() {
                 style={{
                   border: 'none',
                   background: 'none',
-                  color: '#6B7280',
+                  color: 'var(--mm-chrome-muted)',
                   fontSize: 12,
                   cursor: 'pointer',
                   padding: '12px 16px',
@@ -3041,7 +3041,7 @@ export default function Home() {
                   fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   fontSize: 13,
                   fontWeight: 600,
-                  color: '#6B7280',
+                  color: 'var(--mm-chrome-muted)',
                   letterSpacing: '0.05em',
                 }}
               >
@@ -3053,7 +3053,7 @@ export default function Home() {
                     style={{
                       fontFamily: 'Geist, Inter, system-ui, sans-serif',
                       fontSize: 11,
-                      color: '#9CA3AF',
+                      color: 'var(--mm-chrome-muted)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.08em',
                       marginBottom: 2,
@@ -3068,7 +3068,7 @@ export default function Home() {
                       fontFamily: 'Geist, Inter, system-ui, sans-serif',
                       fontSize: 18,
                       fontWeight: 700,
-                      color: '#111827',
+                      color: 'var(--mm-chrome-fg)',
                       letterSpacing: '-0.01em',
                       marginBottom: 2,
                       lineHeight: 1.3,
@@ -3082,7 +3082,7 @@ export default function Home() {
                     style={{
                       fontFamily: 'Geist, Inter, system-ui, sans-serif',
                       fontSize: 11,
-                      color: '#6B7280',
+                      color: 'var(--mm-chrome-muted)',
                     }}
                   >
                     {legalGranteeLine}
@@ -3095,12 +3095,12 @@ export default function Home() {
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
                   {ownerCount} owners
                 </span>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'var(--mm-chrome-muted-fill)', color: 'var(--mm-chrome-muted)', border: '1px solid var(--mm-chrome-border)' }}>
                   {topOperator}
                 </span>
               </div>
 
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
                 <button
                   onClick={() => setPermitsExpanded((prev) => !prev)}
                   style={{
@@ -3133,14 +3133,14 @@ export default function Home() {
                     >
                       {countyPermitsLoading ? '…' : visiblePermits.length}
                     </span>
-                    <span style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                    <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                       last 24 months
                     </span>
                   </div>
                   <span
                     style={{
                       fontSize: 10,
-                      color: '#9CA3AF',
+                      color: 'var(--mm-chrome-muted)',
                       transform: permitsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                       transition: 'transform 0.2s',
                     }}
@@ -3149,13 +3149,13 @@ export default function Home() {
                   </span>
                 </button>
                 {permitsExpanded && (
-                  <div style={{ borderTop: '1px solid #F3F4F6', padding: '4px 0 8px' }}>
+                  <div style={{ borderTop: '1px solid var(--mm-chrome-border)', padding: '4px 0 8px' }}>
                     {countyPermitsLoading ? (
-                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontStyle: 'italic', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                         Loading permits…
                       </div>
                     ) : visiblePermits.length === 0 ? (
-                      <div style={{ padding: '10px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                      <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                         No permits filed on this tract in the last 24 months.
                       </div>
                     ) : (
@@ -3188,7 +3188,7 @@ export default function Home() {
                                   style={{
                                     fontSize: 12,
                                     fontWeight: 600,
-                                    color: '#111827',
+                                    color: 'var(--mm-chrome-fg)',
                                     fontFamily: 'Geist, Inter, system-ui, sans-serif',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
@@ -3198,11 +3198,11 @@ export default function Home() {
                                   {lease || (permitNumber ? `Permit ${permitNumber}` : api ? `API ${api}` : 'Unnamed permit')}
                                 </div>
                                 {operator && (
-                                  <div style={{ fontSize: 11, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginTop: 2 }}>
+                                  <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginTop: 2 }}>
                                     {operator}
                                   </div>
                                 )}
-                                <div style={{ fontSize: 10, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginTop: 3, display: 'flex', gap: 8 }}>
+                                <div style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginTop: 3, display: 'flex', gap: 8 }}>
                                   {filed && <span>Filed {filed}</span>}
                                   {api && <span>API {api}</span>}
                                   {permitNumber && <span>#{permitNumber}</span>}
@@ -3228,7 +3228,7 @@ export default function Home() {
                           )
                         })}
                         {visiblePermits.length > 50 && (
-                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontFamily: 'Geist, Inter, system-ui, sans-serif', fontStyle: 'italic', textAlign: 'center' }}>
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif', fontStyle: 'italic', textAlign: 'center' }}>
                             + {visiblePermits.length - 50} more (RRC daily scrape)
                           </div>
                         )}
@@ -3238,17 +3238,17 @@ export default function Home() {
                 )}
               </div>
 
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
-                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
-                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {fieldName}</div>
-                <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
-                <div style={{ fontSize: 12, color: '#111827' }}>Est. lease expiration: {estExpiration}</div>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Field: {fieldName}</div>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)' }}>Est. lease expiration: {estExpiration}</div>
               </div>
 
               {(tractWellsLoaded || tractWellsLoading) && (
-                <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
-                  <div style={{ borderTop: '1px solid #F3F4F6' }}>
+                <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
+                  <div style={{ borderTop: '1px solid var(--mm-chrome-border)' }}>
                     <button
                       onClick={() => setWellsExpanded(!wellsExpanded)}
                       style={{
@@ -3266,7 +3266,7 @@ export default function Home() {
                       <div style={{
                         fontSize: 10,
                         fontWeight: 700,
-                        color: '#6B7280',
+                        color: 'var(--mm-chrome-muted)',
                         letterSpacing: '0.08em',
                         textTransform: 'uppercase',
                       }}>
@@ -3274,7 +3274,7 @@ export default function Home() {
                       </div>
                       <div style={{
                         fontSize: 10,
-                        color: '#9CA3AF',
+                        color: 'var(--mm-chrome-muted)',
                         transform: wellsExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
                         transition: 'transform 0.2s',
                       }}>
@@ -3285,12 +3285,12 @@ export default function Home() {
                     {wellsExpanded && (
                       <div style={{ paddingBottom: 8 }}>
                         {tractWellsLoading && (
-                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontStyle: 'italic' }}>
                             Loading tract wells...
                           </div>
                         )}
                         {!tractWellsLoading && tractWells.length === 0 && (
-                          <div style={{ padding: '8px 16px', fontSize: 11, color: '#9CA3AF', fontStyle: 'italic' }}>
+                          <div style={{ padding: '8px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontStyle: 'italic' }}>
                             No wells matched this tract
                           </div>
                         )}
@@ -3307,10 +3307,10 @@ export default function Home() {
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--mm-chrome-fg)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {well.lease_name}
                               </div>
-                              <div style={{ fontSize: 11, color: '#6B7280' }}>
+                              <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)' }}>
                                 {well.operator_name}
                               </div>
                             </div>
@@ -3356,15 +3356,15 @@ export default function Home() {
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   padding: '10px 16px',
-                  borderBottom: '1px solid #F3F4F6',
-                  background: '#F9FAFB',
+                  borderBottom: '1px solid var(--mm-chrome-border)',
+                  background: 'var(--mm-chrome-surface)',
                 }}
               >
                 <div
                   style={{
                     fontSize: 10,
                     fontWeight: 700,
-                    color: '#6B7280',
+                    color: 'var(--mm-chrome-muted)',
                     letterSpacing: '0.08em',
                     textTransform: 'uppercase',
                   }}
@@ -3420,7 +3420,7 @@ export default function Home() {
                   ))}
                 </div>
               </div>
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {cleanOwnersList.map((owner: TractOwner, i: number) => {
                   const isExpanded = expandedOwner === i
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
@@ -3464,7 +3464,7 @@ export default function Home() {
                     <div
                       key={`${owner.owner_name}-${i}`}
                       style={{
-                        borderBottom: '1px solid #F3F4F6',
+                        borderBottom: '1px solid var(--mm-chrome-border)',
                         opacity: rowHidden
                           ? 0.55
                           : selectedOperatorFilters.length > 0 && !operatorHit
@@ -3526,7 +3526,7 @@ export default function Home() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                           <div style={{ flex: 1, marginRight: 8 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--mm-chrome-fg)', lineHeight: 1.3 }}>
                               {i + 1}. {rowDisplayName}
                               {operatorHit && (
                                 <span
@@ -3570,7 +3570,7 @@ export default function Home() {
                               <div
                                 style={{
                                   fontSize: 10,
-                                  color: '#6B7280',
+                                  color: 'var(--mm-chrome-muted)',
                                   fontFamily: 'monospace',
                                   marginTop: 2,
                                   letterSpacing: '0.02em',
@@ -3592,14 +3592,14 @@ export default function Home() {
                                 Op: {canonicalOperatorLabel(owner.operator_name)}
                               </div>
                             )}
-                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2 }}>
+                            <div style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', marginTop: 2 }}>
                               {owner.mailing_city && owner.mailing_state
                                 ? `${owner.mailing_city}, ${owner.mailing_state}`
                                 : 'Address unknown'}
                             </div>
                             {nra !== null && nra > 0 && (
                               <div
-                                style={{ fontSize: 10, color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}
+                                style={{ fontSize: 10, color: 'var(--mm-chrome-fg)', fontFamily: 'monospace', fontWeight: 600 }}
                                 title={royaltyEstimate ? `Est. royalty: ${royaltyEstimate}` : undefined}
                               >
                                 {nra < 0.01
@@ -3608,7 +3608,7 @@ export default function Home() {
                                     ? `${nra.toFixed(3)} NMA`
                                     : `${nra.toFixed(2)} NMA`}
                                 {!Number(owner.acreage) && (
-                                  <span style={{ fontSize: 9, color: '#9CA3AF', marginLeft: 3 }}>est.</span>
+                                  <span style={{ fontSize: 9, color: 'var(--mm-chrome-muted)', marginLeft: 3 }}>est.</span>
                                 )}
                               </div>
                             )}
@@ -3628,17 +3628,17 @@ export default function Home() {
                                 : null
                               return (
                                 <>
-                                  <div style={{ fontSize: 10, color: '#6B7280' }}>
+                                  <div style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }}>
                                     {acresLabel
                                       ? `${ownershipPctValue.toFixed(4)}% interest on ${acresLabel} gross acres`
                                       : `${ownershipPctValue.toFixed(4)}% interest`}
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, fontSize: 10 }}>
-                                    <span style={{ color: '#9CA3AF' }}>DO Interest:</span>
-                                    <span style={{ color: '#374151', fontFamily: 'monospace', fontWeight: 600 }}>
+                                    <span style={{ color: 'var(--mm-chrome-muted)' }}>DO Interest:</span>
+                                    <span style={{ color: 'var(--mm-chrome-fg)', fontFamily: 'monospace', fontWeight: 600 }}>
                                       {ownershipDecimalValue.toFixed(6)}
                                     </span>
-                                    <span style={{ color: '#9CA3AF' }}>
+                                    <span style={{ color: 'var(--mm-chrome-muted)' }}>
                                       ({ownershipPctValue.toFixed(4)}%)
                                     </span>
                                   </div>
@@ -3682,7 +3682,7 @@ export default function Home() {
                             )}
                           </div>
                         </div>
-                        <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ fontSize: 9, color: 'var(--mm-chrome-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                           <span aria-hidden style={{ display: 'inline-block', transform: isExpanded ? 'translateY(-1px)' : 'none', transition: 'transform 0.15s', color: isExpanded ? '#EF9F27' : '#9CA3AF' }}>
                             ↗
                           </span>
@@ -3714,7 +3714,7 @@ export default function Home() {
                 style={{
                   border: 'none',
                   background: 'none',
-                  color: '#6B7280',
+                  color: 'var(--mm-chrome-muted)',
                   fontSize: 12,
                   cursor: 'pointer',
                   padding: '12px 16px',
@@ -3726,10 +3726,10 @@ export default function Home() {
               </button>
 
               <div style={{ padding: '0 16px 12px' }}>
-                <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4 }}>
+                <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: 4 }}>
                   {ownerTractsName}
                 </div>
-                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 12, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-muted)', marginBottom: 12, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   {ownerTractsLoading
                     ? 'Looking up tracts…'
                     : `${ownerTracts.length} tract${ownerTracts.length !== 1 ? 's' : ''} found`}
@@ -3737,7 +3737,7 @@ export default function Home() {
               </div>
 
               {ownerTracts.length > 0 && (
-                <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', margin: '0 14px' }}>
+                <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, overflow: 'hidden', margin: '0 14px' }}>
                   {ownerTracts.map((tract, i) => {
                     const abstractLabel = tract.ABSTRACT_L ?? tract.abstract_label ?? 'Unknown'
                     const operator = tract.top_operator ?? ''
@@ -3771,10 +3771,10 @@ export default function Home() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div style={{ minWidth: 0, flex: 1, marginRight: 10 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: '#111827', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--mm-chrome-fg)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                               {abstractLabel}
                             </div>
-                            <div style={{ fontSize: 10, color: '#6B7280', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                            <div style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                               {operator}
                             </div>
                           </div>
@@ -3786,18 +3786,18 @@ export default function Home() {
               )}
 
               {!ownerTractsLoading && ownerTracts.length === 0 && (
-                <div style={{ padding: '16px', color: '#6B7280', fontSize: 12, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <div style={{ padding: '16px', color: 'var(--mm-chrome-muted)', fontSize: 12, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   No mapped tracts found.
                 </div>
               )}
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
+              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
                 {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
               </div>
               {mapLevel === 'county' && (
-                <div style={{ color: '#6B7280', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   Click any highlighted county to explore
                 </div>
               )}
@@ -3815,9 +3815,9 @@ export default function Home() {
                       <div
                         key={card.lbl}
                         style={{
-                          background: '#FFFFFF',
+                          background: 'var(--mm-chrome-panel)',
                           borderRadius: 8,
-                          border: '1px solid #E5E7EB',
+                          border: '1px solid var(--mm-chrome-border)',
                           padding: '14px 16px',
                           boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
                           gridColumn: isLastOdd ? 'span 2' : undefined,
@@ -3825,7 +3825,7 @@ export default function Home() {
                       >
                         <div
                           style={{
-                            color: '#111827',
+                            color: 'var(--mm-chrome-fg)',
                             fontFamily: '"Times New Roman", Georgia, serif',
                             fontSize: 24,
                             fontWeight: 700,
@@ -3836,7 +3836,7 @@ export default function Home() {
                         >
                           {card.val}
                         </div>
-                        <div style={{ color: '#6B7280', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
+                        <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 11, marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>{card.lbl}</div>
                       </div>
                     )
                   })}
@@ -3859,7 +3859,7 @@ export default function Home() {
                      show per-county contributions. */}
                   <BasinActivityWidget />
 
-                  <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                  <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     ACTIVE COUNTIES
                   </div>
                   <div>
@@ -3875,8 +3875,8 @@ export default function Home() {
                             setMapLevel('tract')
                           }}
                           style={{
-                            background: '#FFFFFF',
-                            border: '1px solid #E5E7EB',
+                            background: 'var(--mm-chrome-panel)',
+                            border: '1px solid var(--mm-chrome-border)',
                             borderRadius: 8,
                             padding: 12,
                             marginBottom: 8,
@@ -3895,11 +3895,11 @@ export default function Home() {
                           }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--mm-chrome-fg)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                               {c.displayName}
                             </div>
                             {live ? (
-                              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                              <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                                 {owners != null ? owners.toLocaleString() : '—'} owners
                                 {permits24mo != null && permits24mo > 0 && (
                                   <>{' · '}<span style={{ color: '#1D4ED8', fontWeight: 500 }}>{permits24mo.toLocaleString()} new permits</span></>
@@ -3916,7 +3916,7 @@ export default function Home() {
                     })}
                   </div>
 
-                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                  <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     Coming Soon
                   </div>
                   <div>
@@ -3946,7 +3946,7 @@ export default function Home() {
                           color: '#94A3B8',
                           letterSpacing: '0.08em',
                           textTransform: 'uppercase',
-                          background: '#FFFFFF',
+                          background: 'var(--mm-chrome-panel)',
                           border: '1px solid #E2E8F0',
                           borderRadius: 999,
                           padding: '3px 8px',
@@ -3963,7 +3963,7 @@ export default function Home() {
 
               {mapLevel === 'tract' && (
               <>
-              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                 TOP 10 MOST ACTIVE TRACTS
               </div>
               <div
@@ -3990,8 +3990,8 @@ export default function Home() {
                       })
                     }}
                     style={{
-                      background: '#FFFFFF',
-                      border: '1px solid #E5E7EB',
+                      background: 'var(--mm-chrome-panel)',
+                      border: '1px solid var(--mm-chrome-border)',
                       borderRadius: 8,
                       padding: '10px 14px',
                       marginBottom: 6,
@@ -4007,13 +4007,13 @@ export default function Home() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, marginRight: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>
                           {tract.abstract_label}
                         </div>
-                        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>
+                        <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2 }}>
                           {tract.level1_sur}
                         </div>
-                        <div style={{ fontSize: 10, color: '#6B7280', marginTop: 4 }}>
+                        <div style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', marginTop: 4 }}>
                           {tract.owner_count} owners · {tract.top_operator}
                         </div>
                       </div>
@@ -4023,17 +4023,17 @@ export default function Home() {
                 ))}
               </div>
 
-              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+              <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                 COUNTY BREAKDOWN
               </div>
-              <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                 {countyBreakdown.map((row) => (
                   <div key={row.operator} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 4 }}>
-                      <span style={{ color: '#111827' }}>{row.operator}</span>
-                      <span style={{ color: '#6B7280' }}>{row.pct}%</span>
+                      <span style={{ color: 'var(--mm-chrome-fg)' }}>{row.operator}</span>
+                      <span style={{ color: 'var(--mm-chrome-muted)' }}>{row.pct}%</span>
                     </div>
-                    <div style={{ height: 7, borderRadius: 4, background: '#F3F4F6' }}>
+                    <div style={{ height: 7, borderRadius: 4, background: 'var(--mm-chrome-muted-fill)' }}>
                       <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: '#EF9F27' }} />
                     </div>
                   </div>
@@ -4092,9 +4092,9 @@ export default function Home() {
                 width: 36,
                 height: 36,
                 borderRadius: '50%',
-                border: '1px solid #E5E7EB',
-                background: 'rgba(255,255,255,0.92)',
-                color: '#374151',
+                border: '1px solid var(--mm-chrome-border)',
+                background: 'var(--mm-chrome-panel)',
+                color: 'var(--mm-chrome-fg)',
                 fontSize: 16,
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
@@ -4119,9 +4119,9 @@ export default function Home() {
                 width: 36,
                 height: 36,
                 borderRadius: '50%',
-                border: '1px solid #E5E7EB',
-                background: 'rgba(255,255,255,0.92)',
-                color: '#374151',
+                border: '1px solid var(--mm-chrome-border)',
+                background: 'var(--mm-chrome-panel)',
+                color: 'var(--mm-chrome-fg)',
                 fontSize: 16,
                 cursor: 'pointer',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
@@ -4220,7 +4220,7 @@ export default function Home() {
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            background: '#FFFFFF',
+            background: 'var(--mm-chrome-panel)',
           }}
         >
           <OwnerDrawer
@@ -4302,7 +4302,7 @@ export default function Home() {
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, color: '#6B7280' }}>1%+ interest</span>
+          <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)' }}>1%+ interest</span>
           <div
             onClick={() => setLargeInterestOnly(!largeInterestOnly)}
             style={{
@@ -4322,7 +4322,7 @@ export default function Home() {
         </div>
 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
-          <span style={{ fontSize: 12, color: '#374151', whiteSpace: 'nowrap', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>Type:</span>
+          <span style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', whiteSpace: 'nowrap', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>Type:</span>
           {(['all', 'individual', 'trust', 'company'] as const).map(type => (
             <button
               key={type}
@@ -4335,7 +4335,7 @@ export default function Home() {
                 fontFamily: 'Geist, Inter, system-ui, sans-serif',
                 whiteSpace: 'nowrap',
                 background: ownerTypeFilter === type ? 'rgba(239,159,39,0.2)' : 'transparent',
-                border: ownerTypeFilter === type ? '1px solid rgba(239,159,39,0.6)' : '1px solid #E5E7EB',
+                border: ownerTypeFilter === type ? '1px solid rgba(239,159,39,0.6)' : '1px solid var(--mm-chrome-border)',
                 color: ownerTypeFilter === type ? '#EF9F27' : '#6B7280',
               }}
             >
@@ -4349,9 +4349,9 @@ export default function Home() {
             `propensity_score`) has been removed from the UI in favor of an
             alphabetical / NRA-based owner sort — see `ownerSort` state. */}
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
-          <span style={{ fontSize: 11, color: '#6B7280', marginRight: 4 }}>Activity:</span>
+          <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginRight: 4 }}>Activity:</span>
           {([
-            { key: 'all',            label: 'All',    color: '#0F172A' },
+            { key: 'all',            label: 'All',    color: 'var(--mm-chrome-fg)' },
             { key: 'pdp',            label: 'PDP',    color: '#CA8A04' }, // yellow chip
             { key: 'pud',            label: 'PUD',    color: '#16A34A' }, // green chip
             { key: 'new_permit',     label: 'New',    color: '#2563EB' },
@@ -4364,7 +4364,7 @@ export default function Home() {
                 fontSize: 10, padding: '3px 10px', borderRadius: 10, cursor: 'pointer',
                 fontFamily: 'monospace',
                 background: activityFilter === chip.key ? `${chip.color}20` : 'transparent',
-                border: activityFilter === chip.key ? `0.5px solid ${chip.color}` : '0.5px solid #E5E7EB',
+                border: activityFilter === chip.key ? `0.5px solid ${chip.color}` : '0.5px solid var(--mm-chrome-border)',
                 color: activityFilter === chip.key ? chip.color : '#6B7280',
               }}
             >
@@ -4417,7 +4417,7 @@ export default function Home() {
             bottom: 60,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#FFFFFF',
+            background: 'var(--mm-chrome-panel)',
             border: toastType === 'error' ? '0.5px solid #F44336' : '0.5px solid #7AB835',
             color: toastType === 'error' ? '#F44336' : '#7AB835',
             fontSize: 12,
@@ -4467,7 +4467,7 @@ export default function Home() {
                 style={{
                   fontSize: 11,
                   fontWeight: 600,
-                  color: '#9CA3AF',
+                  color: 'var(--mm-chrome-muted)',
                   letterSpacing: '0.12em',
                   textTransform: 'uppercase',
                   marginBottom: 20,
@@ -4482,7 +4482,7 @@ export default function Home() {
                   fontFamily: 'Geist, Inter, system-ui, sans-serif',
                   fontSize: 24,
                   fontWeight: 700,
-                  color: '#111827',
+                  color: 'var(--mm-chrome-fg)',
                   marginBottom: 14,
                   lineHeight: 1.2,
                   letterSpacing: '-0.01em',
@@ -4508,7 +4508,7 @@ export default function Home() {
                   onClick={completeOnboarding}
                   style={{
                     fontSize: 12,
-                    color: '#9CA3AF',
+                    color: 'var(--mm-chrome-muted)',
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
@@ -4527,8 +4527,8 @@ export default function Home() {
                         borderRadius: 7,
                         fontSize: 13,
                         background: 'transparent',
-                        border: '1px solid #E5E7EB',
-                        color: '#374151',
+                        border: '1px solid var(--mm-chrome-border)',
+                        color: 'var(--mm-chrome-fg)',
                         cursor: 'pointer',
                         fontFamily: 'Geist, Inter, system-ui, sans-serif',
                         fontWeight: 500,
@@ -4593,20 +4593,20 @@ export default function Home() {
         >
           <div
             style={{
-              background: '#FFFFFF',
-              border: '0.5px solid #E5E7EB',
+              background: 'var(--mm-chrome-panel)',
+              border: '0.5px solid var(--mm-chrome-border)',
               borderRadius: 12,
               padding: 24,
               width: 360,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#111827', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)', marginBottom: 8 }}>
               Add owner to pipeline
             </div>
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: 'var(--mm-chrome-muted)', marginBottom: 14 }}>
               {pipelineCandidate.owner_name}
             </div>
-            <div style={{ fontSize: 11, color: '#6B7280', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginBottom: 8 }}>
               Label
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
@@ -4651,8 +4651,8 @@ export default function Home() {
                   padding: '9px',
                   borderRadius: 6,
                   background: 'transparent',
-                  border: '0.5px solid #E5E7EB',
-                  color: '#6B7280',
+                  border: '0.5px solid var(--mm-chrome-border)',
+                  color: 'var(--mm-chrome-muted)',
                   fontSize: 12,
                   cursor: pipelineSaving ? 'not-allowed' : 'pointer',
                 }}
@@ -4694,26 +4694,26 @@ export default function Home() {
         >
           <div
             style={{
-              background: '#FFFFFF',
-              border: '0.5px solid #E5E7EB',
+              background: 'var(--mm-chrome-panel)',
+              border: '0.5px solid var(--mm-chrome-border)',
               borderRadius: 12,
               padding: '24px',
               width: 320,
             }}
           >
-            <div style={{ fontSize: 13, fontWeight: 500, color: '#111827', marginBottom: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--mm-chrome-fg)', marginBottom: 8 }}>
               Skip trace this owner?
             </div>
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, color: 'var(--mm-chrome-muted)', marginBottom: 6 }}>
               {skipTracing.owner_name}
             </div>
             <div
               style={{
                 fontSize: 11,
-                color: '#6B7280',
+                color: 'var(--mm-chrome-muted)',
                 marginBottom: 20,
                 padding: '10px 12px',
-                background: '#FFFFFF',
+                background: 'var(--mm-chrome-panel)',
                 borderRadius: 6,
                 lineHeight: 1.5,
               }}
@@ -4730,8 +4730,8 @@ export default function Home() {
                   padding: '9px',
                   borderRadius: 6,
                   background: 'transparent',
-                  border: '0.5px solid #E5E7EB',
-                  color: '#6B7280',
+                  border: '0.5px solid var(--mm-chrome-border)',
+                  color: 'var(--mm-chrome-muted)',
                   fontSize: 12,
                   cursor: skipTraceLoading ? 'not-allowed' : 'pointer',
                 }}
@@ -4762,13 +4762,13 @@ export default function Home() {
           zIndex: 2000
         }}>
           <div style={{
-            background: '#FFFFFF', borderRadius: 12, padding: '28px 32px',
+            background: 'var(--mm-chrome-panel)', borderRadius: 12, padding: '28px 32px',
             width: 360, boxShadow: '0 20px 60px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+            <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 18, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>
               Skip Trace Complete
             </div>
-            <div style={{ fontSize: 13, color: '#6B7280', marginBottom: 20 }}>
+            <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)', marginBottom: 20 }}>
               {skipTraceResult.ownerName}
             </div>
 
@@ -4778,30 +4778,30 @@ export default function Home() {
               </div>
             )}
 
-            <div style={{ background: '#F8F8F8', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+            <div style={{ background: 'var(--mm-chrome-surface)', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
               {skipTraceResult.phone ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 16 }}>📞</span>
-                  <a href={`tel:${skipTraceResult.phone}`} style={{ fontSize: 14, color: '#111827', fontWeight: 500, textDecoration: 'none' }}>
+                  <a href={`tel:${skipTraceResult.phone}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
                     {skipTraceResult.phone}
                   </a>
                 </div>
               ) : (
-                <div style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 8 }}>No phone found</div>
+                <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)', marginBottom: 8 }}>No phone found</div>
               )}
               {skipTraceResult.email ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 16 }}>✉️</span>
-                  <a href={`mailto:${skipTraceResult.email}`} style={{ fontSize: 14, color: '#111827', fontWeight: 500, textDecoration: 'none' }}>
+                  <a href={`mailto:${skipTraceResult.email}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
                     {skipTraceResult.email}
                   </a>
                 </div>
               ) : (
-                <div style={{ fontSize: 13, color: '#9CA3AF' }}>No email found</div>
+                <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)' }}>No email found</div>
               )}
             </div>
 
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 20 }}>
+            <div style={{ fontSize: 12, color: 'var(--mm-chrome-muted)', marginBottom: 20 }}>
               Contact info saved to pipeline. View and manage this lead in the CRM.
             </div>
 
@@ -4810,8 +4810,8 @@ export default function Home() {
                 onClick={() => setSkipTraceResult(null)}
                 style={{
                   flex: 1, padding: '10px', borderRadius: 8,
-                  background: 'transparent', border: '1px solid #E5E7EB',
-                  color: '#6B7280', fontSize: 13, cursor: 'pointer'
+                  background: 'transparent', border: '1px solid var(--mm-chrome-border)',
+                  color: 'var(--mm-chrome-muted)', fontSize: 13, cursor: 'pointer'
                 }}
               >
                 Stay here
