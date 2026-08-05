@@ -340,7 +340,9 @@ export default function AdminDashboard() {
   const skipTraces = usage?.callVolume.skipTraces ?? stats.totalSkipTraces
   const emailsSent = usage?.email.sent ?? 0
   const isOwnerView = viewerIsOwner || isPlatformOwner(sessionEmail)
-  const teamRows = usage?.teams ?? []
+  const teamRows = (usage?.teams ?? []).filter(
+    (t) => !isPlatformOwner(t.owner_email),
+  )
   const activeTeams = teamRows.length
 
   const ownerTabs = [
