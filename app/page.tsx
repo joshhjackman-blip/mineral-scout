@@ -11,6 +11,7 @@ import dynamic from 'next/dynamic'
 import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
+import { isPlatformOwner } from '@/lib/team'
 import { COUNTIES } from '@/lib/counties'
 import {
   abstractsMatchingOperators,
@@ -1005,6 +1006,8 @@ export default function Home() {
     return () => window.removeEventListener('resize', handler)
   }, [])
 
+  const [showOwnerNav, setShowOwnerNav] = useState(false)
+
   useEffect(() => {
     let mounted = true
 
@@ -1018,6 +1021,7 @@ export default function Home() {
         session.user.email ?? '',
         session.user.user_metadata?.is_admin ?? false
       )
+      setShowOwnerNav(isPlatformOwner(session.user.email))
     }
 
     void identifyCurrentUser()
@@ -2854,6 +2858,25 @@ export default function Home() {
           >
             CRM →
           </a>
+          {showOwnerNav && !hideSecondaryNavActions && (
+            <a
+              href="/owner"
+              style={{
+                fontSize: 12,
+                color: '#B45309',
+                textDecoration: 'none',
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid #F59E0B',
+                background: '#FFFBEB',
+                fontWeight: 600,
+                fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Owner
+            </a>
+          )}
           {!hideSecondaryNavActions && (
             <a
               href="/account"

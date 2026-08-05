@@ -234,9 +234,19 @@ export default function Account() {
               <BarChart2 size={13} />Team
             </Link>
           )}
-          {isStaffAdmin && (
+          {isOwner && (
+            <>
+              <Link href="/owner" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
+                <Shield size={13} />Owner
+              </Link>
+              <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
+                Ops
+              </Link>
+            </>
+          )}
+          {isStaffAdmin && !isOwner && (
             <Link href="/admin" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
-              <Shield size={13} />{isOwner ? 'Owner' : 'Admin'}
+              <Shield size={13} />Admin
             </Link>
           )}
           <button onClick={handleSignOut} className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
@@ -285,6 +295,39 @@ export default function Account() {
             </div>
           </div>
         </div>
+
+        {isOwner && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 mb-5 shadow-sm">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-2">
+                  Platform owner
+                </div>
+                <h2 className="font-serif text-xl font-bold text-gray-900">
+                  Owner portfolio
+                </h2>
+                <p className="text-sm text-gray-600 mt-1 max-w-md">
+                  Cross-team activity, estimated success-fee spend, and every
+                  customer account — reserved for management@mineralmapllc.com.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 shrink-0">
+                <Link
+                  href="/owner"
+                  className="inline-flex justify-center px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+                >
+                  Open owner portfolio →
+                </Link>
+                <Link
+                  href="/admin?tab=teams"
+                  className="inline-flex justify-center px-4 py-2 text-sm font-semibold text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-100"
+                >
+                  Provision teams
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Billing (free plan + 10% success fee) ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">

@@ -2,11 +2,12 @@
  * Access roles (highest → lowest):
  *
  * - platform_owner  → Mineral Map software owner (management@…).
- *                     /admin Overview = portfolio of EVERY team’s activity/$.
+ *                     /owner = portfolio of EVERY team’s activity/$.
+ *                     /admin = ops (provision, admins, flagged deeds).
  * - platform_admin  → Staff with /admin access (granted by owner via is_admin).
  * - team_admin      → Customer workspace manager.
  *                     /team = that team’s activity/$ only; invites on /account.
- * - team_member     → Invited seat; map/CRM only — never /admin or /team.
+ * - team_member     → Invited seat; map/CRM only — never /admin, /owner, or /team.
  */
 
 export type TeamRole =
