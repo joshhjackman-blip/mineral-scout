@@ -190,11 +190,65 @@
 }
 
 .cs-rig svg,
-.cs-pumpjack {
+.cs-texas-map {
   width: min(100%, 640px);
   height: auto;
   max-height: 86vh;
   overflow: visible;
+}
+
+/* Texas map surface */
+.cs-tx-shadow {
+  fill: rgba(11, 42, 92, 0.18);
+}
+
+.cs-tx-fill {
+  fill: rgba(255, 255, 255, 0.92);
+}
+
+.cs-tx-stroke {
+  fill: none;
+  stroke: var(--cs-navy);
+  stroke-width: 5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.cs-permian-glow {
+  fill: rgba(239, 159, 39, 0.35);
+  stroke: rgba(239, 159, 39, 0.55);
+  stroke-width: 2;
+}
+
+.cs-region-label {
+  fill: var(--cs-navy);
+  font-family: var(--cs-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.cs-pin-body {
+  fill: var(--cs-navy);
+}
+
+.cs-pin-core {
+  fill: var(--cs-amber);
+}
+
+.cs-pin-label {
+  fill: var(--cs-navy);
+  font-family: var(--cs-sans);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.cs-pin-pulse {
+  fill: rgba(239, 159, 39, 0.28);
+  transform-origin: 0 0;
 }
 
 /* Motion */
@@ -220,24 +274,35 @@
   }
 }
 
-/* Walking beam nod — horse head dips toward the wellhead */
-@keyframes cs-pump-nod {
-  0%,
-  100% {
-    transform: rotate(-16deg);
+/* Pin drop onto the map */
+@keyframes cs-pin-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.7);
   }
-  50% {
-    transform: rotate(16deg);
+  60% {
+    opacity: 1;
+    transform: translateY(4px) scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
-/* Crank / counterweight spin — same period as the nod */
-@keyframes cs-pump-crank {
-  from {
-    transform: rotate(0deg);
+/* Soft radar pulse under pins */
+@keyframes cs-pin-pulse {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.55);
   }
-  to {
-    transform: rotate(360deg);
+  70% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
   }
 }
 
@@ -256,16 +321,29 @@
 .cs-rig {
   animation: cs-rig-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) 180ms both;
   transform-origin: 70% 100%;
+  pointer-events: none;
 }
 
-.cs-pump-beam {
-  transform-origin: 0 0;
-  animation: cs-pump-nod 2.8s ease-in-out 0.9s infinite;
+.cs-pin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cs-pin-drop 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.cs-pump-crank {
-  transform-origin: 0 0;
-  animation: cs-pump-crank 2.8s linear 0.9s infinite;
+.cs-pin-delay-1 {
+  animation-delay: 700ms;
+}
+
+.cs-pin-delay-2 {
+  animation-delay: 920ms;
+}
+
+.cs-pin-pulse {
+  animation: cs-pin-pulse 2.4s ease-out 1.4s infinite;
+}
+
+.cs-pin-pulse-delay {
+  animation-delay: 2.6s;
 }
 
 @media (max-width: 860px) {
@@ -317,8 +395,8 @@
   .cs-copy .cs-subhead,
   .cs-nav,
   .cs-rig,
-  .cs-pump-beam,
-  .cs-pump-crank {
+  .cs-pin,
+  .cs-pin-pulse {
     animation: none;
   }
 }
