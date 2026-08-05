@@ -4351,7 +4351,7 @@ export default function Home() {
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
           <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginRight: 4 }}>Activity:</span>
           {([
-            { key: 'all',            label: 'All',    color: 'var(--mm-chrome-fg)' },
+            { key: 'all',            label: 'All',    color: '#EF9F27' },
             { key: 'pdp',            label: 'PDP',    color: '#CA8A04' }, // yellow chip
             { key: 'pud',            label: 'PUD',    color: '#16A34A' }, // green chip
             { key: 'new_permit',     label: 'New',    color: '#2563EB' },
