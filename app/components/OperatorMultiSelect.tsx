@@ -84,11 +84,11 @@ export default function OperatorMultiSelect({
           fontSize: 12,
           border: active
             ? '1px solid rgba(239,159,39,0.7)'
-            : '1px solid #E5E7EB',
+            : '1px solid var(--mm-chrome-border)',
           borderRadius: 6,
           padding: '6px 8px',
-          background: active ? '#FFFBEB' : '#fff',
-          color: '#374151',
+          background: active ? 'rgba(239,159,39,0.12)' : 'var(--mm-chrome-panel)',
+          color: 'var(--mm-chrome-fg)',
           textAlign: 'left',
           cursor: 'pointer',
           display: 'flex',
@@ -103,12 +103,12 @@ export default function OperatorMultiSelect({
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             fontWeight: active ? 600 : 500,
-            color: active ? '#B45309' : '#374151',
+            color: active ? '#F59E0B' : 'var(--mm-chrome-fg)',
           }}
         >
           {summary}
         </span>
-        <span style={{ color: '#9CA3AF', fontSize: 10, flexShrink: 0 }}>
+        <span style={{ color: 'var(--mm-chrome-muted)', fontSize: 10, flexShrink: 0 }}>
           {open ? '▲' : '▼'}
         </span>
       </button>
@@ -127,10 +127,10 @@ export default function OperatorMultiSelect({
             left: 0,
             right: 0,
             maxHeight: 280,
-            background: '#fff',
-            border: '1px solid #E5E7EB',
+            background: 'var(--mm-chrome-panel)',
+            border: '1px solid var(--mm-chrome-border)',
             borderRadius: 8,
-            boxShadow: '0 8px 24px rgba(15,23,42,0.14)',
+            boxShadow: '0 8px 24px rgba(15,23,42,0.28)',
             zIndex: 30,
             display: 'flex',
             flexDirection: 'column',
@@ -140,7 +140,7 @@ export default function OperatorMultiSelect({
           <div
             style={{
               padding: '8px 8px 6px',
-              borderBottom: '1px solid #F3F4F6',
+              borderBottom: '1px solid var(--mm-chrome-border)',
               display: 'flex',
               gap: 6,
               alignItems: 'center',
@@ -154,10 +154,11 @@ export default function OperatorMultiSelect({
               style={{
                 flex: 1,
                 fontSize: 11,
-                border: '1px solid #E5E7EB',
+                border: '1px solid var(--mm-chrome-border)',
                 borderRadius: 6,
                 padding: '4px 8px',
-                color: '#374151',
+                color: 'var(--mm-chrome-fg)',
+                background: 'var(--mm-chrome-bg)',
                 minWidth: 0,
               }}
             />
@@ -169,9 +170,9 @@ export default function OperatorMultiSelect({
                   fontSize: 10,
                   padding: '4px 8px',
                   borderRadius: 6,
-                  border: '1px solid #E5E7EB',
-                  background: '#fff',
-                  color: '#6B7280',
+                  border: '1px solid var(--mm-chrome-border)',
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-muted)',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
@@ -183,7 +184,7 @@ export default function OperatorMultiSelect({
 
           <div style={{ overflowY: 'auto', padding: '4px 0', maxHeight: 230 }}>
             {filtered.length === 0 ? (
-              <div style={{ fontSize: 11, color: '#9CA3AF', padding: '10px 12px' }}>
+              <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', padding: '10px 12px' }}>
                 No operators match
               </div>
             ) : (
@@ -198,7 +199,7 @@ export default function OperatorMultiSelect({
                       gap: 8,
                       padding: '6px 10px',
                       cursor: 'pointer',
-                      background: checked ? '#FFFBEB' : 'transparent',
+                      background: checked ? 'rgba(239,159,39,0.12)' : 'transparent',
                       borderLeft: checked
                         ? '3px solid #EF9F27'
                         : '3px solid transparent',
@@ -216,7 +217,7 @@ export default function OperatorMultiSelect({
                           display: 'block',
                           fontSize: 11,
                           fontWeight: checked ? 600 : 500,
-                          color: '#111827',
+                          color: 'var(--mm-chrome-fg)',
                           lineHeight: 1.3,
                         }}
                       >
@@ -226,7 +227,7 @@ export default function OperatorMultiSelect({
                         style={{
                           display: 'block',
                           fontSize: 10,
-                          color: '#9CA3AF',
+                          color: 'var(--mm-chrome-muted)',
                           marginTop: 1,
                         }}
                       >

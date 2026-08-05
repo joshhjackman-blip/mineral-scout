@@ -116,6 +116,7 @@
   --mm-chrome-muted: #6b7280;
   --mm-chrome-border: #e5e7eb;
   --mm-chrome-surface: #f4f5f7;
+  --mm-chrome-muted-fill: #f3f4f6;
   --mm-chrome-panel: #ffffff;
   --mm-chrome-header-overlay: linear-gradient(
     180deg,
@@ -130,6 +131,7 @@
   --mm-chrome-muted: #9ca3af;
   --mm-chrome-border: #374151;
   --mm-chrome-surface: #0b1220;
+  --mm-chrome-muted-fill: #374151;
   --mm-chrome-panel: #1f2937;
   --mm-chrome-header-overlay: linear-gradient(
     180deg,
@@ -182,6 +184,12 @@ body {
 }
 .dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
   border-color: #374151;
+}
+
+.dark input:not([type='checkbox']):not([type='radio']),
+.dark select,
+.dark textarea {
+  color-scheme: dark;
 }
 
 /* Display type — h1..h4 and anything opting in via .font-display or

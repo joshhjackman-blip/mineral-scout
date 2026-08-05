@@ -114,14 +114,15 @@ export default function HelpChatWidget() {
           style={{
             width: 'min(360px, calc(100vw - 32px))',
             marginBottom: 12,
-            background: '#fff',
-            border: '1px solid #E5E7EB',
+            background: 'var(--mm-chrome-panel)',
+            border: '1px solid var(--mm-chrome-border)',
             borderRadius: 16,
-            boxShadow: '0 18px 50px rgba(15, 23, 42, 0.22)',
+            boxShadow: '0 18px 50px rgba(15, 23, 42, 0.35)',
             overflow: 'hidden',
             display: 'flex',
             flexDirection: 'column',
             maxHeight: 'min(520px, calc(100vh - 120px))',
+            color: 'var(--mm-chrome-fg)',
           }}
         >
           <div
@@ -151,7 +152,7 @@ export default function HelpChatWidget() {
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700 }}>Help desk</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF' }}>
+                <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)' }}>
                   We reply to {email || 'your email'}
                 </div>
               </div>
@@ -163,7 +164,7 @@ export default function HelpChatWidget() {
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#9CA3AF',
+                color: 'var(--mm-chrome-muted)',
                 cursor: 'pointer',
                 padding: 4,
               }}
@@ -215,12 +216,12 @@ export default function HelpChatWidget() {
                 }}
                 style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
               >
-                <p style={{ margin: 0, fontSize: 12, color: '#6B7280', lineHeight: 1.45 }}>
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--mm-chrome-muted)', lineHeight: 1.45 }}>
                   Tell us what’s going on — tickets go to management@mineralmapllc.com.
                 </p>
 
                 <label style={{ display: 'block' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--mm-chrome-muted)', letterSpacing: '0.06em' }}>
                     CATEGORY
                   </span>
                   <select
@@ -230,10 +231,11 @@ export default function HelpChatWidget() {
                       marginTop: 4,
                       width: '100%',
                       fontSize: 13,
-                      border: '1px solid #E5E7EB',
+                      border: '1px solid var(--mm-chrome-border)',
                       borderRadius: 8,
                       padding: '8px 10px',
-                      background: '#fff',
+                      background: 'var(--mm-chrome-bg)',
+                      color: 'var(--mm-chrome-fg)',
                     }}
                   >
                     {CATEGORIES.map((c) => (
@@ -245,7 +247,7 @@ export default function HelpChatWidget() {
                 </label>
 
                 <label style={{ display: 'block' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--mm-chrome-muted)', letterSpacing: '0.06em' }}>
                     SUBJECT
                   </span>
                   <input
@@ -259,16 +261,18 @@ export default function HelpChatWidget() {
                       marginTop: 4,
                       width: '100%',
                       fontSize: 13,
-                      border: '1px solid #E5E7EB',
+                      border: '1px solid var(--mm-chrome-border)',
                       borderRadius: 8,
                       padding: '8px 10px',
                       boxSizing: 'border-box',
+                      background: 'var(--mm-chrome-bg)',
+                      color: 'var(--mm-chrome-fg)',
                     }}
                   />
                 </label>
 
                 <label style={{ display: 'block' }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.06em' }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--mm-chrome-muted)', letterSpacing: '0.06em' }}>
                     MESSAGE
                   </span>
                   <textarea
@@ -282,12 +286,14 @@ export default function HelpChatWidget() {
                       marginTop: 4,
                       width: '100%',
                       fontSize: 13,
-                      border: '1px solid #E5E7EB',
+                      border: '1px solid var(--mm-chrome-border)',
                       borderRadius: 8,
                       padding: '8px 10px',
                       resize: 'vertical',
                       boxSizing: 'border-box',
                       minHeight: 96,
+                      background: 'var(--mm-chrome-bg)',
+                      color: 'var(--mm-chrome-fg)',
                     }}
                   />
                 </label>
