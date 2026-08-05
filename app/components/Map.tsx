@@ -1420,13 +1420,15 @@ export default function Map({
           'text-ignore-placement': true,
         },
         paint: {
+          // Active counties (Martin/Howard) sit on amber fill: dark text
+          // in light mode, white text in night mode so titles don't go black.
           'text-color': [
             'case',
             ['==', ['coalesce', ['get', 'active'], false], true],
-            '#0F172A',
+            dark ? '#FFFFFF' : '#0F172A',
             dark ? '#CBD5E1' : '#64748B',
           ],
-          'text-halo-color': dark ? '#0F172A' : '#FFFFFF',
+          'text-halo-color': dark ? '#92400E' : '#FFFFFF',
           'text-halo-width': 2,
           'text-halo-blur': 0.5,
         },
