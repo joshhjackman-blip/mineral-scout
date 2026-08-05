@@ -184,71 +184,88 @@
   width: 100%;
   height: min(86vh, 820px);
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: flex-end;
   pointer-events: none;
 }
 
-.cs-rig svg,
-.cs-texas-map {
-  width: min(100%, 640px);
-  height: auto;
-  max-height: 86vh;
-  overflow: visible;
+/* Mapbox Texas map */
+.cs-mbx-map {
+  width: min(100%, 720px);
+  height: 100%;
+  min-height: 420px;
+  border-radius: 0;
+  overflow: hidden;
+  background: transparent;
 }
 
-/* Texas map surface */
-.cs-tx-shadow {
-  fill: rgba(11, 42, 92, 0.18);
+.cs-mbx-map-loading {
+  background: rgba(11, 42, 92, 0.08);
 }
 
-.cs-tx-fill {
-  fill: rgba(255, 255, 255, 0.92);
+.cs-mbx-map .mapboxgl-canvas {
+  outline: none;
 }
 
-.cs-tx-stroke {
-  fill: none;
-  stroke: var(--cs-navy);
-  stroke-width: 5;
-  stroke-linejoin: round;
-  stroke-linecap: round;
+.cs-mbx-map .mapboxgl-ctrl-logo,
+.cs-mbx-map .mapboxgl-ctrl-attrib {
+  display: none !important;
 }
 
-.cs-permian-glow {
-  fill: rgba(239, 159, 39, 0.35);
-  stroke: rgba(239, 159, 39, 0.55);
-  stroke-width: 2;
+.cs-mbx-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cs-navy);
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
 }
 
-.cs-region-label {
-  fill: var(--cs-navy);
-  font-family: var(--cs-display);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.72;
+.cs-mbx-pin {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(0);
+  animation: cs-pin-drop 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.cs-pin-body {
-  fill: var(--cs-navy);
+.cs-mbx-pin-live {
+  animation-delay: 500ms;
+  z-index: 2;
 }
 
-.cs-pin-core {
-  fill: var(--cs-amber);
+.cs-mbx-pin-soon {
+  animation-delay: 750ms;
+  opacity: 0.92;
+  z-index: 1;
 }
 
-.cs-pin-label {
-  fill: var(--cs-navy);
+.cs-mbx-pin-mark {
+  filter: drop-shadow(0 3px 6px rgba(11, 42, 92, 0.35));
+  line-height: 0;
+}
+
+.cs-mbx-pin-label {
+  margin-top: 2px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--cs-navy);
   font-family: var(--cs-sans);
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(11, 42, 92, 0.18);
 }
 
-.cs-pin-pulse {
-  fill: rgba(239, 159, 39, 0.28);
-  transform-origin: 0 0;
+.cs-mbx-pin-soon .cs-mbx-pin-label {
+  font-size: 9px;
+  font-weight: 600;
+  opacity: 0.9;
 }
 
 /* Motion */
@@ -274,7 +291,6 @@
   }
 }
 
-/* Pin drop onto the map */
 @keyframes cs-pin-drop {
   0% {
     opacity: 0;
@@ -287,22 +303,6 @@
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
-  }
-}
-
-/* Soft radar pulse under pins */
-@keyframes cs-pin-pulse {
-  0% {
-    opacity: 0.55;
-    transform: scale(0.55);
-  }
-  70% {
-    opacity: 0;
-    transform: scale(1.55);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.55);
   }
 }
 
@@ -322,28 +322,6 @@
   animation: cs-rig-in 1100ms cubic-bezier(0.22, 1, 0.36, 1) 180ms both;
   transform-origin: 70% 100%;
   pointer-events: none;
-}
-
-.cs-pin {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: cs-pin-drop 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.cs-pin-delay-1 {
-  animation-delay: 700ms;
-}
-
-.cs-pin-delay-2 {
-  animation-delay: 920ms;
-}
-
-.cs-pin-pulse {
-  animation: cs-pin-pulse 2.4s ease-out 1.4s infinite;
-}
-
-.cs-pin-pulse-delay {
-  animation-delay: 2.6s;
 }
 
 @media (max-width: 860px) {
@@ -376,17 +354,17 @@
 
   .cs-rig {
     position: absolute;
-    right: -8%;
+    right: -6%;
     bottom: 0;
-    width: 78%;
+    width: 82%;
     height: 58vh;
-    opacity: 0.92;
+    opacity: 0.95;
     z-index: 1;
   }
 
-  .cs-rig svg {
+  .cs-mbx-map {
     width: 100%;
-    max-height: 58vh;
+    min-height: 0;
   }
 }
 
@@ -395,8 +373,7 @@
   .cs-copy .cs-subhead,
   .cs-nav,
   .cs-rig,
-  .cs-pin,
-  .cs-pin-pulse {
+  .cs-mbx-pin {
     animation: none;
   }
 }
