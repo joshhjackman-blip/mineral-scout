@@ -245,16 +245,17 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     setLoading(true)
     setErrorMessages([])
 
-    // Owner-name matching: use ilike() as a case-insensitive exact
-    // match (no wildcards). Some ownership rows land in the DB with
-    // slightly different casing / trailing whitespace than what the
-    // click captured (e.g. click came from a search result cast to
-    // Title Case, but the row is stored UPPERCASE). ilike() with a
-    // trimmed value covers both. Both `%` and `_` in the owner name
-    // are escaped so a legitimate name containing those characters
-    // still matches exactly.
+    // Owner-name matching: prefer exact `.eq` (uses a btree index once
+    // 20260806200000_index_howard_martin_owner_name.sql is applied).
+    // CAD rolls store names UPPERCASE, so we also try the uppercased
+    // form when the click payload was title-cased.
+    //
+    // Avoid leading with `.ilike` — on martin_mineral_ownership that
+    // was a sequential scan and hit "canceling statement due to
+    // statement timeout". After the trigram index lands, ilike is a
+    // safe last-resort fallback for odd casing drift.
     const nameForMatch = String(owner.owner_name ?? '').trim()
-    const ilikePattern = nameForMatch.replace(/[%_]/g, (m) => `\\${m}`)
+    const nameUpper = nameForMatch.toUpperCase()
 
     // Column set with a tiered fallback. County schemas drifted apart
     // over time:
@@ -285,13 +286,31 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
 
     const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
     const perCountyPromises = countyEntries.map(async ([countyKey, cfg]) => {
-      const runQuery = async (cols: string) =>
+      const runEq = (cols: string, name: string) =>
         supabase
           .from(cfg.ownershipTable)
           .select(cols)
-          .ilike('owner_name', ilikePattern)
+          .eq('owner_name', name)
           .order('acreage', { ascending: false })
           .limit(500)
+
+      const runQuery = async (cols: string) => {
+        let result = await runEq(cols, nameForMatch)
+        if (result.error) return result
+        if ((result.data?.length ?? 0) > 0) return result
+
+        if (nameUpper !== nameForMatch) {
+          result = await runEq(cols, nameUpper)
+          if (result.error) return result
+        }
+
+        // Deliberately no `.ilike` fallback: on martin_mineral_ownership
+        // that was a sequential scan → statement timeout. CAD names are
+        // UPPERCASE; eq + upper covers the real cases. After
+        // 20260806200000_index_howard_martin_owner_name.sql is applied,
+        // a trigram-backed ilike can be restored if needed.
+        return result
+      }
 
       // Prefer the shape that carries block/section/survey when we can,
       // because that's what the Leases table actually renders. Fall
@@ -304,7 +323,18 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
         result = await runQuery(MIN_COLS)
       }
       if (result.error) {
-        return { countyKey, rows: [] as OwnerDrawerHolding[], error: result.error.message }
+        const msg = result.error.message
+        // Cross-county timeouts shouldn't hard-fail the whole Leases tab
+        // (e.g. viewing a Howard owner while Martin seq-scans). Surface
+        // the error only for the drawer's active county.
+        const isTimeout = msg.toLowerCase().includes('timeout')
+        if (isTimeout && countyKey !== (county.id as CountyKey)) {
+          console.warn(
+            `[OwnerDrawer] ${countyKey}_mineral_ownership timed out (skipped); run owner_name index migration.`,
+          )
+          return { countyKey, rows: [] as OwnerDrawerHolding[], error: null as string | null }
+        }
+        return { countyKey, rows: [] as OwnerDrawerHolding[], error: msg }
       }
       const rows = ((result.data ?? []) as OwnerDrawerHolding[]).map((r) => ({ ...r, county_id: countyKey }))
       return { countyKey, rows, error: null as string | null }
@@ -1567,10 +1597,21 @@ function HoldingsPanel({
             ))}
           </ul>
           <div className="mt-1.5 text-[10.5px] font-normal text-red-700">
-            Usually an RLS policy (browser uses the anon key). Check that
-            <code className="mx-1 rounded bg-red-100 px-1">public.&lt;county&gt;_mineral_ownership</code>
-            has a <code className="rounded bg-red-100 px-1">FOR SELECT USING (true)</code> policy for anon;
-            see <code className="rounded bg-red-100 px-1">supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql</code>.
+            {errorMessages.some((e) => e.message.toLowerCase().includes('timeout')) ? (
+              <>
+                Statement timeout — usually a missing <code className="rounded bg-red-100 px-1">owner_name</code> index
+                on the ownership table (Martin/Howard are large). Run{' '}
+                <code className="rounded bg-red-100 px-1">supabase/migrations/20260806200000_index_howard_martin_owner_name.sql</code>
+                in the Supabase SQL editor, then retry.
+              </>
+            ) : (
+              <>
+                Often an RLS policy (browser uses the anon key). Check that
+                <code className="mx-1 rounded bg-red-100 px-1">public.&lt;county&gt;_mineral_ownership</code>
+                has a <code className="rounded bg-red-100 px-1">FOR SELECT USING (true)</code> policy for anon;
+                see <code className="rounded bg-red-100 px-1">supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql</code>.
+              </>
+            )}{' '}
             Full error is in the browser console.
           </div>
         </div>
