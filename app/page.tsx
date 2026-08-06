@@ -13,6 +13,12 @@ import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { isPlatformOwner } from '@/lib/team'
 import ThemeToggle from '@/app/components/ThemeToggle'
+import {
+  bareAbstract,
+  permitBestDate,
+  permitMatchesTractLegal,
+  permitMatchesTractWells,
+} from '@/lib/permit-match'
 import { COUNTIES } from '@/lib/counties'
 import {
   abstractsMatchingOperators,
@@ -1147,58 +1153,47 @@ export default function Home() {
     }
   }, [county.id])
 
-  // Load every permit for the active county exactly once per county switch.
-  // Cheap enough for the current dataset (Howard / Martin land in the low
-  // thousands from the daily RRC scrape) that we filter to a selected
-  // tract client-side — no per-tract Supabase round-trip.
+  // Only permits filed / approved in the last 24 months qualify as
+  // "new". Use max(filed, approved) everywhere — realtime scrape rows
+  // often have a fresh approved_date with an older/null filed_date.
+  const RECENT_PERMIT_MONTHS = 24
+  const recentPermitCutoffIso = useMemo(() => {
+    const d = new Date()
+    d.setMonth(d.getMonth() - RECENT_PERMIT_MONTHS)
+    return d.toISOString().slice(0, 10)
+  }, [])
+
+  // Load recent permits for the active county. Same window filter as
+  // /permits: filed OR approved within 24 months.
   useEffect(() => {
     let cancelled = false
     const table = `${county.id}_permits`
     setCountyPermitsLoading(true)
+    const cutoff = recentPermitCutoffIso
     supabase
       .from(table)
       .select(
         'id, permit_number, api_number, operator_name, lease_name, latitude, longitude, permit_type, status, filed_date, approved_date, abstract_number',
       )
-      .order('filed_date', { ascending: false })
-      .limit(5000)
+      .or(`filed_date.gte.${cutoff},approved_date.gte.${cutoff}`)
+      .limit(3000)
       .then((result) => {
         if (cancelled) return
         if (result.error) {
-          // Table may not exist yet for a county. Fail soft: empty list, no
-          // toast — the sidebar renders "No new permits" naturally.
           console.warn(`[permits] ${table} unavailable:`, result.error.message)
           setCountyPermits([])
         } else {
-          const rows = (result.data ?? []) as PermitRow[]
-          // Keep rows that have usable coords and/or a stamped abstract.
-          // Requiring lat/lon used to drop abstract-matched permits that
-          // the /permits page still shows (tier-2 abstract_number).
-          setCountyPermits(
-            rows.filter((r) => {
-              const lon = Number(r.longitude)
-              const lat = Number(r.latitude)
-              const hasCoords =
-                Number.isFinite(lon) &&
-                Number.isFinite(lat) &&
-                lon >= -180 &&
-                lon <= 180 &&
-                lat >= -90 &&
-                lat <= 90
-              const hasAbstract =
-                String(r.abstract_number ?? '')
-                  .replace(/^A-\s*/i, '')
-                  .trim().length > 0
-              return hasCoords || hasAbstract
-            }),
-          )
+          // Keep every recent row — realtime scrape delivers NO lat/lon
+          // and usually NO abstract_number until the nightly compute.
+          // Tract matching happens in visiblePermits via wells/lease.
+          setCountyPermits((result.data ?? []) as PermitRow[])
         }
         setCountyPermitsLoading(false)
       })
     return () => {
       cancelled = true
     }
-  }, [county.id])
+  }, [county.id, recentPermitCutoffIso])
 
   // Effective geometry for the currently-selected tract. Uses whichever
   // source resolves first:
@@ -1212,11 +1207,7 @@ export default function Home() {
   // click came from.
   const activeTractGeometry = useMemo<GeoJSON.Geometry | null>(() => {
     if (!selected) return null
-    const currentAbstract = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '')
-      .replace(/^A-\s*/i, '')
-      .replace(/^\d{5}-/, '')
-      .trim()
-      .toUpperCase()
+    const currentAbstract = bareAbstract(selected.abstract_label ?? selected.ABSTRACT_L)
     // Prefer the state-provided geometry when it matches the current
     // selection, otherwise fall through to the lookup so stale
     // geometry from a previous click never leaks into the permit
@@ -1230,29 +1221,11 @@ export default function Home() {
     return selectedTractGeometry
   }, [selected, selectedTractGeometry, tractGeometryByAbstract])
 
-  // Only permits filed / approved in the last 24 months qualify as
-  // "new". Prior to this filter the sidebar's NEW PERMITS list showed
-  // permits going back to 2008 because the wells-zip + EWA pipeline
-  // pulls every permit ever on file (SYMNUM 1/11/21/87/116), not just
-  // recent activity. 24 months is the industry-standard window for
-  // "an operator is actively developing this acreage" — matches what
-  // compute_development_status.py uses for the PUD_PERMITTED classification.
-  const RECENT_PERMIT_MONTHS = 24
-  const recentPermitCutoffIso = useMemo(() => {
-    const d = new Date()
-    d.setMonth(d.getMonth() - RECENT_PERMIT_MONTHS)
-    return d.toISOString().slice(0, 10)
-  }, [])
-
   // Bare abstract for the selected tract — same keying as
   // tract_development_status / permit.abstract_number.
   const selectedAbstractBare = useMemo(() => {
     if (!selected) return ''
-    return String(selected.abstract_label ?? selected.ABSTRACT_L ?? '')
-      .replace(/^A-\s*/i, '')
-      .replace(/^\d{5}-/, '')
-      .trim()
-      .toUpperCase()
+    return bareAbstract(selected.abstract_label ?? selected.ABSTRACT_L)
   }, [selected])
 
   // Permit numbers / APIs that compute_development_status already
@@ -1272,29 +1245,32 @@ export default function Home() {
   }, [selectedTractDevStatus])
 
   const visiblePermits = useMemo(() => {
-    const sorted = [...countyPermits].sort(permitSortByFiledDesc)
-    const recent = sorted.filter((permit) => {
-      const dateStr = String(permit.filed_date ?? permit.approved_date ?? '').slice(0, 10)
-      // Missing date -> exclude. Loud old approved_date/filed_date -> exclude.
-      return dateStr && dateStr >= recentPermitCutoffIso
-    })
+    const recent = countyPermits
+      .filter((permit) => {
+        const best = permitBestDate(permit)
+        return Boolean(best && best >= recentPermitCutoffIso)
+      })
+      .sort((a, b) => {
+        const aKey = permitBestDate(a) ?? ''
+        const bKey = permitBestDate(b) ?? ''
+        if (aKey === bKey) return (b.id ?? 0) - (a.id ?? 0)
+        return bKey.localeCompare(aKey)
+      })
 
     // County overview (no tract selected): show every recent permit.
     if (!selected) return recent
 
-    // Tract selected — match the same way /permits does (minus the
-    // heavier async well/lease heuristics):
-    //   1. stamped abstract_number == this tract
-    //   2. signal_detail permit/api for this tract
-    //   3. point-in-polygon on permit lat/lon
-    // PIP alone was returning 0 for tracts the permits page still
-    // listed (surface location outside the mineral polygon).
+    // Tract selected — ONLY this tract's permits. Fresh EWA scrape rows
+    // have no lat/lon and no abstract_number, so we also match via the
+    // wells already loaded for this abstract (lease/operator), same
+    // idea as /permits tier 4 but scoped to the clicked tract.
+    const section = String(
+      selected.surv_sect ?? selected.Surv_Sect ?? selected.level3_sur ?? '',
+    ).trim()
+    const block = String(selected.block ?? selected.Block ?? '').trim()
+
     return recent.filter((permit) => {
-      const stamped = String(permit.abstract_number ?? '')
-        .replace(/^A-\s*/i, '')
-        .replace(/^\d{5}-/, '')
-        .trim()
-        .toUpperCase()
+      const stamped = bareAbstract(permit.abstract_number)
       if (selectedAbstractBare && stamped && stamped === selectedAbstractBare) {
         return true
       }
@@ -1303,6 +1279,21 @@ export default function Home() {
       const api = String(permit.api_number ?? '').replace(/\D/g, '')
       if (num && signalPermitKeys.has(`num:${num}`)) return true
       if (api && signalPermitKeys.has(`api:${api}`)) return true
+
+      if (permitMatchesTractWells(permit, tractWells)) return true
+
+      // Only use section/block fallback after wells have loaded so we
+      // don't flash unrelated county permits while wells are in flight.
+      if (
+        tractWellsLoaded &&
+        permitMatchesTractLegal(permit, {
+          section,
+          block,
+          operator: selected.top_operator,
+        })
+      ) {
+        return true
+      }
 
       const lon = Number(permit.longitude)
       const lat = Number(permit.latitude)
@@ -1326,6 +1317,8 @@ export default function Home() {
     selected,
     selectedAbstractBare,
     signalPermitKeys,
+    tractWells,
+    tractWellsLoaded,
   ])
 
   const tractOwners = useMemo(
