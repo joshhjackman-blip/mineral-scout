@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
-import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/lib/supabase/client'
 import {
   ArrowLeft,
   Phone,
@@ -52,10 +52,7 @@ type TeamUsage = {
 export default function TeamAdminDashboard() {
   const supabase = useMemo(
     () =>
-      createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      ),
+      createClient(),
     [],
   )
   const [loading, setLoading] = useState(true)

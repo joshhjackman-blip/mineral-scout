@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/lib/supabase/client'
 import { LifeBuoy, MessageCircle, X } from 'lucide-react'
 
 const CATEGORIES = [
@@ -23,10 +23,7 @@ export default function HelpChatWidget() {
   const pathname = usePathname() || '/'
   const supabase = useMemo(
     () =>
-      createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      ),
+      createClient(),
     [],
   )
 

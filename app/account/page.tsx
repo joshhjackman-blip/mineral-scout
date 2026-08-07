@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/lib/supabase/client'
 import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import {
@@ -35,10 +35,7 @@ type SubRow = {
 export default function Account() {
   const supabase = useMemo(
     () =>
-      createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      ),
+      createClient(),
     []
   )
   const [user, setUser] = useState<{
