@@ -21,7 +21,7 @@ export function createClient() {
             cookieStore.set(name, value, options)
           )
         } catch {
-          // setAll can be called from server components where setting
+          // setAll can be called from Server Components where setting
           // cookies is not allowed. Middleware handles session refresh.
         }
       },

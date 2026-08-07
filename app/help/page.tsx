@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
+import { createClient } from '@/lib/supabase/client'
 import { ArrowLeft, CheckCircle2, LifeBuoy } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 
@@ -19,10 +19,7 @@ const CATEGORIES = [
 export default function HelpDeskPage() {
   const supabase = useMemo(
     () =>
-      createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      ),
+      createClient(),
     [],
   )
 
