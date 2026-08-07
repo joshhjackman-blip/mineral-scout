@@ -23,6 +23,7 @@ import { supabase } from '@/lib/supabase'
 import type { CountyKey } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
+import { writePermitsLastSeen } from '@/lib/permits-seen'
 
 type PermitStatus = 'approved' | 'pending' | 'other'
 
@@ -483,6 +484,35 @@ export default function PermitsPage() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   const [ownersByPermit, setOwnersByPermit] = useState<Record<string, OwnerRow[]>>({})
   const [ownerLoading, setOwnerLoading] = useState<Record<string, boolean>>({})
+
+  // Clear the map-page Permits nav badge: stamp the newest ingest
+  // date so the little square bubble stays hidden until fresher
+  // rows land from the RRC scrape.
+  useEffect(() => {
+    let cancelled = false
+    const markSeen = async () => {
+      try {
+        const res = await fetch('/api/permits/latest', { cache: 'no-store' })
+        if (!res.ok || cancelled) return
+        const body = (await res.json()) as {
+          success?: boolean
+          data?: { latest_date?: string | null }
+        }
+        const latest = body.data?.latest_date
+        if (body.success && latest) {
+          writePermitsLastSeen(latest)
+        } else {
+          writePermitsLastSeen(new Date().toISOString().slice(0, 10))
+        }
+      } catch {
+        writePermitsLastSeen(new Date().toISOString().slice(0, 10))
+      }
+    }
+    void markSeen()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Fetch permits from every registered county in parallel and
   // resolve each permit's abstract via point-in-polygon on the

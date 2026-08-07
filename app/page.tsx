@@ -41,6 +41,7 @@ import type { OwnerDetailsPatch } from '@/app/components/OwnerDrawer'
 import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
+import PermitsNavLink from './components/PermitsNavLink'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // 10 Permian counties whose data hasn't shipped yet. Rendered in
@@ -2681,7 +2682,7 @@ export default function Home() {
                 >
                   ← Map
                 </a>
-                <a
+                <PermitsNavLink
                   href="/permits"
                   style={{
                     display: 'block',
@@ -2700,7 +2701,7 @@ export default function Home() {
                   }}
                 >
                   Recent permits
-                </a>
+                </PermitsNavLink>
                 {/* Satellite Imagery archived — see lib/feature-flags.ts */}
                 <a
                   href="/crm"
@@ -2902,7 +2903,7 @@ export default function Home() {
             flexShrink: 1,
           }}
         >
-          <a
+          <PermitsNavLink
             href="/permits"
             style={{
               fontSize: 12,
@@ -2917,7 +2918,7 @@ export default function Home() {
             }}
           >
             Permits
-          </a>
+          </PermitsNavLink>
           {/* Satellite Imagery archived — see lib/feature-flags.ts */}
           <a
             href="/crm"
