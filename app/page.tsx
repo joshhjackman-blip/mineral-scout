@@ -42,6 +42,7 @@ import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 import PermitsNavLink from './components/PermitsNavLink'
+import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // 10 Permian counties whose data hasn't shipped yet. Rendered in
@@ -617,6 +618,11 @@ const estimateMonthlyRoyalty = (
 }
 
 export default function Home() {
+  // Same cadence as the Permits nav badge — bumps every 5 min, on
+  // window focus, and when /api/permits/latest reports a newer date.
+  // Drives soft refetch of tract_development_status (halos), sidebar
+  // New Permits, and the Map rig layer.
+  const activityRefreshTick = useActivityRefreshTick()
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
   const [windowWidth, setWindowWidth] = useState(
@@ -1109,51 +1115,6 @@ export default function Home() {
     setDevStatusByAbstract({})
   }, [selectedCounty])
 
-  // Fetch tract_development_status for the active county. Rows come from
-  // scripts/compute_development_status.py (Ticket 1.3 Phase 1). Missing
-  // rows fall back to FRONTIER / score 0 client-side; a missing table
-  // fails soft with an empty lookup so old builds don't crash.
-  useEffect(() => {
-    let cancelled = false
-    supabase
-      .from('tract_development_status')
-      .select('abstract_number, development_status, pud_score, signal_detail, last_computed')
-      .eq('county_id', county.id)
-      .limit(5000)
-      .then((result) => {
-        if (cancelled) return
-        if (result.error) {
-          const msg = result.error.message.toLowerCase()
-          if (!msg.includes('not find') && !msg.includes('does not exist')) {
-            console.warn('[dev_status] fetch error:', result.error.message)
-          }
-          setDevStatusByAbstract({})
-          return
-        }
-        const out: Record<string, DevStatusRow> = {}
-        for (const row of (result.data ?? []) as Array<{
-          abstract_number?: string | null
-          development_status?: string | null
-          pud_score?: number | null
-          signal_detail?: unknown
-          last_computed?: string | null
-        }>) {
-          const bare = String(row.abstract_number ?? '').replace(/^A-\s*/i, '').trim()
-          if (!bare) continue
-          out[bare] = {
-            development_status: (row.development_status as DevelopmentStatus) ?? 'FRONTIER',
-            pud_score: Number(row.pud_score ?? 0),
-            signal_detail: (row.signal_detail as DevStatusSignal) ?? {},
-            last_computed: row.last_computed ?? undefined,
-          }
-        }
-        setDevStatusByAbstract(out)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [county.id])
-
   // Only permits filed / approved in the last 24 months qualify as
   // "new". Use max(filed, approved) everywhere — realtime scrape rows
   // often have a fresh approved_date with an older/null filed_date.
@@ -1164,37 +1125,121 @@ export default function Home() {
     return d.toISOString().slice(0, 10)
   }, [])
 
-  // Load recent permits for the active county. Same window filter as
-  // /permits: filed OR approved within 24 months.
-  useEffect(() => {
-    let cancelled = false
-    const table = `${county.id}_permits`
-    setCountyPermitsLoading(true)
-    const cutoff = recentPermitCutoffIso
-    supabase
+  // Shared loaders so county-switch and the live activity tick can
+  // reuse the same Supabase queries. Soft refreshes skip the sidebar
+  // loading spinner to avoid a 5-minute flicker.
+  const loadDevStatusForCounty = useCallback(async (countyId: string) => {
+    const result = await supabase
+      .from('tract_development_status')
+      .select('abstract_number, development_status, pud_score, signal_detail, last_computed')
+      .eq('county_id', countyId)
+      .limit(5000)
+    if (result.error) {
+      const msg = result.error.message.toLowerCase()
+      if (!msg.includes('not find') && !msg.includes('does not exist')) {
+        console.warn('[dev_status] fetch error:', result.error.message)
+      }
+      return {} as Record<string, DevStatusRow>
+    }
+    const out: Record<string, DevStatusRow> = {}
+    for (const row of (result.data ?? []) as Array<{
+      abstract_number?: string | null
+      development_status?: string | null
+      pud_score?: number | null
+      signal_detail?: unknown
+      last_computed?: string | null
+    }>) {
+      const bare = String(row.abstract_number ?? '').replace(/^A-\s*/i, '').trim()
+      if (!bare) continue
+      out[bare] = {
+        development_status: (row.development_status as DevelopmentStatus) ?? 'FRONTIER',
+        pud_score: Number(row.pud_score ?? 0),
+        signal_detail: (row.signal_detail as DevStatusSignal) ?? {},
+        last_computed: row.last_computed ?? undefined,
+      }
+    }
+    return out
+  }, [])
+
+  const loadCountyPermitsForCounty = useCallback(async (countyId: string, cutoff: string) => {
+    const table = `${countyId}_permits`
+    const result = await supabase
       .from(table)
       .select(
         'id, permit_number, api_number, operator_name, lease_name, latitude, longitude, permit_type, status, filed_date, approved_date, abstract_number',
       )
       .or(`filed_date.gte.${cutoff},approved_date.gte.${cutoff}`)
       .limit(3000)
-      .then((result) => {
-        if (cancelled) return
-        if (result.error) {
-          console.warn(`[permits] ${table} unavailable:`, result.error.message)
-          setCountyPermits([])
-        } else {
-          // Keep every recent row — realtime scrape delivers NO lat/lon
-          // and usually NO abstract_number until the nightly compute.
-          // Tract matching happens in visiblePermits via wells/lease.
-          setCountyPermits((result.data ?? []) as PermitRow[])
-        }
-        setCountyPermitsLoading(false)
-      })
+    if (result.error) {
+      console.warn(`[permits] ${table} unavailable:`, result.error.message)
+      return [] as PermitRow[]
+    }
+    // Keep every recent row — realtime scrape delivers NO lat/lon
+    // and usually NO abstract_number until the nightly compute.
+    // Tract matching happens in visiblePermits via wells/lease.
+    return (result.data ?? []) as PermitRow[]
+  }, [])
+
+  // Fetch tract_development_status for the active county. Rows come from
+  // scripts/compute_development_status.py (Ticket 1.3 Phase 1). Missing
+  // rows fall back to FRONTIER / score 0 client-side; a missing table
+  // fails soft with an empty lookup so old builds don't crash.
+  useEffect(() => {
+    let cancelled = false
+    void loadDevStatusForCounty(county.id).then((out) => {
+      if (!cancelled) setDevStatusByAbstract(out)
+    })
     return () => {
       cancelled = true
     }
-  }, [county.id, recentPermitCutoffIso])
+  }, [county.id, loadDevStatusForCounty])
+
+  // Load recent permits for the active county. Same window filter as
+  // /permits: filed OR approved within 24 months.
+  useEffect(() => {
+    let cancelled = false
+    setCountyPermitsLoading(true)
+    void loadCountyPermitsForCounty(county.id, recentPermitCutoffIso).then((rows) => {
+      if (cancelled) return
+      setCountyPermits(rows)
+      setCountyPermitsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [county.id, recentPermitCutoffIso, loadCountyPermitsForCounty])
+
+  // Soft live refresh — same cadence as the Permits nav badge. Updates
+  // permit halos (via tract_development_status) + sidebar New Permits
+  // without a hard reload or loading flicker. Uses a ref for county so
+  // a county switch doesn't double-fire with the mount effects above.
+  const activityCountyIdRef = useRef(county.id)
+  activityCountyIdRef.current = county.id
+  useEffect(() => {
+    if (!activityRefreshTick) return
+    let cancelled = false
+    const countyId = activityCountyIdRef.current
+    const cutoff = recentPermitCutoffIso
+    void (async () => {
+      const [dev, permits] = await Promise.all([
+        loadDevStatusForCounty(countyId),
+        loadCountyPermitsForCounty(countyId, cutoff),
+      ])
+      if (cancelled) return
+      // Ignore stale responses if the user switched counties mid-flight.
+      if (countyId !== activityCountyIdRef.current) return
+      setDevStatusByAbstract(dev)
+      setCountyPermits(permits)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    activityRefreshTick,
+    recentPermitCutoffIso,
+    loadDevStatusForCounty,
+    loadCountyPermitsForCounty,
+  ])
 
   // Effective geometry for the currently-selected tract. Uses whichever
   // source resolves first:
@@ -4222,6 +4267,7 @@ export default function Home() {
               mapLevel={mapLevel}
               focusTarget={selected}
               devStatusByAbstract={devStatusByAbstract}
+              activityRefreshTick={activityRefreshTick}
               operatorMatchAbstracts={operatorMatchAbstracts}
               operatorOptions={operatorOptions}
               selectedOperatorKeys={selectedOperatorKeys}

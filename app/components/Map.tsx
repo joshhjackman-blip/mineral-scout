@@ -293,6 +293,7 @@ export default function Map({
   selectedOperatorKeys = [],
   onOperatorKeysChange,
   operatorMatchTractCount = null,
+  activityRefreshTick = 0,
 }: {
   onOwnerClick: (owner: Record<string, unknown>) => void
   focusTarget?: Record<string, unknown> | null
@@ -308,6 +309,13 @@ export default function Map({
   selectedOperatorKeys?: string[]
   onOperatorKeysChange?: (keys: string[]) => void
   operatorMatchTractCount?: number | null
+  /**
+   * Bumped by the parent on the same cadence as the Permits nav badge
+   * (5 min + focus + new ingest date). Clears the session permits
+   * cache and reloads rig dots so overnight scrapes show without a
+   * hard refresh.
+   */
+  activityRefreshTick?: number
 }) {
   // In-map layer toggles. Every tract on the map is classified into one
   // of the 6 UnifiedStatus buckets (see deriveMapStatus at the top of
@@ -407,7 +415,9 @@ export default function Map({
   // flipped (old active → muted, new active → bright).
   const lastStyledSelectedCountyRef = useRef<CountyKey | null>(null)
   // Cache permit GeoJSON by county id so flipping between counties doesn't
-  // re-issue a Supabase round-trip every time.
+  // re-issue a Supabase round-trip every time. Cleared on
+  // activityRefreshTick so overnight scrapes / spud updates land
+  // without a hard reload (same cadence as the Permits nav badge).
   const permitsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   // Cache the Texas-counties FIPS GeoJSON (fetched from plotly's public
   // dataset) once per session. Reused by both the county-overview
@@ -919,7 +929,7 @@ export default function Map({
     lastStyledSelectedCountyRef.current = newSelected
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
-  const loadSelectedCountyPermits = useCallback(async () => {
+  const loadSelectedCountyPermits = useCallback(async (opts?: { force?: boolean }) => {
     const mapInstance = map.current
     if (!mapInstance) return
 
@@ -927,7 +937,11 @@ export default function Map({
     const countyConfig = COUNTIES[countyKey]
     const permitsTable = `${countyConfig.id}_permits`
 
-    // Use cached GeoJSON if we already loaded permits for this county once.
+    // Use cached GeoJSON if we already loaded permits for this county
+    // once — unless the parent asked for a live refresh.
+    if (opts?.force) {
+      delete permitsCacheRef.current[countyKey]
+    }
     let permitsGeoJSON = permitsCacheRef.current[countyKey] ?? null
 
     if (!permitsGeoJSON) {
@@ -2185,6 +2199,18 @@ export default function Map({
     applyTractCountyStyles()
     void loadSelectedCountyPermits()
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
+
+  // Live refresh — same cadence as PermitsNavLink / useActivityRefreshTick.
+  // Drop the whole session cache so a county revisit after an ingest
+  // also picks up fresh coords / spud rows, then reload the active
+  // county's rig layer via setData.
+  useEffect(() => {
+    if (!activityRefreshTick) return
+    if (!map.current?.isStyleLoaded()) return
+    if (mapLevel !== 'tract') return
+    permitsCacheRef.current = {}
+    void loadSelectedCountyPermits({ force: true })
+  }, [activityRefreshTick, loadSelectedCountyPermits, mapLevel])
 
   // Amber ring around tracts whose CAD ownership matches the operator filter.
   useEffect(() => {
