@@ -29,23 +29,44 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Trigger Vercel RRC wells scrape
+      - name: Scrape Howard wells
         env:
           VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          echo "Hitting $VERCEL_CRON_URL"
+          URL="${VERCEL_CRON_URL}?county=howard"
+          echo "Hitting $URL"
           HEADER=""
           if [ -n "$CRON_SECRET" ]; then
             HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
           fi
           eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/wells-scrape.json \
+            -o /tmp/wells-howard.json \
             -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
-            "$VERCEL_CRON_URL"
-          echo "--- ingest report ---"
+            "$URL"
           if command -v jq >/dev/null; then
-            jq '{ok, elapsedMs, totals, counties: (.counties | map({county, parsed, inserted, updated, error}))}' /tmp/wells-scrape.json
+            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-howard.json
           else
-            cat /tmp/wells-scrape.json
+            cat /tmp/wells-howard.json
+          fi
+
+      - name: Scrape Martin wells
+        env:
+          VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          URL="${VERCEL_CRON_URL}?county=martin"
+          echo "Hitting $URL"
+          HEADER=""
+          if [ -n "$CRON_SECRET" ]; then
+            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          fi
+          eval curl -sS --fail --max-time 300 $HEADER \
+            -o /tmp/wells-martin.json \
+            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
+            "$URL"
+          if command -v jq >/dev/null; then
+            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-martin.json
+          else
+            cat /tmp/wells-martin.json
           fi

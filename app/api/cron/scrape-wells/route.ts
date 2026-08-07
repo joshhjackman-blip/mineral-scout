@@ -54,13 +54,13 @@ const DEFAULT_COUNTIES: string[] = ['howard', 'martin']
 // CSV per county (fast). These smaller type shards then stamp the
 // statuses that drive PDP / shut-in classification. Kept short so
 // the whole job finishes inside Vercel's 300s maxDuration.
+// Keep this list short — each shard is a search+CSV round-trip against
+// RRC (~20–40s). Per-county cron budget is 300s; ALL + these three
+// finishes Howard in ~4 min with headroom.
 const WELL_TYPE_SHARDS: Array<{ code: string; status: string }> = [
   { code: 'PR', status: 'PRODUCING' },
   { code: 'SH', status: 'SHUT IN' },
-  { code: 'SM', status: 'SHUT IN' },
   { code: 'IN', status: 'INJECTION' },
-  { code: 'TA', status: 'TEMP ABANDONED' },
-  { code: 'AB', status: 'ABANDONED' },
 ]
 
 const SEARCH_FIELDS = [
