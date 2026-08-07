@@ -1115,13 +1115,14 @@ export default function Home() {
     setDevStatusByAbstract({})
   }, [selectedCounty])
 
-  // Only permits filed / approved in the last 24 months qualify as
-  // "new". Use max(filed, approved) everywhere — realtime scrape rows
-  // often have a fresh approved_date with an older/null filed_date.
-  const RECENT_PERMIT_MONTHS = 24
+  // Only permits filed / approved in the last 90 days qualify as
+  // "new" for the sidebar dropdown + map halos. Use max(filed,
+  // approved) everywhere — realtime scrape rows often have a fresh
+  // approved_date with an older/null filed_date.
+  const RECENT_PERMIT_DAYS = 90
   const recentPermitCutoffIso = useMemo(() => {
     const d = new Date()
-    d.setMonth(d.getMonth() - RECENT_PERMIT_MONTHS)
+    d.setDate(d.getDate() - RECENT_PERMIT_DAYS)
     return d.toISOString().slice(0, 10)
   }, [])
 
@@ -1194,8 +1195,8 @@ export default function Home() {
     }
   }, [county.id, loadDevStatusForCounty])
 
-  // Load recent permits for the active county. Same window filter as
-  // /permits: filed OR approved within 24 months.
+  // Load recent permits for the active county: filed OR approved
+  // within the last 90 days (matches map halo window).
   useEffect(() => {
     let cancelled = false
     setCountyPermitsLoading(true)
@@ -3257,7 +3258,7 @@ export default function Home() {
                       {countyPermitsLoading ? '…' : visiblePermits.length}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                      last 24 months
+                      last 90 days
                     </span>
                   </div>
                   <span
@@ -3279,7 +3280,7 @@ export default function Home() {
                       </div>
                     ) : visiblePermits.length === 0 ? (
                       <div style={{ padding: '10px 16px', fontSize: 11, color: 'var(--mm-chrome-muted)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                        No permits filed on this tract in the last 24 months.
+                        No permits filed on this tract in the last 90 days.
                       </div>
                     ) : (
                       <div style={{ maxHeight: 260, overflowY: 'auto' }}>

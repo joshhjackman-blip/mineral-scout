@@ -96,11 +96,11 @@ function injectDevStatusIntoFeatures(
 ): void {
   const hasLookup = lookup && Object.keys(lookup).length > 0
 
-  // Recent-permit cutoff for the halo overlays: 24 months back.
+  // Recent-permit cutoff for the halo overlays: 90 days back.
   //   has_recent_permit           -> tract has a permit APPROVED
-  //                                  in the last 24 months (blue halo)
+  //                                  in the last 90 days (blue halo)
   //   has_recent_permit_submitted -> tract has a permit FILED in the
-  //                                  last 24 months but NOT yet
+  //                                  last 90 days but NOT yet
   //                                  approved (teal halo)
   //
   // Approved wins if both apply: the blue halo takes precedence
@@ -109,7 +109,7 @@ function injectDevStatusIntoFeatures(
   // double halo (blue on top of teal) which looks noisy.
   const cutoff = (() => {
     const d = new Date()
-    d.setMonth(d.getMonth() - 24)
+    d.setDate(d.getDate() - 90)
     return d.toISOString().slice(0, 10)
   })()
 
@@ -126,7 +126,7 @@ function injectDevStatusIntoFeatures(
     // A permit counts as "submitted only" for the teal halo when
     // it has a filed_date within the window AND doesn't ALSO have
     // a recent approved_date. The second condition avoids
-    // double-tagging a permit that landed in the last 24mo as
+    // double-tagging a permit that landed in the last 90 days as
     // both submitted and approved.
     const hasRecentPermitSubmitted = !hasRecentPermit && permits.some((p) => {
       const filed = String(p?.filed_date ?? '').slice(0, 10)
@@ -363,7 +363,7 @@ export default function Map({
     setStatusVisible((prev) => ({ ...prev, [key]: v }))
   }, [])
   // Blue glow overlay showing tracts with a permit approved in the
-  // last 24 months. Renders on top of the tract's primary color
+  // last 90 days. Renders on top of the tract's primary color
   // rather than replacing it, so a PDP tract with a fresh permit
   // stays yellow underneath but pulses blue on its edge.
   const [showPermitGlow, setShowPermitGlow] = useState(true)
@@ -1568,7 +1568,7 @@ export default function Map({
 
       if (!map.current) return
       // New-permit glow. Any tract whose signal_detail carries a
-      // permit approved in the last 24 months lights up with a
+      // permit approved in the last 90 days lights up with a
       // saturated blue outline that renders ABOVE the tract fill
       // and the neutral gray outline. This surfaces fresh drilling
       // activity without collapsing the primary map_status color —
@@ -1612,7 +1612,7 @@ export default function Map({
 
       // Submitted-permit teal halo (added 2026-07-21). Same
       // two-layer glow trick as the blue halo above, but keyed on
-      // has_recent_permit_submitted (filed_date within 24 months
+      // has_recent_permit_submitted (filed_date within 90 days
       // AND no recent approved_date). Teal is deliberately far
       // from every other palette color we ship:
       //   PDP yellow, PUD_DUC purple, PUD_INFILL orange, frontier
@@ -2558,7 +2558,7 @@ function LayerTogglePanel({
             lineHeight: 1.35,
           }}
         >
-          Blue halo: permit APPROVED in the last 24 months.
+          Blue halo: permit APPROVED in the last 90 days.
           Teal halo: permit FILED but not yet approved.
           Red dot: oil/gas well spudded in the last 12 months
           with no completion on file (SWDs excluded).
