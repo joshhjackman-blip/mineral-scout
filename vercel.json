@@ -1,8 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/scrape-wells",
+      "path": "/api/cron/scrape-wells?county=howard",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=martin",
+      "schedule": "5 21 * * *"
     },
     {
       "path": "/api/cron/scrape-permits",
