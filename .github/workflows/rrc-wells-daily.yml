@@ -1,0 +1,51 @@
+name: RRC wells daily (scrape)
+
+# Daily wellbore metadata refresh at 21:00 UTC (= 4 PM CDT / 3 PM CST),
+# one hour before the permits scrape so compute sees fresher operator /
+# lease / status on <county>_wells.
+#
+# Same belt-and-suspenders pattern as rrc-permits-daily.yml:
+#   1. Curl the Vercel /api/cron/scrape-wells endpoint (RRC allows
+#      Vercel IPs; GitHub Actions runners are blocked).
+#   2. The Vercel cron in vercel.json should also fire at 21:00 UTC.
+#      Idempotent upsert on api_number — either path succeeding is enough.
+#
+# Scope today: howard + martin (DEFAULT_COUNTIES in the route). Pass
+# ?county=... on the URL to override for ad-hoc runs.
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: rrc-wells-daily
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Trigger Vercel RRC wells scrape
+        env:
+          VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          echo "Hitting $VERCEL_CRON_URL"
+          HEADER=""
+          if [ -n "$CRON_SECRET" ]; then
+            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          fi
+          eval curl -sS --fail --max-time 300 $HEADER \
+            -o /tmp/wells-scrape.json \
+            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
+            "$VERCEL_CRON_URL"
+          echo "--- ingest report ---"
+          if command -v jq >/dev/null; then
+            jq '{ok, elapsedMs, totals, counties: (.counties | map({county, parsed, inserted, updated, error}))}' /tmp/wells-scrape.json
+          else
+            cat /tmp/wells-scrape.json
+          fi

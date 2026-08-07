@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/scrape-wells",
+      "schedule": "0 21 * * *"
+    },
+    {
       "path": "/api/cron/scrape-permits",
       "schedule": "0 22 * * *"
     }
