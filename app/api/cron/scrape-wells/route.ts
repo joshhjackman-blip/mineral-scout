@@ -50,9 +50,10 @@ const COUNTY_FIPS: Record<string, string> = {
 // Active product counties with wells tables today.
 const DEFAULT_COUNTIES: string[] = ['howard', 'martin']
 
-// Well-type shards. RRC's Current schedule for Martin exceeds the
-// HTML 10k cap; CSV often still returns, but sharding keeps status
-// accurate and avoids surprise truncations.
+// Status overlay shards. The primary pull is one Current/all-types
+// CSV per county (fast). These smaller type shards then stamp the
+// statuses that drive PDP / shut-in classification. Kept short so
+// the whole job finishes inside Vercel's 300s maxDuration.
 const WELL_TYPE_SHARDS: Array<{ code: string; status: string }> = [
   { code: 'PR', status: 'PRODUCING' },
   { code: 'SH', status: 'SHUT IN' },
@@ -60,16 +61,6 @@ const WELL_TYPE_SHARDS: Array<{ code: string; status: string }> = [
   { code: 'IN', status: 'INJECTION' },
   { code: 'TA', status: 'TEMP ABANDONED' },
   { code: 'AB', status: 'ABANDONED' },
-  { code: 'NP', status: 'NO PRODUCTION' },
-  { code: 'OB', status: 'OBSERVATION' },
-  { code: 'PP', status: 'PARTIAL PLUG' },
-  { code: 'DW', status: 'DOMESTIC USE WELL' },
-  { code: 'LU', status: 'LEASE USE' },
-  { code: 'WS', status: 'WATER SUPPLY' },
-  { code: 'OS', status: 'OTHER TYPE SERVICE' },
-  { code: 'PF', status: 'PROD FACTOR WELL' },
-  { code: 'SD', status: 'SEALED' },
-  { code: 'ZZ', status: 'NOT ELIGIBLE FOR ALLOWABLE' },
 ]
 
 const SEARCH_FIELDS = [
@@ -305,12 +296,17 @@ async function existingByApi(
 
 /** Metadata-only payload — never writes lat/lon/abstract/well_type. */
 function wellToUpdatePayload(row: ParsedWell): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     operator_name: row.operator_name,
     lease_name: row.lease_name,
     rrc_lease_id: row.rrc_lease_id,
-    well_status: row.well_status,
   }
+  // Don't clobber a prior PRODUCING/SHUT IN with the all-types ACTIVE
+  // stub — only typed shards (PR/SH/…) write status on update.
+  if (row.well_status && row.well_status !== 'ACTIVE') {
+    payload.well_status = row.well_status
+  }
+  return payload
 }
 
 function wellToInsertPayload(row: ParsedWell): Record<string, unknown> {
@@ -439,9 +435,24 @@ async function processCounty(
   }
   const table = `${county}_wells`
   const shards: Array<{ code: string; parsed: number }> = []
-  const allRows: ParsedWell[] = []
+  // api -> row; typed shards overwrite the all-types ACTIVE stub so
+  // PRODUCING / SHUT IN win when both are present.
+  const byApi = new Map<string, ParsedWell>()
 
   try {
+    // 1) Fast full Current pull (all well types). Gives every
+    // on-schedule well's operator / lease / lease id.
+    const allTypes = await fetchShard(
+      actionUrl,
+      cookie,
+      fips,
+      '', // None Selected → all types
+      'ACTIVE',
+    )
+    shards.push({ code: 'ALL', parsed: allTypes.length })
+    for (const row of allTypes) byApi.set(row.api_number, row)
+
+    // 2) Status overlays for the types that matter to classification.
     for (const shard of WELL_TYPE_SHARDS) {
       try {
         const rows = await fetchShard(
@@ -452,10 +463,18 @@ async function processCounty(
           shard.status,
         )
         shards.push({ code: shard.code, parsed: rows.length })
-        allRows.push(...rows)
+        for (const row of rows) {
+          const prev = byApi.get(row.api_number)
+          byApi.set(row.api_number, {
+            ...row,
+            // Prefer typed-shard lease/operator, fall back to ALL.
+            operator_name: row.operator_name ?? prev?.operator_name ?? null,
+            lease_name: row.lease_name ?? prev?.lease_name ?? null,
+            rrc_lease_id: row.rrc_lease_id ?? prev?.rrc_lease_id ?? null,
+          })
+        }
       } catch (exc) {
         shards.push({ code: shard.code, parsed: 0 })
-        // Keep going — one empty/broken type shouldn't kill the county.
         console.warn(
           `[scrape-wells] ${county} type=${shard.code}:`,
           exc instanceof Error ? exc.message : exc,
@@ -463,14 +482,12 @@ async function processCounty(
       }
     }
 
+    const allRows = Array.from(byApi.values())
     if (allRows.length === 0) {
       return { county, fips, parsed: 0, inserted: 0, updated: 0, shards }
     }
 
     const idByApi = await existingByApi(supabase, table)
-    if (idByApi.size === 0) {
-      // Table missing or empty + select failed soft. Still try insert.
-    }
     const { inserted, updated } = await upsertWells(
       supabase,
       table,
