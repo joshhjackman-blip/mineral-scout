@@ -11,10 +11,9 @@
 //      parcels GeoJSON once, cache it, and run point-in-polygon to
 //      resolve the abstract label. Permits without a lat/lon fall
 //      back to a lease-name lookup.
-//   3. For each unique (county, abstract) touched, fetch the owners
-//      from <county>_mineral_ownership using the same tiered fallback
-//      the OwnerDrawer uses (Howard/Martin have different columns
-//      than Gonzales).
+//   3. On expand, GET /api/tract-owners?county=&abstract= (service-role
+//      DB, then server-side enriched GeoJSON fallback). Never download
+//      the 60 MB enriched FeatureCollection in the browser.
 //   4. Render one card per permit with an expandable owners list;
 //      each owner has Call / Email / Skip trace / Open in map actions.
 
@@ -169,53 +168,27 @@ function isPointInGeometry(
   return false
 }
 
-// Cache the per-county parcels GeoJSON so switching / expanding
-// permits doesn't refetch a 5+ MB file. Keyed by county id.
-//
-// Two caches on purpose:
-//   - mapParcelsCache  → slim mapGeoJsonPath (PIP only; no owners_json)
-//   - enrichedParcelsCache → full geoJsonPath (owners_json for the
-//     expand-owners panel). Using the slim file for owners made every
-//     expand look empty even when CAD had hundreds of leads.
+// Cache the slim per-county parcels GeoJSON used for point-in-polygon
+// abstract resolution. Owners are NOT loaded from this file (it has no
+// owners_json) — the expand panel hits /api/tract-owners instead so the
+// browser never downloads the 53–63 MB enriched FeatureCollection.
 const mapParcelsCache = new Map<CountyKey, GeoJSON.FeatureCollection>()
-const enrichedParcelsCache = new Map<CountyKey, GeoJSON.FeatureCollection>()
 
-async function fetchParcels(
-  countyId: CountyKey,
-  path: string,
-  cache: Map<CountyKey, GeoJSON.FeatureCollection>,
-): Promise<GeoJSON.FeatureCollection | null> {
-  const cached = cache.get(countyId)
+/** Slim parcels for point-in-polygon abstract resolution. */
+async function loadParcels(countyId: CountyKey): Promise<GeoJSON.FeatureCollection | null> {
+  const cached = mapParcelsCache.get(countyId)
   if (cached) return cached
+  const cfg = COUNTIES[countyId]
+  if (!cfg) return null
   try {
-    const res = await fetch(path)
+    const res = await fetch(cfg.mapGeoJsonPath || cfg.geoJsonPath)
     if (!res.ok) return null
     const gj = (await res.json()) as GeoJSON.FeatureCollection
-    cache.set(countyId, gj)
+    mapParcelsCache.set(countyId, gj)
     return gj
   } catch {
     return null
   }
-}
-
-/** Slim parcels for point-in-polygon abstract resolution. */
-async function loadParcels(countyId: CountyKey): Promise<GeoJSON.FeatureCollection | null> {
-  const cfg = COUNTIES[countyId]
-  if (!cfg) return null
-  return fetchParcels(
-    countyId,
-    cfg.mapGeoJsonPath || cfg.geoJsonPath,
-    mapParcelsCache,
-  )
-}
-
-/** Enriched parcels with owners_json — used when listing leads on a tract. */
-async function loadEnrichedParcels(
-  countyId: CountyKey,
-): Promise<GeoJSON.FeatureCollection | null> {
-  const cfg = COUNTIES[countyId]
-  if (!cfg) return null
-  return fetchParcels(countyId, cfg.geoJsonPath, enrichedParcelsCache)
 }
 
 // Cache api_number -> well surface coords per county, populated on
@@ -433,113 +406,40 @@ async function pointInPolygonAbstract(
   return null
 }
 
-function sortOwnersByAcreage(owners: OwnerRow[]): OwnerRow[] {
-  return [...owners]
-    .filter((o) => String(o.owner_name ?? '').trim().length > 0)
-    .sort((a, b) => Number(b.acreage ?? 0) - Number(a.acreage ?? 0))
-}
-
-/** Pull owners_json off the enriched parcel feature for this abstract. */
-async function loadOwnersFromParcelsGeoJson(
-  countyId: CountyKey,
-  abstract: string,
-): Promise<OwnerRow[]> {
-  const gj = await loadEnrichedParcels(countyId)
-  if (!gj) return []
-  const bare = bareAbstract(abstract)
-  for (const feature of gj.features) {
-    const props = (feature.properties ?? {}) as Record<string, unknown>
-    const label = bareAbstract(
-      props.ABSTRACT_L ?? props.abstract_label ?? props.ABSTRACT_N ?? props.abstract,
-    )
-    if (!label || label !== bare) continue
-
-    let raw: unknown = props.owners_json
-    if (typeof raw === 'string') {
-      try {
-        raw = JSON.parse(raw)
-      } catch {
-        raw = []
-      }
-    }
-    if (!Array.isArray(raw)) return []
-    return sortOwnersByAcreage(
-      raw.map((row, idx) => {
-        const o = (row ?? {}) as Record<string, unknown>
-        return {
-          id: typeof o.id === 'number' || typeof o.id === 'string' ? o.id : idx,
-          owner_name: (o.owner_name as string | null) ?? null,
-          mailing_city: (o.mailing_city as string | null) ?? null,
-          mailing_state: (o.mailing_state as string | null) ?? null,
-          mailing_zip: (o.mailing_zip as string | null) ?? null,
-          acreage: o.acreage == null ? null : Number(o.acreage),
-          ownership_pct: o.ownership_pct == null ? null : Number(o.ownership_pct),
-        } satisfies OwnerRow
-      }),
-    )
-  }
-  return []
-}
-
-// Owners for a (county, abstract). Prefer Supabase mineral_ownership,
-// fall back to the enriched parcels GeoJSON (owners_json) when the
-// DB query times out / returns empty — Martin abstract lookups were
-// seq-scanning and showing "No owners recorded" despite 200+ CAD leads
-// baked into martin_parcels_enriched.geojson.
+// Owners for a (county, abstract) via /api/tract-owners. The API uses the
+// service role against mineral_ownership and falls back to the enriched
+// CAD GeoJSON server-side (cached in the serverless instance) so the
+// browser never pulls a 60 MB FeatureCollection on expand.
 async function loadOwnersForAbstract(
   countyId: CountyKey,
   abstract: string,
 ): Promise<OwnerRow[]> {
-  const cfg = COUNTIES[countyId]
-  if (!cfg) return []
-  const bare = bareAbstract(abstract)
-  const variants = Array.from(
-    new Set(
-      [bare, `A-${bare}`, String(abstract ?? '').trim(), String(abstract ?? '').trim().toUpperCase()]
-        .map((v) => v.trim())
-        .filter(Boolean),
-    ),
-  )
-
-  const runQuery = async (cols: string) =>
-    supabase
-      .from(cfg.ownershipTable)
-      .select(cols)
-      .in('abstract', variants)
-      .order('acreage', { ascending: false })
-      .limit(500)
-
-  const HOWARD_COLS =
-    'id, owner_name, mailing_city, mailing_state, mailing_zip, acreage, ownership_pct'
-  const MIN_COLS = 'id, owner_name, mailing_city, mailing_state'
-
-  const isMissingColumnError = (msg: string) => {
-    const m = msg.toLowerCase()
-    return m.includes('column') && (m.includes('does not exist') || m.includes('not find'))
+  const params = new URLSearchParams({
+    county: countyId,
+    abstract: bareAbstract(abstract) || String(abstract),
+  })
+  try {
+    const res = await fetch(`/api/tract-owners?${params.toString()}`, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+    })
+    const body = (await res.json()) as {
+      success?: boolean
+      data?: { owners?: OwnerRow[] }
+      error?: string | null
+    }
+    if (!res.ok || !body.success) {
+      console.warn(
+        `[permits] /api/tract-owners ${countyId} ${abstract} failed:`,
+        body.error ?? res.status,
+      )
+      return []
+    }
+    return (body.data?.owners ?? []) as OwnerRow[]
+  } catch (err) {
+    console.warn(`[permits] /api/tract-owners ${countyId} ${abstract} threw:`, err)
+    return []
   }
-
-  let result = await runQuery(HOWARD_COLS)
-  if (result.error && isMissingColumnError(result.error.message)) {
-    result = await runQuery(MIN_COLS)
-  }
-
-  if (result.error) {
-    console.warn(
-      `[permits] ${cfg.ownershipTable} owners for abstract ${bare} failed:`,
-      result.error.message,
-    )
-  } else {
-    const fromDb = sortOwnersByAcreage((result.data ?? []) as unknown as OwnerRow[])
-    if (fromDb.length > 0) return fromDb
-  }
-
-  const fromGeo = await loadOwnersFromParcelsGeoJson(countyId, abstract)
-  if (fromGeo.length > 0) {
-    console.info(
-      `[permits] loaded ${fromGeo.length} owners for ${countyId} ${bare} from enriched geojson fallback`,
-    )
-  }
-  return fromGeo
 }
 
 // Bulk cached-only phone/email lookup so we can show contact info in
