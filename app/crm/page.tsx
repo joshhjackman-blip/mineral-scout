@@ -33,6 +33,7 @@ import {
   deleteOwnerOverride,
   upsertOwnerOverride,
 } from '@/lib/owner-overrides'
+import { getWorkspaceContext } from '@/lib/workspace'
 
 export const dynamic = 'force-dynamic'
 
@@ -154,9 +155,21 @@ export default function CRM() {
   const [search, setSearch] = useState('')
 
   useEffect(() => {
-    supabase.from('deals').select('*').order('updated_at', { ascending: false }).then(({ data }) => {
+    void (async () => {
+      const workspace = await getWorkspaceContext()
+      if (!workspace) {
+        setDeals([])
+        return
+      }
+      // RLS also scopes by team_owner_id; filter explicitly so a missing
+      // migration can't accidentally paint another team's CRM.
+      const { data } = await supabase
+        .from('deals')
+        .select('*')
+        .eq('team_owner_id', workspace.workspaceId)
+        .order('updated_at', { ascending: false })
       setDeals((data as Deal[]) ?? [])
-    })
+    })()
   }, [])
 
   const filtered = useMemo(() => deals.filter((d) => {

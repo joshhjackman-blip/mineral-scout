@@ -24,6 +24,7 @@ import type { CountyKey } from '@/lib/counties'
 import { COUNTIES } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
 import { writePermitsLastSeen } from '@/lib/permits-seen'
+import { skipTraceOwnerKey } from '@/lib/workspace'
 
 type PermitStatus = 'approved' | 'pending' | 'other'
 
@@ -445,18 +446,19 @@ async function loadOwnersForAbstract(
 
 // Bulk cached-only phone/email lookup so we can show contact info in
 // the expanded permit card without triggering skip-trace on every
-// owner. Uses the public skip_trace_cache table populated by past
-// skip-trace runs.
+// owner. Reads the SHARED skip_trace_cache (any team's prior paid
+// skip-trace is reusable — we don't re-bill the provider).
 async function loadCachedContacts(
   ownerNames: string[],
 ): Promise<Record<string, { phone?: string | null; email?: string | null }>> {
   if (ownerNames.length === 0) return {}
-  const uniq = Array.from(new Set(ownerNames.filter(Boolean)))
-  const upper = uniq.map((n) => n.toUpperCase())
+  const uniq = Array.from(
+    new Set(ownerNames.map((n) => skipTraceOwnerKey(n)).filter(Boolean)),
+  )
   const { data } = await supabase
     .from('skip_trace_cache')
     .select('owner_name, phones, emails')
-    .in('owner_name', upper)
+    .in('owner_name', uniq)
   const out: Record<string, { phone?: string | null; email?: string | null }> = {}
   for (const row of (data ?? []) as Array<{
     owner_name: string

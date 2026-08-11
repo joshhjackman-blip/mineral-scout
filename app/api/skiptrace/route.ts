@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
+import { getTeamOwnerId } from '@/lib/team'
+import { skipTraceOwnerKey } from '@/lib/workspace'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
 // for internal accounting / abuse detection, but there is no monthly
@@ -102,26 +104,44 @@ export async function POST(req: NextRequest) {
     }
   )
   const {
-    data: { session },
-  } = await supabaseAuth.auth.getSession()
-  const userId = session?.user?.id
+    data: { user },
+  } = await supabaseAuth.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = user.id
+  const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
 
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
   )
+
+  // Workspace for usage rollups. Cache itself is intentionally global —
+  // if Team A already paid to skip-trace this owner, Team B gets a hit.
+  const { data: subRow } = await adminClient
+    .from('subscriptions')
+    .select('team_owner_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  const workspaceId =
+    getTeamOwnerId(
+      metadata,
+      (subRow as { team_owner_id?: string | null } | null)?.team_owner_id,
+    ) || userId
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
+  const cacheKey = skipTraceOwnerKey(ownerName)
 
-  // 1) Check cache first
-  if (ownerName) {
+  // 1) Shared cache first — any prior team's result counts. Cache hits
+  // do NOT increment skip_trace_usage (we didn't pay the provider again).
+  if (cacheKey) {
     const { data: cached, error: cacheError } = await adminClient
       .from('skip_trace_cache')
       .select('phones, emails')
-      .ilike('owner_name', ownerName.trim())
-      .order('updated_at', { ascending: false })
-      .limit(1)
+      .eq('owner_name', cacheKey)
       .maybeSingle()
 
     if (cacheError) {
@@ -129,7 +149,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (cached) {
-      console.log('Cache hit - not counting against limit:', ownerName)
       return NextResponse.json({
         success: true,
         phones: (cached as { phones?: string[] }).phones ?? [],
@@ -140,8 +159,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 2) Check monthly usage limit (cache misses only)
-  if (userId) {
+  // 2) Check monthly usage limit (cache misses / paid calls only)
+  {
     const { data: usage, error: usageError } = await adminClient
       .from('skip_trace_usage')
       .select('count')
@@ -155,7 +174,6 @@ export async function POST(req: NextRequest) {
     }
 
     currentCount = Number((usage as { count?: number } | null)?.count ?? 0)
-    console.log(`User ${userId} skip trace usage: ${currentCount}/${MONTHLY_LIMIT}`)
 
     if (currentCount >= MONTHLY_LIMIT) {
       return NextResponse.json(
@@ -198,8 +216,6 @@ export async function POST(req: NextRequest) {
       if (state && state.trim()) body.state = state
       if (zip && zip.trim()) body.zip = zip
 
-      console.log('Tracerfy request:', JSON.stringify(body))
-
       const response = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
         method: 'POST',
         headers: {
@@ -210,16 +226,14 @@ export async function POST(req: NextRequest) {
       })
 
       const responseText = await response.text()
-      console.log('Tracerfy status:', response.status)
-      console.log('Tracerfy raw response:', responseText.substring(0, 1000))
 
       try {
         data = JSON.parse(responseText) as Record<string, unknown>
       } catch {
-        console.error('Tracerfy response parse failed')
+        console.error('Tracerfy response parse failed', { status: response.status })
         if (!bstApiKey) {
           return NextResponse.json(
-            { error: 'Invalid API response', raw: responseText.substring(0, 300) },
+            { error: 'Invalid API response' },
             { status: 500 }
           )
         }
@@ -268,7 +282,6 @@ export async function POST(req: NextRequest) {
             },
           ],
         }
-        console.log('BST request:', JSON.stringify(bstBody))
         const bstResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
           method: 'POST',
           headers: {
@@ -278,7 +291,6 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify(bstBody),
         })
         const bstText = await bstResponse.text()
-        console.log('BST raw response:', bstText.substring(0, 1000))
         if (bstResponse.ok) {
           const bstData = JSON.parse(bstText) as Record<string, unknown>
           const persons = ((bstData?.results as Record<string, unknown> | undefined)?.persons as Array<Record<string, unknown>>) ?? []
@@ -303,41 +315,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    let nextCount = currentCount
-    if (userId) {
-      nextCount = currentCount + 1
-      const { error: usageUpdateError } = await adminClient
-        .from('skip_trace_usage')
-        .upsert(
-          {
-            user_id: userId,
-            month: currentMonth,
-            count: nextCount,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,month' }
-        )
+    const nextCount = currentCount + 1
+    const { error: usageUpdateError } = await adminClient
+      .from('skip_trace_usage')
+      .upsert(
+        {
+          user_id: userId,
+          team_owner_id: workspaceId,
+          month: currentMonth,
+          count: nextCount,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,month' },
+      )
 
-      if (usageUpdateError) {
-        console.error('Skip trace usage update error:', usageUpdateError)
-        return NextResponse.json({ error: 'Failed to update skip trace usage' }, { status: 500 })
-      }
+    if (usageUpdateError) {
+      console.error('Skip trace usage update error:', usageUpdateError)
+      return NextResponse.json({ error: 'Failed to update skip trace usage' }, { status: 500 })
     }
 
-    // 4) Save to cache if we got results
-    if (ownerName && (phones.length > 0 || emails.length > 0)) {
+    // 4) Save to SHARED cache — next team that skip-traces this owner
+    // pays $0 provider credits.
+    if (cacheKey && (phones.length > 0 || emails.length > 0)) {
       await adminClient.from('skip_trace_cache').upsert(
         {
-          owner_name: ownerName.trim(),
+          owner_name: cacheKey,
           mailing_address: address ?? '',
           phones,
           emails,
           source: cacheSource,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'owner_name' }
+        { onConflict: 'owner_name' },
       )
-      console.log('Saved to cache:', ownerName)
     }
 
     return NextResponse.json({
