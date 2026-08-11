@@ -25,6 +25,7 @@ import json
 import math
 import os
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
@@ -282,6 +283,35 @@ def main() -> None:
         if not code:
             continue
         code_to_abstract_label[code] = f"A-{code}"
+
+    # Re-resolve weak/missing abstracts from survey / raw_record / lat-lon
+    # before the primary join (Howard Block/Surv_Sect + Martin LEVEL* + lease map).
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from abstract_match import AbstractMatcher
+
+        matcher = AbstractMatcher(input_parcels_path)
+        resolved = 0
+        for owner in all_owners:
+            row = dict(owner)
+            rr = owner.get("raw_record")
+            if isinstance(rr, dict):
+                for key in ("survey", "abstract", "block", "section", "lat", "long", "rrc_id"):
+                    if not row.get(key) and rr.get(key) is not None:
+                        row[key] = rr.get(key)
+                if not row.get("rrc_lease_id") and rr.get("rrc_id") is not None:
+                    row["rrc_id"] = rr.get("rrc_id")
+            bare, method = matcher.resolve(row)
+            if bare and method != "unplaced":
+                if to_abstract_code(owner.get("abstract")) != bare:
+                    owner["abstract"] = bare
+                    resolved += 1
+                elif not owner.get("abstract"):
+                    owner["abstract"] = bare
+                    resolved += 1
+        print(f"Re-resolved abstracts via AbstractMatcher: {resolved}")
+    except Exception as exc:
+        print(f"AbstractMatcher unavailable ({exc}); using stored abstracts only.")
 
     owner_id_to_abstract: dict[str, str] = {}
     for owner in all_owners:
