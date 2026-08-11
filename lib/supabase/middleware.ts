@@ -114,13 +114,11 @@ export async function updateSession(request: NextRequest) {
   }
 
   // Paywall: active/trialing subscription (or platform admin).
-  // Only enforce once a seat Price is configured — otherwise every
-  // logged-in user (including pre-billing accounts) would hit /pricing.
-  // Admin-provisioned teams get subscription_status=active in metadata.
-  const paywallEnabled =
-    process.env.BILLING_PAYWALL_ENABLED === 'true' || Boolean(seatPriceId())
+  // Opt-in via BILLING_PAYWALL_ENABLED=true so setting Stripe Price IDs
+  // for checkout testing does not lock pre-billing accounts out of the map.
+  // Admin-provisioned / Stripe-subscribed users get subscription_status in metadata.
   if (
-    paywallEnabled &&
+    process.env.BILLING_PAYWALL_ENABLED === 'true' &&
     isLoggedIn &&
     !isPublicPage &&
     !isBillingOrAccountPath &&
