@@ -10,7 +10,7 @@ import '../agreement.css'
 // Must match the Version: field in legal/PLATFORM-SERVICES-AGREEMENT.md.
 // When the agreement text is materially updated, bump this string and
 // (optionally) prompt existing signers to re-sign.
-const AGREEMENT_VERSION = '2026-07-16'
+const AGREEMENT_VERSION = '2026-08-11'
 
 type CheckKey = 'read' | 'authority' | 'bound' | 'esign_consent'
 

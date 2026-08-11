@@ -328,7 +328,7 @@ export default function Account() {
           </div>
         )}
 
-        {/* ── Billing (free plan + 10% success fee) ── */}
+        {/* ── Billing ($100/seat + $0.50 skip-trace) ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
@@ -336,37 +336,80 @@ export default function Account() {
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                Free plan — you pay on close
+                $100/mo per seat · $0.50 per skip-trace
               </div>
               <div className="text-sm text-gray-500 leading-relaxed">
-                No monthly fee, no per-seat charge, no data subscription.
-                When a Platform Lead you sourced through Mineral Map closes,
-                we invoice a 10% success fee. Attribution rules and terms
-                are spelled out in the Platform Services Agreement.
+                Platform access is billed per seat. Skip-trace is metered at
+                $0.50 only when we call the provider — shared cache hits across
+                teams are free. Seat capacity:{' '}
+                <strong className="text-gray-700">
+                  {seatCount > 0 ? `${seatCount} seat${seatCount === 1 ? '' : 's'}` : 'not provisioned'}
+                </strong>
+                {subscription?.status ? (
+                  <>
+                    {' '}
+                    · status{' '}
+                    <strong className="text-gray-700">{subscription.status}</strong>
+                  </>
+                ) : null}
               </div>
             </div>
-            <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
-              Active
+            <span
+              className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full border ${
+                subscription?.status === 'active' || subscription?.status === 'trialing'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200'
+              }`}
+            >
+              {subscription?.status === 'active' || subscription?.status === 'trialing'
+                ? 'Active'
+                : seatCount > 0
+                  ? 'Provisioned'
+                  : 'No plan'}
             </span>
           </div>
-          <Link
-            href="/legal/agreement"
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
-          >
-            <FileText size={13} />
-            Read the Platform Services Agreement
-          </Link>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/pricing"
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+            >
+              {seatCount > 0 ? 'Add seats / change plan' : 'Start subscription'}
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                void (async () => {
+                  const res = await fetch('/api/billing/portal', { method: 'POST' })
+                  const data = (await res.json()) as { url?: string; error?: string }
+                  if (data.url) window.location.href = data.url
+                  else alert(data.error || 'Billing portal unavailable')
+                })()
+              }}
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-50"
+            >
+              Manage billing
+            </button>
+            <Link
+              href="/legal/agreement"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
+            >
+              <FileText size={13} />
+              Agreement
+            </Link>
+          </div>
         </div>
 
-        {/* ── Usage (informational, no cap) ── */}
+        {/* ── Usage (billable skip-traces this month) ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Usage
           </div>
           <div className="flex items-baseline justify-between">
             <div>
-              <div className="text-sm text-gray-500">Skip traces this month</div>
-              <div className="text-xs text-gray-400 mt-1">Unlimited — resets on the 1st of each month.</div>
+              <div className="text-sm text-gray-500">Billable skip-traces this month</div>
+              <div className="text-xs text-gray-400 mt-1">
+                ${(0.5 * (skipTraceCount ?? 0)).toFixed(2)} estimated · cache hits not counted · resets on the 1st
+              </div>
             </div>
             <div className="font-serif text-2xl font-bold text-gray-900 tabular-nums">
               {loading ? '—' : (skipTraceCount ?? 0).toLocaleString()}
