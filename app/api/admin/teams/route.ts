@@ -189,6 +189,8 @@ export async function POST(req: NextRequest) {
         team_role: 'admin',
         // Never grant platform admin via team provisioning.
         is_admin: false,
+        subscription_status: 'active',
+        seat_count: seatCount,
       },
       redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/account`,
     })
@@ -210,6 +212,7 @@ export async function POST(req: NextRequest) {
         team_role: 'admin',
         team_owner_id: null,
         subscription_status: 'active',
+        seat_count: seatCount,
         // Preserve existing is_admin for staff accounts only.
         is_admin: Boolean(existingMeta.is_admin),
       },
@@ -276,6 +279,16 @@ export async function PATCH(req: NextRequest) {
     )
   }
 
+  const { data: existingSub, error: readError } = await adminClient
+    .from('subscriptions')
+    .select('stripe_subscription_id')
+    .eq('user_id', ownerId)
+    .maybeSingle()
+
+  if (readError) {
+    return NextResponse.json({ error: readError.message }, { status: 500 })
+  }
+
   const { error } = await adminClient
     .from('subscriptions')
     .update({
@@ -289,6 +302,25 @@ export async function PATCH(req: NextRequest) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // Keep Stripe licensed quantity aligned when this team is on a
+  // real subscription (no-op for manually provisioned / no Stripe).
+  const { syncStripeSeatQuantity } = await import('@/lib/stripe-seats')
+  await syncStripeSeatQuantity({
+    stripeSubscriptionId: (existingSub as { stripe_subscription_id?: string | null } | null)
+      ?.stripe_subscription_id,
+    seatCount,
+  })
+
+  const { data: ownerUser } = await adminClient.auth.admin.getUserById(ownerId)
+  const existingMeta = (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>
+  await adminClient.auth.admin.updateUserById(ownerId, {
+    user_metadata: {
+      ...existingMeta,
+      subscription_status: 'active',
+      seat_count: seatCount,
+    },
+  })
 
   return NextResponse.json({ success: true, owner_id: ownerId, seat_count: seatCount })
 }
