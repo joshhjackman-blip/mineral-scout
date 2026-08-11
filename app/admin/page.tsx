@@ -23,6 +23,7 @@ type UserRow = {
   email: string
   created_at: string
   subscription_status: string
+  billing_exempt?: boolean
   is_admin: boolean
   subscription?: {
     status: string
@@ -36,6 +37,7 @@ type StatsRow = {
   totalUsers: number
   activeSubscribers: number
   trialUsers: number
+  billingExempt?: number
   totalSkipTraces: number
 }
 
@@ -124,6 +126,13 @@ export default function AdminDashboard() {
   const [provisionSeats, setProvisionSeats] = useState(4)
   const [provisionMsg, setProvisionMsg] = useState<string | null>(null)
   const [provisioning, setProvisioning] = useState(false)
+  const [grandfatherMsg, setGrandfatherMsg] = useState<string | null>(null)
+  const [grandfathering, setGrandfathering] = useState(false)
+  const [grandfatherStats, setGrandfatherStats] = useState<{
+    total_users: number
+    billing_exempt: number
+    need_grandfather: number
+  } | null>(null)
   const [grantAdminEmail, setGrantAdminEmail] = useState('')
   const [grantAdminMsg, setGrantAdminMsg] = useState<string | null>(null)
   const [grantingAdmin, setGrantingAdmin] = useState(false)
@@ -136,12 +145,14 @@ export default function AdminDashboard() {
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [usersRes, usageRes, teamsRes, adminsRes] = await Promise.all([
-        fetch('/api/admin/users', { cache: 'no-store' }),
-        fetch('/api/admin/usage', { cache: 'no-store' }),
-        fetch('/api/admin/teams', { cache: 'no-store' }),
-        fetch('/api/admin/admins', { cache: 'no-store' }),
-      ])
+      const [usersRes, usageRes, teamsRes, adminsRes, grandfatherRes] =
+        await Promise.all([
+          fetch('/api/admin/users', { cache: 'no-store' }),
+          fetch('/api/admin/usage', { cache: 'no-store' }),
+          fetch('/api/admin/teams', { cache: 'no-store' }),
+          fetch('/api/admin/admins', { cache: 'no-store' }),
+          fetch('/api/admin/grandfather', { cache: 'no-store' }),
+        ])
       if (usersRes.status === 401) {
         window.location.href = '/'
         return
@@ -161,6 +172,7 @@ export default function AdminDashboard() {
           totalUsers: 0,
           activeSubscribers: 0,
           trialUsers: 0,
+          billingExempt: 0,
           totalSkipTraces: 0,
         }
       )
@@ -188,12 +200,62 @@ export default function AdminDashboard() {
       } else {
         setAdmins([])
       }
+
+      if (grandfatherRes.ok) {
+        setGrandfatherStats(
+          (await grandfatherRes.json()) as {
+            total_users: number
+            billing_exempt: number
+            need_grandfather: number
+          },
+        )
+      } else {
+        setGrandfatherStats(null)
+      }
       setLastUpdated(new Date())
     } finally {
       setRefreshing(false)
       setLoading(false)
     }
   }, [])
+
+  const handleGrandfatherExisting = async () => {
+    if (
+      !confirm(
+        'Mark all existing users as complimentary (no seat fee)? Safe to re-run. New signups after this still need to subscribe.',
+      )
+    ) {
+      return
+    }
+    setGrandfathering(true)
+    setGrandfatherMsg(null)
+    try {
+      const res = await fetch('/api/admin/grandfather', { method: 'POST' })
+      const data = (await res.json()) as {
+        success?: boolean
+        newly_exempt?: number
+        already_exempt?: number
+        total_users?: number
+        error?: string
+        errors?: Array<{ email: string; error: string }>
+      }
+      if (!res.ok) {
+        setGrandfatherMsg(data.error || 'Grandfather failed')
+        return
+      }
+      const errCount = data.errors?.length ?? 0
+      setGrandfatherMsg(
+        `Done: ${data.newly_exempt ?? 0} newly exempt, ${data.already_exempt ?? 0} already exempt (${data.total_users ?? 0} total)${
+          errCount ? ` · ${errCount} error(s)` : ''
+        }.`,
+      )
+      await refresh()
+    } catch {
+      setGrandfatherMsg('Grandfather failed')
+    } finally {
+      setGrandfathering(false)
+    }
+  }
 
   const handleProvisionTeam = async () => {
     if (!provisionEmail.trim()) return
@@ -891,6 +953,41 @@ export default function AdminDashboard() {
           </>
         ) : tab === 'teams' ? (
           <>
+            <div className="bg-white rounded-xl border border-emerald-200 shadow-sm p-5 mb-6">
+              <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
+                Grandfather existing users
+              </h2>
+              <p className="text-sm text-gray-500 mb-3">
+                Current accounts stay free (no $100 seat fee) when the paywall
+                turns on. New signups after this still need a paid seat.
+                Skip-trace remains $0.50 on live provider calls. After running,
+                users may need to sign out/in (or wait for token refresh) before
+                complimentary status appears in their session.
+              </p>
+              {grandfatherStats && (
+                <p className="text-sm text-gray-600 mb-4">
+                  {grandfatherStats.billing_exempt}/{grandfatherStats.total_users}{' '}
+                  already complimentary
+                  {grandfatherStats.need_grandfather > 0
+                    ? ` · ${grandfatherStats.need_grandfather} still need it`
+                    : ' · all set'}
+                </p>
+              )}
+              <button
+                type="button"
+                disabled={grandfathering}
+                onClick={() => {
+                  void handleGrandfatherExisting()
+                }}
+                className="px-4 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {grandfathering ? 'Grandfathering…' : 'Grandfather existing users'}
+              </button>
+              {grandfatherMsg && (
+                <p className="mt-3 text-sm text-gray-600">{grandfatherMsg}</p>
+              )}
+            </div>
+
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
               <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
                 Provision team admin
@@ -1020,11 +1117,15 @@ export default function AdminDashboard() {
               {[
                 { label: 'Total users', val: stats.totalUsers, icon: <Users size={18} className="text-gray-400" /> },
                 {
-                  label: 'Active subscribers',
-                  val: stats.activeSubscribers,
+                  label: 'Complimentary',
+                  val: stats.billingExempt ?? 0,
                   icon: <CreditCard size={18} className="text-emerald-500" />,
                 },
-                { label: 'Trial users', val: stats.trialUsers, icon: <TrendingUp size={18} className="text-blue-500" /> },
+                {
+                  label: 'Active subscribers',
+                  val: stats.activeSubscribers,
+                  icon: <TrendingUp size={18} className="text-blue-500" />,
+                },
                 {
                   label: 'Skip traces this month',
                   val: stats.totalSkipTraces,
@@ -1075,11 +1176,17 @@ export default function AdminDashboard() {
                             })}
                           </td>
                           <td className="px-5 py-3">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColor(user.subscription_status)}`}
-                            >
-                              {user.subscription_status || 'none'}
-                            </span>
+                            {user.billing_exempt ? (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                complimentary
+                              </span>
+                            ) : (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColor(user.subscription_status)}`}
+                              >
+                                {user.subscription_status || 'none'}
+                              </span>
+                            )}
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-500">{user.skip_traces ?? 0}</td>
                           <td className="px-5 py-3 text-sm text-gray-500">{user.is_admin ? '✓' : '—'}</td>

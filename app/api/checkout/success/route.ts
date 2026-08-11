@@ -75,8 +75,11 @@ export async function GET(req: NextRequest) {
     { onConflict: 'user_id' },
   )
 
+  const { data: authUser } = await supabase.auth.admin.getUserById(userId)
+  const existingMeta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>
   await supabase.auth.admin.updateUserById(userId, {
     user_metadata: {
+      ...existingMeta,
       subscription_status: 'active',
       seat_count: seatCount,
       stripe_seat_price_id: seatPrice,

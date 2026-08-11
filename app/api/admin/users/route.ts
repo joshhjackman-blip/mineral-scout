@@ -121,6 +121,7 @@ export async function GET(req: NextRequest) {
       email: user.email ?? '',
       created_at: user.created_at ?? new Date(0).toISOString(),
       subscription_status: subscriptionStatus,
+      billing_exempt: metadata.billing_exempt === true,
       is_admin: isPlatformAdmin(metadata, user.email),
       subscription: sub,
       skip_traces: usageByUserId.get(user.id) ?? 0,
@@ -130,6 +131,7 @@ export async function GET(req: NextRequest) {
   const totalSkipTraces = (usage ?? []).reduce((sum, row) => sum + Number((row as UsageRow).count ?? 0), 0)
   const activeSubscribers = enriched.filter((u) => u.subscription_status === 'active' && !u.is_admin).length
   const trialUsers = enriched.filter((u) => u.subscription_status === 'trialing').length
+  const billingExempt = enriched.filter((u) => u.billing_exempt).length
 
   return NextResponse.json({
     users: enriched,
@@ -137,6 +139,7 @@ export async function GET(req: NextRequest) {
       totalUsers: enriched.length,
       activeSubscribers,
       trialUsers,
+      billingExempt,
       totalSkipTraces,
     },
   })
