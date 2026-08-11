@@ -333,70 +333,107 @@ export default function Account() {
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
           </div>
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                $100/mo per seat · $0.50 per skip-trace
+          {user?.user_metadata?.billing_exempt === true ? (
+            <>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <div className="font-serif text-base font-bold text-gray-900 mb-1">
+                    Complimentary access
+                  </div>
+                  <div className="text-sm text-gray-500 leading-relaxed">
+                    Your account was on Mineral Map before paid seats launched —
+                    platform access stays free. Skip-trace is still $0.50 only
+                    when we call the provider (shared cache hits are free).
+                    Seat capacity:{' '}
+                    <strong className="text-gray-700">
+                      {seatCount > 0
+                        ? `${seatCount} seat${seatCount === 1 ? '' : 's'}`
+                        : '1 seat'}
+                    </strong>
+                  </div>
+                </div>
+                <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                  Complimentary
+                </span>
               </div>
-              <div className="text-sm text-gray-500 leading-relaxed">
-                Platform access is billed per seat. Skip-trace is metered at
-                $0.50 only when we call the provider — shared cache hits across
-                teams are free. Seat capacity:{' '}
-                <strong className="text-gray-700">
-                  {seatCount > 0 ? `${seatCount} seat${seatCount === 1 ? '' : 's'}` : 'not provisioned'}
-                </strong>
-                {subscription?.status ? (
-                  <>
-                    {' '}
-                    · status{' '}
-                    <strong className="text-gray-700">{subscription.status}</strong>
-                  </>
-                ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href="/legal/agreement"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
+                >
+                  <FileText size={13} />
+                  Agreement
+                </Link>
               </div>
-            </div>
-            <span
-              className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full border ${
-                subscription?.status === 'active' || subscription?.status === 'trialing'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
-              }`}
-            >
-              {subscription?.status === 'active' || subscription?.status === 'trialing'
-                ? 'Active'
-                : seatCount > 0
-                  ? 'Provisioned'
-                  : 'No plan'}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/pricing"
-              className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
-            >
-              {seatCount > 0 ? 'Add seats / change plan' : 'Start subscription'}
-            </Link>
-            <button
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  const res = await fetch('/api/billing/portal', { method: 'POST' })
-                  const data = (await res.json()) as { url?: string; error?: string }
-                  if (data.url) window.location.href = data.url
-                  else alert(data.error || 'Billing portal unavailable')
-                })()
-              }}
-              className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-50"
-            >
-              Manage billing
-            </button>
-            <Link
-              href="/legal/agreement"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
-            >
-              <FileText size={13} />
-              Agreement
-            </Link>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <div className="font-serif text-base font-bold text-gray-900 mb-1">
+                    $100/mo per seat · $0.50 per skip-trace
+                  </div>
+                  <div className="text-sm text-gray-500 leading-relaxed">
+                    Platform access is billed per seat. Skip-trace is metered at
+                    $0.50 only when we call the provider — shared cache hits across
+                    teams are free. Seat capacity:{' '}
+                    <strong className="text-gray-700">
+                      {seatCount > 0 ? `${seatCount} seat${seatCount === 1 ? '' : 's'}` : 'not provisioned'}
+                    </strong>
+                    {subscription?.status ? (
+                      <>
+                        {' '}
+                        · status{' '}
+                        <strong className="text-gray-700">{subscription.status}</strong>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full border ${
+                    subscription?.status === 'active' || subscription?.status === 'trialing'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}
+                >
+                  {subscription?.status === 'active' || subscription?.status === 'trialing'
+                    ? 'Active'
+                    : seatCount > 0
+                      ? 'Provisioned'
+                      : 'No plan'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href="/pricing"
+                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+                >
+                  {seatCount > 0 ? 'Add seats / change plan' : 'Start subscription'}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const res = await fetch('/api/billing/portal', { method: 'POST' })
+                      const data = (await res.json()) as { url?: string; error?: string }
+                      if (data.url) window.location.href = data.url
+                      else alert(data.error || 'Billing portal unavailable')
+                    })()
+                  }}
+                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-50"
+                >
+                  Manage billing
+                </button>
+                <Link
+                  href="/legal/agreement"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
+                >
+                  <FileText size={13} />
+                  Agreement
+                </Link>
+              </div>
+            </>
+          )}
         </div>
 
         {/* ── Usage (billable skip-traces this month) ── */}

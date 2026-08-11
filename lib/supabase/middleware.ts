@@ -113,10 +113,9 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Paywall: active/trialing subscription (or platform admin).
-  // Opt-in via BILLING_PAYWALL_ENABLED=true so setting Stripe Price IDs
-  // for checkout testing does not lock pre-billing accounts out of the map.
-  // Admin-provisioned / Stripe-subscribed users get subscription_status in metadata.
+  // Paywall: active/trialing subscription, billing_exempt (grandfathered),
+  // or platform admin. Opt-in via BILLING_PAYWALL_ENABLED=true.
+  // Run POST /api/admin/grandfather once so existing users stay free.
   if (
     process.env.BILLING_PAYWALL_ENABLED === 'true' &&
     isLoggedIn &&

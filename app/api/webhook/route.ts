@@ -63,8 +63,16 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     if (sub?.user_id) {
+      const { data: authUser } = await supabase.auth.admin.getUserById(sub.user_id)
+      const existingMeta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>
+      // Grandfathered users keep complimentary access even if a Stripe sub ends.
+      const nextStatus =
+        existingMeta.billing_exempt === true ? 'active' : 'canceled'
       await supabase.auth.admin.updateUserById(sub.user_id, {
-        user_metadata: { subscription_status: 'canceled' },
+        user_metadata: {
+          ...existingMeta,
+          subscription_status: nextStatus,
+        },
       })
     }
   }
@@ -99,9 +107,16 @@ export async function POST(req: NextRequest) {
 
     if (subRow?.user_id) {
       const active = sub.status === 'active' || sub.status === 'trialing'
+      const { data: authUser } = await supabase.auth.admin.getUserById(subRow.user_id)
+      const existingMeta = (authUser?.user?.user_metadata ?? {}) as Record<string, unknown>
       await supabase.auth.admin.updateUserById(subRow.user_id, {
         user_metadata: {
-          subscription_status: active ? 'active' : sub.status,
+          ...existingMeta,
+          // Exempt users stay active for paywall even if Stripe lapses.
+          subscription_status:
+            existingMeta.billing_exempt === true || active
+              ? 'active'
+              : sub.status,
           seat_count: seatCount,
           stripe_seat_price_id: seatPrice,
         },
