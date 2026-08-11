@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isPlatformAdmin } from '@/lib/team'
+import { hasPaidAccess } from '@/lib/access'
 
 function applyNoStore(response: NextResponse) {
   // Prevent CDNs / shared caches from storing auth-bearing responses.
@@ -88,6 +89,14 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/demo') ||
     path.startsWith('/book-demo')
 
+  // Logged-in users may always reach billing / legal / account so they
+  // can subscribe, manage seats, or sign the agreement.
+  const isBillingOrAccountPath =
+    path.startsWith('/pricing') ||
+    path.startsWith('/account') ||
+    path.startsWith('/legal') ||
+    path.startsWith('/help')
+
   if (!isLoggedIn && !isPublicPage) {
     return redirectLoggedOut(new URL('/landing', request.url))
   }
@@ -102,6 +111,23 @@ export async function updateSession(request: NextRequest) {
     if (!isAdmin) {
       return redirectLoggedIn(new URL('/', request.url))
     }
+  }
+
+  // Paywall: active/trialing subscription (or platform admin).
+  // Only enforce once a seat Price is configured — otherwise every
+  // logged-in user (including pre-billing accounts) would hit /pricing.
+  // Admin-provisioned teams get subscription_status=active in metadata.
+  const paywallEnabled =
+    process.env.BILLING_PAYWALL_ENABLED === 'true' || Boolean(seatPriceId())
+  if (
+    paywallEnabled &&
+    isLoggedIn &&
+    !isPublicPage &&
+    !isBillingOrAccountPath &&
+    !isAdminPath &&
+    !hasPaidAccess(metadata, email)
+  ) {
+    return redirectLoggedIn(new URL('/pricing', request.url))
   }
 
   applyNoStore(supabaseResponse)

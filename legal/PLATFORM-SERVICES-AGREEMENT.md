@@ -1,6 +1,6 @@
 # Mineral Map — Platform Services Agreement
 
-**Version:** `2026-07-16`
+**Version:** `2026-08-11`
 **Effective when signed** by an authorized representative of Customer through
 the Sign page at `/legal/agreement/sign` on `getmineralmap.com`.
 
@@ -77,48 +77,52 @@ prospecting activities. Customer may create Users for its own
 personnel and affiliates. Customer is fully responsible for the acts
 and omissions of its Users under this Agreement.
 
-## 4. Success Fee
+## 4. Fees
 
-### 4.1 Amount
-Customer shall pay Mineral Map a success fee equal to **ten percent
-(10%) of Net Consideration** for every Closed Deal that closes during
-the Attribution Tail for any Platform Lead involved in that Closed
-Deal (the **"Success Fee"**).
+> ⚠️ Fee schedule updated 2026-08-11. Have counsel re-review before
+> relying on this section in production.
 
-### 4.2 When Owed
-The Success Fee is earned when the Closed Deal closes (i.e., when a
-recordable instrument is executed, funds are released from escrow,
-or possession of the interest changes hands — whichever occurs
-first). It is payable within **fifteen (15) days** of that closing.
+### 4.1 Seat Subscription
+Customer shall pay a recurring subscription fee of **one hundred
+U.S. dollars (US $100) per User seat per month** for access to the
+Platform. Seats are licensed; Customer may not share a single seat
+among concurrent Users. Unused seats do not roll over.
 
-### 4.3 Multiple Platform Leads
-If more than one Platform Lead is a counterparty in a single Closed
-Deal, the Success Fee is calculated on the aggregate Net
-Consideration attributable to those Platform Leads, not multiplied.
+### 4.2 Skip-Trace Usage
+Customer shall pay **fifty U.S. cents (US $0.50)** for each
+billable skip-trace lookup performed through the Platform. A lookup
+is billable only when Mineral Map queries a third-party skip-trace
+provider on Customer's behalf. Lookups satisfied from Mineral Map's
+shared skip-trace cache (including results originally obtained for
+another customer) are **not** billable.
 
-### 4.4 Deals with Off-Platform Leads Only
-No Success Fee is owed on deals whose counterparties were not
-Platform Leads and were not disclosed to Customer, its Users, or its
-affiliates through the Platform (directly or indirectly) at any time
-during the Attribution Tail. Customer bears the burden of
-demonstrating that a given deal falls into this category.
+### 4.3 Invoicing
+Seat fees are billed in advance for each subscription period.
+Skip-trace usage is metered and invoiced in arrears (typically with
+the same Stripe subscription invoice). Payment is due according to
+the Stripe Checkout / Customer Portal terms Customer accepted at
+signup.
 
-### 4.5 Free Platform Access
-No monthly, per-seat, per-user, per-lookup, or subscription fee is
-owed to Mineral Map under this Agreement other than the Success Fee.
-Skip tracing, click-to-call, PSA generation, valuations on request,
-and every other feature described on `getmineralmap.com` are
-included without additional charge for the duration of this
-Agreement.
+### 4.4 Taxes
+Fees are exclusive of applicable taxes, which Customer is
+responsible for where required by law.
+
+### 4.5 Changes
+Mineral Map may change fees on thirty (30) days' notice. Continued
+use after the effective date constitutes acceptance of the new fees.
 
 ## 5. Reporting
 
 ### 5.1 Monthly Report
-Customer shall provide Mineral Map, on or before the fifteenth
-(15th) day of each calendar month, a written report identifying:
+Seat and skip-trace fees are collected through Stripe; no separate
+invoice is required for those amounts. If Mineral Map reasonably
+requests usage clarification, Customer shall cooperate in good faith.
+Customer shall also provide Mineral Map, on or before the fifteenth
+(15th) day of each calendar month upon request, a written report
+identifying:
 (a) every Closed Deal that closed in the prior calendar month
 involving any Platform Lead; (b) the Net Consideration for each such
-Closed Deal; (c) the calculated Success Fee; and (d) any Closed
+Closed Deal; and (c) any Closed
 Deals expected to close in the next 60 days that involve a Platform
 Lead. Reports may be filed through the Platform's reporting
 interface once available; until then they may be sent by email to

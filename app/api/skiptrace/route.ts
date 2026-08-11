@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
+import { SKIP_TRACE_PRICE_USD } from '@/lib/billing'
+import { reportSkipTraceMeterEvent } from '@/lib/stripe-meter'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
 // for internal accounting / abuse detection, but there is no monthly
@@ -122,7 +124,7 @@ export async function POST(req: NextRequest) {
   // if Team A already paid to skip-trace this owner, Team B gets a hit.
   const { data: subRow } = await adminClient
     .from('subscriptions')
-    .select('team_owner_id')
+    .select('team_owner_id, stripe_customer_id, status')
     .eq('user_id', userId)
     .maybeSingle()
   const workspaceId =
@@ -131,12 +133,28 @@ export async function POST(req: NextRequest) {
       (subRow as { team_owner_id?: string | null } | null)?.team_owner_id,
     ) || userId
 
+  // Stripe customer lives on the workspace owner's subscription row
+  // (invited members don't have their own customer id).
+  let stripeCustomerId =
+    (subRow as { stripe_customer_id?: string | null } | null)?.stripe_customer_id ??
+    null
+  if (!stripeCustomerId || workspaceId !== userId) {
+    const { data: ownerSub } = await adminClient
+      .from('subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', workspaceId)
+      .maybeSingle()
+    stripeCustomerId =
+      (ownerSub as { stripe_customer_id?: string | null } | null)
+        ?.stripe_customer_id ?? stripeCustomerId
+  }
+
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
   const cacheKey = skipTraceOwnerKey(ownerName)
 
   // 1) Shared cache first — any prior team's result counts. Cache hits
-  // do NOT increment skip_trace_usage (we didn't pay the provider again).
+  // are FREE ($0) — no usage increment, no Stripe meter event.
   if (cacheKey) {
     const { data: cached, error: cacheError } = await adminClient
       .from('skip_trace_cache')
@@ -154,6 +172,8 @@ export async function POST(req: NextRequest) {
         phones: (cached as { phones?: string[] }).phones ?? [],
         emails: (cached as { emails?: string[] }).emails ?? [],
         cached: true,
+        billable: false,
+        unit_price_usd: 0,
         limit: MONTHLY_LIMIT,
       })
     }
@@ -315,6 +335,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Billable call — cache miss that hit a provider. Charge $0.50 via
+    // Stripe meter (when configured) and bump local usage counters.
     const nextCount = currentCount + 1
     const { error: usageUpdateError } = await adminClient
       .from('skip_trace_usage')
@@ -334,8 +356,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update skip trace usage' }, { status: 500 })
     }
 
-    // 4) Save to SHARED cache — next team that skip-traces this owner
-    // pays $0 provider credits.
+    if (stripeCustomerId) {
+      const meterKey = `skiptrace:${workspaceId}:${cacheKey || userId}:${currentMonth}:${nextCount}`
+      await reportSkipTraceMeterEvent({
+        stripeCustomerId,
+        idempotencyKey: meterKey,
+      })
+    }
+
+    // Save to SHARED cache — next team that skip-traces this owner
+    // gets a free cache hit (no $0.50 charge).
     if (cacheKey && (phones.length > 0 || emails.length > 0)) {
       await adminClient.from('skip_trace_cache').upsert(
         {
@@ -355,6 +385,8 @@ export async function POST(req: NextRequest) {
       phones,
       emails,
       cached: false,
+      billable: true,
+      unit_price_usd: SKIP_TRACE_PRICE_USD,
       hit: Boolean(data?.hit),
       credits_deducted: Number(data?.credits_deducted ?? 0),
       count: nextCount,
