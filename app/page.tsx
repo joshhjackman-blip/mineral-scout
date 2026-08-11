@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { isPlatformOwner } from '@/lib/team'
+import { getWorkspaceContext } from '@/lib/workspace'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import {
   bareAbstract,
@@ -1049,6 +1050,30 @@ export default function Home() {
 
   const [showOwnerNav, setShowOwnerNav] = useState(false)
 
+  // Hydrate in-pipeline badges from THIS workspace's deals only.
+  useEffect(() => {
+    let mounted = true
+    void (async () => {
+      const workspace = await getWorkspaceContext()
+      if (!mounted || !workspace) return
+      const { data } = await supabase
+        .from('deals')
+        .select('owner_name')
+        .eq('team_owner_id', workspace.workspaceId)
+      if (!mounted || !data) return
+      setPipelineOwners(
+        new Set(
+          data
+            .map((row) => String((row as { owner_name?: string }).owner_name ?? '').trim())
+            .filter(Boolean),
+        ),
+      )
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
   useEffect(() => {
     let mounted = true
 
@@ -1626,7 +1651,16 @@ export default function Home() {
     const survSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
     const survSect = survSectRaw && survSectRaw !== tractAbstract ? survSectRaw : null
 
+    const workspace = await getWorkspaceContext()
+    if (!workspace) {
+      showToast('Sign in required to add to pipeline', 'error')
+      setPipelineSaving(false)
+      return
+    }
+
     const { error } = await supabase.from('deals').insert({
+      user_id: workspace.userId,
+      team_owner_id: workspace.workspaceId,
       owner_name: owner.owner_name,
       tract_abstract: tractAbstract,
       tract_survey: tractSurvey,
@@ -1689,15 +1723,23 @@ export default function Home() {
       })
 
       const result = await response.json()
-      console.log('Skip trace result:', result)
+      if (!response.ok) {
+        throw new Error(result?.error || result?.message || 'Skip trace failed')
+      }
 
       if (result.success) {
         const phone = result.phones?.[0] ?? null
         const email = result.emails?.[0] ?? null
-        console.log('Saving to CRM - phone:', phone, 'email:', email)
+
+        const workspace = await getWorkspaceContext()
+        if (!workspace) {
+          throw new Error('Sign in required')
+        }
 
         const skipRecord = skipTracing as unknown as Record<string, unknown>
         const dealData = {
+          user_id: workspace.userId,
+          team_owner_id: workspace.workspaceId,
           owner_name: skipTracing.owner_name,
           tract_abstract: (skipRecord.tract_abstract as string | undefined) ?? selected?.ABSTRACT_L ?? '',
           tract_survey: (skipRecord.tract_survey as string | undefined) ?? selected?.LEVEL1_SUR ?? '',
@@ -1712,21 +1754,21 @@ export default function Home() {
           phone,
           email,
           source: 'skip_trace',
+          county: selectedCounty,
           updated_at: new Date().toISOString(),
           notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
         }
-        console.log('Deal data to save:', dealData)
 
         const { data: existing, error: existingError } = await supabase
           .from('deals')
           .select('id, phone, email')
+          .eq('team_owner_id', workspace.workspaceId)
           .eq('owner_name', skipTracing.owner_name)
           .maybeSingle()
         if (existingError) {
           console.error('Existing deal lookup error:', existingError)
           throw existingError
         }
-        console.log('Existing deal:', existing)
 
         let savedDeal: { id?: string } | null = null
         if (existing?.id) {
@@ -1739,9 +1781,9 @@ export default function Home() {
               updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id)
+            .eq('team_owner_id', workspace.workspaceId)
             .select()
             .single()
-          console.log('Update result:', data, error)
           if (error) {
             console.error('Failed to update CRM deal:', error)
             throw error
@@ -1753,7 +1795,6 @@ export default function Home() {
             .insert(dealData)
             .select()
             .single()
-          console.log('Insert result:', data, error)
           if (error) {
             console.error('Failed to insert CRM deal:', error)
             throw error

@@ -1,9 +1,11 @@
 import { supabase } from '@/lib/supabase'
+import { getWorkspaceContext } from '@/lib/workspace'
 
 export type OwnerOverrideStatus = 'updated' | 'hidden' | 'incorrect'
 
 export type OwnerOverride = {
   id?: number
+  team_owner_id?: string
   county_id: string
   owner_name: string
   abstract: string
@@ -102,10 +104,16 @@ export function applyOwnerOverride<T extends {
 export async function fetchOwnerOverrides(
   countyId: string,
 ): Promise<{ data: OwnerOverride[]; error: string | null }> {
+  const workspace = await getWorkspaceContext()
+  if (!workspace) {
+    return { data: [], error: 'Not signed in' }
+  }
+
   const { data, error } = await supabase
     .from('owner_overrides')
     .select('*')
     .eq('county_id', countyId)
+    .eq('team_owner_id', workspace.workspaceId)
 
   if (error) {
     return { data: [], error: error.message }
@@ -120,8 +128,14 @@ export async function upsertOwnerOverride(input: {
   status: OwnerOverrideStatus
   patch?: OwnerDetailsPatch
 }): Promise<{ data: OwnerOverride | null; error: string | null }> {
+  const workspace = await getWorkspaceContext()
+  if (!workspace) {
+    return { data: null, error: 'Not signed in' }
+  }
+
   const abstract = bareAbstract(input.abstract)
   const payload = {
+    team_owner_id: workspace.workspaceId,
     county_id: input.countyId,
     owner_name: String(input.ownerName || '').trim(),
     abstract,
@@ -143,7 +157,9 @@ export async function upsertOwnerOverride(input: {
 
   const { data, error } = await supabase
     .from('owner_overrides')
-    .upsert(payload, { onConflict: 'county_id,owner_name,abstract' })
+    .upsert(payload, {
+      onConflict: 'team_owner_id,county_id,owner_name,abstract',
+    })
     .select('*')
     .single()
 
@@ -158,24 +174,26 @@ export async function deleteOwnerOverride(input: {
   ownerName: string
   abstract?: string | null
 }): Promise<{ error: string | null }> {
+  const workspace = await getWorkspaceContext()
+  if (!workspace) {
+    return { error: 'Not signed in' }
+  }
+
   const abstract = bareAbstract(input.abstract)
-  let query = supabase
+  const { error } = await supabase
     .from('owner_overrides')
     .delete()
+    .eq('team_owner_id', workspace.workspaceId)
     .eq('county_id', input.countyId)
     .eq('owner_name', String(input.ownerName || '').trim())
+    .eq('abstract', abstract)
 
-  // Prefer deleting the tract-scoped row; if abstract is empty, delete
-  // the county-wide row.
-  query = query.eq('abstract', abstract)
-
-  const { error } = await query
   return { error: error?.message ?? null }
 }
 
 /**
  * Also mirror contact edits onto a CRM deal when one exists for this
- * owner+county, so Skip Trace / CRM stay in sync.
+ * owner+county in THIS workspace, so Skip Trace / CRM stay in sync.
  */
 export async function mirrorOverrideToDeal(input: {
   countyId: string
@@ -183,6 +201,9 @@ export async function mirrorOverrideToDeal(input: {
   patch: OwnerDetailsPatch
   tag?: string | null
 }): Promise<void> {
+  const workspace = await getWorkspaceContext()
+  if (!workspace) return
+
   const update: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   }
@@ -207,6 +228,7 @@ export async function mirrorOverrideToDeal(input: {
   await supabase
     .from('deals')
     .update(update)
+    .eq('team_owner_id', workspace.workspaceId)
     .eq('county', input.countyId)
     .ilike('owner_name', input.ownerName)
 }

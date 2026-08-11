@@ -160,6 +160,8 @@ export default function Account() {
   }
 
   const handleSignOut = async () => {
+    const { clearWorkspaceCache } = await import('@/lib/workspace')
+    clearWorkspaceCache()
     await supabase.auth.signOut()
     window.location.href = '/landing'
   }

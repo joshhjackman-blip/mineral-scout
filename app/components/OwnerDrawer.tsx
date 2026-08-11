@@ -8,6 +8,7 @@ import { COUNTIES } from '@/lib/counties'
 import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
+import { getWorkspaceContext } from '@/lib/workspace'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -528,33 +529,42 @@ function useOwnerNote(county: County, owner: OwnerLike | null, open: boolean) {
     }
     let cancelled = false
     setLoading(true)
-    supabase
-      .from('owner_notes')
-      .select('note, updated_at')
-      .eq('county_id', county.id)
-      .eq('owner_name', owner.owner_name)
-      .maybeSingle()
-      .then(({ data, error: err }) => {
-        if (cancelled) return
-        if (err) {
-          const msg = err.message.toLowerCase()
-          if (msg.includes('not find') || msg.includes('does not exist')) {
-            setError('owner_notes table not yet created — run the migration to enable persisted notes.')
-          } else {
-            setError(err.message)
-          }
-          setNote('')
-        } else if (data) {
-          setNote(String((data as { note?: string }).note ?? ''))
-          setSavedAt(data.updated_at ? new Date(String(data.updated_at)) : null)
-          setError(null)
-        } else {
-          setNote('')
-          setSavedAt(null)
-          setError(null)
-        }
+    void (async () => {
+      const workspace = await getWorkspaceContext()
+      if (cancelled) return
+      if (!workspace) {
+        setError('Not signed in')
+        setNote('')
         setLoading(false)
-      })
+        return
+      }
+      const { data, error: err } = await supabase
+        .from('owner_notes')
+        .select('note, updated_at')
+        .eq('team_owner_id', workspace.workspaceId)
+        .eq('county_id', county.id)
+        .eq('owner_name', owner.owner_name)
+        .maybeSingle()
+      if (cancelled) return
+      if (err) {
+        const msg = err.message.toLowerCase()
+        if (msg.includes('not find') || msg.includes('does not exist')) {
+          setError('owner_notes table not yet created — run the migration to enable persisted notes.')
+        } else {
+          setError(err.message)
+        }
+        setNote('')
+      } else if (data) {
+        setNote(String((data as { note?: string }).note ?? ''))
+        setSavedAt(data.updated_at ? new Date(String(data.updated_at)) : null)
+        setError(null)
+      } else {
+        setNote('')
+        setSavedAt(null)
+        setError(null)
+      }
+      setLoading(false)
+    })()
     return () => {
       cancelled = true
     }
@@ -565,16 +575,23 @@ function useOwnerNote(county: County, owner: OwnerLike | null, open: boolean) {
   const save = async (value: string) => {
     if (!owner) return
     setSaving(true)
+    const workspace = await getWorkspaceContext()
+    if (!workspace) {
+      setSaving(false)
+      setError('Not signed in')
+      return
+    }
     const { error: err } = await supabase
       .from('owner_notes')
       .upsert(
         {
+          team_owner_id: workspace.workspaceId,
           county_id: county.id,
           owner_name: owner.owner_name,
           note: value,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'county_id,owner_name' },
+        { onConflict: 'team_owner_id,county_id,owner_name' },
       )
     setSaving(false)
     if (err) {
