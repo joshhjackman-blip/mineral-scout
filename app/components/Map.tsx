@@ -2186,7 +2186,24 @@ export default function Map({
   useEffect(() => {
     if (!mapFlyToRef) return
     mapFlyToRef.current = (center, zoom) => {
-      map.current?.flyTo({ center, zoom, duration: 800 })
+      const mapInstance = map.current
+      if (!mapInstance) return
+      // Cancel any in-flight tract fitBounds / prior fly so the county
+      // camera isn't immediately overwritten.
+      try {
+        mapInstance.stop()
+      } catch {
+        // stop() can throw if the map is mid-remove; ignore.
+      }
+      const run = () => {
+        if (!map.current) return
+        map.current.flyTo({ center, zoom, duration: 900 })
+      }
+      if (!mapInstance.isStyleLoaded()) {
+        mapInstance.once('load', run)
+        return
+      }
+      run()
     }
     return () => {
       mapFlyToRef.current = null
