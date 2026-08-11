@@ -625,6 +625,10 @@ export default function Home() {
   const activityRefreshTick = useActivityRefreshTick()
   const [selectedCounty, setSelectedCounty] = useState<CountyKey>('martin')
   const mapFlyToRef = useRef<((center: [number, number], zoom: number) => void) | null>(null)
+  // Once the map has mounted once, county switches must NOT flip
+  // `loading` back to true — that unmounts <MineralMap>, nulls
+  // mapFlyToRef, and kills Martin↔Howard flyTo while the geojson reloads.
+  const mapHasMountedRef = useRef(false)
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
@@ -643,6 +647,25 @@ export default function Home() {
     center: [number, number]
     zoom: number
   } | null>(null)
+
+  // Explicit county camera — do NOT auto-fly from a selectedCounty
+  // effect. That raced deep-link fitBounds and also fired while the map
+  // was unmounted during geojson reload. Call this from every UI path
+  // that enters / switches a county.
+  const flyToCountyView = useCallback((countyKey: CountyKey) => {
+    const target = COUNTIES[countyKey]
+    if (!target) return
+    let attempts = 0
+    const tryFlyTo = () => {
+      attempts += 1
+      if (mapFlyToRef.current) {
+        mapFlyToRef.current(target.mapCenter, target.mapZoom)
+        return
+      }
+      if (attempts < 40) setTimeout(tryFlyTo, 150)
+    }
+    setTimeout(tryFlyTo, 50)
+  }, [])
 
   useEffect(() => {
     if (!pendingFlyTo) return
@@ -675,9 +698,15 @@ export default function Home() {
     const urlLat = Number(params.get('lat'))
     const urlLon = Number(params.get('lon'))
     const urlOwner = (params.get('owner') || '').trim()
+    const hasTractDeepLink =
+      Boolean(urlAbstractRaw) ||
+      (Number.isFinite(urlLat) && Number.isFinite(urlLon))
     if (urlCounty && urlCounty in COUNTIES) {
       setSelectedCounty(urlCounty)
       setMapLevel('tract')
+      // County-only URL → fly to county. Tract deep-links leave the
+      // camera to the abstract/lat-lon resolver below.
+      if (!hasTractDeepLink) flyToCountyView(urlCounty)
     }
     // Keep both when present: abstract selects the sidebar tract; lat/lon
     // guarantees a zoom even if the slim map geojson label doesn't match.
@@ -688,6 +717,8 @@ export default function Home() {
       setPendingUrlPoint({ lat: urlLat, lon: urlLon })
     }
     if (urlOwner) setPendingUrlOwner(urlOwner)
+    // flyToCountyView is stable (empty deps)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // Bare-abstract ("543") -> "T2N BLK 31 SEC 20 A-543" lookup, computed
   // from the same TractRecord[] the sidebar already loaded so the Leases
@@ -956,8 +987,11 @@ export default function Home() {
     if (currentIndex === -1) return
     const nextIndex = currentIndex + offset
     if (nextIndex < 0 || nextIndex >= COUNTY_ORDER.length) return
-    setSelectedCounty(COUNTY_ORDER[nextIndex])
-  }, [selectedCounty])
+    const nextKey = COUNTY_ORDER[nextIndex]
+    setSelected(null)
+    setSelectedCounty(nextKey)
+    flyToCountyView(nextKey)
+  }, [selectedCounty, flyToCountyView])
 
   useEffect(() => {
     countyRef.current = county
@@ -989,23 +1023,10 @@ export default function Home() {
     setDrawerTractLabel(null)
   }, [selected?.abstract_label, selected?.ABSTRACT_L])
 
-  useEffect(() => {
-    if (mapLevel !== 'tract') return
-    const county = COUNTIES[selectedCounty]
-  let attempts = 0
-  const tryFlyTo = () => {
-    attempts += 1
-    if (mapFlyToRef.current) {
-      mapFlyToRef.current(county.mapCenter, county.mapZoom)
-      return
-    }
-    if (attempts < 10) {
-      setTimeout(tryFlyTo, 200)
-    }
-  }
-  const timer = setTimeout(tryFlyTo, 200)
-    return () => clearTimeout(timer)
-  }, [mapLevel, selectedCounty])
+  // NOTE: no mapLevel/selectedCounty → flyTo effect. County zoom is only
+  // triggered by flyToCountyView() from UI clicks. An auto-effect raced
+  // deep-link fitBounds and also fired while MineralMap was unmounted
+  // during county geojson reload (mapFlyToRef null → silent no-op).
 
   useEffect(() => {
     // 900px is the width at which the drawer's side-panel layout
@@ -1775,7 +1796,9 @@ export default function Home() {
     let mounted = true
 
     const loadData = async () => {
-      setLoading(true)
+      // First visit only — keep MineralMap mounted across Martin↔Howard
+      // switches so the camera flyTo still has a live map instance.
+      if (!mapHasMountedRef.current) setLoading(true)
       try {
         const parcelSource = county.geoJsonPath
         const response = await fetch(parcelSource, { cache: 'no-store' })
@@ -1870,7 +1893,10 @@ export default function Home() {
           showToast('Failed to load map data', 'error')
         }
       } finally {
-        if (mounted) setLoading(false)
+        if (mounted) {
+          setLoading(false)
+          mapHasMountedRef.current = true
+        }
       }
     }
 
@@ -2016,6 +2042,7 @@ export default function Home() {
       setTractWells([])
       setTractWellsLoaded(false)
       setWellsExpanded(false)
+      flyToCountyView(resultCounty)
     }
 
     const normalizedOwner = ownerName.toUpperCase()
@@ -2815,7 +2842,12 @@ export default function Home() {
             )}
             <select
               value={selectedCounty}
-              onChange={(event) => setSelectedCounty(event.target.value as CountyKey)}
+              onChange={(event) => {
+                const next = event.target.value as CountyKey
+                setSelected(null)
+                setSelectedCounty(next)
+                if (mapLevel === 'tract') flyToCountyView(next)
+              }}
               style={{
                 height: 26,
                 border: '1px solid var(--mm-chrome-border)',
@@ -3995,8 +4027,11 @@ export default function Home() {
                         <div
                           key={c.id}
                           onClick={() => {
-                            setSelectedCounty(c.id as CountyKey)
+                            const key = c.id as CountyKey
+                            setSelected(null)
+                            setSelectedCounty(key)
                             setMapLevel('tract')
+                            flyToCountyView(key)
                           }}
                           style={{
                             background: 'var(--mm-chrome-panel)',
@@ -4275,9 +4310,11 @@ export default function Home() {
               onOperatorKeysChange={setSelectedOperatorKeys}
               operatorMatchTractCount={operatorMatchTractCount}
               onCountySwitch={(countyId) => {
-                setSelectedCounty(countyId as CountyKey)
-                setMapLevel('tract')
+                const key = countyId as CountyKey
                 setSelected(null)
+                setSelectedCounty(key)
+                setMapLevel('tract')
+                flyToCountyView(key)
                 setExpandedOwner(null)
                 setSearchQuery('')
                 setSearchResults([])
