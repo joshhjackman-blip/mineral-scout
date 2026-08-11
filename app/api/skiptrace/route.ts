@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
 import { SKIP_TRACE_PRICE_USD } from '@/lib/billing'
+import { isBillingExempt } from '@/lib/access'
 import { reportSkipTraceMeterEvent } from '@/lib/stripe-meter'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
@@ -147,6 +148,16 @@ export async function POST(req: NextRequest) {
     stripeCustomerId =
       (ownerSub as { stripe_customer_id?: string | null } | null)
         ?.stripe_customer_id ?? stripeCustomerId
+  }
+
+  // Grandfathered / complimentary accounts: no $0.50 charge (no Stripe meter).
+  // Also waive when the workspace owner is exempt (invited members inherit).
+  let skipTraceWaived = isBillingExempt(metadata)
+  if (!skipTraceWaived && workspaceId !== userId) {
+    const { data: ownerUser } = await adminClient.auth.admin.getUserById(workspaceId)
+    skipTraceWaived = isBillingExempt(
+      (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>,
+    )
   }
 
   const currentMonth = new Date().toISOString().slice(0, 7)
@@ -335,8 +346,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Billable call — cache miss that hit a provider. Charge $0.50 via
-    // Stripe meter (when configured) and bump local usage counters.
+    // Provider call on cache miss. Complimentary (billing_exempt) workspaces
+    // are not charged — still bump local usage for internal accounting.
     const nextCount = currentCount + 1
     const { error: usageUpdateError } = await adminClient
       .from('skip_trace_usage')
@@ -356,7 +367,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update skip trace usage' }, { status: 500 })
     }
 
-    if (stripeCustomerId) {
+    if (!skipTraceWaived && stripeCustomerId) {
       const meterKey = `skiptrace:${workspaceId}:${cacheKey || userId}:${currentMonth}:${nextCount}`
       await reportSkipTraceMeterEvent({
         stripeCustomerId,
@@ -385,8 +396,9 @@ export async function POST(req: NextRequest) {
       phones,
       emails,
       cached: false,
-      billable: true,
-      unit_price_usd: SKIP_TRACE_PRICE_USD,
+      billable: !skipTraceWaived,
+      unit_price_usd: skipTraceWaived ? 0 : SKIP_TRACE_PRICE_USD,
+      waived: skipTraceWaived,
       hit: Boolean(data?.hit),
       credits_deducted: Number(data?.credits_deducted ?? 0),
       count: nextCount,

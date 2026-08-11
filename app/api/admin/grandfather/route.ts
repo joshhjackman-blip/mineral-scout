@@ -7,10 +7,10 @@ export const dynamic = 'force-dynamic'
 
 /**
  * POST — one-shot: mark every existing auth user as billing-exempt
- * (complimentary platform access, no seat fee). Safe to re-run.
+ * (complimentary platform access + waived skip-trace charges). Safe to re-run.
  *
- * Does NOT disable skip-trace metering — provider calls still bill at $0.50
- * unless you change that separately.
+ * Skip-trace API skips Stripe meter events when billing_exempt is set
+ * (caller or workspace owner).
  */
 
 type AuthUser = {

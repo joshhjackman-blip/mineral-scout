@@ -6,7 +6,7 @@ import { isBillableSubscriptionStatus } from '@/lib/billing'
  *
  * Allowed when:
  *   • platform owner/admin, or
- *   • billing_exempt (grandfathered pre-billing accounts — no seat fee), or
+ *   • billing_exempt (grandfathered — no seat fee; skip-trace also waived), or
  *   • subscription_status is active/trialing (Stripe checkout OR
  *     admin-provisioned seats — both set this in user_metadata)
  */

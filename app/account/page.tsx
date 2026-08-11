@@ -341,10 +341,8 @@ export default function Account() {
                     Complimentary access
                   </div>
                   <div className="text-sm text-gray-500 leading-relaxed">
-                    Your account was on Mineral Map before paid seats launched —
-                    platform access stays free. Skip-trace is still $0.50 only
-                    when we call the provider (shared cache hits are free).
-                    Seat capacity:{' '}
+                    Your account was on Mineral Map before paid billing launched —
+                    seat fees and skip-trace charges are waived. Seat capacity:{' '}
                     <strong className="text-gray-700">
                       {seatCount > 0
                         ? `${seatCount} seat${seatCount === 1 ? '' : 's'}`
@@ -443,7 +441,11 @@ export default function Account() {
           </div>
           <div className="flex items-baseline justify-between">
             <div>
-              <div className="text-sm text-gray-500">Billable skip-traces this month</div>
+              <div className="text-sm text-gray-500">
+                {user?.user_metadata?.billing_exempt === true
+                  ? 'Skip-traces this month (waived)'
+                  : 'Billable skip-traces this month'}
+              </div>
               <div className="text-xs text-gray-400 mt-1">
                 ${(0.5 * (skipTraceCount ?? 0)).toFixed(2)} estimated · cache hits not counted · resets on the 1st
               </div>
