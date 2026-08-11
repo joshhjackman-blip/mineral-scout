@@ -40,6 +40,7 @@ import argparse
 import math
 import os
 import re
+import sys
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -180,50 +181,16 @@ def parse_legal_description(survey_text: str) -> dict[str, str | None]:
 def build_abstract_lookups(abstracts_path: Path) -> dict[str, dict]:
     """Build fallback abstract lookups from a county's Abstracts.shp.
 
-    Returns a dict with three keys:
-
-    * ``tp``: ``(block_num, township, section) -> "A-XXX"``. Recovers
-      Martin owners whose ``survey`` column omits the explicit ``A-XXXX``
-      token (e.g. ``"T1N BLK 36 SEC 8"``).
-    * ``csl``: ``(surveyor_first_word, league_number) -> "A-XXX"``.
-      Recovers Confederate Soldier League grants (e.g.
-      ``"BORDEN CSL LGE 262 LAB 15"``) which use a different legal
-      coordinate system.
-    * ``surveyor``: ``(level1_sur_first_word, level3_sur) -> "A-XXX"``.
-      Backstop for non-CSL grants whose owners reference the surveyor
-      name + league/section instead of T&P RR coordinates (e.g.
-      ``"MONTGOMERY BLK A #130 246 321"``).
+    Supports Martin (LEVEL*) and Howard (Block / Surv_Sect / Surv_Name)
+    schemas via :mod:`abstract_match`.
     """
-    if not abstracts_path.exists():
-        return {"tp": {}, "csl": {}, "surveyor": {}}
     try:
-        import geopandas as gpd
-    except ModuleNotFoundError:
-        return {"tp": {}, "csl": {}, "surveyor": {}}
-
-    gdf = gpd.read_file(abstracts_path)
-    tp: dict[tuple[str, str, str], str] = {}
-    csl: dict[tuple[str, str], str] = {}
-    surveyor: dict[tuple[str, str], str] = {}
-    for _, row in gdf.iterrows():
-        abstract_l = (str(row.get("ABSTRACT_L") or "")).strip()
-        if not abstract_l:
-            continue
-        sur_raw = (str(row.get("LEVEL1_SUR") or "")).strip().upper()
-        blo = (str(row.get("LEVEL2_BLO") or "")).strip().upper()
-        sec = (str(row.get("LEVEL3_SUR") or "")).strip().upper()
-
-        m = re.match(r"^(\w+)\s+(T\d+[NS])$", blo)
-        if m and sec:
-            tp[(m.group(1), m.group(2), sec)] = abstract_l
-
-        if sur_raw and sec:
-            first = re.split(r"[\s,]", sur_raw, 1)[0]
-            if "CSL" in sur_raw:
-                csl.setdefault((first, sec), abstract_l)
-            if first:
-                surveyor.setdefault((first, sec), abstract_l)
-    return {"tp": tp, "csl": csl, "surveyor": surveyor}
+        from abstract_match import build_abstract_lookups as _build
+    except ImportError:
+        # Allow `python scripts/load_county_mineral_records.py` from repo root.
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from abstract_match import build_abstract_lookups as _build
+    return _build(abstracts_path)
 
 
 _BLK_RE = _BLOCK_RE  # alias for the fallback
@@ -233,45 +200,16 @@ _LGE_RE = re.compile(r"\bLGE\s+(\d+)", re.IGNORECASE)
 
 
 def lookup_abstract_via_shapefile(survey_text: str, lookups: dict[str, dict]) -> str | None:
-    """Try a series of geometry-aware fallbacks when the regex parser failed.
+    """Try geometry-aware fallbacks when the regex parser failed.
 
-    Returns the bare abstract number (e.g. ``"1013"``) — not ``"A-1013"`` —
-    so the result composes with values produced by the primary regex parser
-    and with the join key the parcel-enrichment script reads.
+    Returns the bare abstract number (e.g. ``"1013"``) — not ``"A-1013"``.
     """
-    if not survey_text:
-        return None
-    upper = survey_text.upper()
-
-    def _bare(label: str) -> str:
-        return re.sub(r"^A-", "", label.strip(), flags=re.IGNORECASE)
-
-    # 1) T&P RR coordinate system: BLK + section + township.
-    m_blk = _BLK_RE.search(upper)
-    m_sec = _SEC_RE.search(upper)
-    m_twn = _TOWNSHIP_RE.search(upper)
-    if m_blk and m_sec and m_twn:
-        key = (m_blk.group(1), m_twn.group(0).upper(), m_sec.group(1))
-        if key in lookups["tp"]:
-            return _bare(lookups["tp"][key])
-
-    # 2) CSL leagues.
-    m_csl = _CSL_RE.search(upper)
-    m_lge = _LGE_RE.search(upper)
-    if m_csl and m_lge:
-        key = (m_csl.group(1).upper(), m_lge.group(1))
-        if key in lookups["csl"]:
-            return _bare(lookups["csl"][key])
-
-    # 3) Generic (surveyor first word, any embedded number) fallback for
-    #    non-CSL named surveys (Montgomery, Lanier, etc.).
-    first_word = upper.split()[0] if upper else ""
-    if first_word:
-        for num in re.findall(r"\d+", upper):
-            key = (first_word, num)
-            if key in lookups["surveyor"]:
-                return _bare(lookups["surveyor"][key])
-    return None
+    try:
+        from abstract_match import lookup_abstract_via_shapefile as _lookup
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from abstract_match import lookup_abstract_via_shapefile as _lookup
+    return _lookup(survey_text, lookups)
 
 def build_payload(
     row: dict[str, Any],
