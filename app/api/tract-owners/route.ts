@@ -96,6 +96,26 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  const { hasSignedCurrentAgreement, isAgreementGateEnabled } = await import(
+    '@/lib/agreement'
+  )
+  if (
+    isAgreementGateEnabled() &&
+    !hasSignedCurrentAgreement(
+      session.user.user_metadata as Record<string, unknown> | undefined,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        data: null,
+        error: 'agreement_required',
+        redirect: '/legal/agreement/sign',
+      },
+      { status: 403 },
+    )
+  }
+
   const county = String(req.nextUrl.searchParams.get('county') ?? '')
     .trim()
     .toLowerCase() as CountyKey

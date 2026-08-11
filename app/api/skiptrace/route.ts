@@ -5,6 +5,10 @@ import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
 import { SKIP_TRACE_PRICE_USD } from '@/lib/billing'
 import { isBillingExempt } from '@/lib/access'
+import {
+  hasSignedCurrentAgreement,
+  isAgreementGateEnabled,
+} from '@/lib/agreement'
 import { reportSkipTraceMeterEvent } from '@/lib/stripe-meter'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
@@ -114,6 +118,16 @@ export async function POST(req: NextRequest) {
   }
   const userId = user.id
   const metadata = (user.user_metadata ?? {}) as Record<string, unknown>
+  if (isAgreementGateEnabled() && !hasSignedCurrentAgreement(metadata)) {
+    return NextResponse.json(
+      {
+        error: 'agreement_required',
+        message: 'Please sign the Platform Services Agreement to continue.',
+        redirect: '/legal/agreement/sign',
+      },
+      { status: 403 },
+    )
+  }
 
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

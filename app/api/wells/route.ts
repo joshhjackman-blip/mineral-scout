@@ -73,6 +73,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const { hasSignedCurrentAgreement, isAgreementGateEnabled } = await import(
+    '@/lib/agreement'
+  )
+  if (
+    isAgreementGateEnabled() &&
+    !hasSignedCurrentAgreement(
+      session.user.user_metadata as Record<string, unknown> | undefined,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error: 'agreement_required',
+        message: 'Please sign the Platform Services Agreement to continue.',
+        redirect: '/legal/agreement/sign',
+      },
+      { status: 403 },
+    )
+  }
+
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
