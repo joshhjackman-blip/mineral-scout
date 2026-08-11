@@ -282,7 +282,6 @@ export async function POST(req: NextRequest) {
             },
           ],
         }
-        console.log('BST request:', JSON.stringify(bstBody))
         const bstResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
           method: 'POST',
           headers: {
