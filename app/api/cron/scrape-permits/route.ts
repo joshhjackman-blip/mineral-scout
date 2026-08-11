@@ -643,15 +643,10 @@ async function processCounty(
 
 export async function GET(request: Request) {
   // Vercel Cron sets Authorization: Bearer $CRON_SECRET on every
-  // scheduled invocation. Reject if missing/wrong so the endpoint
-  // isn't world-callable.
-  const cronSecret = process.env.CRON_SECRET
-  if (cronSecret) {
-    const auth = request.headers.get('authorization') || ''
-    if (auth !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
-    }
-  }
+  // scheduled invocation. Fail closed if secret missing or wrong.
+  const { requireCronSecret } = await import('@/lib/api-auth')
+  const cronGate = requireCronSecret(request)
+  if (cronGate) return cronGate
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !supabaseKey) {

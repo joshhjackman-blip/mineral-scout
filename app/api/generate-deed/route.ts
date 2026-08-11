@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Document, Packer, Paragraph, TextRun, AlignmentType } from 'docx'
+import { requireApiUser } from '@/lib/api-auth'
 
 export async function POST(req: NextRequest) {
+  const gate = await requireApiUser(req)
+  if (gate.error) return gate.error
+
   const form = await req.json()
   const {
     grantorName, grantorAddress, grantorCity, grantorState, grantorZip,

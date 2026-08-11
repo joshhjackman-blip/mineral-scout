@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { COUNTIES, type CountyKey } from '@/lib/counties'
+import { requireApiUser } from '@/lib/api-auth'
 
 /**
  * GET /api/permits/latest
@@ -73,7 +74,10 @@ async function latestForCounty(
   return maxIso(a, f)
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY

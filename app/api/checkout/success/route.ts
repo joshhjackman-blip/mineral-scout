@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
 import { seatPriceId, skipTracePriceId } from '@/lib/billing'
+import { requireApiUser } from '@/lib/api-auth'
 
 function seatQuantityFromSubscription(sub: Stripe.Subscription, fallback: number): number {
   const seatPrice = seatPriceId()
@@ -12,6 +13,11 @@ function seatQuantityFromSubscription(sub: Stripe.Subscription, fallback: number
 }
 
 export async function GET(req: NextRequest) {
+  const gate = await requireApiUser(req)
+  if (gate.error) {
+    return NextResponse.redirect(new URL('/auth', req.url))
+  }
+
   const { searchParams } = new URL(req.url)
   const sessionId = searchParams.get('session_id')
 
@@ -30,7 +36,7 @@ export async function GET(req: NextRequest) {
   })
 
   const userId = stripeSession.metadata?.user_id
-  if (!userId) {
+  if (!userId || userId !== gate.user.id) {
     return NextResponse.redirect(new URL('/pricing', req.url))
   }
 

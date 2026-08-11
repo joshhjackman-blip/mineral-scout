@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 // Server-side proxy for a small handful of live futures prices we
 // surface in the "All Counties" sidebar. We proxy rather than
@@ -100,7 +100,11 @@ async function fetchQuote(symbol: string, label: string): Promise<PricePoint> {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { requireApiUser } = await import('@/lib/api-auth')
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const [wti, naturalGas] = await Promise.all([
     fetchQuote('CL=F', 'WTI Crude'),
     fetchQuote('NG=F', 'Henry Hub Natural Gas'),
@@ -111,11 +115,9 @@ export async function GET() {
     wti,
     naturalGas,
   }, {
-    // Client-side cache for 30 seconds, server-side edge cache for
-    // 60 seconds with 5-minute stale-while-revalidate window so a
-    // Yahoo hiccup doesn't blank out the widget instantly.
+    // Private: only logged-in sessions. Short browser cache is fine.
     headers: {
-      'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
+      'Cache-Control': 'private, max-age=30',
     },
   })
 }

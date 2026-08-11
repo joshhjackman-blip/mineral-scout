@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { COUNTIES } from '@/lib/counties'
+import { requireApiUser } from '@/lib/api-auth'
 
 // Server-side aggregate of drilling activity across every active
 // county. Powers the BasinActivityWidget on the "All Counties"
@@ -82,7 +83,10 @@ interface BasinActivityResponse {
   error?: string
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !key) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { requireApiPlatformAdmin } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -45,6 +46,9 @@ function adminClient() {
  * owner fan-out flips together. Confirmed completions also bump propensity.
  */
 export async function POST(request: NextRequest) {
+  const gate = await requireApiPlatformAdmin(request)
+  if (gate.error) return gate.error
+
   const supabase = adminClient()
   if (!supabase) {
     return NextResponse.json(
