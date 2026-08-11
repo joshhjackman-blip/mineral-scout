@@ -2,6 +2,10 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isPlatformAdmin } from '@/lib/team'
 import { hasPaidAccess } from '@/lib/access'
+import {
+  hasSignedCurrentAgreement,
+  isAgreementGateEnabled,
+} from '@/lib/agreement'
 
 function applyNoStore(response: NextResponse) {
   // Prevent CDNs / shared caches from storing auth-bearing responses.
@@ -125,6 +129,20 @@ export async function updateSession(request: NextRequest) {
     !hasPaidAccess(metadata, email)
   ) {
     return redirectLoggedIn(new URL('/pricing', request.url))
+  }
+
+  // Agreement gate: must have signed the current PSA version before
+  // map / CRM. /legal + /account stay reachable so they can sign.
+  // Disable with AGREEMENT_GATE_ENABLED=false if needed.
+  if (
+    isAgreementGateEnabled() &&
+    isLoggedIn &&
+    !isPublicPage &&
+    !isBillingOrAccountPath &&
+    !isAdminPath &&
+    !hasSignedCurrentAgreement(metadata)
+  ) {
+    return redirectLoggedIn(new URL('/legal/agreement/sign', request.url))
   }
 
   applyNoStore(supabaseResponse)

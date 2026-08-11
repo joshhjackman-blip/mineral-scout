@@ -13,7 +13,8 @@ function seatQuantityFromSubscription(sub: Stripe.Subscription, fallback: number
 }
 
 export async function GET(req: NextRequest) {
-  const gate = await requireApiUser(req)
+  // Allow completing checkout before agreement signing.
+  const gate = await requireApiUser(req, { requireAgreement: false })
   if (gate.error) {
     return NextResponse.redirect(new URL('/auth', req.url))
   }

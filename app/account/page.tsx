@@ -356,7 +356,7 @@ export default function Account() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Link
-                  href="/legal/agreement"
+                  href="/legal/agreement/sign"
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
                 >
                   <FileText size={13} />
@@ -423,7 +423,7 @@ export default function Account() {
                   Manage billing
                 </button>
                 <Link
-                  href="/legal/agreement"
+                  href="/legal/agreement/sign"
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
                 >
                   <FileText size={13} />

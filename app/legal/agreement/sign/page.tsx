@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { CURRENT_AGREEMENT_VERSION } from '@/lib/agreement'
 
 import '../../../landing/landing.css'
 import '../agreement.css'
-
-// Must match the Version: field in legal/PLATFORM-SERVICES-AGREEMENT.md.
-// When the agreement text is materially updated, bump this string and
-// (optionally) prompt existing signers to re-sign.
-const AGREEMENT_VERSION = '2026-08-11'
 
 type CheckKey = 'read' | 'authority' | 'bound' | 'esign_consent'
 
@@ -23,6 +20,8 @@ type SuccessState = {
 }
 
 export default function SignAgreementPage() {
+  const router = useRouter()
+  const [authReady, setAuthReady] = useState(false)
   const [signerName, setSignerName] = useState('')
   const [signerEmail, setSignerEmail] = useState('')
   const [signerEntity, setSignerEntity] = useState('')
@@ -38,20 +37,45 @@ export default function SignAgreementPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<SuccessState | null>(null)
 
-  // Prefill signer_email if the visitor is already authed on this device.
   useEffect(() => {
     let cancelled = false
-    const prefill = async () => {
+    const boot = async () => {
       const { data } = await supabase.auth.getSession()
       if (cancelled) return
-      const email = data.session?.user?.email
-      if (email) setSignerEmail((prev) => prev || email)
+      const session = data.session
+      if (!session?.user) {
+        window.location.href = '/auth'
+        return
+      }
+
+      const email = session.user.email ?? ''
+      setSignerEmail(email)
+      const metaName = String(session.user.user_metadata?.full_name ?? '').trim()
+      if (metaName) setSignerName((prev) => prev || metaName)
+
+      // If they already signed (DB or metadata), stamp + refresh JWT, then enter app.
+      try {
+        const statusRes = await fetch('/api/legal/agreement-status', { cache: 'no-store' })
+        const status = (await statusRes.json()) as {
+          signed?: boolean
+          refreshed_metadata?: boolean
+        }
+        if (status.signed) {
+          await supabase.auth.refreshSession()
+          if (!cancelled) router.replace('/')
+          return
+        }
+      } catch {
+        // fall through to form
+      }
+
+      if (!cancelled) setAuthReady(true)
     }
-    void prefill()
+    void boot()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [router])
 
   const allChecked = Object.values(checks).every(Boolean)
   const signatureMatches =
@@ -78,7 +102,7 @@ export default function SignAgreementPage() {
           signer_entity: signerEntity.trim() || null,
           signer_title: signerTitle.trim() || null,
           typed_signature: typedSignature.trim(),
-          agreement_version: AGREEMENT_VERSION,
+          agreement_version: CURRENT_AGREEMENT_VERSION,
           consent_checkboxes: checks,
         }),
       })
@@ -90,12 +114,24 @@ export default function SignAgreementPage() {
       if (!response.ok || !payload.ok || !payload.signature) {
         throw new Error(payload.error || `Signing failed (${response.status})`)
       }
+      // Refresh JWT so middleware sees agreement_version immediately.
+      await supabase.auth.refreshSession()
       setSuccess(payload.signature)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (!authReady && !success) {
+    return (
+      <div className="lp-root lp-legal-root">
+        <main className="lp-sign-container">
+          <p className="lp-legal-sub">Checking your account…</p>
+        </main>
+      </div>
+    )
   }
 
   return (
@@ -106,9 +142,9 @@ export default function SignAgreementPage() {
         </a>
         <div className="lp-nav-links">
           <Link href="/legal/agreement">Read the agreement</Link>
-          <a href="https://getmineralmap.com/auth" className="lp-nav-cta">
-            Sign in
-          </a>
+          <Link href="/account" className="lp-nav-cta">
+            Account
+          </Link>
         </div>
       </nav>
 
@@ -121,13 +157,14 @@ export default function SignAgreementPage() {
               <span className="lp-section-label">Sign the agreement</span>
               <h1 className="lp-legal-h1">Confirm & sign</h1>
               <p className="lp-legal-sub">
-                Signing binds you (and, if applicable, your organization) to the{' '}
+                You must sign the{' '}
                 <Link href="/legal/agreement">
                   <span className="lp-legal-inline-link">
                     Platform Services Agreement
                   </span>
-                </Link>
-                , including the 10% success fee and 24-month attribution tail.
+                </Link>{' '}
+                (version {CURRENT_AGREEMENT_VERSION}) before using the map and
+                CRM.
               </p>
             </div>
 
@@ -152,15 +189,23 @@ export default function SignAgreementPage() {
                   id="signer_email"
                   type="email"
                   value={signerEmail}
-                  onChange={(e) => setSignerEmail(e.target.value)}
-                  placeholder="jane@yourcompany.com"
+                  readOnly
                   autoComplete="email"
                 />
               </div>
 
               <div className="lp-sign-field">
                 <label htmlFor="signer_entity">
-                  Company / entity <span style={{ color: 'var(--lp-text-muted)', textTransform: 'none', letterSpacing: 0 }}>(leave blank if signing as an individual)</span>
+                  Company / entity{' '}
+                  <span
+                    style={{
+                      color: 'var(--lp-text-muted)',
+                      textTransform: 'none',
+                      letterSpacing: 0,
+                    }}
+                  >
+                    (leave blank if signing as an individual)
+                  </span>
                 </label>
                 <input
                   id="signer_entity"
@@ -189,7 +234,9 @@ export default function SignAgreementPage() {
                   <input
                     type="checkbox"
                     checked={checks.read}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, read: e.target.checked }))}
+                    onChange={(e) =>
+                      setChecks((prev) => ({ ...prev, read: e.target.checked }))
+                    }
                   />
                   <span>
                     I have <strong>read and understood</strong> the{' '}
@@ -198,82 +245,80 @@ export default function SignAgreementPage() {
                         Platform Services Agreement
                       </span>
                     </Link>{' '}
-                    (version {AGREEMENT_VERSION}) in full.
+                    (version {CURRENT_AGREEMENT_VERSION}) in full.
                   </span>
                 </label>
-
                 <label className="lp-sign-check">
                   <input
                     type="checkbox"
                     checked={checks.authority}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, authority: e.target.checked }))}
+                    onChange={(e) =>
+                      setChecks((prev) => ({
+                        ...prev,
+                        authority: e.target.checked,
+                      }))
+                    }
                   />
                   <span>
-                    I have <strong>authority to bind</strong> myself and, if I named
-                    a company above, that entity to this Agreement.
+                    I have <strong>authority to bind</strong> myself and, if
+                    applicable, my organization.
                   </span>
                 </label>
-
                 <label className="lp-sign-check">
                   <input
                     type="checkbox"
                     checked={checks.bound}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, bound: e.target.checked }))}
+                    onChange={(e) =>
+                      setChecks((prev) => ({ ...prev, bound: e.target.checked }))
+                    }
                   />
                   <span>
-                    I agree to be <strong>bound by every term</strong> of the
-                    Agreement, including the 10% success fee, the 24-month
-                    attribution tail, and the non-circumvention covenants in
-                    Section 7.
+                    I agree to be <strong>legally bound</strong> by the Agreement,
+                    including fees and attribution terms.
                   </span>
                 </label>
-
                 <label className="lp-sign-check">
                   <input
                     type="checkbox"
                     checked={checks.esign_consent}
-                    onChange={(e) => setChecks((prev) => ({ ...prev, esign_consent: e.target.checked }))}
+                    onChange={(e) =>
+                      setChecks((prev) => ({
+                        ...prev,
+                        esign_consent: e.target.checked,
+                      }))
+                    }
                   />
                   <span>
-                    I consent to <strong>electronic signature</strong> and to
-                    Mineral Map recording my name, email, IP address, user
-                    agent, and timestamp as the signature record (Section 15).
+                    I consent to <strong>electronic signature</strong> and
+                    electronic records under applicable e-sign law.
                   </span>
                 </label>
               </div>
 
-              <div className="lp-sign-field" style={{ marginTop: 32 }}>
+              <div className="lp-sign-field">
                 <label htmlFor="typed_signature">
                   Type your full legal name to sign
                 </label>
                 <input
                   id="typed_signature"
                   type="text"
-                  className="lp-sign-signature"
                   value={typedSignature}
                   onChange={(e) => setTypedSignature(e.target.value)}
-                  placeholder="Jane A. Broker"
+                  placeholder={signerName || 'Type your name exactly as above'}
+                  autoComplete="off"
                 />
-                {typedSignature.length > 0 && !signatureMatches && (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--lp-text-muted)',
-                      marginTop: 6,
-                    }}
-                  >
-                    Signature must match &ldquo;Full legal name&rdquo; above.
-                  </div>
-                )}
               </div>
 
               <div className="lp-sign-actions">
                 <button
-                  onClick={submit}
-                  disabled={!canSubmit}
+                  type="button"
                   className="lp-btn-primary lp-btn-large"
+                  disabled={!canSubmit}
+                  onClick={() => {
+                    void submit()
+                  }}
                 >
-                  {submitting ? 'Signing…' : 'Sign & agree →'}
+                  {submitting ? 'Signing…' : 'Sign agreement'}
                 </button>
                 <Link href="/legal/agreement" className="lp-btn-secondary">
                   Read the agreement first
@@ -286,12 +331,16 @@ export default function SignAgreementPage() {
 
       <footer className="lp-footer">
         <div>
-          <img src="/mineral-map-logo-light.svg" alt="Mineral Map" className="lp-footer-logo" />
+          <img
+            src="/mineral-map-logo-light.svg"
+            alt="Mineral Map"
+            className="lp-footer-logo"
+          />
           <div className="lp-footer-copy">© 2026 Mineral Map</div>
         </div>
         <div className="lp-footer-links">
           <Link href="/legal/agreement">Agreement</Link>
-          <a href="https://getmineralmap.com/auth">Sign in</a>
+          <Link href="/account">Account</Link>
           <a href="mailto:josh@brentwoodenterprisesllc.com">Contact</a>
         </div>
       </footer>
@@ -306,9 +355,8 @@ function SignedSuccess({ success }: { success: SuccessState }) {
         Signed. <em>Welcome.</em>
       </h2>
       <p>
-        Your signature is on file. A record of this signing, including timestamp,
-        IP, and user agent, is stored in the Mineral Map audit table for the
-        life of the Agreement.
+        Your signature is on file. You can continue to the platform — map and CRM
+        access is unlocked for this agreement version.
       </p>
       <dl>
         <dt>Signer</dt>
@@ -323,9 +371,9 @@ function SignedSuccess({ success }: { success: SuccessState }) {
         <dd>#{success.id}</dd>
       </dl>
       <div className="lp-sign-actions" style={{ justifyContent: 'center' }}>
-        <a href="https://getmineralmap.com/auth" className="lp-btn-primary lp-btn-large">
+        <Link href="/" className="lp-btn-primary lp-btn-large">
           Continue to the platform →
-        </a>
+        </Link>
       </div>
     </div>
   )

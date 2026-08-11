@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import type { User } from '@supabase/supabase-js'
 import { isPlatformAdmin } from '@/lib/team'
+import {
+  hasSignedCurrentAgreement,
+  isAgreementGateEnabled,
+} from '@/lib/agreement'
 
 /**
  * Cookie-session auth for /api/* routes.
@@ -11,6 +15,11 @@ import { isPlatformAdmin } from '@/lib/team'
  * (or requireApiPlatformAdmin) itself. Same-origin browser fetches and
  * <img src="/api/..."> still send cookies, so logged-in users are unaffected.
  */
+
+export type RequireApiUserOptions = {
+  /** Default true when AGREEMENT_GATE_ENABLED is on. */
+  requireAgreement?: boolean
+}
 
 function createCookieClient(req: NextRequest) {
   return createServerClient(
@@ -36,6 +45,7 @@ function createCookieClient(req: NextRequest) {
 
 export async function requireApiUser(
   req: NextRequest,
+  options: RequireApiUserOptions = {},
 ): Promise<{ user: User; error: null } | { user: null; error: NextResponse }> {
   const supabase = createCookieClient(req)
   const {
@@ -48,13 +58,36 @@ export async function requireApiUser(
       error: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
     }
   }
+
+  const requireAgreement =
+    options.requireAgreement ?? isAgreementGateEnabled()
+  if (
+    requireAgreement &&
+    !hasSignedCurrentAgreement(
+      user.user_metadata as Record<string, unknown> | undefined,
+    )
+  ) {
+    return {
+      user: null,
+      error: NextResponse.json(
+        {
+          error: 'agreement_required',
+          message: 'Please sign the Platform Services Agreement to continue.',
+          redirect: '/legal/agreement/sign',
+        },
+        { status: 403 },
+      ),
+    }
+  }
+
   return { user, error: null }
 }
 
 export async function requireApiPlatformAdmin(
   req: NextRequest,
+  options: RequireApiUserOptions = {},
 ): Promise<{ user: User; error: null } | { user: null; error: NextResponse }> {
-  const gate = await requireApiUser(req)
+  const gate = await requireApiUser(req, options)
   if (gate.error) return gate
   if (
     !isPlatformAdmin(

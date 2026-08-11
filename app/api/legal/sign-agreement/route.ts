@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createServerClient } from '@supabase/ssr'
+import { CURRENT_AGREEMENT_VERSION } from '@/lib/agreement'
 
-// The signing API captures IP + user agent server-side (client-provided
-// values are not trusted) and writes one row to
-// public.platform_agreement_signatures via the service role. Anon key can
-// also insert per the migration's RLS policy, but writing from the server
-// lets us record the real IP even when there's a CDN in front.
+// Captures IP + user agent server-side and writes one row to
+// public.platform_agreement_signatures. Requires a logged-in session so
+// we can bind user_id and stamp agreement_version on user_metadata for
+// the middleware / API gate.
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -31,7 +32,39 @@ function firstNonEmptyHeader(headers: Headers, names: string[]): string | null {
   return null
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const cookieRes = NextResponse.next()
+  const authClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll().map((cookie) => ({
+            name: cookie.name,
+            value: cookie.value,
+          }))
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
+            cookieRes.cookies.set(name, value, options)
+          })
+        },
+      },
+    },
+  )
+
+  const {
+    data: { user },
+  } = await authClient.auth.getUser()
+  if (!user?.email) {
+    return NextResponse.json(
+      { ok: false, error: 'Sign in required before signing the agreement.' },
+      { status: 401 },
+    )
+  }
+
   let body: SignPayload
   try {
     body = (await request.json()) as SignPayload
@@ -42,20 +75,33 @@ export async function POST(request: Request) {
   const signerName = (body.signer_name || '').trim()
   const signerEmail = (body.signer_email || '').trim().toLowerCase()
   const typedSignature = (body.typed_signature || '').trim()
-  const version = (body.agreement_version || '').trim()
+  const version = (body.agreement_version || '').trim() || CURRENT_AGREEMENT_VERSION
   const checkboxes = body.consent_checkboxes || {}
 
   if (signerName.length < 2)
     return NextResponse.json({ ok: false, error: 'Signer name is required.' }, { status: 400 })
   if (!/.+@.+\..+/.test(signerEmail))
     return NextResponse.json({ ok: false, error: 'Valid email is required.' }, { status: 400 })
+  if (signerEmail !== user.email.toLowerCase()) {
+    return NextResponse.json(
+      { ok: false, error: 'Signer email must match your signed-in account.' },
+      { status: 400 },
+    )
+  }
   if (typedSignature.toLowerCase() !== signerName.toLowerCase())
     return NextResponse.json(
       { ok: false, error: 'Typed signature must exactly match the signer name.' },
       { status: 400 },
     )
-  if (!version)
-    return NextResponse.json({ ok: false, error: 'Agreement version is required.' }, { status: 400 })
+  if (version !== CURRENT_AGREEMENT_VERSION) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Please sign the current agreement (version ${CURRENT_AGREEMENT_VERSION}).`,
+      },
+      { status: 400 },
+    )
+  }
 
   const required = ['read', 'authority', 'bound', 'esign_consent'] as const
   for (const key of required) {
@@ -80,8 +126,6 @@ export async function POST(request: Request) {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // Vercel puts the caller's IP in x-forwarded-for / x-real-ip;
-  // fall back to Cloudflare / Fastly / generic edge headers just in case.
   const ip = firstNonEmptyHeader(request.headers, [
     'x-forwarded-for',
     'x-real-ip',
@@ -90,10 +134,12 @@ export async function POST(request: Request) {
     'true-client-ip',
   ])
   const userAgent = request.headers.get('user-agent')
+  const signedAt = new Date().toISOString()
 
   const { data, error } = await client
     .from('platform_agreement_signatures')
     .insert({
+      user_id: user.id,
       signer_name: signerName,
       signer_email: signerEmail,
       signer_entity: body.signer_entity?.trim() || null,
@@ -104,6 +150,7 @@ export async function POST(request: Request) {
       consent_checkboxes: checkboxes,
       ip_address: ip,
       user_agent: userAgent,
+      signed_at: signedAt,
     })
     .select('id, signer_name, signer_email, signed_at, agreement_version')
     .single()
@@ -112,6 +159,16 @@ export async function POST(request: Request) {
     console.error('[sign-agreement] insert error:', error)
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 })
   }
+
+  const existingMeta = (user.user_metadata ?? {}) as Record<string, unknown>
+  await client.auth.admin.updateUserById(user.id, {
+    user_metadata: {
+      ...existingMeta,
+      agreement_version: version,
+      agreement_signed_at: data?.signed_at ?? signedAt,
+      agreement_signature_id: data?.id ?? null,
+    },
+  })
 
   return NextResponse.json({ ok: true, signature: data })
 }
