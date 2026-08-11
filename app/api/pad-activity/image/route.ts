@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
+import { requireApiUser } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -23,6 +24,9 @@ function normalizePath(raw: string | null): string | null {
  * signed-URL JWTs (Next fetch cache was serving already-expired tokens).
  */
 export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const path = normalizePath(request.nextUrl.searchParams.get('path'))
   if (!path) {
     return NextResponse.json(

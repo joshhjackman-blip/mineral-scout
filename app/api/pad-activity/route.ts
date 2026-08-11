@@ -391,6 +391,10 @@ async function signPaths(
  * The /pad-activity page uses mode=list for the feed of recent events.
  */
 export async function GET(request: NextRequest) {
+  const { requireApiUser } = await import('@/lib/api-auth')
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const supabase = adminClient()
   if (!supabase) {
     return NextResponse.json(

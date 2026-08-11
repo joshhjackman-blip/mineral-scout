@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireApiUser } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -16,6 +17,9 @@ const ALLOWED_HOSTS = new Set([
  * GET /api/pad-activity/sentinel/proxy?url=<encoded https url>
  */
 export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const raw = request.nextUrl.searchParams.get('url') || ''
   let target: URL
   try {

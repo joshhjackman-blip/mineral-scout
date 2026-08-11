@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { fetchLatestPadImagery } from '@/lib/pad-imagery'
 import { skyfiApiKey } from '@/lib/skyfi-latest'
+import { requireApiUser } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,6 +37,9 @@ function proxiedUrl(request: NextRequest, remoteUrl: string): string {
  * implement credit/seat checks in skyfiAccessAllowed().
  */
 export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const { searchParams } = new URL(request.url)
   const lat = Number(searchParams.get('lat'))
   const lon = Number(searchParams.get('lon'))

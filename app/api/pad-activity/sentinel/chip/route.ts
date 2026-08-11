@@ -4,6 +4,7 @@ import {
   isAllowedSentinelCog,
   PAD_CHIP_GROUND_M,
 } from '@/lib/sentinel-latest'
+import { requireApiUser } from '@/lib/api-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -20,6 +21,9 @@ const CHIP_TTL_MS = 6 * 60 * 60 * 1000
  * abstract color bands in the desk.
  */
 export async function GET(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const { searchParams } = new URL(request.url)
   const lat = Number(searchParams.get('lat'))
   const lon = Number(searchParams.get('lon'))

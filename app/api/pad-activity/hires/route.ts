@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient, padImageryProxyUrl } from '@/lib/supabase-admin'
+import { requireApiUser } from '@/lib/api-auth'
 import {
   hiresStoragePath,
   padKeyFromEvent,
@@ -52,6 +53,9 @@ async function resolveCoords(
  * stores PNG in Raw-Data, stamps sibling events with raw.hires_*.
  */
 export async function POST(request: NextRequest) {
+  const gate = await requireApiUser(request)
+  if (gate.error) return gate.error
+
   const supabase = adminClient()
   if (!supabase) {
     return NextResponse.json(
