@@ -188,6 +188,28 @@ export default function PricingPage() {
           </p>
         </div>
       </main>
+
+      <footer
+        style={{
+          maxWidth: 720,
+          margin: '0 auto',
+          padding: '0 24px 48px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 16,
+          fontSize: 12,
+        }}
+      >
+        <Link href="/legal/privacy" style={{ color: '#94A3B8', textDecoration: 'none' }}>
+          Privacy
+        </Link>
+        <Link href="/legal/terms" style={{ color: '#94A3B8', textDecoration: 'none' }}>
+          Terms
+        </Link>
+        <Link href="/legal/agreement" style={{ color: '#94A3B8', textDecoration: 'none' }}>
+          Agreement
+        </Link>
+      </footer>
     </div>
   )
 }

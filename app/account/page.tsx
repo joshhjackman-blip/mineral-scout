@@ -613,6 +613,27 @@ export default function Account() {
           </Link>
         </div>
 
+        {/* ── Legal ── */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
+            Legal
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <Link href="/legal/privacy" className="text-amber-700 hover:text-amber-800 font-medium">
+              Privacy Policy
+            </Link>
+            <Link href="/legal/terms" className="text-amber-700 hover:text-amber-800 font-medium">
+              Terms of Use
+            </Link>
+            <Link
+              href="/legal/agreement"
+              className="text-amber-700 hover:text-amber-800 font-medium"
+            >
+              Platform Services Agreement
+            </Link>
+          </div>
+        </div>
+
         {/* ── Session ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
