@@ -958,11 +958,10 @@ export default function AdminDashboard() {
                 Grandfather existing users
               </h2>
               <p className="text-sm text-gray-500 mb-3">
-                Current accounts stay free (no $100 seat fee) when the paywall
-                turns on. New signups after this still need a paid seat.
-                Skip-trace remains $0.50 on live provider calls. After running,
-                users may need to sign out/in (or wait for token refresh) before
-                complimentary status appears in their session.
+                Current accounts stay free when the paywall turns on — no $100
+                seat fee and no $0.50 skip-trace charges. New signups after this
+                still pay both. After running, users may need to sign out/in (or
+                wait for token refresh) before complimentary status appears.
               </p>
               {grandfatherStats && (
                 <p className="text-sm text-gray-600 mb-4">
