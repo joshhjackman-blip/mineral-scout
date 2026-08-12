@@ -49,11 +49,16 @@ function SignInForm() {
   const [message, setMessage] = useState<string | null>(null)
   const [inviteOwnerId, setInviteOwnerId] = useState<string | null>(null)
   const [isInvite, setIsInvite] = useState(false)
+  const [nextPath, setNextPath] = useState('/')
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const inviteOwnerParam = params.get('invite')
     const inviteEmail = params.get('email')
+    const nextParam = params.get('next')
+    if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
+      setNextPath(nextParam)
+    }
     if (inviteOwnerParam && inviteEmail) {
       setEmail(decodeURIComponent(inviteEmail))
       setInviteOwnerId(inviteOwnerParam)
@@ -62,6 +67,8 @@ function SignInForm() {
       setMessage(
         'You were invited to join a team account. Sign in or create your account to accept.'
       )
+    } else if (nextParam?.startsWith('/legal/agreement')) {
+      setMessage('Sign in to review and accept the Platform Services Agreement.')
     }
   }, [])
 
@@ -113,7 +120,7 @@ function SignInForm() {
       return
     }
 
-    window.location.href = '/'
+    window.location.href = nextPath || '/'
   }
 
   const isLogin = mode === 'login'
