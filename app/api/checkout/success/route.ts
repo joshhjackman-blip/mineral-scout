@@ -93,5 +93,8 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  return NextResponse.redirect(new URL('/account?billing=success', req.url))
+  // Pay → sign agreement → map. Account remains available from the app.
+  return NextResponse.redirect(
+    new URL('/legal/agreement/sign?from=checkout', req.url),
+  )
 }

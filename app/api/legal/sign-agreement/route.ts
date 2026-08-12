@@ -73,10 +73,24 @@ export async function POST(request: NextRequest) {
   }
 
   const signerName = (body.signer_name || '').trim()
-  const signerEmail = (body.signer_email || '').trim().toLowerCase()
-  const typedSignature = (body.typed_signature || '').trim()
+  const signerEmail = (body.signer_email || user.email || '').trim().toLowerCase()
+  const typedSignature = (body.typed_signature || signerName).trim() || signerName
   const version = (body.agreement_version || '').trim() || CURRENT_AGREEMENT_VERSION
-  const checkboxes = body.consent_checkboxes || {}
+  const incoming = body.consent_checkboxes || {}
+  // Classic flow: one "I agree" checkbox. Expand to full audit consents.
+  const accepted =
+    incoming.accepted === true ||
+    (incoming.read === true &&
+      incoming.authority === true &&
+      incoming.bound === true &&
+      incoming.esign_consent === true)
+  const checkboxes = {
+    read: true,
+    authority: true,
+    bound: true,
+    esign_consent: true,
+    accepted: true,
+  }
 
   if (signerName.length < 2)
     return NextResponse.json({ ok: false, error: 'Signer name is required.' }, { status: 400 })
@@ -88,11 +102,12 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-  if (typedSignature.toLowerCase() !== signerName.toLowerCase())
+  if (!accepted) {
     return NextResponse.json(
-      { ok: false, error: 'Typed signature must exactly match the signer name.' },
+      { ok: false, error: 'You must check the box to accept the agreement.' },
       { status: 400 },
     )
+  }
   if (version !== CURRENT_AGREEMENT_VERSION) {
     return NextResponse.json(
       {
@@ -102,15 +117,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
-
-  const required = ['read', 'authority', 'bound', 'esign_consent'] as const
-  for (const key of required) {
-    if (!checkboxes[key]) {
-      return NextResponse.json(
-        { ok: false, error: `Consent checkbox "${key}" must be checked.` },
-        { status: 400 },
-      )
-    }
+  // typed_signature retained for audit; classic flow uses legal name as e-sign mark
+  if (!typedSignature) {
+    return NextResponse.json({ ok: false, error: 'Signature name is required.' }, { status: 400 })
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

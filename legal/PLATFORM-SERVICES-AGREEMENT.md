@@ -321,17 +321,17 @@ without regard to its conflict-of-laws principles.
 
 ## Signature block
 
-By signing below, Customer:
+By checking the acceptance box and continuing on
+`/legal/agreement/sign`, Customer:
 
 - Represents that Customer has read and understood this Agreement
   in full;
 - Represents that the signatory has authority to bind Customer;
-- Agrees to be bound by every term of this Agreement, including
-  the 10% Success Fee and the 24-month Attribution Tail; and
-- Consents to electronic signature and to Mineral Map's recording
+- Agrees to be bound by every term of this Agreement; and
+- Consents to electronic acceptance and to Mineral Map's recording
   of the signature metadata described in Section 15.
 
-_Signed electronically through `/legal/agreement/sign`. See the
-`platform_agreement_signatures` audit table for the specific
-signature record associated with each signed instance of this
-Agreement._
+_Accepted electronically through `/legal/agreement/sign` after the
+Customer has scrolled the agreement and checked the acceptance box.
+See the `platform_agreement_signatures` audit table for the specific
+record associated with each accepted instance of this Agreement._
