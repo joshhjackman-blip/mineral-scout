@@ -27,11 +27,11 @@ export default function TermsPage() {
       title="Terms of Use"
       subtitle={
         <>
-          Website and platform rules. Paying customers also sign the{' '}
+          Last updated August 12, 2026. Platform customers also accept the{' '}
           <Link href="/legal/agreement">
             <span className="lp-legal-inline-link">Platform Services Agreement</span>
           </Link>
-          . See also our{' '}
+          . See the{' '}
           <Link href="/legal/privacy">
             <span className="lp-legal-inline-link">Privacy Policy</span>
           </Link>
@@ -42,7 +42,7 @@ export default function TermsPage() {
       cta={
         <>
           <Link href="/legal/agreement/sign" className="lp-btn-primary lp-btn-large">
-            Sign the Platform Services Agreement →
+            Sign the Platform Services Agreement
           </Link>
           <span className="lp-legal-cta-hint">
             Required before map and CRM access.
