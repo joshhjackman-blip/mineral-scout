@@ -294,21 +294,6 @@ async function existingByApi(
   return out
 }
 
-/** Metadata-only payload — never writes lat/lon/abstract/well_type. */
-function wellToUpdatePayload(row: ParsedWell): Record<string, unknown> {
-  const payload: Record<string, unknown> = {
-    operator_name: row.operator_name,
-    lease_name: row.lease_name,
-    rrc_lease_id: row.rrc_lease_id,
-  }
-  // Don't clobber a prior PRODUCING/SHUT IN with the all-types ACTIVE
-  // stub — only typed shards (PR/SH/…) write status on update.
-  if (row.well_status && row.well_status !== 'ACTIVE') {
-    payload.well_status = row.well_status
-  }
-  return payload
-}
-
 function wellToInsertPayload(row: ParsedWell): Record<string, unknown> {
   // Omit geometry / classification columns — shapefile reload fills
   // those. Writing explicit nulls can trip NOT NULL defaults on some
@@ -378,30 +363,79 @@ async function upsertWells(
     inserted += batch.length
   }
 
+  // Batched updates via upsert-on-id. The prior per-row loop did
+  // one round trip per well (~30ms × ~9k rows ≈ 270s per county),
+  // which lived on the wrong side of Vercel's 300s serverless
+  // ceiling on Martin. Batching drops it to a handful of round
+  // trips. `id` is the primary key and every id here came from
+  // existingByApi, so upsert-on-id updates the exact row it should.
+  //
+  // Split into two homogeneous groups so every row in a single
+  // batch has the same columns (PostgREST accepts heterogeneous
+  // keys inconsistently across versions; splitting is safest):
+  //   - withStatus:    typed shard row (PR / SH / IN) — writes well_status
+  //   - withoutStatus: ACTIVE stub from the all-types shard — leaves
+  //                    any prior PRODUCING / SHUT IN in place
   let updated = 0
-  for (const { id, row } of toUpdate) {
-    const { error } = await supabase
-      .from(table)
-      .update(wellToUpdatePayload(row))
-      .eq('id', id)
-    if (error) {
-      const msg = error.message.toLowerCase()
-      if (msg.includes('column')) {
-        const retry = await supabase
-          .from(table)
-          .update({
-            operator_name: row.operator_name,
-            lease_name: row.lease_name,
-            well_status: row.well_status,
-          })
-          .eq('id', id)
-        if (retry.error) throw retry.error
-      } else {
-        throw error
-      }
+  const withStatus: Array<{ id: number; row: ParsedWell }> = []
+  const withoutStatus: Array<{ id: number; row: ParsedWell }> = []
+  for (const item of toUpdate) {
+    if (item.row.well_status && item.row.well_status !== 'ACTIVE') {
+      withStatus.push(item)
+    } else {
+      withoutStatus.push(item)
     }
-    updated += 1
   }
+
+  const UPDATE_BATCH = 500
+
+  const runUpdateBatch = async (
+    items: Array<{ id: number; row: ParsedWell }>,
+    includeStatus: boolean,
+  ): Promise<void> => {
+    for (let i = 0; i < items.length; i += UPDATE_BATCH) {
+      const chunk = items.slice(i, i + UPDATE_BATCH)
+      const payload = chunk.map(({ id, row }) => {
+        const p: Record<string, unknown> = {
+          id,
+          operator_name: row.operator_name,
+          lease_name: row.lease_name,
+          rrc_lease_id: row.rrc_lease_id,
+        }
+        if (includeStatus) p.well_status = row.well_status
+        return p
+      })
+      const { error } = await supabase
+        .from(table)
+        .upsert(payload, { onConflict: 'id' })
+      if (error) {
+        const msg = error.message.toLowerCase()
+        // Thinner-schema fallback (matches the prior per-row retry).
+        if (msg.includes('column')) {
+          const slim = chunk.map(({ id, row }) => {
+            const p: Record<string, unknown> = {
+              id,
+              operator_name: row.operator_name,
+              lease_name: row.lease_name,
+            }
+            if (includeStatus) p.well_status = row.well_status
+            return p
+          })
+          const retry = await supabase
+            .from(table)
+            .upsert(slim, { onConflict: 'id' })
+          if (retry.error) throw retry.error
+        } else {
+          throw error
+        }
+      }
+      updated += chunk.length
+    }
+  }
+
+  await runUpdateBatch(withStatus, true)
+  await runUpdateBatch(withoutStatus, false)
+
   return { inserted, updated }
 }
 
