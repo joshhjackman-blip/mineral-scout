@@ -1,25 +1,28 @@
-name: RRC wells daily (scrape)
+name: RRC wells weekly (scrape)
 
-# Daily wellbore metadata refresh at 21:00 UTC (= 4 PM CDT / 3 PM CST),
-# one hour before the permits scrape so compute sees fresher operator /
-# lease / status on <county>_wells.
+# Weekly wellbore metadata refresh at 21:00 UTC Sundays. Cadence
+# matches how quickly wellbore metadata actually turns over — new
+# permits (see rrc-permits-daily.yml) drive most day-to-day change
+# on the map; wellbore lease/operator/status trails permit activity
+# by weeks, so a nightly wells pull was overkill.
 #
 # Same belt-and-suspenders pattern as rrc-permits-daily.yml:
 #   1. Curl the Vercel /api/cron/scrape-wells endpoint (RRC allows
 #      Vercel IPs; GitHub Actions runners are blocked).
-#   2. The Vercel cron in vercel.json should also fire at 21:00 UTC.
-#      Idempotent upsert on api_number — either path succeeding is enough.
+#   2. The Vercel cron in vercel.json also fires weekly on the same
+#      Sunday slot per county. Idempotent upsert on api_number —
+#      either path succeeding is enough.
 #
 # Scope today: howard + martin (DEFAULT_COUNTIES in the route). Pass
 # ?county=... on the URL to override for ad-hoc runs.
 
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '0 21 * * 0'
   workflow_dispatch: {}
 
 concurrency:
-  group: rrc-wells-daily
+  group: rrc-wells-weekly
   cancel-in-progress: false
 
 jobs:
