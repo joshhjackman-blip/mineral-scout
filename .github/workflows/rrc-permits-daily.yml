@@ -46,36 +46,48 @@ jobs:
       - name: Trigger Vercel RRC scrape
         # 5 min timeout because a fresh 12-county scrape takes ~40s
         # end-to-end but RRC's form-slow-first-load can add
-        # another minute or two. --fail so non-2xx short-circuits
-        # the step with a real error message. --max-time bounds
-        # the whole thing so a Vercel outage doesn't hang the
-        # workflow.
-        # If VERCEL_CRON_URL isn't set, defaults to the main
-        # production URL. CRON_SECRET is optional — if the
-        # endpoint's auth is enabled we pass the Bearer header
-        # so the curl matches Vercel Cron's own auth pattern.
+        # another minute or two. --max-time bounds the whole thing
+        # so a Vercel outage doesn't hang the workflow.
+        #
+        # CRON_SECRET must match Vercel's env var of the same name
+        # (see requireCronSecret in lib/api-auth.ts). If they drift,
+        # every call comes back HTTP 401 {"ok":false,"error":"unauthorized"}
+        # and no rows land — sync the two before debugging further.
+        #
+        # We intentionally do NOT use `curl --fail`: on non-2xx it
+        # drops the response body, hiding the specific error string
+        # (e.g. "CRON_SECRET not configured" vs "unauthorized") we
+        # need to tell "Vercel env missing" from "secret mismatch".
         env:
           VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_URL || 'https://mineral-map.vercel.app/api/cron/scrape-permits' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          set -u
           echo "Hitting $VERCEL_CRON_URL"
-          HEADER=""
-          if [ -n "$CRON_SECRET" ]; then
-            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET GitHub secret is empty; endpoint will 401."
           fi
-          # -sS: silent but show errors. -o writes JSON to stdout
-          # via /dev/stdout so the ingest report shows in the log.
-          # -w emits the HTTP code + timing on a trailing line.
-          eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/scrape-response.json \
-            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
-            "$VERCEL_CRON_URL"
+          # Build args as an array so a secret containing shell
+          # metacharacters (spaces, $, backticks, quotes) can't
+          # mangle the header the way `eval "$HEADER"` did.
+          CURL_ARGS=(-sS --max-time 300
+            -o /tmp/scrape-response.json
+            -w 'HTTP %{http_code} in %{time_total}s\n')
+          if [ -n "$CRON_SECRET" ]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $CRON_SECRET")
+          fi
+          HTTP_LINE=$(curl "${CURL_ARGS[@]}" "$VERCEL_CRON_URL")
+          echo "$HTTP_LINE"
+          STATUS=$(printf '%s' "$HTTP_LINE" | awk '{print $2}')
           echo "--- ingest report ---"
-          # jq if available, else raw JSON
           if command -v jq >/dev/null; then
-            jq '{ok, totals, elapsedMs, counties: (.counties | map({county, parsed, inserted, updated}))}' /tmp/scrape-response.json
+            jq '.' /tmp/scrape-response.json 2>/dev/null || cat /tmp/scrape-response.json
           else
             cat /tmp/scrape-response.json
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Vercel scrape endpoint returned HTTP $STATUS. If body says 'unauthorized', the CRON_SECRET GitHub Actions secret does not match Vercel's CRON_SECRET env var. If body says 'CRON_SECRET not configured', set CRON_SECRET on the Vercel project."
+            exit 1
           fi
 
       - uses: actions/setup-python@v6
