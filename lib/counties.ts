@@ -110,4 +110,75 @@ export const COUNTIES: Record<string, County> = {
       { operator: 'Other', pct: 21 },
     ],
   },
+  midland: {
+    id: 'midland',
+    name: 'Midland',
+    state: 'TX',
+    displayName: 'Midland County, TX',
+    // Midland (county seat / city center) sits near 32.00°N, 102.08°W. The
+    // county is roughly square; centering on the seat looks right at z10.
+    mapCenter: [-102.03, 31.95],
+    mapZoom: 10,
+    fips: '48329',
+    // StratMap parcels loaded so tracts render on the map; owner/lead
+    // counts stay at zero until the Midland CAD tax roll ingestion runs.
+    totalLeads: 0,
+    fipsCode: '329',
+    ownershipTable: 'midland_mineral_ownership',
+    wellsTable: 'midland_wells',
+    geoJsonPath: '/midland_parcels_enriched.geojson',
+    mapGeoJsonPath: '/midland_parcels_map.geojson',
+    ownershipPctIsDecimal: true,
+    abstractField: 'ABSTRACT_L',
+    nriCode: '',
+    // Filled in after the tax roll lands; keeps CRM auto-county detection
+    // from producing false positives on unrelated Permian operators.
+    operatorPatterns: [],
+    wellsJoinStrategy: 'abstract',
+    stats: [
+      { val: '0', lbl: 'Total owners' },
+      { val: '0', lbl: 'Hot (8-10)' },
+      { val: '0', lbl: 'Motivated (5-7)' },
+      { val: '0', lbl: 'Prospect (2-4)' },
+      { val: '75,645', lbl: 'Parcels loaded' },
+      { val: '0', lbl: 'Active wells' },
+    ],
+    breakdown: [
+      { operator: 'Pending tax roll', pct: 0 },
+    ],
+  },
+  loving: {
+    id: 'loving',
+    name: 'Loving',
+    state: 'TX',
+    displayName: 'Loving County, TX',
+    // Mentone (county seat) sits near 31.70°N, 103.60°W. Loving is the
+    // least-populated county in the US so the parcels cluster loosely; a
+    // slightly north-of-seat center keeps the whole footprint in view.
+    mapCenter: [-103.60, 31.83],
+    mapZoom: 10,
+    fips: '48301',
+    totalLeads: 0,
+    fipsCode: '301',
+    ownershipTable: 'loving_mineral_ownership',
+    wellsTable: 'loving_wells',
+    geoJsonPath: '/loving_parcels_enriched.geojson',
+    mapGeoJsonPath: '/loving_parcels_map.geojson',
+    ownershipPctIsDecimal: true,
+    abstractField: 'ABSTRACT_L',
+    nriCode: '',
+    operatorPatterns: [],
+    wellsJoinStrategy: 'abstract',
+    stats: [
+      { val: '0', lbl: 'Total owners' },
+      { val: '0', lbl: 'Hot (8-10)' },
+      { val: '0', lbl: 'Motivated (5-7)' },
+      { val: '0', lbl: 'Prospect (2-4)' },
+      { val: '1,914', lbl: 'Parcels loaded' },
+      { val: '0', lbl: 'Active wells' },
+    ],
+    breakdown: [
+      { operator: 'Pending tax roll', pct: 0 },
+    ],
+  },
 }
