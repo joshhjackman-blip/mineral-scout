@@ -10,7 +10,7 @@ Targets the same schema Howard uses (``howard_mineral_ownership``):
     motivated, raw_record
 
 Source file layout matches the data provider's wide owner format used for
-Howard (``howard_mineral_roll.csv``) and Martin (``owners__2025_Martin.xlsx``):
+Howard (``howard_mineral_roll.csv``) and Martin (``owners_2026_Martin.csv``):
 
     _key, owner_id, owner, address1..address4, city, state, zip, well,
     yearbegan, rrc_id, operator, field_name, zone, survey, abstract,
@@ -31,7 +31,7 @@ Usage::
 
     python3 scripts/load_martin_mineral_records.py
     python3 scripts/load_county_mineral_records.py \\
-        --county martin --input data/owners__2025_Martin.xlsx --dry-run
+        --county martin --input data/owners_2026_Martin.csv --dry-run
 """
 
 from __future__ import annotations

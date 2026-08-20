@@ -38,6 +38,7 @@ COUNTY_ROLLS = {
     "reagan": ROOT / "data" / "owners_2026_Reagan.csv",
     "upton": ROOT / "data" / "owners_2026_Upton.csv",
     "ward": ROOT / "data" / "owners_2026_Ward.csv",
+    "martin": ROOT / "data" / "owners_2026_Martin.csv",
 }
 COUNTY_ABSTRACTS = {
     "howard": ROOT / "data" / "howard" / "Abstracts.shp",
