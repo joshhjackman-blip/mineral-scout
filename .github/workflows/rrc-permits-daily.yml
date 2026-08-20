@@ -108,4 +108,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/compute_development_status.py \
-            --county howard,martin
+            --county howard,martin,midland,loving,reagan,upton,ward

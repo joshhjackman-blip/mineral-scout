@@ -181,9 +181,18 @@ def main() -> None:
     tracts["LEVEL2_BLO"] = [x[3] for x in labels]
     tracts["LEVEL3_SUR"] = [x[4] for x in labels]
     tracts["Surv_Sect"] = tracts["sec"]
-    tracts["SHAPE_AREA"] = area_ac.values
     with_abs = sum(1 for x in labels if x[1])
-    print(f"  tracts with a roll-derived abstract: {with_abs}/{len(tracts)}", flush=True)
+    print(f"  tracts with an abstract: {with_abs}/{len(tracts)}", flush=True)
+
+    # Merge any tracts that resolved to the SAME abstract label into one
+    # polygon. Two adjacent grid cells can map to the same roll-derived
+    # abstract; leaving duplicate ABSTRACT_L breaks the map's per-abstract
+    # keying and the tract_development_status upsert (ON CONFLICT twice).
+    before = len(tracts)
+    tracts = tracts.dissolve(by="ABSTRACT_L", as_index=False, aggfunc="first")
+    if len(tracts) != before:
+        print(f"  merged duplicate-abstract tracts: {before} -> {len(tracts)}", flush=True)
+    tracts["SHAPE_AREA"] = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224
 
     out_dir = ROOT / "data" / args.county
     out_dir.mkdir(parents=True, exist_ok=True)
