@@ -36,3 +36,16 @@ create table if not exists public.ward_mineral_ownership
   (like public.howard_mineral_ownership including all);
 create table if not exists public.ward_wells
   (like public.howard_wells including all);
+
+-- Permits tables (mirror howard_permits) so the daily RRC permit scraper
+-- and the /permits page have a target for each county.
+create table if not exists public.midland_permits
+  (like public.howard_permits including all);
+create table if not exists public.loving_permits
+  (like public.howard_permits including all);
+create table if not exists public.reagan_permits
+  (like public.howard_permits including all);
+create table if not exists public.upton_permits
+  (like public.howard_permits including all);
+create table if not exists public.ward_permits
+  (like public.howard_permits including all);

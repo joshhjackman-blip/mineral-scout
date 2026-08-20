@@ -1414,10 +1414,70 @@ export default function Home() {
     tractWellsLoaded,
   ])
 
-  const tractOwners = useMemo(
+  const embeddedOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
   )
+  // Filter box for the tract owner list (helps navigate large West-Texas
+  // rolls where a single tract can carry thousands of mineral owners).
+  const [ownerNameQuery, setOwnerNameQuery] = useState('')
+  // Counties whose enriched GeoJSON omits owners_json (big rolls kept in
+  // Supabase to stay under file limits) load the FULL owner list per tract
+  // on demand from /api/tract-owners. Counties with embedded owners_json
+  // (Howard/Martin) keep using it, so their behavior is unchanged.
+  const [dbTractOwners, setDbTractOwners] = useState<TractOwner[]>([])
+  const [dbOwnersLoading, setDbOwnersLoading] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    setDbTractOwners([])
+    setOwnerNameQuery('')
+    const abstract = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
+      .replace(/^A-\s*/i, '')
+      .trim()
+    if (!selected || embeddedOwners.length > 0 || !abstract) {
+      setDbOwnersLoading(false)
+      return
+    }
+    setDbOwnersLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(
+          `/api/tract-owners?county=${countyRef.current.id}&abstract=${encodeURIComponent(abstract)}`,
+        )
+        const json = await res.json()
+        if (cancelled) return
+        const rows = (json?.data?.owners ?? []) as Array<Record<string, unknown>>
+        setDbTractOwners(
+          rows.map((r, idx): TractOwner => ({
+            id: (r.id as string | undefined) ?? String(idx),
+            owner_name: String(r.owner_name ?? ''),
+            propensity_score: Number(r.propensity_score ?? 0),
+            operator_name: (r.operator_name as string) ?? '',
+            mailing_city: (r.mailing_city as string) ?? '',
+            mailing_state: (r.mailing_state as string) ?? '',
+            mailing_zip: (r.mailing_zip as string) ?? '',
+            address_1: (r.mailing_address as string) ?? '',
+            out_of_state: Boolean(r.out_of_state),
+            motivated: Boolean(r.motivated),
+            acreage: r.acreage == null ? 0 : Number(r.acreage),
+            ownership_pct: r.ownership_pct == null ? 0 : Number(r.ownership_pct),
+            rrc_lease_id: (r.rrc_lease_id as string | number | null) ?? null,
+            sptb_code: (r.sptb_code as string | null) ?? null,
+          })),
+        )
+      } catch {
+        /* leave empty; embedded fallback already tried */
+      } finally {
+        if (!cancelled) setDbOwnersLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, embeddedOwners])
+
+  const tractOwners = embeddedOwners.length > 0 ? embeddedOwners : dbTractOwners
 
   useEffect(() => {
     let cancelled = false
@@ -2407,6 +2467,25 @@ export default function Home() {
     tractAbstractForOverrides,
     selectedOperatorFilters,
   ])
+
+  // In-tract search: filter the owner list by name / city / state / operator.
+  const displayedOwners = useMemo(() => {
+    const q = ownerNameQuery.trim().toUpperCase()
+    if (!q) return cleanOwnersList
+    return cleanOwnersList.filter((o) => {
+      const hay = [
+        o.owner_name,
+        o.mailing_city,
+        o.mailing_state,
+        o.operator_name,
+        o.address_1,
+        o.mailing_address,
+      ]
+        .map((v) => String(v ?? '').toUpperCase())
+        .join(' ')
+      return hay.includes(q)
+    })
+  }, [cleanOwnersList, ownerNameQuery])
 
   const hiddenOwnerCount = useMemo(() => {
     return filteredOwnersList.filter((owner) => {
@@ -3566,7 +3645,7 @@ export default function Home() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  All owners in tract ({cleanOwnersList.length})
+                  All owners in tract ({dbOwnersLoading ? 'loading…' : displayedOwners.length})
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                   {hiddenOwnerCount > 0 && (
@@ -3617,8 +3696,32 @@ export default function Home() {
                   ))}
                 </div>
               </div>
+              <input
+                type="text"
+                value={ownerNameQuery}
+                onChange={(e) => setOwnerNameQuery(e.target.value)}
+                placeholder="Search owners by name, city, state, operator…"
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  margin: '0 0 8px',
+                  padding: '7px 10px',
+                  fontSize: 12,
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  borderRadius: 8,
+                  border: '1px solid var(--mm-chrome-border)',
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-text)',
+                  outline: 'none',
+                }}
+              />
               <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                {cleanOwnersList.map((owner: TractOwner, i: number) => {
+                {dbOwnersLoading && displayedOwners.length === 0 && (
+                  <div style={{ padding: '12px', fontSize: 12, color: 'var(--mm-chrome-muted)' }}>
+                    Loading owners…
+                  </div>
+                )}
+                {displayedOwners.map((owner: TractOwner, i: number) => {
                   const isExpanded = expandedOwner === i
                   const normalizedOwnerName = String(owner.owner_name ?? '').trim().toUpperCase()
                   const isHighlighted = highlightedOwner === normalizedOwnerName

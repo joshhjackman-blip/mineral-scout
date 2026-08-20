@@ -85,7 +85,7 @@ type WindowChoice = 3 | 7 | 30 | 90 | 365
 // table doesn't exist yet return an empty array from Supabase and
 // are silently skipped downstream.
 const PERMIT_COUNTIES: CountyKey[] = [
-  'howard', 'martin',
+  'howard', 'martin', 'midland', 'loving', 'reagan', 'upton', 'ward',
 ]
 
 // Slim column list to keep the payload small when hitting the 13

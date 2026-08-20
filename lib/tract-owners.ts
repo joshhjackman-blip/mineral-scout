@@ -21,8 +21,15 @@ export type TractOwnerRow = {
   mailing_city: string | null
   mailing_state: string | null
   mailing_zip: string | null
+  mailing_address?: string | null
   acreage: number | null
   ownership_pct: number | null
+  operator_name?: string | null
+  propensity_score?: number | null
+  motivated?: boolean | null
+  out_of_state?: boolean | null
+  rrc_lease_id?: string | number | null
+  sptb_code?: string | null
 }
 
 export const bareAbstract = (raw: unknown): string =>
@@ -80,8 +87,18 @@ function normalizeOwnerRows(raw: unknown): TractOwnerRow[] {
         mailing_city: (o.mailing_city as string | null) ?? null,
         mailing_state: (o.mailing_state as string | null) ?? null,
         mailing_zip: (o.mailing_zip as string | null) ?? null,
+        mailing_address:
+          (o.mailing_address as string | null) ??
+          (o.address_1 as string | null) ??
+          null,
         acreage: o.acreage == null ? null : Number(o.acreage),
         ownership_pct: o.ownership_pct == null ? null : Number(o.ownership_pct),
+        operator_name: (o.operator_name as string | null) ?? null,
+        propensity_score: o.propensity_score == null ? null : Number(o.propensity_score),
+        motivated: o.motivated == null ? null : Boolean(o.motivated),
+        out_of_state: o.out_of_state == null ? null : Boolean(o.out_of_state),
+        rrc_lease_id: (o.rrc_lease_id as string | number | null) ?? null,
+        sptb_code: (o.sptb_code as string | null) ?? null,
       }
     }),
   )
