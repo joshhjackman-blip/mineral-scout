@@ -29,25 +29,37 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # See notes in rrc-permits-daily.yml on why we don't use
+      # `curl --fail` and why the Authorization header is passed via
+      # a bash array instead of eval-substituted from a string.
       - name: Scrape Howard wells
         env:
           VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          set -u
           URL="${VERCEL_CRON_URL}?county=howard"
           echo "Hitting $URL"
-          HEADER=""
-          if [ -n "$CRON_SECRET" ]; then
-            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET GitHub secret is empty; endpoint will 401."
           fi
-          eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/wells-howard.json \
-            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
-            "$URL"
+          CURL_ARGS=(-sS --max-time 300
+            -o /tmp/wells-howard.json
+            -w 'HTTP %{http_code} in %{time_total}s\n')
+          if [ -n "$CRON_SECRET" ]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $CRON_SECRET")
+          fi
+          HTTP_LINE=$(curl "${CURL_ARGS[@]}" "$URL")
+          echo "$HTTP_LINE"
+          STATUS=$(printf '%s' "$HTTP_LINE" | awk '{print $2}')
           if command -v jq >/dev/null; then
-            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-howard.json
+            jq '.' /tmp/wells-howard.json 2>/dev/null || cat /tmp/wells-howard.json
           else
             cat /tmp/wells-howard.json
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Vercel wells scrape returned HTTP $STATUS for county=howard. If body says 'unauthorized', sync the CRON_SECRET GitHub secret with the Vercel CRON_SECRET env var."
+            exit 1
           fi
 
       - name: Scrape Martin wells
@@ -55,18 +67,27 @@ jobs:
           VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          set -u
           URL="${VERCEL_CRON_URL}?county=martin"
           echo "Hitting $URL"
-          HEADER=""
-          if [ -n "$CRON_SECRET" ]; then
-            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::warning::CRON_SECRET GitHub secret is empty; endpoint will 401."
           fi
-          eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/wells-martin.json \
-            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
-            "$URL"
+          CURL_ARGS=(-sS --max-time 300
+            -o /tmp/wells-martin.json
+            -w 'HTTP %{http_code} in %{time_total}s\n')
+          if [ -n "$CRON_SECRET" ]; then
+            CURL_ARGS+=(-H "Authorization: Bearer $CRON_SECRET")
+          fi
+          HTTP_LINE=$(curl "${CURL_ARGS[@]}" "$URL")
+          echo "$HTTP_LINE"
+          STATUS=$(printf '%s' "$HTTP_LINE" | awk '{print $2}')
           if command -v jq >/dev/null; then
-            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-martin.json
+            jq '.' /tmp/wells-martin.json 2>/dev/null || cat /tmp/wells-martin.json
           else
             cat /tmp/wells-martin.json
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Vercel wells scrape returned HTTP $STATUS for county=martin. If body says 'unauthorized', sync the CRON_SECRET GitHub secret with the Vercel CRON_SECRET env var."
+            exit 1
           fi
