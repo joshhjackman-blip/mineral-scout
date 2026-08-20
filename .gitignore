@@ -43,3 +43,15 @@ __pycache__/
 # Pulled from Supabase storage on demand; not checked in.
 data/ewa/
 
+
+# Multi-county onboarding: large source data pulled from Supabase Storage
+# (owner rolls + raw StratMap land-parcel downloads). Regenerated on demand;
+# never committed. The derived public/ GeoJSON + data/<county>/Abstracts.shp
+# tract layers ARE committed.
+data/_src_*/
+data/owners_2026_*.csv
+data/loving_parcels_enriched.geojson
+data/midland_parcels_enriched.geojson
+data/reagan_parcels_enriched.geojson
+data/upton_parcels_enriched.geojson
+data/ward_parcels_enriched.geojson

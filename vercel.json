@@ -9,6 +9,26 @@
       "schedule": "5 21 * * *"
     },
     {
+      "path": "/api/cron/scrape-wells?county=midland",
+      "schedule": "10 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=loving",
+      "schedule": "15 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=reagan",
+      "schedule": "20 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=upton",
+      "schedule": "25 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=ward",
+      "schedule": "30 21 * * *"
+    },
+    {
       "path": "/api/cron/scrape-permits",
       "schedule": "0 22 * * *"
     }

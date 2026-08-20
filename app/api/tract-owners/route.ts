@@ -17,8 +17,12 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const HOWARD_COLS =
-  'id, owner_name, mailing_city, mailing_state, mailing_zip, acreage, ownership_pct'
+  'id, owner_name, mailing_address, mailing_city, mailing_state, mailing_zip, acreage, ownership_pct, operator_name, propensity_score, motivated, out_of_state, rrc_lease_id, sptb_code'
 const MIN_COLS = 'id, owner_name, mailing_city, mailing_state'
+// Page size for paginated fetch of every owner on a tract (PostgREST caps a
+// single response, so we walk ranges until a short page comes back).
+const PAGE_SIZE = 1000
+const MAX_OWNERS = 60000
 
 function isMissingColumnError(msg: string): boolean {
   const m = msg.toLowerCase()
@@ -43,26 +47,39 @@ async function loadOwnersFromDb(
   })
   const variants = abstractVariants(abstract)
 
-  const run = (cols: string) =>
-    admin
+  // Decide the column set once (new counties have the full Howard schema; the
+  // MIN_COLS fallback covers any older table missing a column).
+  let cols = HOWARD_COLS
+  const probe = await admin
+    .from(cfg.ownershipTable)
+    .select(cols)
+    .in('abstract', variants)
+    .limit(1)
+  if (probe.error && isMissingColumnError(probe.error.message)) {
+    cols = MIN_COLS
+  } else if (probe.error) {
+    return { owners: [], error: probe.error.message }
+  }
+
+  // Fetch every owner on the tract, paginating past PostgREST's row cap.
+  const rows: TractOwnerRow[] = []
+  for (let from = 0; from < MAX_OWNERS; from += PAGE_SIZE) {
+    const page = await admin
       .from(cfg.ownershipTable)
       .select(cols)
       .in('abstract', variants)
-      .limit(500)
-
-  let result = await run(HOWARD_COLS)
-  if (result.error && isMissingColumnError(result.error.message)) {
-    result = await run(MIN_COLS)
+      .order('acreage', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (page.error) {
+      return { owners: rows, error: page.error.message }
+    }
+    const batch = (page.data ?? []) as unknown as TractOwnerRow[]
+    rows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
   }
 
-  if (result.error) {
-    return { owners: [], error: result.error.message }
-  }
-
-  return {
-    owners: sortOwnersByAcreage((result.data ?? []) as unknown as TractOwnerRow[]),
-    error: null,
-  }
+  return { owners: sortOwnersByAcreage(rows), error: null }
 }
 
 /**

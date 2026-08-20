@@ -10,8 +10,9 @@ name: RRC wells daily (scrape)
 #   2. The Vercel cron in vercel.json should also fire at 21:00 UTC.
 #      Idempotent upsert on api_number — either path succeeding is enough.
 #
-# Scope today: howard + martin (DEFAULT_COUNTIES in the route). Pass
-# ?county=... on the URL to override for ad-hoc runs.
+# Scope: the active product counties with wells tables. One matrix job per
+# county keeps each request well under the 300s cap (a single 7-county scrape
+# can exceed it). Pass ?county=... to override for ad-hoc runs.
 
 on:
   schedule:
@@ -26,47 +27,30 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        county: [howard, martin, midland, loving, reagan, upton, ward]
     steps:
       - uses: actions/checkout@v6
 
-      - name: Scrape Howard wells
+      - name: Scrape ${{ matrix.county }} wells
         env:
           VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          URL="${VERCEL_CRON_URL}?county=howard"
+          URL="${VERCEL_CRON_URL}?county=${{ matrix.county }}"
           echo "Hitting $URL"
           HEADER=""
           if [ -n "$CRON_SECRET" ]; then
             HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
           fi
           eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/wells-howard.json \
+            -o /tmp/wells-${{ matrix.county }}.json \
             -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
             "$URL"
           if command -v jq >/dev/null; then
-            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-howard.json
+            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-${{ matrix.county }}.json
           else
-            cat /tmp/wells-howard.json
-          fi
-
-      - name: Scrape Martin wells
-        env:
-          VERCEL_CRON_URL: ${{ vars.VERCEL_CRON_WELLS_URL || 'https://mineral-map.vercel.app/api/cron/scrape-wells' }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
-        run: |
-          URL="${VERCEL_CRON_URL}?county=martin"
-          echo "Hitting $URL"
-          HEADER=""
-          if [ -n "$CRON_SECRET" ]; then
-            HEADER="-H \"Authorization: Bearer $CRON_SECRET\""
-          fi
-          eval curl -sS --fail --max-time 300 $HEADER \
-            -o /tmp/wells-martin.json \
-            -w '"\nHTTP %{http_code} in %{time_total}s\n"' \
-            "$URL"
-          if command -v jq >/dev/null; then
-            jq '{ok, elapsedMs, totals, counties}' /tmp/wells-martin.json
-          else
-            cat /tmp/wells-martin.json
+            cat /tmp/wells-${{ matrix.county }}.json
           fi
