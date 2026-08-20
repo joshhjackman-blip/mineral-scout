@@ -16,7 +16,7 @@ def main() -> None:
     if "--county" not in args:
         args = ["--county", "martin", *args]
     if "--input" not in args:
-        default_input = repo_root / "data" / "owners__2025_Martin.xlsx"
+        default_input = repo_root / "data" / "owners_2026_Martin.csv"
         args = ["--input", str(default_input), *args]
     os.execv(sys.executable, [sys.executable, str(target), *args])
 
