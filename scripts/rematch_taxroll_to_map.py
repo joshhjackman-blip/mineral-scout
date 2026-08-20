@@ -33,16 +33,27 @@ from load_county_mineral_records import compute_propensity_score  # noqa: E402
 COUNTY_ROLLS = {
     "howard": ROOT / "data" / "howard_mineral_roll.csv",
     "martin": ROOT / "data" / "owners__2025_Martin.xlsx",
+    "midland": ROOT / "data" / "owners_2026_Midland.csv",
+    "loving": ROOT / "data" / "owners_2026_Loving.csv",
+    "reagan": ROOT / "data" / "owners_2026_Reagan.csv",
+    "upton": ROOT / "data" / "owners_2026_Upton.csv",
+    "ward": ROOT / "data" / "owners_2026_Ward.csv",
 }
 COUNTY_ABSTRACTS = {
     "howard": ROOT / "data" / "howard" / "Abstracts.shp",
     "martin": ROOT / "data" / "martin" / "Abstracts.shp",
+    "midland": ROOT / "data" / "midland" / "Abstracts.shp",
+    "loving": ROOT / "data" / "loving" / "Abstracts.shp",
+    "reagan": ROOT / "data" / "reagan" / "Abstracts.shp",
+    "upton": ROOT / "data" / "upton" / "Abstracts.shp",
+    "ward": ROOT / "data" / "ward" / "Abstracts.shp",
 }
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--county", default="all", choices=["howard", "martin", "all"])
+    p.add_argument("--county", default="all",
+                   choices=["howard", "martin", "midland", "loving", "reagan", "upton", "ward", "all"])
     p.add_argument("--skip-map-slim", action="store_true")
     return p.parse_args()
 

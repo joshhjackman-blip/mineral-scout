@@ -119,6 +119,11 @@ INPUT_OUTPUT_PAIRS = [
     ('public/gonzales_parcels_enriched.geojson', 'public/gonzales_parcels_map.geojson'),
     ('public/howard_parcels_enriched.geojson',   'public/howard_parcels_map.geojson'),
     ('public/martin_parcels_enriched.geojson',   'public/martin_parcels_map.geojson'),
+    ('public/midland_parcels_enriched.geojson',  'public/midland_parcels_map.geojson'),
+    ('public/loving_parcels_enriched.geojson',   'public/loving_parcels_map.geojson'),
+    ('public/reagan_parcels_enriched.geojson',   'public/reagan_parcels_map.geojson'),
+    ('public/upton_parcels_enriched.geojson',    'public/upton_parcels_map.geojson'),
+    ('public/ward_parcels_enriched.geojson',     'public/ward_parcels_map.geojson'),
 ]
 
 
