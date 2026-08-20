@@ -27,7 +27,7 @@ Usage::
     python3 scripts/load_county_wells_shapefile.py \\
         --county martin --zip data/well317.zip \\
         --abstracts data/martin/Abstracts.shp \\
-        --cad-roll data/owners__2025_Martin.xlsx
+        --cad-roll data/owners_2026_Martin.csv
 """
 
 from __future__ import annotations
