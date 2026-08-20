@@ -32,13 +32,12 @@ from load_county_mineral_records import compute_propensity_score  # noqa: E402
 
 COUNTY_ROLLS = {
     "howard": ROOT / "data" / "howard_mineral_roll.csv",
-    "martin": ROOT / "data" / "owners__2025_Martin.xlsx",
+    "martin": ROOT / "data" / "owners_2026_Martin.csv",
     "midland": ROOT / "data" / "owners_2026_Midland.csv",
     "loving": ROOT / "data" / "owners_2026_Loving.csv",
     "reagan": ROOT / "data" / "owners_2026_Reagan.csv",
     "upton": ROOT / "data" / "owners_2026_Upton.csv",
     "ward": ROOT / "data" / "owners_2026_Ward.csv",
-    "martin": ROOT / "data" / "owners_2026_Martin.csv",
 }
 COUNTY_ABSTRACTS = {
     "howard": ROOT / "data" / "howard" / "Abstracts.shp",

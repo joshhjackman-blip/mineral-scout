@@ -107,5 +107,10 @@ jobs:
           SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
+          # RRC-scraped wells for the new counties lack lat/lon + abstract;
+          # backfill each well's abstract from the owner roll (rrc_lease_id ->
+          # dominant abstract) so producing wells place onto tracts (PDP).
+          python scripts/backfill_well_abstracts.py \
+            midland loving reagan upton ward
           python scripts/compute_development_status.py \
-            --county howard,martin
+            --county howard,martin,midland,loving,reagan,upton,ward

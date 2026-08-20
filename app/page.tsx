@@ -46,20 +46,15 @@ import PermitsNavLink from './components/PermitsNavLink'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
-// 10 Permian counties whose data hasn't shipped yet. Rendered in
+// Permian counties whose data hasn't shipped yet. Rendered in
 // the "All Counties" sidebar under a COMING SOON section so
 // prospective users see the full basin roadmap. Names match the
 // UPCOMING_COUNTIES list in app/components/Map.tsx.
 const UPCOMING_PERMIAN_COUNTIES = [
-  'Midland County, TX',
   'Glasscock County, TX',
-  'Upton County, TX',
-  'Reagan County, TX',
   'Crane County, TX',
   'Pecos County, TX',
-  'Ward County, TX',
   'Winkler County, TX',
-  'Loving County, TX',
   'Reeves County, TX',
 ]
 

@@ -13,15 +13,10 @@ const AMBER = '#EF9F27'
 
 /** Same Permian roadmap counties as the in-app county overview. */
 const UPCOMING_COUNTIES: Array<{ fips: string }> = [
-  { fips: '48329' }, // Midland
   { fips: '48173' }, // Glasscock
-  { fips: '48461' }, // Upton
-  { fips: '48383' }, // Reagan
   { fips: '48103' }, // Crane
   { fips: '48371' }, // Pecos
-  { fips: '48475' }, // Ward
   { fips: '48495' }, // Winkler
-  { fips: '48301' }, // Loving
   { fips: '48389' }, // Reeves
 ]
 

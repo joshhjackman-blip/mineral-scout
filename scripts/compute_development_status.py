@@ -507,9 +507,14 @@ def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
             # Safety cap; per-county wells tables can be 15-20k rows
             # but should never exceed 100k.
             break
+    # Keep a well if it has coordinates (spatial match) OR a declared abstract
+    # (lease-derived). RRC-scraped wells often lack lat/lon; their abstract is
+    # backfilled from the owner roll via rrc_lease_id so they still place onto
+    # a tract in assign_wells_to_abstracts.
     return [
         r for r in rows
-        if r.get("latitude") is not None and r.get("longitude") is not None
+        if (r.get("latitude") is not None and r.get("longitude") is not None)
+        or (str(r.get("abstract") or "").strip() != "")
     ]
 
 

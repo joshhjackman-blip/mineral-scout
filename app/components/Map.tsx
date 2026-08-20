@@ -443,15 +443,10 @@ export default function Map({
   // coordinates are the county centroids (used for the "COMING
   // SOON" label anchor).
   const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = [
-    { name: 'MIDLAND',   fips: '48329', mapCenter: [-102.08, 31.87] },
     { name: 'GLASSCOCK', fips: '48173', mapCenter: [-101.52, 31.87] },
-    { name: 'UPTON',     fips: '48461', mapCenter: [-102.05, 31.37] },
-    { name: 'REAGAN',    fips: '48383', mapCenter: [-101.53, 31.37] },
     { name: 'CRANE',     fips: '48103', mapCenter: [-102.55, 31.40] },
     { name: 'PECOS',     fips: '48371', mapCenter: [-102.72, 30.87] },
-    { name: 'WARD',      fips: '48475', mapCenter: [-103.10, 31.53] },
     { name: 'WINKLER',   fips: '48495', mapCenter: [-103.05, 31.85] },
-    { name: 'LOVING',    fips: '48301', mapCenter: [-103.58, 31.85] },
     { name: 'REEVES',    fips: '48389', mapCenter: [-103.68, 31.30] },
   ]
 

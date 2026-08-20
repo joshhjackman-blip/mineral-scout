@@ -33,10 +33,15 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Parcel LEGAL_DESC: "... SEC:  47, BLK:  39-T4S"
+# Parcel LEGAL_DESC comes in two shapes across Permian CADs:
+#   Midland grid:  "N/2SW/4, SEC:  47, BLK:  39-T4S"        (block+township+section)
+#   Ward H&TC:     "SEC 34 (A425) BLOCK 1 H&TC"             (explicit abstract in parens)
+# So accept both "BLK" and spelled-out "BLOCK", and pull an explicit A#### when present.
 _P_SEC = re.compile(r"SEC[:\.\s]*([0-9]+[A-Z]?)", re.I)
-_P_BLK = re.compile(r"BLK[:\.\s]*([0-9A-Z]+)(?:\s*-\s*(T\d+[NS]))?", re.I)
+_P_BLK = re.compile(r"\b(?:BLK|BLOCK)[:\.\s]*([0-9A-Z]+)(?:\s*-\s*(T\d+[NS]))?", re.I)
 _P_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
+# Explicit abstract token, e.g. "A425", "A-425", or inside "(A425 & A579)".
+_P_ABS = re.compile(r"\bA[-\s]?([0-9]{1,4})[A-Z]?\b", re.I)
 
 # Roll survey: "T2S BLK 39 SEC 9     A-62" / "HILLIARD HP BLK X SEC 1 A-11"
 _R_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
@@ -49,18 +54,29 @@ def norm(s) -> str:
     return re.sub(r"\s+", " ", str(s or "").strip().upper())
 
 
-def parcel_key(legal: str):
+def parcel_info(legal: str):
+    """Return (tract_key, abstract, block, twn, sec) or None.
+
+    Prefer an explicit abstract (Ward-style) as the dissolve key; otherwise
+    fall back to the (block, township, section) grid (Midland-style).
+    """
     u = norm(legal)
     b = _P_BLK.search(u)
     s = _P_SEC.search(u)
-    if not (b and s):
-        return None
-    block = b.group(1)
-    twn = (b.group(2) or "")
+    a = _P_ABS.search(u)
+    block = b.group(1).upper() if b else ""
+    twn = (b.group(2) if b and b.group(2) else "")
     if not twn:
         t = _P_TWN.search(u)
         twn = t.group(1) if t else ""
-    return (block.upper(), twn.upper(), s.group(1).upper())
+    twn = twn.upper()
+    sec = s.group(1).upper() if s else ""
+    abstract = a.group(1) if a else ""
+    if abstract:
+        return (f"A:{abstract}", abstract, block, twn, sec)
+    if block and sec:
+        return (f"G:{block}|{twn}|{sec}", "", block, twn, sec)
+    return None
 
 
 def roll_key(survey: str):
@@ -116,36 +132,44 @@ def main() -> None:
         g = g.set_crs("EPSG:4326")
     else:
         g = g.to_crs("EPSG:4326")
-    g["_key"] = g["LEGAL_DESC"].map(parcel_key)
-    placed = g["_key"].notna().sum()
-    print(f"  parcels with block/section: {placed}/{len(g)} ({100*placed/len(g):.1f}%)", flush=True)
-    g = g[g["_key"].notna()].copy()
-    g["block"] = g["_key"].map(lambda k: k[0])
-    g["twn"] = g["_key"].map(lambda k: k[1])
-    g["sec"] = g["_key"].map(lambda k: k[2])
+    info = g["LEGAL_DESC"].map(parcel_info)
+    placed = info.notna().sum()
+    print(f"  parcels resolved to a tract: {placed}/{len(g)} ({100*placed/len(g):.1f}%)", flush=True)
+    g = g[info.notna()].copy()
+    info = info[info.notna()]
+    g["tkey"] = info.map(lambda k: k[0])
+    g["pabs"] = info.map(lambda k: k[1])
+    g["block"] = info.map(lambda k: k[2])
+    g["twn"] = info.map(lambda k: k[3])
+    g["sec"] = info.map(lambda k: k[4])
 
-    print("Dissolving into (block, township, section) tracts...", flush=True)
-    tracts = g.dissolve(by=["block", "twn", "sec"], as_index=False)[["block", "twn", "sec", "geometry"]]
+    print("Dissolving into tracts (explicit abstract, else block/township/section)...", flush=True)
+    tracts = g.dissolve(by="tkey", as_index=False, aggfunc="first")[
+        ["tkey", "pabs", "block", "twn", "sec", "geometry"]
+    ]
     print(f"  tracts: {len(tracts)}", flush=True)
 
     print(f"Deriving abstract/survey labels from roll: {args.roll}", flush=True)
     lookup = build_roll_lookup(Path(args.roll))
     print(f"  roll grid cells with data: {len(lookup)}", flush=True)
 
-    # acreage: project to TX-centric equal-area (EPSG:6580, US survey ft) → acres
+    # acreage: project to TX-centric equal-area → acres
     area_ac = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224
 
     def label_row(i, r):
-        key = (r["block"], r["twn"], r["sec"])
-        info = lookup.get(key, {})
-        absn = info.get("abstract")
-        survey = info.get("survey") or ""
+        # Prefer the parcel's own explicit abstract; else the roll-derived one
+        # for this (block, township, section) grid cell.
+        absn = str(r["pabs"] or "").strip()
+        gridkey = (r["block"], r["twn"], r["sec"])
+        info_r = lookup.get(gridkey, {})
+        if not absn:
+            absn = info_r.get("abstract") or ""
+        survey = info_r.get("survey") or ""
         blk_lvl = f"{r['block']} {r['twn']}".strip()
         if absn:
             abstract_l = f"A-{absn}"
             abstract_n = absn
         else:
-            # synthetic but unique so the tract is still matchable/renderable
             abstract_l = f"B{r['block']}-{r['twn']}-S{r['sec']}"
             abstract_n = ""
         return abstract_l, abstract_n, survey, blk_lvl, r["sec"]
@@ -157,9 +181,18 @@ def main() -> None:
     tracts["LEVEL2_BLO"] = [x[3] for x in labels]
     tracts["LEVEL3_SUR"] = [x[4] for x in labels]
     tracts["Surv_Sect"] = tracts["sec"]
-    tracts["SHAPE_AREA"] = area_ac.values
     with_abs = sum(1 for x in labels if x[1])
-    print(f"  tracts with a roll-derived abstract: {with_abs}/{len(tracts)}", flush=True)
+    print(f"  tracts with an abstract: {with_abs}/{len(tracts)}", flush=True)
+
+    # Merge any tracts that resolved to the SAME abstract label into one
+    # polygon. Two adjacent grid cells can map to the same roll-derived
+    # abstract; leaving duplicate ABSTRACT_L breaks the map's per-abstract
+    # keying and the tract_development_status upsert (ON CONFLICT twice).
+    before = len(tracts)
+    tracts = tracts.dissolve(by="ABSTRACT_L", as_index=False, aggfunc="first")
+    if len(tracts) != before:
+        print(f"  merged duplicate-abstract tracts: {before} -> {len(tracts)}", flush=True)
+    tracts["SHAPE_AREA"] = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224
 
     out_dir = ROOT / "data" / args.county
     out_dir.mkdir(parents=True, exist_ok=True)
