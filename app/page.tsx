@@ -1171,20 +1171,31 @@ export default function Home() {
   // reuse the same Supabase queries. Soft refreshes skip the sidebar
   // loading spinner to avoid a 5-minute flicker.
   const loadDevStatusForCounty = useCallback(async (countyId: string) => {
-    const result = await supabase
-      .from('tract_development_status')
-      .select('abstract_number, development_status, pud_score, signal_detail, last_computed')
-      .eq('county_id', countyId)
-      .limit(5000)
-    if (result.error) {
-      const msg = result.error.message.toLowerCase()
-      if (!msg.includes('not find') && !msg.includes('does not exist')) {
-        console.warn('[dev_status] fetch error:', result.error.message)
+    // PostgREST caps a response at 1000 rows, so a single .limit(5000) only
+    // returns the first 1000 — that left large counties (e.g. Midland, 1.8k
+    // tracts) with most tracts uncolored/green. Page through all rows.
+    const pageSize = 1000
+    const rows: Array<Record<string, unknown>> = []
+    for (let from = 0; ; from += pageSize) {
+      const result = await supabase
+        .from('tract_development_status')
+        .select('abstract_number, development_status, pud_score, signal_detail, last_computed')
+        .eq('county_id', countyId)
+        .order('abstract_number', { ascending: true })
+        .range(from, from + pageSize - 1)
+      if (result.error) {
+        const msg = result.error.message.toLowerCase()
+        if (!msg.includes('not find') && !msg.includes('does not exist')) {
+          console.warn('[dev_status] fetch error:', result.error.message)
+        }
+        break
       }
-      return {} as Record<string, DevStatusRow>
+      const batch = (result.data ?? []) as Array<Record<string, unknown>>
+      rows.push(...batch)
+      if (batch.length < pageSize || from > 50000) break
     }
     const out: Record<string, DevStatusRow> = {}
-    for (const row of (result.data ?? []) as Array<{
+    for (const row of rows as Array<{
       abstract_number?: string | null
       development_status?: string | null
       pud_score?: number | null
