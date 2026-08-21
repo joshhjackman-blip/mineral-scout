@@ -15,6 +15,30 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 const MAP_STYLE_LIGHT = 'mapbox://styles/mapbox/streets-v12'
 const MAP_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
 
+// Smooth, enterprise-grade camera easing. `easeInOutCubic` ramps the
+// animation gently in and out so county/tract navigation glides to a stop
+// instead of the abrupt, swooping zoom-out-then-in feel of Mapbox's default
+// `flyTo` curve. Every programmatic camera move (county switch, tract fit,
+// overview reset) uses `easeTo` with this curve for a consistent, premium
+// feel — `easeTo` interpolates center+zoom directly, with no fly-away swoop.
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+// Camera-move durations, tuned for crisp-but-smooth motion (ms).
+const CAMERA_COUNTY_MS = 700
+const CAMERA_TRACT_MS = 600
+const CAMERA_OVERVIEW_MS = 750
+
+// Shared options so every camera move animates identically (and still runs
+// for users with reduced-motion, since the move carries spatial context).
+const easedMove = (
+  duration: number,
+): { duration: number; easing: (t: number) => number; essential: true } => ({
+  duration,
+  easing: easeInOutCubic,
+  essential: true,
+})
+
 // Flatten a GeoJSON polygon/multipolygon geometry into a flat array of [lng, lat]
 // coordinate pairs so we can compute a rough bbox-based centroid without adding
 // @turf as a dependency.
@@ -503,8 +527,8 @@ export default function Map({
     if (!bounds.isEmpty()) {
       mapInstance.fitBounds(bounds, {
         padding: options?.padding ?? 120,
-        duration: options?.duration ?? 800,
         maxZoom: options?.maxZoom ?? 14,
+        ...easedMove(options?.duration ?? CAMERA_TRACT_MS),
       })
     }
   }
@@ -1469,7 +1493,7 @@ export default function Map({
       })
     }
 
-    map.current.flyTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, duration: 800 })
+    map.current.easeTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, ...easedMove(CAMERA_OVERVIEW_MS) })
   }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadTexasCountiesGeoJSON])
 
   const setupTractLevel = useCallback(async () => {
@@ -2192,7 +2216,10 @@ export default function Map({
       }
       const run = () => {
         if (!map.current) return
-        map.current.flyTo({ center, zoom, duration: 900 })
+        // easeTo (not flyTo): a direct, eased pan+zoom between the current
+        // view and the target county. flyTo's parabolic curve zoomed way out
+        // and back in for adjacent counties, which read as clunky and slow.
+        map.current.easeTo({ center, zoom, ...easedMove(CAMERA_COUNTY_MS) })
       }
       if (!mapInstance.isStyleLoaded()) {
         mapInstance.once('load', run)
@@ -2415,7 +2442,7 @@ export default function Map({
         (focusTarget as { lng?: unknown }).lng,
     )
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      map.current.flyTo({ center: [lon, lat], zoom: 14, duration: 900 })
+      map.current.easeTo({ center: [lon, lat], zoom: 14, ...easedMove(CAMERA_TRACT_MS) })
     }
   }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
 
