@@ -98,6 +98,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install 'supabase<2.15' pyshp geopandas shapely
 
+      - name: Enrich permits with well-shapefile coordinates + EWA spud/completion dates
+        # The Vercel HTML scrape (step 1) upserts fresh approved/pending
+        # permits but never writes spud_date, completion_date, or the
+        # RRC well-shapefile lat/lon. The map's "Active rigs" overlay
+        # (spud_date within the lookback + no completion) and the
+        # PDP/DUC classifier both depend on those fields, so without this
+        # step new counties render zero rigs even when they're drilling.
+        #
+        # scrape_rrc_permits.py reads the per-county well shapefiles and
+        # the OG_WELLBORE EWA report from Supabase Storage — NOT from RRC
+        # directly — so GitHub's runner IP isn't subject to RRC's block
+        # list. Upsert is keyed on api_number, so re-runs update in place
+        # rather than duplicating. Covers every active county so a newly
+        # onboarded one is enriched automatically.
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python scripts/scrape_rrc_permits.py \
+            --county howard,martin,midland,loving,reagan,upton,ward
+
       - name: Recompute tract_development_status
         # Reclassifies every abstract now that fresh permits landed
         # ~30 seconds ago from the Vercel scrape step. If the scrape
