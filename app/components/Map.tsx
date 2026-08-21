@@ -38,20 +38,25 @@ const easedMove = (
   essential: true,
 })
 
-// County navigation deliberately uses a flyTo *swoop* — an arc that lifts up,
-// travels, and settles — so switching counties always reads as a purposeful
-// jump, even between adjacent counties. `curve` forces a visible arc for short
-// hops; the eased timing keeps it smooth rather than clunky.
-const CAMERA_SWOOP_MS = 1100
+// County navigation uses a flyTo *swoop* — an arc that lifts, travels, and
+// settles — so switching counties always reads as a purposeful jump, even
+// between adjacent counties.
+//
+// Smoothness notes (why no custom `easing` and a moderate `curve`):
+//   * flyTo internally couples its zoom-out curve to a flight-tuned easing.
+//     Overriding `easing` desynced the zoom from the pan and made the motion
+//     stutter, so we let flyTo use its native easing.
+//   * A high `curve` (1.7) zoomed so far out that a wide band of new tiles had
+//     to render mid-flight, which dropped frames. 1.35 keeps a clear arc while
+//     staying close enough that the GPU isn't slammed.
+const CAMERA_SWOOP_MS = 1000
 const swoopMove = (): {
   duration: number
   curve: number
-  easing: (t: number) => number
   essential: true
 } => ({
   duration: CAMERA_SWOOP_MS,
-  curve: 1.7,
-  easing: easeInOutCubic,
+  curve: 1.35,
   essential: true,
 })
 
@@ -2265,8 +2270,16 @@ export default function Map({
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (mapLevel !== 'tract') return
+    // Re-color active/muted counties immediately (cheap paint-property swaps).
     applyTractCountyStyles()
-    void loadSelectedCountyPermits()
+    // Defer the rig/permit reload (network + new point geometry) until just
+    // after the county swoop settles. Loading it mid-flight made fresh rig
+    // dots pop in while the camera was still moving, which read as a stutter.
+    // The cleanup cancels a pending load if the user switches again first.
+    const permitTimer = setTimeout(() => {
+      void loadSelectedCountyPermits()
+    }, CAMERA_SWOOP_MS + 80)
+    return () => clearTimeout(permitTimer)
   }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
 
   // Live refresh — same cadence as PermitsNavLink / useActivityRefreshTick.
