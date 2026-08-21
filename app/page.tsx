@@ -201,7 +201,9 @@ export type DevStatusSignal = {
     lease?: string | null
     status?: string | null
     approved_date?: string | null
+    filed_date?: string | null
     spud_date?: string | null
+    completion_date?: string | null
   }>
   ducs?: Array<{
     api?: string | null
@@ -213,8 +215,18 @@ export type DevStatusSignal = {
   }>
   adjacent_permits?: Array<{ operator?: string | null; count?: number }>
   adjacent_permit_count?: number
+  adjacent_pdp_count?: number
+  adjacent_pdp_operators?: Array<{ operator?: string | null; count?: number }>
+  operator_committed?: boolean
+  operator_program_hit?: boolean
   infill_gaps?: number
-  leases?: unknown[]
+  leases?: Array<{
+    lessee?: string | null
+    lessor?: string | null
+    memo_date?: string | null
+    filed_date?: string | null
+    source_url?: string | null
+  }>
 }
 
 export type DevStatusRow = {
@@ -876,7 +888,10 @@ export default function Home() {
       // 2026-07-20 (user asked for it out — the county wells count
       // didn't drive any decisions and hit the RLS trap on Martin).
       const [owners, permits, pdp, pud, abstracts] = await Promise.all([
-        supabase.from(table).select('id', { count: 'exact', head: true }),
+        // 'estimated' (planner stats for big tables, exact for small) — a
+        // COUNT(*) exact on 200k–440k-row ownership rolls exceeds the
+        // statement timeout, which surfaced as "Total owners: —".
+        supabase.from(table).select('id', { count: 'estimated', head: true }),
         supabase.from(permitsTable).select('id', { count: 'exact', head: true })
           .gte('approved_date', cutoff),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
@@ -3520,13 +3535,148 @@ export default function Home() {
                 )}
               </div>
 
-              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
-                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Operator: {selected.top_operator}</div>
-                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Field: {fieldName}</div>
-                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)', marginBottom: 6 }}>Well status: {selected.well_status || 'PRODUCING / SHUT IN'}</div>
-                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)' }}>Est. lease expiration: {estExpiration}</div>
+              {/* Operator moved up here (under New Permits). */}
+              <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: '10px 12px', marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                <div style={{ fontSize: 12, color: 'var(--mm-chrome-fg)' }}>
+                  <span style={{ color: 'var(--mm-chrome-muted)' }}>Operator: </span>
+                  <span style={{ fontWeight: 600 }}>{selected.top_operator || 'Unknown'}</span>
+                </div>
               </div>
+
+              {/* Development breakdown — replaces the old Operator & Lease Info
+                  box. Shows the tract's status plus EVERY contributing RRC
+                  signal (a tract can have DUC + infill + adjacent PDP at once). */}
+              {(() => {
+                const dev = selectedTractDevStatus
+                const sd = dev?.signal_detail ?? {}
+                const META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+                  PDP: { label: 'PDP — Producing', color: '#92400E', bg: 'rgba(234,179,8,0.14)', border: 'rgba(234,179,8,0.45)' },
+                  PUD_DUC: { label: 'DUC — Drilled, uncompleted', color: '#6B21A8', bg: 'rgba(168,85,247,0.14)', border: 'rgba(168,85,247,0.45)' },
+                  PUD_INFILL: { label: 'Infill candidate', color: '#9A3412', bg: 'rgba(249,115,22,0.14)', border: 'rgba(249,115,22,0.45)' },
+                  PUD_PERMITTED: { label: 'PUD — Permitted', color: '#065F46', bg: 'rgba(16,185,129,0.14)', border: 'rgba(16,185,129,0.45)' },
+                  LEASING_ACTIVE: { label: 'Leasing active', color: '#065F46', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.35)' },
+                  FRONTIER: { label: 'Frontier — undeveloped', color: '#475569', bg: 'rgba(100,116,139,0.12)', border: 'rgba(100,116,139,0.3)' },
+                }
+                const statusKey = dev?.development_status ?? 'FRONTIER'
+                const meta = META[statusKey] ?? META.FRONTIER
+                const d10 = (v?: string | null) => (v ? String(v).slice(0, 10) : '')
+                const permits = sd.permits ?? []
+                const ducs = sd.ducs ?? []
+                const infill = sd.infill_gaps ?? 0
+                const adjPdp = sd.adjacent_pdp_count ?? 0
+                const adjPdpOps = sd.adjacent_pdp_operators ?? []
+                const adjPermits = sd.adjacent_permit_count ?? 0
+                const adjPermitOps = sd.adjacent_permits ?? []
+                const leases = sd.leases ?? []
+                const opNames = (arr: Array<{ operator?: string | null; count?: number }>) =>
+                  arr.map((o) => o.operator).filter(Boolean).slice(0, 4).join(', ')
+                const sectionTitle = { fontSize: 11, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginTop: 10 }
+                const rowStyle = { fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 3, lineHeight: 1.35 }
+                const hasAny =
+                  permits.length > 0 || ducs.length > 0 || infill > 0 ||
+                  adjPdp > 0 || adjPermits > 0 || leases.length > 0
+                return (
+                  <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600 }}>DEVELOPMENT</span>
+                      <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }} title="Texas Railroad Commission signals, refreshed nightly">
+                        RRC · score {dev?.pud_score ?? 0}/10
+                      </span>
+                    </div>
+                    <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: meta.bg, color: meta.color, border: `0.5px solid ${meta.border}` }}>
+                      {meta.label}
+                    </span>
+
+                    {/* DUCs */}
+                    {ducs.length > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Drilled / uncompleted (DUC) · {ducs.length}</div>
+                        {ducs.slice(0, 6).map((w, i) => (
+                          <div key={`duc-${i}`} style={rowStyle}>
+                            {[w.operator, w.lease].filter(Boolean).join(' · ') || 'Well'}
+                            {w.api ? ` · API ${w.api}` : ''}
+                            {w.spud_date ? ` · spud ${d10(w.spud_date)}` : (w.status ? ` · ${w.status}` : '')}
+                          </div>
+                        ))}
+                        {ducs.length > 6 && <div style={rowStyle}>+ {ducs.length - 6} more</div>}
+                      </div>
+                    )}
+
+                    {/* Permits on this tract */}
+                    {permits.length > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Permits on tract · {permits.length}</div>
+                        {permits.slice(0, 6).map((p, i) => (
+                          <div key={`perm-${i}`} style={rowStyle}>
+                            {[p.operator, p.lease].filter(Boolean).join(' · ') || (p.permit_number ? `Permit ${p.permit_number}` : 'Permit')}
+                            {p.status ? ` · ${p.status}` : ''}
+                            {p.api ? ` · API ${p.api}` : ''}
+                            {(() => {
+                              const dd = d10(p.completion_date) ? `completed ${d10(p.completion_date)}`
+                                : d10(p.spud_date) ? `spud ${d10(p.spud_date)}`
+                                : d10(p.approved_date) ? `approved ${d10(p.approved_date)}`
+                                : d10(p.filed_date) ? `filed ${d10(p.filed_date)}` : ''
+                              return dd ? ` · ${dd}` : ''
+                            })()}
+                          </div>
+                        ))}
+                        {permits.length > 6 && <div style={rowStyle}>+ {permits.length - 6} more</div>}
+                      </div>
+                    )}
+
+                    {/* Infill */}
+                    {infill > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Infill candidate</div>
+                        <div style={rowStyle}>{infill} spacing‑gap{infill === 1 ? '' : 's'} vs. neighboring wells (offset spacing math)</div>
+                      </div>
+                    )}
+
+                    {/* Adjacent PDP (within ~1 mi) */}
+                    {adjPdp > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Producing offsets · {adjPdp} within ~1 mi</div>
+                        {opNames(adjPdpOps) && <div style={rowStyle}>{opNames(adjPdpOps)}</div>}
+                      </div>
+                    )}
+
+                    {/* Adjacent permits */}
+                    {adjPermits > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Nearby permitting · {adjPermits} adjacent tract{adjPermits === 1 ? '' : 's'}</div>
+                        {opNames(adjPermitOps) && <div style={rowStyle}>{opNames(adjPermitOps)}</div>}
+                      </div>
+                    )}
+
+                    {/* Fresh leasing */}
+                    {leases.length > 0 && (
+                      <div>
+                        <div style={sectionTitle}>Recent lease memos · {leases.length}</div>
+                        {leases.slice(0, 4).map((l, i) => (
+                          <div key={`lease-${i}`} style={rowStyle}>
+                            {[l.lessee, l.lessor].filter(Boolean).join(' → ') || 'Lease memo'}
+                            {l.memo_date ? ` · ${d10(l.memo_date)}` : ''}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {(sd.operator_committed || sd.operator_program_hit) && (
+                      <div style={rowStyle}>✓ Operator commitment signal (active drilling program nearby)</div>
+                    )}
+
+                    {!hasAny && (
+                      <div style={{ ...rowStyle, marginTop: 8 }}>
+                        No drilling, permit, or leasing activity recorded on this tract.
+                      </div>
+                    )}
+
+                    <div style={{ fontSize: 9, color: 'var(--mm-chrome-muted)', marginTop: 10, fontStyle: 'italic' }}>
+                      Source: Texas RRC permits + wellbores, refreshed nightly.
+                    </div>
+                  </div>
+                )
+              })()}
 
               {(tractWellsLoaded || tractWellsLoading) && (
                 <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', overflow: 'hidden' }}>
