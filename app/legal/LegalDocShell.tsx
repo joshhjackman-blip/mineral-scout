@@ -28,7 +28,7 @@ export default function LegalDocShell({
           <Link href="/legal/terms">Terms</Link>
           <Link href="/legal/agreement">Agreement</Link>
           <Link href="/legal/agreement/sign" className="lp-nav-cta">
-            Sign →
+            Sign
           </Link>
         </div>
       </nav>
