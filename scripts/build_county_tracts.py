@@ -33,21 +33,30 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Parcel LEGAL_DESC comes in two shapes across Permian CADs:
+# Parcel LEGAL_DESC comes in several shapes across Permian CADs:
 #   Midland grid:  "N/2SW/4, SEC:  47, BLK:  39-T4S"        (block+township+section)
 #   Ward H&TC:     "SEC 34 (A425) BLOCK 1 H&TC"             (explicit abstract in parens)
-# So accept both "BLK" and spelled-out "BLOCK", and pull an explicit A#### when present.
-_P_SEC = re.compile(r"SEC[:\.\s]*([0-9]+[A-Z]?)", re.I)
+#   Upton U-Lands: "UNIVERSITY LAND BLOCK 5 SECT 19 227 AC" (spelled "SECT"/"SECTION")
+#   Reagan surveys:"AB 935 SEC 2 D L CARVER"               (abstract written "AB <n>")
+#   Upton surveys: "1270 PATTERSON W A SEC 98 1303 AC"      (leading-number abstract)
+# So: accept BLK/BLOCK, SEC/SECT/SECTION, an explicit A####/AB #### abstract, and
+# (guarded) a leading abstract number. Missing SECT lost ~73% of Upton and the
+# "AB <n>" gap lost ~64% of Reagan, which is why rigs sat in un-tracted white space.
+_P_SEC = re.compile(r"\bSEC(?:TION|T)?\.?[:\s]*([0-9]+[A-Z]?)", re.I)
 _P_BLK = re.compile(r"\b(?:BLK|BLOCK)[:\.\s]*([0-9A-Z]+)(?:\s*-\s*(T\d+[NS]))?", re.I)
 _P_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
-# Explicit abstract token, e.g. "A425", "A-425", or inside "(A425 & A579)".
-_P_ABS = re.compile(r"\bA[-\s]?([0-9]{1,4})[A-Z]?\b", re.I)
+# Explicit abstract token, e.g. "A425", "A-425", "AB 935", or inside "(A425 & A579)".
+_P_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]{1,4})[A-Z]?\b", re.I)
+# Leading-number abstract, e.g. "1270 PATTERSON W A SEC 98". Only trusted when the
+# desc also has a section and no block/A-abstract (see parcel_info), so acreage
+# figures ("100 ACRES ...") and subdivision lots aren't mistaken for an abstract.
+_P_LEADABS = re.compile(r"^\s*([0-9]{1,4})\s+[A-Z]", re.I)
 
 # Roll survey: "T2S BLK 39 SEC 9     A-62" / "HILLIARD HP BLK X SEC 1 A-11"
 _R_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
 _R_BLK = re.compile(r"\bBLK\s*([0-9A-Z]+)", re.I)
-_R_SEC = re.compile(r"\bSEC\s*([0-9]+[A-Z]?)", re.I)
-_R_ABS = re.compile(r"\bA[-\s]?([0-9]+[A-Z]?)\b", re.I)
+_R_SEC = re.compile(r"\bSEC(?:TION|T)?\.?[:\s]*([0-9]+[A-Z]?)", re.I)
+_R_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]+[A-Z]?)\b", re.I)
 
 
 def norm(s) -> str:
@@ -72,6 +81,13 @@ def parcel_info(legal: str):
     twn = twn.upper()
     sec = s.group(1).upper() if s else ""
     abstract = a.group(1) if a else ""
+    # Leading-number abstract only when there's a section but no block and no
+    # A/AB abstract — this is the "1270 PATTERSON W A SEC 98" survey shape, and
+    # the section requirement keeps acreage/lot numbers from sneaking in.
+    if not abstract and not block and sec:
+        la = _P_LEADABS.search(u)
+        if la:
+            abstract = la.group(1)
     if abstract:
         return (f"A:{abstract}", abstract, block, twn, sec)
     if block and sec:
