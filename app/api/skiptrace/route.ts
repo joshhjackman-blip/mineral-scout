@@ -86,6 +86,147 @@ const extractContactsFromPayload = (
   }
 }
 
+type TraceArgs = {
+  firstName?: string
+  lastName?: string
+  ownerName?: string
+  address?: string
+  city?: string
+  state?: string
+  zip?: string
+}
+type TraceResult = { phones: string[]; emails: string[] }
+
+// Owner-name tokens that mark a non-individual (LLC / trust / estate / other
+// business or fiduciary). Mineral tax rolls abbreviate heavily — "TR" (trust),
+// "EST" (estate), "CO" — so those are included as whole-word matches. "ET AL"/
+// "ET UX" mark individuals-with-others and are intentionally NOT here.
+const ENTITY_RE = new RegExp(
+  '\\b(' +
+  'LLC|L\\.?L\\.?C\\.?|LP|L\\.?P\\.?|LLP|INC|INCORPORATED|CORP|CORPORATION|COMPANY|CO|' +
+  'TRUST|TR|ESTATE|EST|MINERALS?|ROYALT(?:Y|IES)|PARTNERS?|PARTNERSHIP|HOLDINGS?|' +
+  'PROPERT(?:Y|IES)|RESOURCES?|ENERGY|OPERATING|FUND|LTD|LIMITED|FOUNDATION|CHURCH|' +
+  'BANK|ASSN|ASSOCIATION|INTERESTS?|VENTURES?|GROUP|ENTERPRISES?|EXPLORATION|' +
+  'PRODUCTION|PETROLEUM|REVOCABLE|IRREVOCABLE' +
+  ')\\b',
+  'i',
+)
+
+/** Route entities (LLC/trust/estate/…) to BatchData, individuals to IDICORE. */
+function classifyOwner(ownerName?: string, firstName?: string, lastName?: string): 'entity' | 'person' {
+  const s = `${ownerName ?? ''} ${firstName ?? ''} ${lastName ?? ''}`.toUpperCase()
+  return ENTITY_RE.test(s) ? 'entity' : 'person'
+}
+
+/** BatchData property skip-trace — primary for entities. */
+async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
+  const body = {
+    requests: [
+      {
+        // BatchData accepts a business/entity name via `name`; individuals via
+        // first/last. Send whatever we have so both cases resolve.
+        name: a.ownerName || '',
+        firstName: a.firstName || '',
+        lastName: a.lastName || '',
+        address: a.address || '',
+        city: a.city || '',
+        state: a.state || '',
+        zip: a.zip || '',
+      },
+    ],
+  }
+  const res = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) return { phones, emails }
+  const data = JSON.parse(await res.text()) as Record<string, unknown>
+  const persons =
+    ((data?.results as Record<string, unknown> | undefined)?.persons as Array<Record<string, unknown>>) ?? []
+  for (const person of persons) {
+    for (const p of (person?.phoneNumbers as Array<Record<string, unknown>>) ?? []) {
+      const num = String(p?.phoneNumber ?? p?.number ?? '').trim()
+      if (num && !phones.includes(num)) phones.push(num)
+    }
+    for (const e of (person?.emails as Array<Record<string, unknown>>) ?? []) {
+      const addr = String(e?.email ?? e?.address ?? '').trim()
+      if (addr && !emails.includes(addr)) emails.push(addr)
+    }
+  }
+  // Defensive: pick up any other shapes BatchData returns.
+  extractContactsFromPayload(data, phones, emails)
+  return { phones, emails }
+}
+
+/** idiCORE (IDI) skip-trace — primary for individuals.
+ *
+ * Activated once IDICORE_API_URL + IDICORE_API_KEY are set; until then this
+ * no-ops and the person chain falls through to Tracerfy. The request/response
+ * mapping is intentionally generic (defensive contact extraction) — finalize
+ * the body/field names against idiCORE's API contract when wiring the key. */
+async function traceIdicore(apiKey: string, a: TraceArgs): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
+  const url = process.env.IDICORE_API_URL?.trim()
+  if (!url) return { phones, emails }
+  const body = {
+    firstName: a.firstName || '',
+    lastName: a.lastName || '',
+    name: a.ownerName || '',
+    address: a.address || '',
+    city: a.city || '',
+    state: a.state || '',
+    zip: a.zip || '',
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) return { phones, emails }
+  const data = JSON.parse(await res.text()) as Record<string, unknown>
+  extractContactsFromPayload(data, phones, emails)
+  return { phones, emails }
+}
+
+/** Tracerfy Instant Trace — shared last-resort backstop. Needs an address. */
+async function traceTracerfy(apiKey: string, a: TraceArgs): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
+  if (!(a.address?.trim() && a.city?.trim() && a.state?.trim())) return { phones, emails }
+  const body: Record<string, unknown> = {
+    find_owner: false,
+    first_name: a.firstName,
+    last_name: a.lastName,
+    address: a.address,
+    city: a.city,
+    state: a.state,
+  }
+  if (a.zip?.trim()) body.zip = a.zip
+  const res = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) return { phones, emails }
+  const data = JSON.parse(await res.text()) as Record<string, unknown>
+  for (const person of (data.persons as Array<Record<string, unknown>>) ?? []) {
+    for (const p of (person?.phones as Array<Record<string, unknown>>) ?? []) {
+      const num = p?.number
+      if (typeof num === 'string' && num && !phones.includes(num)) phones.push(num)
+    }
+    for (const e of (person?.emails as Array<Record<string, unknown>>) ?? []) {
+      const addr = e?.email
+      if (typeof addr === 'string' && addr && !emails.includes(addr)) emails.push(addr)
+    }
+  }
+  extractContactsFromPayload(data, phones, emails)
+  return { phones, emails }
+}
+
 export async function POST(req: NextRequest) {
   const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
 
@@ -233,130 +374,56 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) Call Tracerfy Instant Trace Lookup
-  const apiKey = process.env.TRACERFY_API_KEY?.trim()
-  const bstApiKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
-  if (!apiKey && !bstApiKey) {
+  // 3) Provider chain, ordered by owner type:
+  //      entity (LLC / trust / estate / …) -> BatchData first
+  //      person (individual)               -> IDICORE first
+  //    Tracerfy is the shared last-resort backstop for both.
+  const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
+  const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
+  const idiKey = process.env.IDICORE_API_KEY?.trim()
+  if (!tracerfyKey && !batchKey && !idiKey) {
     return NextResponse.json(
-      { error: 'Skip trace providers are not configured (TRACERFY_API_KEY / BATCHSKIPTRACING_API_KEY)' },
-      { status: 500 }
+      {
+        error:
+          'Skip trace providers are not configured ' +
+          '(BATCHSKIPTRACING_API_KEY / IDICORE_API_KEY / TRACERFY_API_KEY)',
+      },
+      { status: 500 },
     )
   }
 
+  const ownerType = classifyOwner(ownerName, firstName, lastName)
+  const traceArgs: TraceArgs = { firstName, lastName, ownerName, address, city, state, zip }
+
+  const runners: Record<string, (() => Promise<TraceResult>) | null> = {
+    batchdata: batchKey ? () => traceBatchData(batchKey, traceArgs) : null,
+    idicore: idiKey ? () => traceIdicore(idiKey, traceArgs) : null,
+    tracerfy: tracerfyKey ? () => traceTracerfy(tracerfyKey, traceArgs) : null,
+  }
+  // Tracerfy always runs last; the primary is chosen by owner type.
+  const order =
+    ownerType === 'entity'
+      ? ['batchdata', 'tracerfy']
+      : ['idicore', 'tracerfy']
+
   try {
-    let data: Record<string, unknown> = {}
-    const phones: string[] = []
-    const emails: string[] = []
-    let cacheSource = 'tracerfy'
+    let phones: string[] = []
+    let emails: string[] = []
+    let cacheSource = 'none'
 
-    if (apiKey && address && address.trim() && city && city.trim() && state && state.trim()) {
-      // Use find_owner: false since we know the name but only have mailing address not property address
-      const body: Record<string, unknown> = {
-        find_owner: false,
-        first_name: firstName,
-        last_name: lastName,
-      }
-      if (address && address.trim()) body.address = address
-      if (city && city.trim()) body.city = city
-      if (state && state.trim()) body.state = state
-      if (zip && zip.trim()) body.zip = zip
-
-      const response = await fetch('https://tracerfy.com/v1/api/trace/lookup/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-      })
-
-      const responseText = await response.text()
-
+    for (const name of order) {
+      const run = runners[name]
+      if (!run) continue
       try {
-        data = JSON.parse(responseText) as Record<string, unknown>
-      } catch {
-        console.error('Tracerfy response parse failed', { status: response.status })
-        if (!bstApiKey) {
-          return NextResponse.json(
-            { error: 'Invalid API response' },
-            { status: 500 }
-          )
+        const result = await run()
+        if (result.phones.length > 0 || result.emails.length > 0) {
+          phones = result.phones
+          emails = result.emails
+          cacheSource = name
+          break
         }
-      }
-
-      // Extract from persons array
-      const persons = (data.persons as Array<Record<string, unknown>>) ?? []
-      for (const person of persons) {
-        const personPhones = (person?.phones as Array<Record<string, unknown>>) ?? []
-        for (const p of personPhones) {
-          const num = p?.number
-          const isDnc = Boolean(p?.dnc)
-          if (typeof num === 'string' && num && !isDnc) phones.push(num)
-        }
-        // Also include DNC numbers but mark them — for now include all
-        for (const p of personPhones) {
-          const num = p?.number
-          const isDnc = Boolean(p?.dnc)
-          if (typeof num === 'string' && num && isDnc && !phones.includes(num)) phones.push(num)
-        }
-
-        const personEmails = (person?.emails as Array<Record<string, unknown>>) ?? []
-        for (const e of personEmails) {
-          const addr = e?.email
-          if (typeof addr === 'string' && addr) emails.push(addr)
-        }
-      }
-
-      // Parse additional shapes defensively in case provider schema varies.
-      extractContactsFromPayload(data, phones, emails)
-    } else {
-      console.warn('Skipping Tracerfy (missing key or address/city/state); falling back to BatchSkipTracing')
-    }
-
-    if (bstApiKey && phones.length === 0 && emails.length === 0) {
-      try {
-        const bstBody: Record<string, unknown> = {
-          requests: [
-            {
-              firstName: firstName,
-              lastName: lastName,
-              address: address || '',
-              city: city || '',
-              state: state || '',
-              zip: zip || '',
-            },
-          ],
-        }
-        const bstResponse = await fetch('https://api.batchdata.com/api/v1/property/skip-trace', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bstApiKey}`,
-          },
-          body: JSON.stringify(bstBody),
-        })
-        const bstText = await bstResponse.text()
-        if (bstResponse.ok) {
-          const bstData = JSON.parse(bstText) as Record<string, unknown>
-          const persons = ((bstData?.results as Record<string, unknown> | undefined)?.persons as Array<Record<string, unknown>>) ?? []
-          for (const person of persons) {
-            const phoneNumbers = (person?.phoneNumbers as Array<Record<string, unknown>>) ?? []
-            for (const p of phoneNumbers) {
-              const num = String(p?.phoneNumber ?? p?.number ?? '').trim()
-              if (num && !phones.includes(num)) phones.push(num)
-            }
-            const emailList = (person?.emails as Array<Record<string, unknown>>) ?? []
-            for (const e of emailList) {
-              const addr = String(e?.email ?? e?.address ?? '').trim()
-              if (addr && !emails.includes(addr)) emails.push(addr)
-            }
-          }
-          if (phones.length > 0 || emails.length > 0) {
-            cacheSource = 'batchskiptracing'
-          }
-        }
-      } catch (bstErr) {
-        console.error('BST error:', bstErr)
+      } catch (providerErr) {
+        console.error(`Skip trace provider '${name}' error:`, providerErr)
       }
     }
 
@@ -413,13 +480,15 @@ export async function POST(req: NextRequest) {
       billable: !skipTraceWaived,
       unit_price_usd: skipTraceWaived ? 0 : SKIP_TRACE_PRICE_USD,
       waived: skipTraceWaived,
-      hit: Boolean(data?.hit),
-      credits_deducted: Number(data?.credits_deducted ?? 0),
+      source: cacheSource,
+      owner_type: ownerType,
+      hit: phones.length > 0 || emails.length > 0,
+      credits_deducted: 0,
       count: nextCount,
       limit: MONTHLY_LIMIT,
     })
   } catch (err) {
-    console.error('Tracerfy error:', err)
+    console.error('Skip trace error:', err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
