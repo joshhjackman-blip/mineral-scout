@@ -242,39 +242,22 @@ function SignInForm() {
 // ── Sign In Page ──────────────────────────────────────────────────────────────
 
 export default function SignInPage() {
+  // Clean, light, card-based layout that matches the in-app chrome
+  // (white panels on a slate surface, amber accent, Geist type) instead
+  // of the old dark marketing split-screen, which looked out of place.
   return (
     <div className="si-root">
-      <div className="si-page">
-        {/* Left branding panel — background is the Permian photo
-            attached in signin.css. Prior SVG grid + glow blobs
-            removed on request; the photo speaks for itself. */}
-        <div className="si-left-panel">
-          <div className="si-left-logo">
+      <div className="si-shell">
+        <div className="si-card">
+          <div className="si-brand">
             <a href="/landing">
-              <img src="/mineral-map-logo-light.svg" alt="Mineral Map" />
+              <img src="/mineral-map-logo.svg" alt="Mineral Map" />
             </a>
           </div>
-          <div className="si-left-content">
-            <div className="si-left-eyebrow">Mineral Acquisition Intelligence</div>
-            <h1 className="si-left-headline">
-              Find the right owners<br />
-              <em>before anyone else.</em>
-            </h1>
-            <p className="si-left-sub">
-              County ownership data, well context, and motivation scoring —
-              combined into one acquisition platform.
-            </p>
-          </div>
-          <div className="si-left-footer">
-            <a href="/landing">← Back to landing</a>
-          </div>
+          <SignInForm />
         </div>
-
-        {/* Right form panel */}
-        <div className="si-right-panel">
-          <div className="si-form-card">
-            <SignInForm />
-          </div>
+        <div className="si-shell-footer">
+          <a href="/landing">← Back to landing</a>
         </div>
       </div>
     </div>
