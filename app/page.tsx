@@ -670,9 +670,11 @@ export default function Home() {
         mapFlyToRef.current(target.mapCenter, target.mapZoom)
         return
       }
-      if (attempts < 40) setTimeout(tryFlyTo, 150)
+      // Only the map-not-ready case retries; the fly fires immediately once
+      // the ref is wired so the swoop starts the instant a county is clicked.
+      if (attempts < 40) setTimeout(tryFlyTo, 120)
     }
-    setTimeout(tryFlyTo, 50)
+    tryFlyTo()
   }, [])
 
   useEffect(() => {
