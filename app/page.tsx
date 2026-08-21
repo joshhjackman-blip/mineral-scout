@@ -888,7 +888,10 @@ export default function Home() {
       // 2026-07-20 (user asked for it out — the county wells count
       // didn't drive any decisions and hit the RLS trap on Martin).
       const [owners, permits, pdp, pud, abstracts] = await Promise.all([
-        supabase.from(table).select('id', { count: 'exact', head: true }),
+        // 'estimated' (planner stats for big tables, exact for small) — a
+        // COUNT(*) exact on 200k–440k-row ownership rolls exceeds the
+        // statement timeout, which surfaced as "Total owners: —".
+        supabase.from(table).select('id', { count: 'estimated', head: true }),
         supabase.from(permitsTable).select('id', { count: 'exact', head: true })
           .gte('approved_date', cutoff),
         supabase.from('tract_development_status').select('abstract_number', { count: 'exact', head: true })
