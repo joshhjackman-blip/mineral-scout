@@ -17,12 +17,12 @@ const nextConfig = {
   // tracer misses filesystem reads outside app/ and public/ by default).
   outputFileTracingIncludes: {
     '/legal/agreement': ['./legal/**/*.md'],
-    // /api/tract-owners falls back to reading enriched parcels from disk
-    // when the CDN fetch isn't available in the serverless sandbox.
-    '/api/tract-owners': [
-      './public/howard_parcels_enriched.geojson',
-      './public/martin_parcels_enriched.geojson',
-    ],
+  },
+  // The enriched parcels GeoJSON (30–80 MB each) are static CDN assets that
+  // /api/tract-owners fetches over HTTP. Never bundle them into a serverless
+  // function — the combined size blows past Vercel's 250 MB unzipped limit.
+  outputFileTracingExcludes: {
+    '*': ['./public/**/*.geojson'],
   },
   async headers() {
     // Parcel GeoJSONs (both the full enriched and the slim map variants)

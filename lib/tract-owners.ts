@@ -11,8 +11,6 @@
  *   2) in-memory index built once from the enriched parcels GeoJSON
  */
 
-import { promises as fs } from 'fs'
-import path from 'path'
 import { COUNTIES, type CountyKey } from '@/lib/counties'
 
 export type TractOwnerRow = {
@@ -130,31 +128,17 @@ function indexFromGeoJson(gj: GeoJSON.FeatureCollection): Map<string, TractOwner
   return index
 }
 
-async function readGeoJsonFromDisk(countyId: CountyKey): Promise<GeoJSON.FeatureCollection | null> {
-  const cfg = COUNTIES[countyId]
-  if (!cfg) return null
-  const rel = cfg.geoJsonPath.replace(/^\//, '')
-  const candidates = [
-    path.join(process.cwd(), 'public', rel),
-    path.join(process.cwd(), rel),
-  ]
-  for (const filePath of candidates) {
-    try {
-      const text = await fs.readFile(filePath, 'utf8')
-      return JSON.parse(text) as GeoJSON.FeatureCollection
-    } catch {
-      // try next candidate / fall through to CDN fetch
-    }
-  }
-  return null
-}
-
+// The enriched parcels GeoJSON is 30–80 MB per county. It is deliberately NOT
+// read from the local filesystem: doing so makes Next's file tracer bundle
+// every public/*.geojson into this serverless function, blowing past Vercel's
+// 250 MB unzipped limit. It is a static CDN asset, so fetch it over HTTP and
+// let the in-memory index cache (below) keep the parsed result per instance.
 async function readGeoJsonFromCdn(countyId: CountyKey): Promise<GeoJSON.FeatureCollection | null> {
   const cfg = COUNTIES[countyId]
   if (!cfg) return null
   const url = `${assetOrigin()}${cfg.geoJsonPath}`
   try {
-    const res = await fetch(url, { next: { revalidate: 300 } })
+    const res = await fetch(url, { cache: 'no-store' })
     if (!res.ok) return null
     return (await res.json()) as GeoJSON.FeatureCollection
   } catch {
@@ -173,9 +157,7 @@ async function loadCountyOwnerIndex(countyId: CountyKey): Promise<Map<string, Tr
   if (inflight) return inflight
 
   const loadPromise = (async () => {
-    const gj =
-      (await readGeoJsonFromDisk(countyId)) ??
-      (await readGeoJsonFromCdn(countyId))
+    const gj = await readGeoJsonFromCdn(countyId)
     const index = gj ? indexFromGeoJson(gj) : new Map<string, TractOwnerRow[]>()
     root.__tractOwnersByCounty!.set(countyId, index)
     root.__tractOwnersLoad!.delete(countyId)
