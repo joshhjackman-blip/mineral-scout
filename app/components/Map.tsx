@@ -15,6 +15,46 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 const MAP_STYLE_LIGHT = 'mapbox://styles/mapbox/streets-v12'
 const MAP_STYLE_DARK = 'mapbox://styles/mapbox/dark-v11'
 
+// Smooth, enterprise-grade camera easing. `easeInOutCubic` ramps the
+// animation gently in and out so county/tract navigation glides to a stop
+// instead of the abrupt, swooping zoom-out-then-in feel of Mapbox's default
+// `flyTo` curve. Every programmatic camera move (county switch, tract fit,
+// overview reset) uses `easeTo` with this curve for a consistent, premium
+// feel — `easeTo` interpolates center+zoom directly, with no fly-away swoop.
+const easeInOutCubic = (t: number): number =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+// Camera-move durations, tuned for crisp-but-smooth motion (ms).
+const CAMERA_TRACT_MS = 600
+const CAMERA_OVERVIEW_MS = 750
+
+// Shared options so every camera move animates identically (and still runs
+// for users with reduced-motion, since the move carries spatial context).
+const easedMove = (
+  duration: number,
+): { duration: number; easing: (t: number) => number; essential: true } => ({
+  duration,
+  easing: easeInOutCubic,
+  essential: true,
+})
+
+// County navigation deliberately uses a flyTo *swoop* — an arc that lifts up,
+// travels, and settles — so switching counties always reads as a purposeful
+// jump, even between adjacent counties. `curve` forces a visible arc for short
+// hops; the eased timing keeps it smooth rather than clunky.
+const CAMERA_SWOOP_MS = 1100
+const swoopMove = (): {
+  duration: number
+  curve: number
+  easing: (t: number) => number
+  essential: true
+} => ({
+  duration: CAMERA_SWOOP_MS,
+  curve: 1.7,
+  easing: easeInOutCubic,
+  essential: true,
+})
+
 // Flatten a GeoJSON polygon/multipolygon geometry into a flat array of [lng, lat]
 // coordinate pairs so we can compute a rough bbox-based centroid without adding
 // @turf as a dependency.
@@ -409,6 +449,11 @@ export default function Map({
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
+  // The exact click handler currently bound to the inactive-county blocks in
+  // tract mode. Kept in a ref so we can off() the *same* function reference on
+  // the next style pass — otherwise a fresh closure would be added each time
+  // and old handlers would pile up, firing the county switch multiple times.
+  const inactiveClickHandlerRef = useRef<((event: mapboxgl.MapLayerMouseEvent) => void) | null>(null)
   // The county that was last visually styled as "active" by
   // applyTractCountyStyles. Used to short-circuit the all-counties pass on
   // every click so we only repaint the two counties whose styling actually
@@ -503,8 +548,8 @@ export default function Map({
     if (!bounds.isEmpty()) {
       mapInstance.fitBounds(bounds, {
         padding: options?.padding ?? 120,
-        duration: options?.duration ?? 800,
         maxZoom: options?.maxZoom ?? 14,
+        ...easedMove(options?.duration ?? CAMERA_TRACT_MS),
       })
     }
   }
@@ -1469,7 +1514,7 @@ export default function Map({
       })
     }
 
-    map.current.flyTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, duration: 800 })
+    map.current.easeTo({ center: TEXAS_OVERVIEW_CENTER, zoom: TEXAS_OVERVIEW_ZOOM, ...easedMove(CAMERA_OVERVIEW_MS) })
   }, [clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadTexasCountiesGeoJSON])
 
   const setupTractLevel = useCallback(async () => {
@@ -1807,9 +1852,6 @@ export default function Map({
 
     const handler = (event: mapboxgl.MapMouseEvent) => {
       if (!map.current) return
-      const now = Date.now()
-      if (now - lastClickTimeRef.current < 1000) return
-      lastClickTimeRef.current = now
 
       const layerIds = countyEntries
         .map(([, countyConfig]) => `parcels-fill-${countyConfig.id}`)
@@ -1828,10 +1870,18 @@ export default function Map({
       if (!countyKey) return
 
       const props = topFeature.properties as Record<string, unknown> | undefined
+      // County switches must never be debounced — swapping counties is a
+      // deliberate navigation and always fires the swoop to the new county.
       if (countyKey !== selectedCountyRef.current) {
         onCountySwitchRef.current(countyKey)
         return
       }
+
+      // Debounce only same-county tract selection so a jittery double-click
+      // doesn't fire two fitGeometry animations back to back.
+      const now = Date.now()
+      if (now - lastClickTimeRef.current < 300) return
+      lastClickTimeRef.current = now
 
       if (props) {
         onOwnerClickRef.current(props as Record<string, unknown>)
@@ -2050,10 +2100,15 @@ export default function Map({
       const inactiveHoverLeave = () => {
         if (map.current) map.current.getCanvas().style.cursor = ''
       }
-      // Detach any previous handlers before re-registering (safe if
-      // absent — off() is a no-op on unknown listeners).
-      map.current.off('click', 'tract-inactive-fill', inactiveClickHandler)
+      // Detach the PREVIOUS click handler by its exact reference (a fresh
+      // closure is created on every style pass, so off() must target the one
+      // we actually bound last time — otherwise handlers pile up and a single
+      // click switches counties multiple times / races the camera).
+      if (inactiveClickHandlerRef.current) {
+        map.current.off('click', 'tract-inactive-fill', inactiveClickHandlerRef.current)
+      }
       map.current.on('click', 'tract-inactive-fill', inactiveClickHandler)
+      inactiveClickHandlerRef.current = inactiveClickHandler
       map.current.on('mouseenter', 'tract-inactive-fill', inactiveHoverEnter)
       map.current.on('mouseleave', 'tract-inactive-fill', inactiveHoverLeave)
 
@@ -2192,7 +2247,9 @@ export default function Map({
       }
       const run = () => {
         if (!map.current) return
-        map.current.flyTo({ center, zoom, duration: 900 })
+        // flyTo swoop for every county switch: an eased arc that always reads
+        // as a deliberate jump to the new county, even for adjacent ones.
+        map.current.flyTo({ center, zoom, ...swoopMove() })
       }
       if (!mapInstance.isStyleLoaded()) {
         mapInstance.once('load', run)
@@ -2415,7 +2472,7 @@ export default function Map({
         (focusTarget as { lng?: unknown }).lng,
     )
     if (Number.isFinite(lat) && Number.isFinite(lon)) {
-      map.current.flyTo({ center: [lon, lat], zoom: 14, duration: 900 })
+      map.current.easeTo({ center: [lon, lat], zoom: 14, ...easedMove(CAMERA_TRACT_MS) })
     }
   }, [focusTarget, mapLevel, selectedCounty, parcelsVersion])
 
