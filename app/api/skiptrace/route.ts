@@ -458,18 +458,24 @@ export async function POST(req: NextRequest) {
 
     // Save to SHARED cache — next team that skip-traces this owner
     // gets a free cache hit (no $0.50 charge).
+    //
+    // Delete-then-insert instead of upsert(onConflict:'owner_name'): the live
+    // DB is missing the UNIQUE(owner_name) constraint, so onConflict upserts
+    // fail (Postgres 42P10) and nothing ever cached. This keys on owner_name
+    // without needing the constraint (the read path already looks up by it).
     if (cacheKey && (phones.length > 0 || emails.length > 0)) {
-      await adminClient.from('skip_trace_cache').upsert(
-        {
-          owner_name: cacheKey,
-          mailing_address: address ?? '',
-          phones,
-          emails,
-          source: cacheSource,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'owner_name' },
-      )
+      await adminClient.from('skip_trace_cache').delete().eq('owner_name', cacheKey)
+      const { error: cacheWriteError } = await adminClient.from('skip_trace_cache').insert({
+        owner_name: cacheKey,
+        mailing_address: address ?? '',
+        phones,
+        emails,
+        source: cacheSource,
+        updated_at: new Date().toISOString(),
+      })
+      if (cacheWriteError) {
+        console.error('Skip trace cache write error:', cacheWriteError)
+      }
     }
 
     return NextResponse.json({
