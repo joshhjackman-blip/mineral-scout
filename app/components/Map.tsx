@@ -449,6 +449,15 @@ export default function Map({
   const showWellsRef = useRef(showWells)
   useEffect(() => { showWellsRef.current = showWells }, [showWells])
   // Color the well overlay by operator (per-county palette) instead of status.
+  // Tract fills default to a soft backdrop so the well/lateral overlay reads
+  // clearly on top; flip to bold for a pure development-status overview.
+  const [boldTracts, setBoldTracts] = useState(false)
+  // Prototype: status-colored "blob" footprints (buffered laterals/wells) so a
+  // tract shows its mix of designations, not one flat color.
+  const [showBlobs, setShowBlobs] = useState(false)
+  const showBlobsRef = useRef(showBlobs)
+  useEffect(() => { showBlobsRef.current = showBlobs }, [showBlobs])
+  const blobsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const [wellsByOperator, setWellsByOperator] = useState(false)
   const wellsByOperatorRef = useRef(wellsByOperator)
   useEffect(() => {
@@ -678,6 +687,8 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'wells-laterals-layer')
     removeLayerIfExists(mapInstance, 'wells-points-layer')
     removeSourceIfExists(mapInstance, 'wells')
+    removeLayerIfExists(mapInstance, 'wells-blobs-fill')
+    removeSourceIfExists(mapInstance, 'wells-blobs')
 
     // Removing the layer detaches every listener attached to that
     // layer id, so we don't need to explicitly `off()` the
@@ -819,22 +830,28 @@ export default function Map({
         'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
         statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
       ]
-      if (operatorMatchAbstracts == null) return byStatus
+      // Soft backdrop by default (so wells/laterals read on top); full
+      // strength in bold mode. Applied as a final multiplier so it composes
+      // with the status-off (0) and operator-dim (0.12) cases.
+      const scale = boldTracts ? 1 : 0.42
+      const withScale = (expr: mapboxgl.Expression): mapboxgl.Expression =>
+        scale === 1 ? expr : (['*', expr, scale] as mapboxgl.Expression)
+      if (operatorMatchAbstracts == null) return withScale(byStatus)
       if (operatorMatchAbstracts.length === 0) {
-        return ['*', byStatus, 0.12] as mapboxgl.Expression
+        return withScale(['*', byStatus, 0.12] as mapboxgl.Expression)
       }
       // Cap literal size — Mapbox handles large `in` lists, but keep
       // the expression bounded for pathological counties.
       const literals = operatorMatchAbstracts.slice(0, 8000)
-      return [
+      return withScale([
         'case',
         ['in', ['get', 'ABSTRACT_L'], ['literal', literals]],
         byStatus,
         ['*', byStatus, 0.12],
-      ] as mapboxgl.Expression
+      ] as mapboxgl.Expression)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusVisible, operatorMatchAbstracts]
+    [statusVisible, operatorMatchAbstracts, boldTracts]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
@@ -980,6 +997,12 @@ export default function Map({
       `block-labels-${selectedConfig.id}`,
     ]
     for (const id of ids) {
+      if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+    }
+    // The well overlay must sit ABOVE the parcel fills we just moved to the
+    // top — otherwise the (opaque) tract fill buries the laterals/dots/blobs.
+    // Order: blob fill (bottom) -> laterals -> vertical dots -> rigs (top).
+    for (const id of ['wells-blobs-fill', 'wells-laterals-layer', 'wells-points-layer']) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
     }
     // Rigs always sit on top of everything else so they're visible
@@ -1436,6 +1459,50 @@ export default function Map({
         if (mapInstance.getLayer(id)) mapInstance.setLayoutProperty(id, 'visibility', vis)
       }
     }
+    // Prototype blob footprints: a status-colored fill under the well lines.
+    let blobsGeoJSON = blobsCacheRef.current[countyKey] ?? null
+    if (!blobsGeoJSON) {
+      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
+      const burls = [
+        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${cfg.id}_blobs.geojson` : '',
+        `/${cfg.id}_blobs.geojson?v=1`,
+      ].filter(Boolean)
+      for (const url of burls) {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) continue
+          blobsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
+          break
+        } catch {
+          // try next / none
+        }
+      }
+      if (blobsGeoJSON) blobsCacheRef.current[countyKey] = blobsGeoJSON
+      if (countyKey !== selectedCountyRef.current || !map.current) return
+    }
+    if (blobsGeoJSON) {
+      const bvis: 'visible' | 'none' = showBlobsRef.current ? 'visible' : 'none'
+      if (!mapInstance.getSource('wells-blobs')) {
+        mapInstance.addSource('wells-blobs', { type: 'geojson', data: blobsGeoJSON })
+        mapInstance.addLayer({
+          id: 'wells-blobs-fill',
+          type: 'fill',
+          source: 'wells-blobs',
+          layout: { visibility: bvis },
+          paint: { 'fill-color': WELL_STATUS_COLOR, 'fill-opacity': 0.5, 'fill-antialias': true },
+        })
+      } else {
+        ;(mapInstance.getSource('wells-blobs') as mapboxgl.GeoJSONSource).setData(blobsGeoJSON)
+        if (mapInstance.getLayer('wells-blobs-fill')) {
+          mapInstance.setLayoutProperty('wells-blobs-fill', 'visibility', bvis)
+        }
+      }
+      // Keep the blob fill beneath the well lines/dots.
+      if (mapInstance.getLayer('wells-blobs-fill') && mapInstance.getLayer('wells-laterals-layer')) {
+        mapInstance.moveLayer('wells-blobs-fill', 'wells-laterals-layer')
+      }
+    }
+
     // Rig dots always render above the wells overlay.
     if (mapInstance.getLayer('permits-rigs-layer')) mapInstance.moveLayer('permits-rigs-layer')
   }, [])
@@ -2553,6 +2620,16 @@ export default function Map({
     }
   }, [devStatusByAbstract, applyTractCountyStyles])
 
+  // Bold/subtle tract-fill toggle changes fill-opacity for the *same* county,
+  // which applyTractCountyStyles' same-county short-circuit would skip — so
+  // force a full re-style when it flips.
+  useEffect(() => {
+    if (!map.current?.isStyleLoaded() || mapLevel !== 'tract') return
+    lastStyledSelectedCountyRef.current = null
+    applyTractCountyStyles()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boldTracts])
+
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (!map.current) return
@@ -2578,6 +2655,13 @@ export default function Map({
         )
       }
     }
+    if (mapInstance.getLayer('wells-blobs-fill')) {
+      mapInstance.setLayoutProperty(
+        'wells-blobs-fill',
+        'visibility',
+        tractLevel && showBlobs ? 'visible' : 'none',
+      )
+    }
     for (const [, countyConfig] of countyEntries) {
       // Approved-permit blue halo (existing).
       for (const suffix of ['permit-glow-outer', 'permit-glow-core']) {
@@ -2602,7 +2686,7 @@ export default function Map({
         }
       }
     }
-  }, [mapLevel, showRigs, showWells, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
+  }, [mapLevel, showRigs, showWells, showBlobs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -2701,6 +2785,10 @@ export default function Map({
           onWells={setShowWells}
           wellsByOperator={wellsByOperator}
           onWellsByOperator={setWellsByOperator}
+          boldTracts={boldTracts}
+          onBoldTracts={setBoldTracts}
+          blobsVisible={showBlobs}
+          onBlobs={setShowBlobs}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
@@ -2728,6 +2816,8 @@ function LayerTogglePanel({
   rigsVisible, onRigs,
   wellsVisible, onWells,
   wellsByOperator, onWellsByOperator,
+  boldTracts, onBoldTracts,
+  blobsVisible, onBlobs,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
   operatorOptions,
@@ -2745,6 +2835,10 @@ function LayerTogglePanel({
   onWells: (v: boolean) => void
   wellsByOperator: boolean
   onWellsByOperator: (v: boolean) => void
+  boldTracts: boolean
+  onBoldTracts: (v: boolean) => void
+  blobsVisible: boolean
+  onBlobs: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
@@ -2833,6 +2927,15 @@ function LayerTogglePanel({
           />
           <ToggleRow
             row={{
+              label: 'Bold tract fills',
+              swatch: 'fill',
+              color: '#94A3B8',
+              checked: boldTracts,
+              onChange: onBoldTracts,
+            }}
+          />
+          <ToggleRow
+            row={{
               label: 'Wells & laterals',
               swatch: 'line',
               color: '#EA580C',
@@ -2853,6 +2956,15 @@ function LayerTogglePanel({
               />
             </div>
           )}
+          <ToggleRow
+            row={{
+              label: 'Development blobs (beta)',
+              swatch: 'fill',
+              color: '#EA580C',
+              checked: blobsVisible,
+              onChange: onBlobs,
+            }}
+          />
         </div>
         <div
           style={{
