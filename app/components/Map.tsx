@@ -417,6 +417,18 @@ export default function Map({
   // APPROVED permits (blue) can hide the teal noise, and vice versa.
   const [showSubmittedGlow, setShowSubmittedGlow] = useState(true)
   const [showRigs, setShowRigs] = useState(true)
+  // Well geometry overlay: horizontal laterals (lines) + vertical/permit
+  // wells (small dots), colored by status. Served from the static
+  // /<county>_wells.geojson built by scripts/build_wells_geojson.py.
+  const [showWells, setShowWells] = useState(true)
+  const showWellsRef = useRef(showWells)
+  useEffect(() => { showWellsRef.current = showWells }, [showWells])
+  const wellsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
+  const wellsHandlersRef = useRef<{
+    clickHandler?: (e: mapboxgl.MapLayerMouseEvent) => void
+    mouseEnterHandler?: () => void
+    mouseLeaveHandler?: () => void
+  }>({})
   // Refs so applyTractCountyStyles (which force-sets parcel layer
   // visibility on status toggles) can honor the current halo toggles
   // instead of always flipping blue/teal back to visible.
@@ -614,6 +626,18 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'permits-pending-layer')
     removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
+
+    // Well-geometry overlay (laterals + vertical/permit dots).
+    for (const layerId of ['wells-laterals-layer', 'wells-points-layer']) {
+      const h = wellsHandlersRef.current
+      if (h.clickHandler) mapInstance.off('click', layerId, h.clickHandler)
+      if (h.mouseEnterHandler) mapInstance.off('mouseenter', layerId, h.mouseEnterHandler)
+      if (h.mouseLeaveHandler) mapInstance.off('mouseleave', layerId, h.mouseLeaveHandler)
+    }
+    wellsHandlersRef.current = {}
+    removeLayerIfExists(mapInstance, 'wells-laterals-layer')
+    removeLayerIfExists(mapInstance, 'wells-points-layer')
+    removeSourceIfExists(mapInstance, 'wells')
 
     // Removing the layer detaches every listener attached to that
     // layer id, so we don't need to explicitly `off()` the
@@ -1260,6 +1284,120 @@ export default function Map({
       }
     }
   }, [showRigs])
+
+  // Well-geometry overlay: horizontal laterals (lines) + vertical/permit wells
+  // (small dots), colored by status. Served from the static
+  // /<county>_wells.geojson (scripts/build_wells_geojson.py). Rig dots stay on
+  // top of this overlay.
+  const loadSelectedCountyWells = useCallback(async (opts?: { force?: boolean }) => {
+    const mapInstance = map.current
+    if (!mapInstance) return
+    const countyKey = selectedCountyRef.current
+    const cfg = COUNTIES[countyKey]
+    if (!cfg) return
+    if (opts?.force) delete wellsCacheRef.current[countyKey]
+    let wellsGeoJSON = wellsCacheRef.current[countyKey] ?? null
+    if (!wellsGeoJSON) {
+      try {
+        const res = await fetch(`/${cfg.id}_wells.geojson?v=1`)
+        if (!res.ok) return
+        wellsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
+      } catch {
+        return
+      }
+      wellsCacheRef.current[countyKey] = wellsGeoJSON
+      if (countyKey !== selectedCountyRef.current || !map.current) return
+    }
+
+    // Color by status/type category (see build_wells_geojson.py `kind`).
+    const colorExpr = [
+      'match', ['get', 'kind'],
+      'producing', '#16A34A',
+      'shut_in', '#F59E0B',
+      'injection', '#0891B2',
+      'permitted', '#2563EB',
+      'horizontal', '#EA580C',
+      'vertical', '#6B7280',
+      '#6B7280',
+    ] as unknown as mapboxgl.Expression
+    const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
+
+    if (!mapInstance.getSource('wells')) {
+      mapInstance.addSource('wells', { type: 'geojson', data: wellsGeoJSON })
+      mapInstance.addLayer({
+        id: 'wells-laterals-layer',
+        type: 'line',
+        source: 'wells',
+        filter: ['==', ['get', 'geom'], 'line'],
+        layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': colorExpr,
+          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 12, 1.4, 15, 2.4],
+          'line-opacity': 0.9,
+        },
+      })
+      mapInstance.addLayer({
+        id: 'wells-points-layer',
+        type: 'circle',
+        source: 'wells',
+        filter: ['==', ['get', 'geom'], 'point'],
+        layout: { visibility: vis },
+        paint: {
+          // Deliberately small dots (the old vertical markers were oversized).
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 1.4, 12, 2.4, 15, 3.8],
+          'circle-color': colorExpr,
+          'circle-opacity': 0.85,
+          'circle-stroke-width': 0.5,
+          'circle-stroke-color': '#ffffff',
+        },
+      })
+
+      const kindLabel: Record<string, string> = {
+        producing: 'Producing', shut_in: 'Shut-in', injection: 'Injection / Disposal',
+        permitted: 'Permitted', horizontal: 'Drilled horizontal', vertical: 'Vertical well',
+      }
+      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+        const feature = event.features?.[0]
+        const props = feature?.properties
+        if (!props || !map.current) return
+        const geom = feature!.geometry as GeoJSON.Geometry
+        let lngLat: [number, number]
+        if (geom.type === 'Point') {
+          lngLat = geom.coordinates as [number, number]
+        } else if (geom.type === 'LineString') {
+          const cs = geom.coordinates as number[][]
+          lngLat = cs[Math.floor(cs.length / 2)] as [number, number]
+        } else {
+          lngLat = [event.lngLat.lng, event.lngLat.lat]
+        }
+        const kind = String(props.kind ?? '')
+        const title = kindLabel[kind] ?? 'Well'
+        new mapboxgl.Popup({ closeButton: false, offset: 8 })
+          .setLngLat(lngLat)
+          .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+            <div style="font-weight:600;color:#0f172a">${title}${props.well_type === 'HORIZONTAL' ? ' (lateral)' : ''}</div>
+            <div style="color:#6b7280;margin-top:2px">${props.operator ?? ''}</div>
+            <div style="color:#6b7280;font-size:11px">API ${props.api ?? ''}${props.status ? ` · ${props.status}` : ''}</div>
+          </div>`)
+          .addTo(map.current)
+      }
+      const mouseEnterHandler = () => { map.current?.getCanvas().style.setProperty('cursor', 'pointer') }
+      const mouseLeaveHandler = () => { if (map.current) map.current.getCanvas().style.cursor = '' }
+      wellsHandlersRef.current = { clickHandler, mouseEnterHandler, mouseLeaveHandler }
+      for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
+        mapInstance.on('click', id, clickHandler)
+        mapInstance.on('mouseenter', id, mouseEnterHandler)
+        mapInstance.on('mouseleave', id, mouseLeaveHandler)
+      }
+    } else {
+      ;(mapInstance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
+      for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
+        if (mapInstance.getLayer(id)) mapInstance.setLayoutProperty(id, 'visibility', vis)
+      }
+    }
+    // Rig dots always render above the wells overlay.
+    if (mapInstance.getLayer('permits-rigs-layer')) mapInstance.moveLayer('permits-rigs-layer')
+  }, [])
 
   // Fetch + memoize the Texas county polygons (from plotly's public
   // FIPS dataset). Returns Texas-only features tagged with a __fips
@@ -2148,8 +2286,9 @@ export default function Map({
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
+    void loadSelectedCountyWells()
     applyTractCountyStyles()
-  }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadTexasCountiesGeoJSON])
+  }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadSelectedCountyWells, loadTexasCountiesGeoJSON])
 
   const renderForCurrentLevel = useCallback(async () => {
     if (!map.current) return
@@ -2278,9 +2417,10 @@ export default function Map({
     // The cleanup cancels a pending load if the user switches again first.
     const permitTimer = setTimeout(() => {
       void loadSelectedCountyPermits()
+      void loadSelectedCountyWells()
     }, CAMERA_SWOOP_MS + 80)
     return () => clearTimeout(permitTimer)
-  }, [applyTractCountyStyles, loadSelectedCountyPermits, mapLevel, selectedCounty])
+  }, [applyTractCountyStyles, loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, selectedCounty])
 
   // Live refresh — same cadence as PermitsNavLink / useActivityRefreshTick.
   // Drop the whole session cache so a county revisit after an ingest
@@ -2387,6 +2527,16 @@ export default function Map({
         tractLevel && showRigs ? 'visible' : 'none',
       )
     }
+    // Well-geometry overlay (laterals + vertical/permit dots).
+    for (const layerId of ['wells-laterals-layer', 'wells-points-layer']) {
+      if (mapInstance.getLayer(layerId)) {
+        mapInstance.setLayoutProperty(
+          layerId,
+          'visibility',
+          tractLevel && showWells ? 'visible' : 'none',
+        )
+      }
+    }
     for (const [, countyConfig] of countyEntries) {
       // Approved-permit blue halo (existing).
       for (const suffix of ['permit-glow-outer', 'permit-glow-core']) {
@@ -2411,7 +2561,7 @@ export default function Map({
         }
       }
     }
-  }, [mapLevel, showRigs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
+  }, [mapLevel, showRigs, showWells, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -2506,6 +2656,8 @@ export default function Map({
           statusLabels={STATUS_LABEL}
           rigsVisible={showRigs}
           onRigs={setShowRigs}
+          wellsVisible={showWells}
+          onWells={setShowWells}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
@@ -2531,6 +2683,7 @@ function LayerTogglePanel({
   statusVisible, onStatus,
   statusPalette, statusLabels,
   rigsVisible, onRigs,
+  wellsVisible, onWells,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
   operatorOptions,
@@ -2544,6 +2697,8 @@ function LayerTogglePanel({
   statusLabels: Record<UnifiedStatus, string>
   rigsVisible: boolean
   onRigs: (v: boolean) => void
+  wellsVisible: boolean
+  onWells: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
@@ -2630,6 +2785,15 @@ function LayerTogglePanel({
               onChange: onRigs,
             }}
           />
+          <ToggleRow
+            row={{
+              label: 'Wells & laterals',
+              swatch: 'line',
+              color: '#EA580C',
+              checked: wellsVisible,
+              onChange: onWells,
+            }}
+          />
         </div>
         <div
           style={{
@@ -2676,7 +2840,7 @@ function ToggleRow({
 }: {
   row: {
     label: string
-    swatch: 'fill' | 'dot' | 'ring'
+    swatch: 'fill' | 'dot' | 'ring' | 'line'
     color: string
     checked: boolean
     onChange: (v: boolean) => void
@@ -2732,6 +2896,16 @@ function ToggleRow({
               background: 'transparent',
               border: `2.5px solid ${row.color}`,
               boxShadow: `0 0 6px ${row.color}80`,
+              opacity: row.checked ? 1 : 0.35,
+            }}
+          />
+        ) : row.swatch === 'line' ? (
+          <span
+            style={{
+              width: 14,
+              height: 3,
+              borderRadius: 2,
+              background: row.color,
               opacity: row.checked ? 1 : 0.35,
             }}
           />
