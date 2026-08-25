@@ -43,8 +43,48 @@ import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 import PermitsNavLink from './components/PermitsNavLink'
+import ProductTour, { TOUR_EVENT, type TourStep } from './components/ProductTour'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
+
+// First-run guided tour for newcomers. Steps anchor to [data-tour=...]
+// elements in the top chrome + map; anchor-less steps render centered.
+const TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Welcome to Mineral Map',
+    body: "Here's a 30-second tour of how to find mineral tracts and owners. You can replay it anytime from the ? button in the top bar.",
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="global-search"]',
+    title: 'Search anything',
+    body: "One box searches it all — type a county, a tract or abstract number, or an owner's name and jump straight there.",
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="county-select"]',
+    title: 'Switch counties',
+    body: 'Choose the county you want to work. The map flies there and loads its tracts automatically.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="map"]',
+    title: 'Read the map',
+    body: 'Each tract is colored by development status — cooler colors are earlier-stage opportunities, warmer ones are active or already producing. Click any tract to open its owner list.',
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="nav-menu"]',
+    title: 'Permits & pipeline',
+    body: 'Open this menu for recent drilling permits and your CRM pipeline to track outreach.',
+    placement: 'bottom',
+  },
+  {
+    title: "You're ready to go",
+    body: "Click a tract to see who owns it, then skip-trace an owner to pull contact info. That's the core workflow — happy hunting!",
+    placement: 'center',
+  },
+]
 
 // Permian counties whose data hasn't shipped yet. Rendered in
 // the "All Counties" sidebar under a COMING SOON section so
@@ -2912,6 +2952,7 @@ export default function Home() {
         fontFamily: 'system-ui, sans-serif',
       }}
     >
+      <ProductTour steps={TOUR_STEPS} />
       {/* Top header */}
       <div
         style={{
@@ -2933,7 +2974,7 @@ export default function Home() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }} data-tour="nav-menu">
             <button
               onClick={() => setNavMenuOpen((prev) => !prev)}
               style={{
@@ -3085,6 +3126,7 @@ export default function Home() {
               </button>
             )}
             <select
+              data-tour="county-select"
               value={selectedCounty}
               onChange={(event) => {
                 const next = event.target.value as CountyKey
@@ -3110,6 +3152,33 @@ export default function Home() {
                 </option>
               ))}
             </select>
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
+                aria-label="Take the product tour"
+                title="Take the product tour"
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  border: '1px solid var(--mm-chrome-border)',
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-muted)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                ?
+              </button>
+            )}
           </div>
         </div>
         {!isMobile && (
@@ -4661,6 +4730,7 @@ export default function Home() {
 
         {/* Map area */}
         <div
+          data-tour="map"
           style={{
             flex: isMobile ? '0 0 48dvh' : 1,
             minWidth: 0,
