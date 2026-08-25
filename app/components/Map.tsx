@@ -1000,10 +1000,18 @@ export default function Map({
     for (const id of ids) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
     }
-    // The well overlay must sit ABOVE the parcel fills we just moved to the
-    // top — otherwise the (opaque) tract fill buries the laterals/dots/blobs.
-    // Order: blob fill (bottom) -> laterals -> vertical dots -> rigs (top).
-    for (const id of ['wells-blobs-fill', 'wells-laterals-layer', 'wells-points-layer']) {
+    // The blob fill sits just BELOW the tract outline (above the tract fill) so
+    // the outlines stay visible on top of the blobs. The well lines/dots go to
+    // the very top. Order: fill -> blobs -> outline -> laterals -> dots -> rigs.
+    const outlineId = `parcels-outline-${selectedConfig.id}`
+    if (mapInstance.getLayer('wells-blobs-fill')) {
+      if (mapInstance.getLayer(outlineId)) {
+        mapInstance.moveLayer('wells-blobs-fill', outlineId)
+      } else {
+        mapInstance.moveLayer('wells-blobs-fill')
+      }
+    }
+    for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
     }
     // Rigs always sit on top of everything else so they're visible
@@ -1499,9 +1507,15 @@ export default function Map({
           mapInstance.setLayoutProperty('wells-blobs-fill', 'visibility', bvis)
         }
       }
-      // Keep the blob fill beneath the well lines/dots.
-      if (mapInstance.getLayer('wells-blobs-fill') && mapInstance.getLayer('wells-laterals-layer')) {
-        mapInstance.moveLayer('wells-blobs-fill', 'wells-laterals-layer')
+      // Keep the blob fill beneath the tract outline (so outlines stay visible)
+      // and beneath the well lines/dots.
+      const outlineId = `parcels-outline-${cfg.id}`
+      if (mapInstance.getLayer('wells-blobs-fill')) {
+        if (mapInstance.getLayer(outlineId)) {
+          mapInstance.moveLayer('wells-blobs-fill', outlineId)
+        } else if (mapInstance.getLayer('wells-laterals-layer')) {
+          mapInstance.moveLayer('wells-blobs-fill', 'wells-laterals-layer')
+        }
       }
     }
 
