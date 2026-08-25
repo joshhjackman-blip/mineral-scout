@@ -41,16 +41,35 @@ const easedMove = (
 // Well-overlay coloring. Status mode = producing/shut-in/injection/permitted/
 // drilled-horizontal/vertical; operator mode = a fixed palette keyed on the
 // per-county operator rank (`op_idx`) stamped by build_wells_geojson.py.
+// Well/blob status palette — chosen to stay distinct from each other.
+const WELL_KIND_COLORS: Record<string, string> = {
+  producing: '#16A34A', // green
+  duc: '#A855F7',       // purple
+  shut_in: '#F59E0B',   // amber
+  injection: '#0D9488', // teal
+  permitted: '#2563EB', // blue
+  horizontal: '#57534E', // stone/dark gray — drilled, status unknown
+  vertical: '#9CA3AF',  // light gray
+}
+const WELL_KIND_LABEL: Record<string, string> = {
+  producing: 'Producing (PDP)',
+  duc: 'DUC',
+  shut_in: 'Shut-in',
+  injection: 'Injection / disposal',
+  permitted: 'Permitted',
+  horizontal: 'Drilled (status unknown)',
+  vertical: 'Vertical well',
+}
 const WELL_STATUS_COLOR = [
   'match', ['get', 'kind'],
-  'producing', '#16A34A',
-  'duc', '#A855F7',
-  'shut_in', '#F59E0B',
-  'injection', '#0891B2',
-  'permitted', '#2563EB',
-  'horizontal', '#EA580C',
-  'vertical', '#6B7280',
-  '#6B7280',
+  'producing', WELL_KIND_COLORS.producing,
+  'duc', WELL_KIND_COLORS.duc,
+  'shut_in', WELL_KIND_COLORS.shut_in,
+  'injection', WELL_KIND_COLORS.injection,
+  'permitted', WELL_KIND_COLORS.permitted,
+  'horizontal', WELL_KIND_COLORS.horizontal,
+  'vertical', WELL_KIND_COLORS.vertical,
+  WELL_KIND_COLORS.vertical,
 ] as unknown as mapboxgl.Expression
 const WELL_OPERATOR_PALETTE = [
   '#2563EB', '#DC2626', '#16A34A', '#D97706', '#7C3AED', '#0891B2',
@@ -453,6 +472,9 @@ export default function Map({
   // Tract fills default to a soft backdrop so the well/lateral overlay reads
   // clearly on top; flip to bold for a pure development-status overview.
   const [boldTracts, setBoldTracts] = useState(false)
+  // "Wells only" hides the tract fill entirely (grid outline + wells remain,
+  // and tracts stay clickable since the fill layer is only made transparent).
+  const [wellsOnly, setWellsOnly] = useState(false)
   // Prototype: status-colored "blob" footprints (buffered laterals/wells) so a
   // tract shows its mix of designations, not one flat color.
   const [showBlobs, setShowBlobs] = useState(false)
@@ -834,7 +856,7 @@ export default function Map({
       // Soft backdrop by default (so wells/laterals read on top); full
       // strength in bold mode. Applied as a final multiplier so it composes
       // with the status-off (0) and operator-dim (0.12) cases.
-      const scale = boldTracts ? 1 : 0.42
+      const scale = wellsOnly ? 0 : boldTracts ? 1 : 0.42
       const withScale = (expr: mapboxgl.Expression): mapboxgl.Expression =>
         scale === 1 ? expr : (['*', expr, scale] as mapboxgl.Expression)
       if (operatorMatchAbstracts == null) return withScale(byStatus)
@@ -852,39 +874,19 @@ export default function Map({
       ] as mapboxgl.Expression)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusVisible, operatorMatchAbstracts, boldTracts]
+    [statusVisible, operatorMatchAbstracts, boldTracts, wellsOnly]
   )
 
-  const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
-      'PDP',            STATUS_OUTLINE.PDP,
-      'PUD_DUC',        STATUS_OUTLINE.PUD_DUC,
-      'TRUE_PUD',       STATUS_OUTLINE.TRUE_PUD,
-      'PUD_PERMITTED',  STATUS_OUTLINE.PUD_PERMITTED,
-      'PUD_INFILL',     STATUS_OUTLINE.PUD_INFILL,
-      'LEASING_ACTIVE', STATUS_OUTLINE.LEASING_ACTIVE,
-      STATUS_OUTLINE.FRONTIER,
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  )
+  // Neutral, subtle-black tract grid — always on (independent of status) and
+  // drawn above the blobs/wells so the survey grid is always readable and the
+  // tracts stay clickable.
+  const selectedOutlineColorExpr = useMemo<string>(() => 'rgba(0,0,0,0.4)', [])
 
+  // Thin, always-on grid line (zoom-scaled). Kept constant so toggling a status
+  // hides only that status's fill, never the survey grid.
   const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
-    () => [
-      'match',
-      ['coalesce', ['get', 'map_status'], 'FRONTIER'],
-      'PDP',            statusVisible.PDP            ? STATUS_OUTLINE_WIDTH.PDP            : 0,
-      'PUD_DUC',        statusVisible.PUD_DUC        ? STATUS_OUTLINE_WIDTH.PUD_DUC        : 0,
-      'TRUE_PUD',       statusVisible.TRUE_PUD       ? STATUS_OUTLINE_WIDTH.TRUE_PUD       : 0,
-      'PUD_PERMITTED',  statusVisible.PUD_PERMITTED  ? STATUS_OUTLINE_WIDTH.PUD_PERMITTED  : 0,
-      'PUD_INFILL',     statusVisible.PUD_INFILL     ? STATUS_OUTLINE_WIDTH.PUD_INFILL     : 0,
-      'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OUTLINE_WIDTH.LEASING_ACTIVE : 0,
-      statusVisible.FRONTIER ? STATUS_OUTLINE_WIDTH.FRONTIER : 0,
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusVisible]
+    () => ['interpolate', ['linear'], ['zoom'], 8, 0.4, 12, 0.7, 15, 1.1] as unknown as mapboxgl.Expression,
+    []
   )
 
   const applyTractCountyStyles = useCallback(() => {
@@ -981,44 +983,30 @@ export default function Map({
     // moveLayer calls force a worker collision-detection pass on every
     // symbol layer below them.
     const selectedConfig = COUNTIES[newSelected]
-    const ids = [
-      `parcels-fill-${selectedConfig.id}`,
-      `parcels-outline-${selectedConfig.id}`,
-      `parcels-permit-glow-outer-${selectedConfig.id}`,
-      `parcels-permit-glow-core-${selectedConfig.id}`,
-      // Submitted-permit teal halo — sits ABOVE approved-permit
-      // blue when both would apply (they can't for the same
-      // tract because the injectDevStatusIntoFeatures suppresses
-      // teal when blue is present, but keeping the order stable
-      // makes future edits obvious).
-      `parcels-permit-submitted-outer-${selectedConfig.id}`,
-      `parcels-permit-submitted-core-${selectedConfig.id}`,
-      `parcels-labels-${selectedConfig.id}`,
-      `parcels-sections-${selectedConfig.id}`,
-      `block-labels-${selectedConfig.id}`,
+    const cid = selectedConfig.id
+    // Full z-order, bottom -> top. moveLayer() with no beforeId pushes to the
+    // very top, so calling in this order yields exactly this stack:
+    //   tract fill -> permit halos -> blobs -> laterals -> well dots ->
+    //   tract OUTLINE (subtle-black grid, above the wells) -> labels -> rigs.
+    // Putting the grid above the wells means it's always readable; putting the
+    // well lines/dots above the blobs keeps them crisp.
+    const zOrderBottomToTop = [
+      `parcels-fill-${cid}`,
+      `parcels-permit-glow-outer-${cid}`,
+      `parcels-permit-glow-core-${cid}`,
+      `parcels-permit-submitted-outer-${cid}`,
+      `parcels-permit-submitted-core-${cid}`,
+      'wells-blobs-fill',
+      'wells-laterals-layer',
+      'wells-points-layer',
+      `parcels-outline-${cid}`,
+      `parcels-labels-${cid}`,
+      `parcels-sections-${cid}`,
+      `block-labels-${cid}`,
+      'permits-rigs-layer',
     ]
-    for (const id of ids) {
+    for (const id of zOrderBottomToTop) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
-    }
-    // The blob fill sits just BELOW the tract outline (above the tract fill) so
-    // the outlines stay visible on top of the blobs. The well lines/dots go to
-    // the very top. Order: fill -> blobs -> outline -> laterals -> dots -> rigs.
-    const outlineId = `parcels-outline-${selectedConfig.id}`
-    if (mapInstance.getLayer('wells-blobs-fill')) {
-      if (mapInstance.getLayer(outlineId)) {
-        mapInstance.moveLayer('wells-blobs-fill', outlineId)
-      } else {
-        mapInstance.moveLayer('wells-blobs-fill')
-      }
-    }
-    for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
-      if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
-    }
-    // Rigs always sit on top of everything else so they're visible
-    // against any tract fill and above the permit glow. Was
-    // previously painted under the parcel layers.
-    if (mapInstance.getLayer('permits-rigs-layer')) {
-      mapInstance.moveLayer('permits-rigs-layer')
     }
 
     // Refresh the tract-mode inactive-county overlay so the newly
@@ -1425,11 +1413,7 @@ export default function Map({
         },
       })
 
-      const kindLabel: Record<string, string> = {
-        producing: 'Producing (PDP)', duc: 'DUC (drilled, uncompleted)',
-        shut_in: 'Shut-in', injection: 'Injection / Disposal',
-        permitted: 'Permitted', horizontal: 'Drilled horizontal', vertical: 'Vertical well',
-      }
+      const kindLabel = WELL_KIND_LABEL
       const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
         const feature = event.features?.[0]
         const props = feature?.properties
@@ -2644,7 +2628,7 @@ export default function Map({
     lastStyledSelectedCountyRef.current = null
     applyTractCountyStyles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boldTracts])
+  }, [boldTracts, wellsOnly])
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
@@ -2803,6 +2787,8 @@ export default function Map({
           onWellsByOperator={setWellsByOperator}
           boldTracts={boldTracts}
           onBoldTracts={setBoldTracts}
+          wellsOnly={wellsOnly}
+          onWellsOnly={setWellsOnly}
           blobsVisible={showBlobs}
           onBlobs={setShowBlobs}
           permitGlowVisible={showPermitGlow}
@@ -2833,6 +2819,7 @@ function LayerTogglePanel({
   wellsVisible, onWells,
   wellsByOperator, onWellsByOperator,
   boldTracts, onBoldTracts,
+  wellsOnly, onWellsOnly,
   blobsVisible, onBlobs,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
@@ -2853,6 +2840,8 @@ function LayerTogglePanel({
   onWellsByOperator: (v: boolean) => void
   boldTracts: boolean
   onBoldTracts: (v: boolean) => void
+  wellsOnly: boolean
+  onWellsOnly: (v: boolean) => void
   blobsVisible: boolean
   onBlobs: (v: boolean) => void
   permitGlowVisible: boolean
@@ -2952,6 +2941,15 @@ function LayerTogglePanel({
           />
           <ToggleRow
             row={{
+              label: 'Wells only (hide tract fill)',
+              swatch: 'line',
+              color: '#0f172a',
+              checked: wellsOnly,
+              onChange: onWellsOnly,
+            }}
+          />
+          <ToggleRow
+            row={{
               label: 'Wells & laterals',
               swatch: 'line',
               color: '#EA580C',
@@ -2981,6 +2979,38 @@ function LayerTogglePanel({
               onChange: onBlobs,
             }}
           />
+          {(wellsVisible || blobsVisible) && (
+            <div
+              style={{
+                marginTop: 6,
+                paddingTop: 6,
+                borderTop: '1px solid var(--mm-chrome-border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              <div style={{ fontSize: 10.5, color: 'var(--mm-chrome-muted)', fontWeight: 600 }}>
+                WELL STATUS
+              </div>
+              {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'horizontal', 'vertical'].map(
+                (k) => (
+                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: 3,
+                        background: WELL_KIND_COLORS[k],
+                        flexShrink: 0,
+                      }}
+                    />
+                    <span style={{ color: 'var(--mm-chrome-fg)' }}>{WELL_KIND_LABEL[k]}</span>
+                  </div>
+                ),
+              )}
+            </div>
+          )}
         </div>
         <div
           style={{
