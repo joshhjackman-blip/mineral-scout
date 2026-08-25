@@ -44,6 +44,7 @@ const easedMove = (
 const WELL_STATUS_COLOR = [
   'match', ['get', 'kind'],
   'producing', '#16A34A',
+  'duc', '#A855F7',
   'shut_in', '#F59E0B',
   'injection', '#0891B2',
   'permitted', '#2563EB',
@@ -1417,7 +1418,8 @@ export default function Map({
       })
 
       const kindLabel: Record<string, string> = {
-        producing: 'Producing', shut_in: 'Shut-in', injection: 'Injection / Disposal',
+        producing: 'Producing (PDP)', duc: 'DUC (drilled, uncompleted)',
+        shut_in: 'Shut-in', injection: 'Injection / Disposal',
         permitted: 'Permitted', horizontal: 'Drilled horizontal', vertical: 'Vertical well',
       }
       const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
