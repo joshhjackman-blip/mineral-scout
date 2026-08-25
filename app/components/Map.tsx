@@ -449,6 +449,9 @@ export default function Map({
   const showWellsRef = useRef(showWells)
   useEffect(() => { showWellsRef.current = showWells }, [showWells])
   // Color the well overlay by operator (per-county palette) instead of status.
+  // Tract fills default to a soft backdrop so the well/lateral overlay reads
+  // clearly on top; flip to bold for a pure development-status overview.
+  const [boldTracts, setBoldTracts] = useState(false)
   const [wellsByOperator, setWellsByOperator] = useState(false)
   const wellsByOperatorRef = useRef(wellsByOperator)
   useEffect(() => {
@@ -819,22 +822,28 @@ export default function Map({
         'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
         statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
       ]
-      if (operatorMatchAbstracts == null) return byStatus
+      // Soft backdrop by default (so wells/laterals read on top); full
+      // strength in bold mode. Applied as a final multiplier so it composes
+      // with the status-off (0) and operator-dim (0.12) cases.
+      const scale = boldTracts ? 1 : 0.42
+      const withScale = (expr: mapboxgl.Expression): mapboxgl.Expression =>
+        scale === 1 ? expr : (['*', expr, scale] as mapboxgl.Expression)
+      if (operatorMatchAbstracts == null) return withScale(byStatus)
       if (operatorMatchAbstracts.length === 0) {
-        return ['*', byStatus, 0.12] as mapboxgl.Expression
+        return withScale(['*', byStatus, 0.12] as mapboxgl.Expression)
       }
       // Cap literal size — Mapbox handles large `in` lists, but keep
       // the expression bounded for pathological counties.
       const literals = operatorMatchAbstracts.slice(0, 8000)
-      return [
+      return withScale([
         'case',
         ['in', ['get', 'ABSTRACT_L'], ['literal', literals]],
         byStatus,
         ['*', byStatus, 0.12],
-      ] as mapboxgl.Expression
+      ] as mapboxgl.Expression)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [statusVisible, operatorMatchAbstracts]
+    [statusVisible, operatorMatchAbstracts, boldTracts]
   )
 
   const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(
@@ -2553,6 +2562,16 @@ export default function Map({
     }
   }, [devStatusByAbstract, applyTractCountyStyles])
 
+  // Bold/subtle tract-fill toggle changes fill-opacity for the *same* county,
+  // which applyTractCountyStyles' same-county short-circuit would skip — so
+  // force a full re-style when it flips.
+  useEffect(() => {
+    if (!map.current?.isStyleLoaded() || mapLevel !== 'tract') return
+    lastStyledSelectedCountyRef.current = null
+    applyTractCountyStyles()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boldTracts])
+
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
     if (!map.current) return
@@ -2701,6 +2720,8 @@ export default function Map({
           onWells={setShowWells}
           wellsByOperator={wellsByOperator}
           onWellsByOperator={setWellsByOperator}
+          boldTracts={boldTracts}
+          onBoldTracts={setBoldTracts}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
@@ -2728,6 +2749,7 @@ function LayerTogglePanel({
   rigsVisible, onRigs,
   wellsVisible, onWells,
   wellsByOperator, onWellsByOperator,
+  boldTracts, onBoldTracts,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
   operatorOptions,
@@ -2745,6 +2767,8 @@ function LayerTogglePanel({
   onWells: (v: boolean) => void
   wellsByOperator: boolean
   onWellsByOperator: (v: boolean) => void
+  boldTracts: boolean
+  onBoldTracts: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
@@ -2829,6 +2853,15 @@ function LayerTogglePanel({
               color: '#DC2626',
               checked: rigsVisible,
               onChange: onRigs,
+            }}
+          />
+          <ToggleRow
+            row={{
+              label: 'Bold tract fills',
+              swatch: 'fill',
+              color: '#94A3B8',
+              checked: boldTracts,
+              onChange: onBoldTracts,
             }}
           />
           <ToggleRow
