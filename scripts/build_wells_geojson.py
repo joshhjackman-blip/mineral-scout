@@ -48,6 +48,19 @@ COUNTY_FIPS = {
 
 # RRC SYMNUM codes for a permitted / located-but-not-completed well.
 PERMIT_SYMNUMS = {1, 11, 21, 87, 116}
+# How many distinct operators get their own color in the per-operator palette.
+OPERATOR_PALETTE_SIZE = 12
+_OP_SUFFIX = __import__("re").compile(
+    r"[\s,\.]+(LLC|L\.?L\.?C|LP|L\.?P|LLP|INC|CORP|CO|COMPANY|LTD|OPERATING|"
+    r"RESOURCES|ENERGY|PRODUCTION|PETROLEUM|OIL\s*&?\s*GAS|USA|US|LIMITED)\b", __import__("re").I)
+
+
+def _op_key(name: str | None) -> str:
+    """Normalize an operator name for grouping (upper, drop common suffixes)."""
+    import re
+    s = re.sub(r"\s+", " ", str(name or "").strip().upper())
+    s = _OP_SUFFIX.sub("", s).strip(" ,.")
+    return s
 # Minimum surface->bottom horizontal displacement (deg, ~200 m) to treat a
 # permitted well as a (planned) horizontal rather than a vertical dot.
 PERMIT_LATERAL_MIN_DEG = 0.002
@@ -100,10 +113,28 @@ def wells_status_lookup(fips: str, county: str, base: str, headers: dict) -> dic
     return out
 
 
-def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
+WELLS_BUCKET = "Raw-Data"
+
+
+def ensure_well_zip(fips: str, base: str, headers: dict) -> Path:
+    """Return the local well{FIPS}.zip, downloading from Storage if absent
+    (so the nightly CI job doesn't need the zips committed to the repo)."""
     zp = ROOT / "data" / f"well{fips}.zip"
-    if not zp.exists():
-        raise SystemExit(f"missing {zp}")
+    if zp.exists():
+        return zp
+    if not base:
+        raise SystemExit(f"missing {zp} and no Supabase creds to fetch it")
+    print(f"  downloading {WELLS_BUCKET}/well{fips}.zip ...", flush=True)
+    with httpx.Client(timeout=180) as c:
+        r = c.get(f"{base}/storage/v1/object/{WELLS_BUCKET}/well{fips}.zip", headers=headers)
+        r.raise_for_status()
+    zp.parent.mkdir(parents=True, exist_ok=True)
+    zp.write_bytes(r.content)
+    return zp
+
+
+def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
+    zp = ensure_well_zip(fips, base, headers)
     features: list[dict] = []
     status_by_api = wells_status_lookup(fips, county, base, headers)
 
@@ -216,6 +247,19 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                 },
             })
 
+    # Operator coloring: rank the county's operators by well count and stamp an
+    # `op_idx` (0..N-1 for the top operators, -1 for the long tail) so the map
+    # can switch to a per-operator palette. `op` carries a short display name.
+    from collections import Counter
+    counts = Counter(_op_key(f["properties"].get("operator")) for f in features
+                     if _op_key(f["properties"].get("operator")))
+    top = [k for k, _ in counts.most_common(OPERATOR_PALETTE_SIZE)]
+    idx_of = {k: i for i, k in enumerate(top)}
+    for f in features:
+        opk = _op_key(f["properties"].get("operator"))
+        f["properties"]["op"] = opk or ""
+        f["properties"]["op_idx"] = idx_of.get(opk, -1)
+
     return {"type": "FeatureCollection", "features": features}
 
 
@@ -224,6 +268,9 @@ def main() -> None:
     ap.add_argument("--county", default=",".join(COUNTY_FIPS))
     ap.add_argument("--out", default="public")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--upload", action="store_true",
+                    help="also upload each geojson to the public Supabase "
+                         "Storage bucket so the map serves fresh data nightly")
     args = ap.parse_args()
 
     url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
@@ -244,8 +291,33 @@ def main() -> None:
         if args.dry_run:
             continue
         out = ROOT / args.out / f"{county}_wells.geojson"
-        out.write_text(json.dumps(fc, separators=(",", ":")))
+        blob = json.dumps(fc, separators=(",", ":"))
+        out.write_text(blob)
         print(f"  wrote {out} ({out.stat().st_size/1e6:.1f} MB)")
+        if args.upload:
+            if not base:
+                raise SystemExit("--upload needs SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY")
+            upload_to_storage(base, headers, f"{county}_wells.geojson", blob)
+
+
+MAP_BUCKET = "map-data"
+
+
+def upload_to_storage(base: str, headers: dict, name: str, blob: str) -> None:
+    """Upsert a geojson into the public MAP_BUCKET (created on first run)."""
+    with httpx.Client(timeout=120) as c:
+        # Ensure a public bucket exists (idempotent).
+        c.post(f"{base}/storage/v1/bucket", headers={**headers, "Content-Type": "application/json"},
+               json={"id": MAP_BUCKET, "name": MAP_BUCKET, "public": True})
+        r = c.post(
+            f"{base}/storage/v1/object/{MAP_BUCKET}/{name}",
+            headers={**headers, "Content-Type": "application/json",
+                     "x-upsert": "true", "cache-control": "max-age=300"},
+            content=blob.encode("utf-8"),
+        )
+        if r.status_code >= 300:
+            raise SystemExit(f"storage upload failed ({r.status_code}): {r.text[:200]}")
+        print(f"  uploaded {MAP_BUCKET}/{name}")
 
 
 if __name__ == "__main__":

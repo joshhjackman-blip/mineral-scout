@@ -38,6 +38,31 @@ const easedMove = (
   essential: true,
 })
 
+// Well-overlay coloring. Status mode = producing/shut-in/injection/permitted/
+// drilled-horizontal/vertical; operator mode = a fixed palette keyed on the
+// per-county operator rank (`op_idx`) stamped by build_wells_geojson.py.
+const WELL_STATUS_COLOR = [
+  'match', ['get', 'kind'],
+  'producing', '#16A34A',
+  'shut_in', '#F59E0B',
+  'injection', '#0891B2',
+  'permitted', '#2563EB',
+  'horizontal', '#EA580C',
+  'vertical', '#6B7280',
+  '#6B7280',
+] as unknown as mapboxgl.Expression
+const WELL_OPERATOR_PALETTE = [
+  '#2563EB', '#DC2626', '#16A34A', '#D97706', '#7C3AED', '#0891B2',
+  '#DB2777', '#65A30D', '#EA580C', '#0EA5E9', '#9333EA', '#059669',
+]
+function wellColorExpr(byOperator: boolean): mapboxgl.Expression {
+  if (!byOperator) return WELL_STATUS_COLOR
+  const m: unknown[] = ['match', ['get', 'op_idx']]
+  WELL_OPERATOR_PALETTE.forEach((c, i) => { m.push(i, c) })
+  m.push('#9CA3AF') // long-tail / unknown operator
+  return m as unknown as mapboxgl.Expression
+}
+
 // County navigation uses a flyTo *swoop* — an arc that lifts, travels, and
 // settles — so switching counties always reads as a purposeful jump, even
 // between adjacent counties.
@@ -423,6 +448,21 @@ export default function Map({
   const [showWells, setShowWells] = useState(true)
   const showWellsRef = useRef(showWells)
   useEffect(() => { showWellsRef.current = showWells }, [showWells])
+  // Color the well overlay by operator (per-county palette) instead of status.
+  const [wellsByOperator, setWellsByOperator] = useState(false)
+  const wellsByOperatorRef = useRef(wellsByOperator)
+  useEffect(() => {
+    wellsByOperatorRef.current = wellsByOperator
+    const mapInstance = map.current
+    if (!mapInstance?.isStyleLoaded()) return
+    const expr = wellColorExpr(wellsByOperator)
+    if (mapInstance.getLayer('wells-laterals-layer')) {
+      mapInstance.setPaintProperty('wells-laterals-layer', 'line-color', expr)
+    }
+    if (mapInstance.getLayer('wells-points-layer')) {
+      mapInstance.setPaintProperty('wells-points-layer', 'circle-color', expr)
+    }
+  }, [wellsByOperator])
   const wellsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const wellsHandlersRef = useRef<{
     clickHandler?: (e: mapboxgl.MapLayerMouseEvent) => void
@@ -1298,28 +1338,29 @@ export default function Map({
     if (opts?.force) delete wellsCacheRef.current[countyKey]
     let wellsGeoJSON = wellsCacheRef.current[countyKey] ?? null
     if (!wellsGeoJSON) {
-      try {
-        const res = await fetch(`/${cfg.id}_wells.geojson?v=1`)
-        if (!res.ok) return
-        wellsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
-      } catch {
-        return
+      // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
+      // committed /public baseline so the overlay still works if Storage misses.
+      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
+      const urls = [
+        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${cfg.id}_wells.geojson` : '',
+        `/${cfg.id}_wells.geojson?v=1`,
+      ].filter(Boolean)
+      for (const url of urls) {
+        try {
+          const res = await fetch(url)
+          if (!res.ok) continue
+          wellsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
+          break
+        } catch {
+          // try next source
+        }
       }
+      if (!wellsGeoJSON) return
       wellsCacheRef.current[countyKey] = wellsGeoJSON
       if (countyKey !== selectedCountyRef.current || !map.current) return
     }
 
-    // Color by status/type category (see build_wells_geojson.py `kind`).
-    const colorExpr = [
-      'match', ['get', 'kind'],
-      'producing', '#16A34A',
-      'shut_in', '#F59E0B',
-      'injection', '#0891B2',
-      'permitted', '#2563EB',
-      'horizontal', '#EA580C',
-      'vertical', '#6B7280',
-      '#6B7280',
-    ] as unknown as mapboxgl.Expression
+    const colorExpr = wellColorExpr(wellsByOperatorRef.current)
     const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
 
     if (!mapInstance.getSource('wells')) {
@@ -2658,6 +2699,8 @@ export default function Map({
           onRigs={setShowRigs}
           wellsVisible={showWells}
           onWells={setShowWells}
+          wellsByOperator={wellsByOperator}
+          onWellsByOperator={setWellsByOperator}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
@@ -2684,6 +2727,7 @@ function LayerTogglePanel({
   statusPalette, statusLabels,
   rigsVisible, onRigs,
   wellsVisible, onWells,
+  wellsByOperator, onWellsByOperator,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
   operatorOptions,
@@ -2699,6 +2743,8 @@ function LayerTogglePanel({
   onRigs: (v: boolean) => void
   wellsVisible: boolean
   onWells: (v: boolean) => void
+  wellsByOperator: boolean
+  onWellsByOperator: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
@@ -2794,6 +2840,19 @@ function LayerTogglePanel({
               onChange: onWells,
             }}
           />
+          {wellsVisible && (
+            <div style={{ marginLeft: 22 }}>
+              <ToggleRow
+                row={{
+                  label: 'Color by operator',
+                  swatch: 'dot',
+                  color: '#7C3AED',
+                  checked: wellsByOperator,
+                  onChange: onWellsByOperator,
+                }}
+              />
+            </div>
+          )}
         </div>
         <div
           style={{
