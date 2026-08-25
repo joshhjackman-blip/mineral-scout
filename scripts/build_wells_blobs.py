@@ -28,7 +28,7 @@ from shapely.ops import unary_union
 
 ROOT = Path(__file__).resolve().parent.parent
 # Render order: undeveloped/horizontal first (bottom), active signals on top.
-KIND_ORDER = ["vertical", "horizontal", "permitted", "injection", "shut_in", "producing"]
+KIND_ORDER = ["vertical", "horizontal", "permitted", "injection", "shut_in", "duc", "producing"]
 
 
 def build(county: str, buffer_ft: float, out_dir: str) -> None:
@@ -83,14 +83,40 @@ def build(county: str, buffer_ft: float, out_dir: str) -> None:
     print(f"{county}: {len(features)} blob layers {kinds} -> {out} ({out.stat().st_size/1e6:.2f} MB)")
 
 
+def upload(county: str, out_dir: str) -> None:
+    import os
+    from urllib.parse import urlparse
+    import httpx
+    url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
+    if not url or not key:
+        raise SystemExit("--upload needs SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY")
+    p = urlparse(url); base = f"{p.scheme}://{p.netloc}"
+    h = {"apikey": key, "Authorization": f"Bearer {key}"}
+    blob = (ROOT / out_dir / f"{county}_blobs.geojson").read_bytes()
+    with httpx.Client(timeout=120) as c:
+        c.post(f"{base}/storage/v1/bucket", headers={**h, "Content-Type": "application/json"},
+               json={"id": "map-data", "name": "map-data", "public": True})
+        r = c.post(f"{base}/storage/v1/object/map-data/{county}_blobs.geojson",
+                   headers={**h, "Content-Type": "application/json", "x-upsert": "true",
+                            "cache-control": "max-age=300"},
+                   content=blob)
+        if r.status_code >= 300:
+            raise SystemExit(f"blob upload failed ({r.status_code}): {r.text[:200]}")
+        print(f"  uploaded map-data/{county}_blobs.geojson")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--county", default="loving")
     ap.add_argument("--buffer-ft", type=float, default=330.0)
     ap.add_argument("--out", default="public")
+    ap.add_argument("--upload", action="store_true")
     args = ap.parse_args()
     for c in [x.strip() for x in args.county.split(",") if x.strip()]:
         build(c, args.buffer_ft, args.out)
+        if args.upload:
+            upload(c, args.out)
 
 
 if __name__ == "__main__":

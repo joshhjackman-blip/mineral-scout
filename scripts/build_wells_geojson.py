@@ -72,44 +72,92 @@ def _find(extract: Path, fips: str, suffix: str) -> Path | None:
 
 
 def _kind(status: str | None, is_permit: bool, is_line: bool) -> str:
-    """Color category. Geometry/type is authoritative (horizontal line vs
-    vertical dot vs permitted); producing/shut-in/injection are overlaid from
-    the wells table where known, otherwise we fall back to the geometry-derived
-    'horizontal'/'vertical' (never a bogus 'unknown')."""
-    if is_permit:
-        return "permitted"
-    s = (status or "").upper()
-    if "INJECT" in s or "DISPOS" in s or "SWD" in s:
+    """Legacy status-only classifier (kept for callers); prefer _classify."""
+    return _classify({"status": status}, {}, is_permit, is_line, "")
+
+
+def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
+              lease: str = "") -> str:
+    """Per-well designation from the RRC signals we have:
+      injection  — well status / lease is disposal/injection
+      shut_in    — well status SHUT IN
+      producing  — has a completion (PDP) or status PRODUCING/ACTIVE
+      duc        — spudded (permit) but no completion on file
+      permitted  — a permitted location (SYMNUM permit code), not yet spudded
+      horizontal — a drilled lateral with no other signal
+      vertical   — a point well with no other signal
+    """
+    s = (winfo.get("status") or "").upper()
+    lu = (lease or "").upper()
+    if "INJECT" in s or "DISPOS" in s or "SWD" in s or " SWD" in lu or "DISPOSAL" in lu:
         return "injection"
     if "SHUT" in s:
         return "shut_in"
-    if "PROD" in s or s in ("ACTIVE", "OIL", "GAS"):
+    completed = bool(winfo.get("completion")) or bool(pinfo.get("completion"))
+    if completed or "PROD" in s or s in ("ACTIVE", "OIL", "GAS"):
         return "producing"
-    if "PLUG" in s or "DRY" in s or "CANCEL" in s:
-        return "plugged"
+    if pinfo.get("spud"):
+        return "duc"
+    if is_permit:
+        return "permitted"
     return "horizontal" if is_line else "vertical"
 
 
-def wells_status_lookup(fips: str, county: str, base: str, headers: dict) -> dict[str, dict]:
-    out: dict[str, dict] = {}
+def _paged(table: str, select: str, base: str, headers: dict) -> list[dict]:
+    # PostgREST caps a single response at 1000 rows regardless of `limit`, so
+    # keyset-paginate in 1000-row pages and stop only on a short page.
+    PAGE = 1000
+    out: list[dict] = []
     with httpx.Client(timeout=90) as c:
         last = 0
         while True:
-            r = c.get(f"{base}/rest/v1/{county}_wells",
-                      params={"select": "id,api_number,well_status,operator_name",
-                              "order": "id.asc", "id": f"gt.{last}", "limit": "2000"},
+            r = c.get(f"{base}/rest/v1/{table}",
+                      params={"select": f"id,{select}", "order": "id.asc",
+                              "id": f"gt.{last}", "limit": str(PAGE)},
                       headers=headers)
             rows = r.json()
             if not isinstance(rows, list) or not rows:
                 break
-            for row in rows:
-                api = str(row.get("api_number") or "").strip()
-                if api and api not in out:
-                    out[api] = {"status": row.get("well_status"),
-                                "operator": row.get("operator_name")}
+            out.extend(rows)
             last = rows[-1]["id"]
-            if len(rows) < 2000:
+            if len(rows) < PAGE:
                 break
+    return out
+
+
+def wells_status_lookup(fips: str, county: str, base: str, headers: dict) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for row in _paged(f"{county}_wells",
+                      "api_number,well_status,operator_name,completion_date,oil_gas_code",
+                      base, headers):
+        api = str(row.get("api_number") or "").strip()
+        if api and api not in out:
+            out[api] = {
+                "status": row.get("well_status"),
+                "operator": row.get("operator_name"),
+                "completion": row.get("completion_date"),
+                "oil_gas": row.get("oil_gas_code"),
+            }
+    return out
+
+
+def permits_lookup(county: str, base: str, headers: dict) -> dict[str, dict]:
+    """{api: {spud, completion, operator}} from <county>_permits — gives DUC
+    (spud, no completion) and extra PDP/operator coverage the wells table lacks."""
+    out: dict[str, dict] = {}
+    try:
+        rows = _paged(f"{county}_permits",
+                      "api_number,spud_date,completion_date,operator_name", base, headers)
+    except Exception:
+        return out
+    for row in rows:
+        api = str(row.get("api_number") or "").strip()
+        if not api:
+            continue
+        cur = out.setdefault(api, {"spud": None, "completion": None, "operator": None})
+        cur["spud"] = cur["spud"] or row.get("spud_date")
+        cur["completion"] = cur["completion"] or row.get("completion_date")
+        cur["operator"] = cur["operator"] or row.get("operator_name")
     return out
 
 
@@ -137,6 +185,7 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
     zp = ensure_well_zip(fips, base, headers)
     features: list[dict] = []
     status_by_api = wells_status_lookup(fips, county, base, headers)
+    permits_by_api = permits_lookup(county, base, headers)
 
     with tempfile.TemporaryDirectory() as t:
         extract = Path(t)
@@ -191,22 +240,24 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                 if len(coords) >= 2:
                     laterals.setdefault(api, coords)
 
-    def op_status(api: str) -> tuple[str | None, str | None]:
-        info = status_by_api.get(api, {})
-        return info.get("status"), info.get("operator")
+    def info_for(api: str) -> tuple[dict, dict, str | None]:
+        w = status_by_api.get(api, {})
+        p = permits_by_api.get(api, {})
+        operator = w.get("operator") or p.get("operator")
+        return w, p, operator
 
     drawn: set[str] = set()
 
     # 1) Drilled horizontal laterals (as-drilled lines).
     for api, coords in laterals.items():
-        status, operator = op_status(api)
+        w, p, operator = info_for(api)
         features.append({
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": coords},
             "properties": {
                 "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                "kind": _kind(status, False, True),
-                "status": status, "operator": operator,
+                "kind": _classify(w, p, False, True),
+                "status": w.get("status"), "operator": operator,
             },
         })
         drawn.add(api)
@@ -216,7 +267,7 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
         if api in drawn:
             continue
         is_permit = s["symnum"] in PERMIT_SYMNUMS
-        status, operator = op_status(api)
+        w, p, operator = info_for(api)
         bh = bottom.get(api)
         if is_permit and bh and (
             abs(bh[0] - s["lon"]) + abs(bh[1] - s["lat"]) >= PERMIT_LATERAL_MIN_DEG
@@ -230,7 +281,8 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                 ]},
                 "properties": {
                     "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                    "kind": "permitted", "status": status, "operator": operator,
+                    "kind": _classify(w, p, True, True),
+                    "status": w.get("status"), "operator": operator,
                 },
             })
         else:
@@ -242,8 +294,8 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                     "geom": "point",
                     "well_type": "VERTICAL" if not is_permit else "PERMIT",
                     "api": api,
-                    "kind": _kind(status, is_permit, False),
-                    "status": status, "operator": operator,
+                    "kind": _classify(w, p, is_permit, False),
+                    "status": w.get("status"), "operator": operator,
                 },
             })
 
