@@ -2891,17 +2891,15 @@ function LayerTogglePanel({
         overflow: 'visible',
       }}
     >
-      <div>
-        <div style={sectionHeadingStyle}>Legend</div>
+      <CollapsibleSection title="Legend">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {legendRows.map((row) => (
             <ToggleRow key={row.label} row={row} />
           ))}
         </div>
-      </div>
+      </CollapsibleSection>
 
-      <div style={{ borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 }}>
-        <div style={sectionHeadingStyle}>Overlays</div>
+      <CollapsibleSection title="Overlays" topBorder>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           <ToggleRow
             row={{
@@ -2979,38 +2977,6 @@ function LayerTogglePanel({
               onChange: onBlobs,
             }}
           />
-          {(wellsVisible || blobsVisible) && (
-            <div
-              style={{
-                marginTop: 6,
-                paddingTop: 6,
-                borderTop: '1px solid var(--mm-chrome-border)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 4,
-              }}
-            >
-              <div style={{ fontSize: 10.5, color: 'var(--mm-chrome-muted)', fontWeight: 600 }}>
-                WELL STATUS
-              </div>
-              {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'horizontal', 'vertical'].map(
-                (k) => (
-                  <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
-                    <span
-                      style={{
-                        width: 12,
-                        height: 12,
-                        borderRadius: 3,
-                        background: WELL_KIND_COLORS[k],
-                        flexShrink: 0,
-                      }}
-                    />
-                    <span style={{ color: 'var(--mm-chrome-fg)' }}>{WELL_KIND_LABEL[k]}</span>
-                  </div>
-                ),
-              )}
-            </div>
-          )}
         </div>
         <div
           style={{
@@ -3026,19 +2992,90 @@ function LayerTogglePanel({
           Red dot: oil/gas well spudded in the last 12 months
           with no completion on file (SWDs excluded).
         </div>
-      </div>
+      </CollapsibleSection>
+
+      {(wellsVisible || blobsVisible) && (
+        <CollapsibleSection title="Well status" topBorder>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'horizontal', 'vertical'].map(
+              (k) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                  <span
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: 3,
+                      background: WELL_KIND_COLORS[k],
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span style={{ color: 'var(--mm-chrome-fg)' }}>{WELL_KIND_LABEL[k]}</span>
+                </div>
+              ),
+            )}
+          </div>
+        </CollapsibleSection>
+      )}
 
       {onOperatorKeysChange && (
-        <div style={{ borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 }}>
-          <div style={sectionHeadingStyle}>Operator</div>
+        <CollapsibleSection title="Operator" topBorder>
           <OperatorMultiSelect
             options={operatorOptions}
             selectedKeys={selectedOperatorKeys}
             onChange={onOperatorKeysChange}
             matchCount={operatorMatchTractCount}
           />
-        </div>
+        </CollapsibleSection>
       )}
+    </div>
+  )
+}
+
+// Collapsible panel section — default open, click the header to toggle.
+function CollapsibleSection({
+  title,
+  children,
+  defaultOpen = true,
+  topBorder = false,
+}: {
+  title: string
+  children: React.ReactNode
+  defaultOpen?: boolean
+  topBorder?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={topBorder ? { borderTop: '1px solid var(--mm-chrome-border)', paddingTop: 8 } : undefined}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          ...sectionHeadingStyle,
+          marginBottom: open ? 6 : 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          width: '100%',
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: 'pointer',
+        }}
+        aria-expanded={open}
+      >
+        <span>{title}</span>
+        <span
+          style={{
+            fontSize: 9,
+            lineHeight: 1,
+            transform: open ? 'rotate(90deg)' : 'none',
+            transition: 'transform 0.15s ease',
+          }}
+        >
+          ▶
+        </span>
+      </button>
+      {open && children}
     </div>
   )
 }
