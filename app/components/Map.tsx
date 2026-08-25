@@ -999,6 +999,12 @@ export default function Map({
     for (const id of ids) {
       if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
     }
+    // The well overlay must sit ABOVE the parcel fills we just moved to the
+    // top — otherwise the (opaque) tract fill buries the laterals/dots/blobs.
+    // Order: blob fill (bottom) -> laterals -> vertical dots -> rigs (top).
+    for (const id of ['wells-blobs-fill', 'wells-laterals-layer', 'wells-points-layer']) {
+      if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+    }
     // Rigs always sit on top of everything else so they're visible
     // against any tract fill and above the permit glow. Was
     // previously painted under the parcel layers.
