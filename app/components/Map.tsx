@@ -3011,9 +3011,9 @@ function LayerTogglePanel({
                 <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                   <span
                     style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: 3,
+                      width: 16,
+                      height: 3,
+                      borderRadius: 2,
                       background: WELL_KIND_COLORS[k],
                       flexShrink: 0,
                     }}
