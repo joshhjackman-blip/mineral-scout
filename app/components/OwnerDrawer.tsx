@@ -748,8 +748,13 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     owner.ownership_pct ?? owner.decimal_interest,
     county.ownershipPctIsDecimal,
   )
-  const acreage = displayNumber(owner.acreage)
-  const nra = (ownershipPct != null && owner.acreage != null)
+  // Royalty / override lines (RI, OR) carry no gross acreage on the CAD
+  // roll, so acreage comes through as 0. Treat that as "not on file" rather
+  // than "owns zero acres" — otherwise NMA (gross × interest) reads as a
+  // misleading 0.000 for what is really a revenue-share royalty interest.
+  const hasAcreage = owner.acreage != null && Number(owner.acreage) > 0
+  const acreage = hasAcreage ? displayNumber(owner.acreage) : null
+  const nra = (hasAcreage && ownershipPct != null)
     ? Number(owner.acreage) * (ownershipPct / 100)
     : null
   const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
@@ -1221,12 +1226,18 @@ function OverviewPanel({
         <StatCard
           label="Gross acres"
           value={acreage ?? '—'}
-          hint={owner.interest_type ? `Interest: ${owner.interest_type}` : undefined}
+          hint={
+            acreage != null
+              ? (owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
+              : (clean(owner.sptb_code)
+                  ? `${owner.sptb_code} interest — no acreage on roll`
+                  : 'No acreage on roll for this interest')
+          }
         />
         <StatCard
           label="Net mineral acres"
           value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
-          hint="gross acres × mineral interest"
+          hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
         />
         <StatCard
           label="Est. royalty"
