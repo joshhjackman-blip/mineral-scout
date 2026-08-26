@@ -810,8 +810,11 @@ def main() -> None:
                 if isinstance(raw_record, dict):
                     interest_value = raw_record.get("Interest")
                 try:
+                    # Store the raw 0-1 decimal interest to match the DB and
+                    # the frontend's ownershipPctIsDecimal (x100) convention.
+                    # Multiplying here too double-scaled interests 100x.
                     ownership_pct = (
-                        round(float(interest_value) * 100.0, 4)
+                        round(float(interest_value), 6)
                         if interest_value is not None
                         else None
                     )

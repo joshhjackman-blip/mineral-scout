@@ -2879,6 +2879,7 @@ function LayerTogglePanel({
 
   return (
     <div
+      data-tour="layer-legend"
       style={{
         position: 'absolute',
         right: 12,

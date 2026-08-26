@@ -43,16 +43,18 @@ import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 import PermitsNavLink from './components/PermitsNavLink'
-import ProductTour, { TOUR_EVENT, type TourStep } from './components/ProductTour'
+import ProductTour, { TOUR_EVENT, TOUR_ADVANCE_EVENT, type TourStep } from './components/ProductTour'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
-// First-run guided tour for newcomers. Steps anchor to [data-tour=...]
-// elements in the top chrome + map; anchor-less steps render centered.
+// Single interactive product tour for newcomers. Steps anchor to
+// [data-tour=...] elements; anchor-less steps render centered. Some steps
+// are action-gated (awaitId) — the tour waits for the user to click a
+// county / tract before advancing and explaining what just appeared.
 const TOUR_STEPS: TourStep[] = [
   {
     title: 'Welcome to Mineral Map',
-    body: "Here's a 30-second tour of how to find mineral tracts and owners. You can replay it anytime from the ? button in the top bar.",
+    body: 'The complete mineral-rights prospecting platform for the Permian Basin — every owner mapped and ready to contact. This quick tour walks through it, and you click along as you go.',
     placement: 'center',
   },
   {
@@ -62,26 +64,44 @@ const TOUR_STEPS: TourStep[] = [
     placement: 'bottom',
   },
   {
-    selector: '[data-tour="county-select"]',
-    title: 'Switch counties',
-    body: 'Choose the county you want to work. The map flies there and loads its tracts automatically.',
-    placement: 'bottom',
+    selector: '[data-tour="map"]',
+    title: 'Open a county',
+    body: 'The map starts zoomed out over the Permian Basin. Click any county to dive in — go ahead and pick one now.',
+    placement: 'center',
+    awaitId: 'county',
+    actionHint: 'Click a county on the map to continue',
+    satisfied: (c) => c.mapLevel === 'tract',
+  },
+  {
+    selector: '[data-tour="layer-legend"]',
+    title: 'Legend & overlays',
+    body: "Now that you're inside a county, this panel controls the map. The Legend colors each tract by development status — PDP (producing today), DUC, infill, and true PUD. Overlays layer on wells, drilling permits, and development blobs, and Well status explains the well-line colors.",
+    placement: 'left',
   },
   {
     selector: '[data-tour="map"]',
-    title: 'Read the map',
-    body: 'Each tract is colored by development status — cooler colors are earlier-stage opportunities, warmer ones are active or already producing. Click any tract to open its owner list.',
+    title: 'Open a tract',
+    body: 'Each colored shape is a survey abstract. Click one to pull up every fractional mineral owner on it.',
     placement: 'center',
+    awaitId: 'tract',
+    actionHint: 'Click a tract on the map to continue',
+    satisfied: (c) => !!c.tractSelected,
+  },
+  {
+    selector: '[data-tour="owner-panel"]',
+    title: 'Owners & outreach',
+    body: "This is the full owner list for the tract. Sort or search it, open a row to see an owner's holdings across every county, skip-trace for phone and email, or add them straight to your CRM pipeline.",
+    placement: 'right',
   },
   {
     selector: '[data-tour="nav-menu"]',
     title: 'Permits & pipeline',
-    body: 'Open this menu for recent drilling permits and your CRM pipeline to track outreach.',
+    body: 'Open this menu anytime for recent drilling permits and your CRM pipeline — track contacts, reminders, notes, and offers.',
     placement: 'bottom',
   },
   {
-    title: "You're ready to go",
-    body: "Click a tract to see who owns it, then skip-trace an owner to pull contact info. That's the core workflow — happy hunting!",
+    title: "You're ready to prospect",
+    body: 'Start with any tract that has an active permit or PDP well — those are your best leads. You can replay this tour anytime from the ? button.',
     placement: 'center',
   },
 ]
@@ -548,39 +568,6 @@ const buildLegalDescription = (tract: TractSelection | null | undefined): string
   return abstract || ''
 }
 
-const ONBOARDING_STEPS = [
-  {
-    step: '01',
-    title: 'Welcome to Mineral Map',
-    body: 'The complete mineral rights prospecting platform for the Permian Basin. Every owner, mapped, and ready to contact. This tour takes about 60 seconds.',
-  },
-  {
-    step: '02',
-    title: 'Read the map',
-    body: 'Every survey abstract is colored by activity: yellow tracts have PDP wells producing today, green tracts have PUD wells permitted or drilling, and a blue dot means a fresh permit was just filed. That is where to focus.',
-  },
-  {
-    step: '03',
-    title: 'Click any tract',
-    body: 'Clicking a tract opens the full list of fractional owners. Sort them A to Z, Z to A, largest by NMA, or smallest, and open any row to see holdings across every county on one screen.',
-  },
-  {
-    step: '04',
-    title: 'Search by owner name',
-    body: 'Use the search bar to find any of the mineral owners by name. Results are deduplicated across counties and sorted alphabetically.',
-  },
-  {
-    step: '05',
-    title: 'Build your pipeline',
-    body: 'Add any owner to your pipeline with one click. The CRM tracks contacts, follow-up reminders, notes, and offers. Skip trace for phone and email directly from the owner drawer.',
-  },
-  {
-    step: '06',
-    title: 'Ready to prospect',
-    body: 'Start by clicking any tract with an active permit or PDP well. Your best leads are waiting.',
-  },
-]
-
 const toNumber = (value: unknown): number => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0
   const parsed = Number(value)
@@ -899,8 +886,6 @@ export default function Home() {
   const [highlightedOwner, setHighlightedOwner] = useState<string | null>(null)
   const [countySwitchLabel, setCountySwitchLabel] = useState<string | null>(null)
   const [countySwitchLabelVisible, setCountySwitchLabelVisible] = useState(false)
-  const [showOnboarding, setShowOnboarding] = useState(false)
-  const [onboardingStep, setOnboardingStep] = useState(0)
   // Kept for future map focus heuristics if we add lease-id filtering in Map.tsx.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [mapFocusTarget, setMapFocusTarget] = useState<MapFocusTarget | null>(null)
@@ -1172,10 +1157,22 @@ export default function Home() {
     }
   }, [])
 
+  // Notify the product tour when the user hits a milestone so its
+  // action-gated steps advance: clicking a county (enter tract view) →
+  // explain the legend/overlays; clicking a tract → explain the owner panel.
+  const prevMapLevelRef = useRef(mapLevel)
   useEffect(() => {
-    const seen = window.localStorage.getItem('mineral_map_onboarded')
-    if (!seen) setShowOnboarding(true)
-  }, [])
+    if (prevMapLevelRef.current !== 'tract' && mapLevel === 'tract') {
+      window.dispatchEvent(new CustomEvent(TOUR_ADVANCE_EVENT, { detail: { id: 'county' } }))
+    }
+    prevMapLevelRef.current = mapLevel
+  }, [mapLevel])
+
+  useEffect(() => {
+    if (selected && (selected.abstract_label || selected.ABSTRACT_L)) {
+      window.dispatchEvent(new CustomEvent(TOUR_ADVANCE_EVENT, { detail: { id: 'tract' } }))
+    }
+  }, [selected])
 
   useEffect(() => {
     return () => {
@@ -1666,12 +1663,6 @@ export default function Home() {
       setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: false }))
     }
   }, [selected])
-
-  const completeOnboarding = () => {
-    window.localStorage.setItem('mineral_map_onboarded', 'true')
-    setShowOnboarding(false)
-    setOnboardingStep(0)
-  }
 
   const getDefaultPipelineTag = (): PipelineTag => {
     // Default pipeline tag is now 'prospect' for everything;
@@ -2952,7 +2943,14 @@ export default function Home() {
         fontFamily: 'system-ui, sans-serif',
       }}
     >
-      <ProductTour steps={TOUR_STEPS} />
+      <ProductTour
+        steps={TOUR_STEPS}
+        storageKey="mineral_map_tour_v2"
+        context={{
+          mapLevel,
+          tractSelected: Boolean(selected && (selected.abstract_label || selected.ABSTRACT_L)),
+        }}
+      />
       {/* Top header */}
       <div
         style={{
@@ -3152,33 +3150,6 @@ export default function Home() {
                 </option>
               ))}
             </select>
-            {!isMobile && (
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
-                aria-label="Take the product tour"
-                title="Take the product tour"
-                style={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: '50%',
-                  border: '1px solid var(--mm-chrome-border)',
-                  background: 'var(--mm-chrome-panel)',
-                  color: 'var(--mm-chrome-muted)',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: 0,
-                  flexShrink: 0,
-                }}
-              >
-                ?
-              </button>
-            )}
           </div>
         </div>
         {!isMobile && (
@@ -3416,10 +3387,7 @@ export default function Home() {
             </a>
           )}
           <button
-            onClick={() => {
-              setOnboardingStep(0)
-              setShowOnboarding(true)
-            }}
+            onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
             style={{
               fontSize: 12,
               color: 'var(--mm-chrome-muted)',
@@ -3517,6 +3485,7 @@ export default function Home() {
         )}
         {/* Left panel */}
         <div
+          data-tour="owner-panel"
           style={{
             width: drawerOwner ? 0 : (isMobile ? '100%' : 'clamp(300px, 30vw, 420px)'),
             minWidth: drawerOwner ? 0 : (isMobile ? 0 : 'clamp(300px, 30vw, 420px)'),
@@ -5116,153 +5085,6 @@ export default function Home() {
           }}
         >
           {toastType === 'error' ? '✕' : '✓'} {toast}
-        </div>
-      )}
-
-      {showOnboarding && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 12,
-              width: 'min(520px, calc(100vw - 24px))',
-              boxShadow: '0 32px 80px rgba(0,0,0,0.25)',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                height: 3,
-                background: '#EF9F27',
-                width: `${((onboardingStep + 1) / ONBOARDING_STEPS.length) * 100}%`,
-                transition: 'width 0.3s ease',
-              }}
-            />
-
-            <div style={{ padding: '36px 40px 32px' }}>
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  color: 'var(--mm-chrome-muted)',
-                  letterSpacing: '0.12em',
-                  textTransform: 'uppercase',
-                  marginBottom: 20,
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                }}
-              >
-                Step {ONBOARDING_STEPS[onboardingStep].step} of {String(ONBOARDING_STEPS.length).padStart(2, '0')}
-              </div>
-
-              <h2
-                style={{
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  fontSize: 24,
-                  fontWeight: 700,
-                  color: 'var(--mm-chrome-fg)',
-                  marginBottom: 14,
-                  lineHeight: 1.2,
-                  letterSpacing: '-0.01em',
-                }}
-              >
-                {ONBOARDING_STEPS[onboardingStep].title}
-              </h2>
-
-              <p
-                style={{
-                  fontSize: 14,
-                  color: '#4B5563',
-                  lineHeight: 1.75,
-                  marginBottom: 36,
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                }}
-              >
-                {ONBOARDING_STEPS[onboardingStep].body}
-              </p>
-
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <button
-                  onClick={completeOnboarding}
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--mm-chrome-muted)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    padding: 0,
-                  }}
-                >
-                  Skip tour
-                </button>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {onboardingStep > 0 && (
-                    <button
-                      onClick={() => setOnboardingStep((s) => s - 1)}
-                      style={{
-                        padding: '9px 20px',
-                        borderRadius: 7,
-                        fontSize: 13,
-                        background: 'transparent',
-                        border: '1px solid var(--mm-chrome-border)',
-                        color: 'var(--mm-chrome-fg)',
-                        cursor: 'pointer',
-                        fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                        fontWeight: 500,
-                      }}
-                    >
-                      Back
-                    </button>
-                  )}
-                  {onboardingStep < ONBOARDING_STEPS.length - 1 ? (
-                    <button
-                      onClick={() => setOnboardingStep((s) => s + 1)}
-                      style={{
-                        padding: '9px 24px',
-                        borderRadius: 7,
-                        fontSize: 13,
-                        background: '#111827',
-                        border: 'none',
-                        color: '#fff',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                      }}
-                    >
-                      Next
-                    </button>
-                  ) : (
-                    <button
-                      onClick={completeOnboarding}
-                      style={{
-                        padding: '9px 24px',
-                        borderRadius: 7,
-                        fontSize: 13,
-                        background: '#EF9F27',
-                        border: 'none',
-                        color: '#fff',
-                        cursor: 'pointer',
-                        fontWeight: 600,
-                        fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                      }}
-                    >
-                      Start prospecting
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

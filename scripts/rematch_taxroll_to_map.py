@@ -129,7 +129,10 @@ def owner_payload(row: dict[str, Any], abstract: str) -> dict[str, Any]:
         "field_name": clean_str(row.get("field_name")) or "",
         "rrc_lease_id": rrc or "",
         "acreage": acreage,
-        "ownership_pct": (round(interest * 100.0, 6) if interest is not None else None),
+        # Raw 0-1 decimal interest, matching the DB + the frontend's
+        # ownershipPctIsDecimal (x100 for display) convention. Multiplying
+        # by 100 here double-scaled embedded interests 100x on the map.
+        "ownership_pct": (round(interest, 6) if interest is not None else None),
         "appraised_value": value,
         "abstract": abstract,
         "survey": clean_str(row.get("survey")),

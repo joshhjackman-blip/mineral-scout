@@ -9,6 +9,13 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+// Context the host page feeds in so gated steps know when the required
+// action has already happened (e.g. the user is already inside a county).
+export type TourContext = {
+  mapLevel?: 'county' | 'tract'
+  tractSelected?: boolean
+}
+
 export type TourStep = {
   // CSS selector for the element to spotlight. Omit for a centered,
   // anchor-less step (e.g. the welcome / finish cards).
@@ -16,10 +23,20 @@ export type TourStep = {
   title: string
   body: string
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'center'
+  // Action-gated step: instead of a Next button, wait for the host page to
+  // dispatch `mm:tour-advance` with detail.id === awaitId (e.g. the user
+  // clicks a county / a tract). `actionHint` is the nudge shown meanwhile.
+  awaitId?: string
+  actionHint?: string
+  // If this returns true for the current context, the required action is
+  // already done, so the step un-gates and just shows Next.
+  satisfied?: (ctx: TourContext) => boolean
 }
 
-// Fired by the "?" help button so the tour can be replayed on demand.
+// Fired by the "?" help button to replay, and by the host page (with a
+// detail.id) to advance action-gated steps.
 export const TOUR_EVENT = 'mm:start-tour'
+export const TOUR_ADVANCE_EVENT = 'mm:tour-advance'
 
 const SPOTLIGHT_PADDING = 8
 const CARD_WIDTH = 320
@@ -29,10 +46,12 @@ export default function ProductTour({
   steps,
   storageKey = 'mm_product_tour_v1',
   autoStart = true,
+  context = {},
 }: {
   steps: TourStep[]
   storageKey?: string
   autoStart?: boolean
+  context?: TourContext
 }) {
   const [mounted, setMounted] = useState(false)
   const [active, setActive] = useState(false)
@@ -90,6 +109,19 @@ export default function ProductTour({
   }, [start])
 
   const step = active ? steps[index] : null
+  const isGated = Boolean(step?.awaitId) && !(step?.satisfied?.(context) ?? false)
+
+  // Advance action-gated steps when the host page reports the matching
+  // milestone (e.g. a county / tract was clicked).
+  useEffect(() => {
+    if (!active) return
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { id?: string } | undefined
+      if (step?.awaitId && detail?.id === step.awaitId) next()
+    }
+    window.addEventListener(TOUR_ADVANCE_EVENT, handler)
+    return () => window.removeEventListener(TOUR_ADVANCE_EVENT, handler)
+  }, [active, step, next])
 
   const measure = useCallback(() => {
     if (!step || !step.selector) {
@@ -104,13 +136,25 @@ export default function ProductTour({
     measure()
   }, [measure, index, active])
 
+  // Poll briefly for anchors that mount late (map tiles, panels that only
+  // appear at tract level) so the spotlight lands once they're in the DOM.
+  const rectPresent = rect !== null
+  useEffect(() => {
+    if (!active || !step?.selector || rectPresent) return
+    let tries = 0
+    const id = window.setInterval(() => {
+      tries += 1
+      measure()
+      if (tries > 20) window.clearInterval(id)
+    }, 200)
+    return () => window.clearInterval(id)
+  }, [active, step, rectPresent, measure])
+
   useEffect(() => {
     if (!active) return
     const onReflow = () => measure()
     window.addEventListener('resize', onReflow)
     window.addEventListener('scroll', onReflow, true)
-    // Re-measure a couple of times so late layout (map tiles, web fonts)
-    // doesn't leave the spotlight on a stale rect.
     const t1 = window.setTimeout(measure, 150)
     const t2 = window.setTimeout(measure, 500)
     return () => {
@@ -125,12 +169,12 @@ export default function ProductTour({
     if (!active) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') finish()
-      else if (e.key === 'ArrowRight') next()
+      else if (e.key === 'ArrowRight' && !isGated) next()
       else if (e.key === 'ArrowLeft') prev()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [active, finish, next, prev])
+  }, [active, isGated, finish, next, prev])
 
   if (!mounted || !active || !step) return null
 
@@ -140,27 +184,18 @@ export default function ProductTour({
   const isLast = index === steps.length - 1
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
 
-  // Position the card relative to the spotlit element, flipping/clamping so
-  // it always stays on screen. Centered when there's no anchor.
   const cardPos: CSSProperties = (() => {
     if (!rect || placement === 'center') {
       return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
     }
     const gap = 12
-    const estHeight = 190
+    const estHeight = 210
     if (placement === 'right' && rect.right + gap + CARD_WIDTH <= vw) {
-      return {
-        top: clamp(rect.top, 12, vh - estHeight - 12),
-        left: rect.right + gap,
-      }
+      return { top: clamp(rect.top, 12, vh - estHeight - 12), left: rect.right + gap }
     }
     if (placement === 'left' && rect.left - gap - CARD_WIDTH >= 0) {
-      return {
-        top: clamp(rect.top, 12, vh - estHeight - 12),
-        left: rect.left - gap - CARD_WIDTH,
-      }
+      return { top: clamp(rect.top, 12, vh - estHeight - 12), left: rect.left - gap - CARD_WIDTH }
     }
-    // Prefer below; flip above when there isn't room.
     const below = rect.bottom + gap + estHeight <= vh
     const left = clamp(rect.left, 12, vw - CARD_WIDTH - 12)
     return below
@@ -240,6 +275,36 @@ export default function ProductTour({
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{step.title}</div>
         <div style={{ fontSize: 13, lineHeight: 1.5, color: '#475569' }}>{step.body}</div>
 
+        {isGated && step.actionHint && (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '8px 10px',
+              borderRadius: 8,
+              background: 'rgba(239, 159, 39, 0.12)',
+              border: `1px solid rgba(239, 159, 39, 0.4)`,
+              color: '#92400e',
+              fontSize: 12,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: ACCENT,
+                flexShrink: 0,
+                animation: 'mmTourPulse 1.1s ease-in-out infinite',
+              }}
+            />
+            {step.actionHint}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 4, margin: '14px 0' }}>
           {steps.map((_, i) => (
             <span
@@ -270,7 +335,7 @@ export default function ProductTour({
           >
             Skip tour
           </button>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             {index > 0 && (
               <button
                 type="button"
@@ -289,25 +354,44 @@ export default function ProductTour({
                 Back
               </button>
             )}
-            <button
-              type="button"
-              onClick={next}
-              style={{
-                border: 'none',
-                background: ACCENT,
-                color: '#fff',
-                fontSize: 13,
-                fontWeight: 600,
-                borderRadius: 8,
-                padding: '7px 16px',
-                cursor: 'pointer',
-              }}
-            >
-              {isLast ? 'Done' : 'Next'}
-            </button>
+            {isGated ? (
+              <button
+                type="button"
+                onClick={next}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#94a3b8',
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  padding: '7px 4px',
+                }}
+              >
+                Skip step →
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={next}
+                style={{
+                  border: 'none',
+                  background: ACCENT,
+                  color: '#fff',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  borderRadius: 8,
+                  padding: '7px 16px',
+                  cursor: 'pointer',
+                }}
+              >
+                {isLast ? 'Done' : 'Next'}
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      <style>{`@keyframes mmTourPulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }`}</style>
     </div>
   )
 
