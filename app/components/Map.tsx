@@ -2120,6 +2120,15 @@ export default function Map({
       const countyKey = countyEntries.find(([, countyConfig]) => countyConfig.id === topCountyId)?.[0]
       if (!countyKey) return
 
+      // Did the click land on a well line/dot? If so we keep the tract
+      // selection (owner panel) but must NOT move the camera — re-fitting the
+      // whole tract zooms the user out, which is jarring when they clicked a
+      // well while zoomed in. The well's own popup handles the interaction.
+      const wellLayerIds = ['wells-laterals-layer', 'wells-points-layer']
+        .filter((id) => !!map.current?.getLayer(id))
+      const clickedWell = wellLayerIds.length > 0 &&
+        map.current.queryRenderedFeatures(event.point, { layers: wellLayerIds }).length > 0
+
       const props = topFeature.properties as Record<string, unknown> | undefined
       // County switches must never be debounced — swapping counties is a
       // deliberate navigation and always fires the swoop to the new county.
@@ -2147,7 +2156,7 @@ export default function Map({
           String(featureProps?.CODE) === String(clickedAbstract)
       })
       const geometry = matchedFeature?.geometry ?? (topFeature.geometry as GeoJSON.Geometry | undefined)
-      if (geometry) {
+      if (geometry && !clickedWell) {
         setTimeout(() => {
           if (map.current) {
             try {
