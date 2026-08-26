@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import dynamic from 'next/dynamic'
 
 // recharts is no longer imported here: the tract sidebar's per-tract line
@@ -43,8 +43,48 @@ import OwnerDrawer from './components/OwnerDrawer'
 import MarketPricesWidget from './components/MarketPricesWidget'
 import BasinActivityWidget from './components/BasinActivityWidget'
 import PermitsNavLink from './components/PermitsNavLink'
+import ProductTour, { TOUR_EVENT, type TourStep } from './components/ProductTour'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
+
+// First-run guided tour for newcomers. Steps anchor to [data-tour=...]
+// elements in the top chrome + map; anchor-less steps render centered.
+const TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Welcome to Mineral Map',
+    body: "Here's a 30-second tour of how to find mineral tracts and owners. You can replay it anytime from the ? button in the top bar.",
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="global-search"]',
+    title: 'Search anything',
+    body: "One box searches it all — type a county, a tract or abstract number, or an owner's name and jump straight there.",
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="county-select"]',
+    title: 'Switch counties',
+    body: 'Choose the county you want to work. The map flies there and loads its tracts automatically.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="map"]',
+    title: 'Read the map',
+    body: 'Each tract is colored by development status — cooler colors are earlier-stage opportunities, warmer ones are active or already producing. Click any tract to open its owner list.',
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="nav-menu"]',
+    title: 'Permits & pipeline',
+    body: 'Open this menu for recent drilling permits and your CRM pipeline to track outreach.',
+    placement: 'bottom',
+  },
+  {
+    title: "You're ready to go",
+    body: "Click a tract to see who owns it, then skip-trace an owner to pull contact info. That's the core workflow — happy hunting!",
+    placement: 'center',
+  },
+]
 
 // Permian counties whose data hasn't shipped yet. Rendered in
 // the "All Counties" sidebar under a COMING SOON section so
@@ -273,6 +313,30 @@ type CountyKey = keyof typeof COUNTIES
 const COUNTY_ORDER: CountyKey[] = Object.keys(COUNTIES) as CountyKey[]
 const TEXAS_OVERVIEW_CENTER: [number, number] = [-99.5, 31.0]
 const TEXAS_OVERVIEW_ZOOM = 5.5
+
+// Global-search dropdown styles (shared by the county / tract / owner groups).
+const SEARCH_GROUP_HEADING: CSSProperties = {
+  padding: '8px 14px 4px',
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+  color: 'var(--mm-chrome-muted)',
+  background: 'var(--mm-chrome-surface)',
+  borderTop: '1px solid var(--mm-chrome-border)',
+}
+const SEARCH_KIND_BADGE: CSSProperties = {
+  flexShrink: 0,
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+  color: 'var(--mm-chrome-muted)',
+  background: 'var(--mm-chrome-muted-fill)',
+  border: '1px solid var(--mm-chrome-border)',
+  borderRadius: 4,
+  padding: '2px 5px',
+}
 
 // Palette mirrors PRODUCTION_STATUS_FILL in app/components/Map.tsx so the
 // sidebar tract badge visually matches the parcel color on the map.
@@ -1641,8 +1705,9 @@ export default function Home() {
     }
 
     if (trimmed.length < 3) {
+      // Owners need 3+ chars, but counties/tracts match at 2+, so leave the
+      // dropdown open — the derived county/tract matches may still populate it.
       setSearchResults([])
-      setSearchOpen(false)
       setSearching(false)
       return
     }
@@ -1716,7 +1781,6 @@ export default function Home() {
         )
         .slice(0, 10)
       setSearchResults(topResults)
-      setSearchOpen(topResults.length > 0)
       setSearching(false)
       searchTimeoutRef.current = null
     }, 400)
@@ -2295,6 +2359,40 @@ export default function Home() {
     }
   }
 
+  // Global search — jump straight to a county from the top search bar.
+  const handleCountySearchSelect = (countyId: CountyKey) => {
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
+    setSelected(null)
+    setExpandedOwner(null)
+    setOwnerTracts([])
+    setOwnerTractsName('')
+    setSelectedCounty(countyId)
+    setMapLevel('tract')
+    flyToCountyView(countyId)
+    trackEvent('global_search_select', { kind: 'county', county: countyId })
+  }
+
+  // Global search — select a tract in the currently loaded county and let
+  // the map's focusTarget effect fit the camera onto it.
+  const handleTractSearchSelect = (tract: TractRecord) => {
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
+    setExpandedOwner(null)
+    setOwnerTracts([])
+    setOwnerTractsName('')
+    setMapLevel('tract')
+    setOwnerSort('az')
+    setSelected(toTractSelection(tract))
+    trackEvent('global_search_select', {
+      kind: 'tract',
+      county: selectedCounty,
+      abstract: tract.abstract_label,
+    })
+  }
+
   // Rank order once the score-based sort was removed:
   //   1. PDP wells drilled (drilled + completed activity)
   //   2. PUD wells (permitted but not yet drilled)
@@ -2509,6 +2607,49 @@ export default function Home() {
       return hay.includes(q)
     })
   }, [cleanOwnersList, ownerNameQuery])
+
+  // ── Global search: county + tract matches. Owners are fetched from the
+  // DB inside handleSearch; counties and tracts are matched client-side.
+  // Counties are always searchable; tracts are scoped to the county whose
+  // parcel index is currently loaded (that's what `tracts` holds).
+  const globalCountyMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (q.length < 2) return [] as CountyKey[]
+    return COUNTY_ORDER
+      .filter((key) => `${COUNTIES[key].name} county`.includes(q) || COUNTIES[key].name.toLowerCase().includes(q))
+      .slice(0, 5)
+  }, [searchQuery])
+
+  const globalTractMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (q.length < 2) return [] as TractRecord[]
+    const bare = q.replace(/^a-?\s*/i, '')
+    const seen = new Set<string>()
+    const out: TractRecord[] = []
+    for (const t of tracts) {
+      const label = String(t.abstract_label ?? '').toLowerCase()
+      const labelBare = label.replace(/^a-?\s*/i, '')
+      const survey = String(t.level1_sur ?? t.surv_name ?? '').toLowerCase()
+      const block = String(t.block ?? '').toLowerCase()
+      const matched =
+        label.includes(q) ||
+        (bare.length >= 1 && labelBare.startsWith(bare)) ||
+        survey.includes(q) ||
+        (!!block && block === q)
+      if (!matched) continue
+      const key = String(t.abstract_label ?? '')
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      out.push(t)
+      if (out.length >= 6) break
+    }
+    return out
+  }, [searchQuery, tracts])
+
+  const hasGlobalResults =
+    globalCountyMatches.length > 0 ||
+    globalTractMatches.length > 0 ||
+    searchResults.length > 0
 
   const hiddenOwnerCount = useMemo(() => {
     return filteredOwnersList.filter((owner) => {
@@ -2811,6 +2952,7 @@ export default function Home() {
         fontFamily: 'system-ui, sans-serif',
       }}
     >
+      <ProductTour steps={TOUR_STEPS} />
       {/* Top header */}
       <div
         style={{
@@ -2832,7 +2974,7 @@ export default function Home() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative' }} data-tour="nav-menu">
             <button
               onClick={() => setNavMenuOpen((prev) => !prev)}
               style={{
@@ -2984,6 +3126,7 @@ export default function Home() {
               </button>
             )}
             <select
+              data-tour="county-select"
               value={selectedCounty}
               onChange={(event) => {
                 const next = event.target.value as CountyKey
@@ -3009,10 +3152,37 @@ export default function Home() {
                 </option>
               ))}
             </select>
+            {!isMobile && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
+                aria-label="Take the product tour"
+                title="Take the product tour"
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: '50%',
+                  border: '1px solid var(--mm-chrome-border)',
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-muted)',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                ?
+              </button>
+            )}
           </div>
         </div>
         {!isMobile && (
-          <div style={{ position: 'relative', flex: 1, maxWidth: 360, margin: '0 16px' }}>
+          <div data-tour="global-search" style={{ position: 'relative', flex: 1, maxWidth: 360, margin: '0 16px' }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: 'var(--mm-chrome-muted-fill)', border: '1px solid var(--mm-chrome-border)',
@@ -3024,7 +3194,7 @@ export default function Home() {
               </svg>
               <input
                 type="text"
-                placeholder="Search owners..."
+                placeholder="Search counties, tracts, owners…"
                 value={searchQuery}
                 onChange={(e) => { void handleSearch(e.target.value); setSearchOpen(true) }}
                 onFocus={() => setSearchOpen(true)}
@@ -3040,71 +3210,123 @@ export default function Home() {
               )}
             </div>
 
-            {searchOpen && searchResults.length > 0 && (
+            {searchOpen && hasGlobalResults && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
                 background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000, overflow: 'hidden'
+                boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000, overflow: 'hidden',
+                maxHeight: '70vh', overflowY: 'auto',
               }}>
-                {searchResults.map((result, i) => (
-                    <div
-                      key={`${result.owner_name}-${i}`}
-                      onMouseDown={() => {
-                        setSearchQuery(result.owner_name)
-                        setSearchOpen(false)
-                        void handleSearchSelect(result)
-                      }}
-                      style={{
-                        padding: '10px 14px', cursor: 'pointer',
-                        borderBottom: i < searchResults.length - 1 ? '1px solid #F3F4F6' : 'none',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = '#F9FAFB' }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = '#fff' }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>{result.owner_name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2 }}>
-                          {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
-                          {result.countyName ? ` · ${result.countyName}` : ''}
-                          {Number(result.leaseCount ?? 1) > 1 ? (
-                            <span
-                              style={{
-                                marginLeft: 6,
-                                background: 'var(--mm-chrome-muted-fill)',
-                                border: '1px solid var(--mm-chrome-border)',
-                                borderRadius: 4,
-                                padding: '1px 5px',
-                                fontSize: 10,
-                                color: 'var(--mm-chrome-muted)',
-                              }}
-                            >
-                              {result.leaseCount} leases
-                            </span>
-                          ) : result.operator_name ? ` · ${result.operator_name}` : ''}
-                        </div>
-                      </div>
-                      {result.acreage ? (
-                        <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }}>
-                          {Number(result.acreage).toFixed(1)} ac
+                {globalCountyMatches.length > 0 && (
+                  <>
+                    <div style={SEARCH_GROUP_HEADING}>Counties</div>
+                    {globalCountyMatches.map((key) => (
+                      <div
+                        key={`county-${key}`}
+                        onMouseDown={() => handleCountySearchSelect(key)}
+                        style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--mm-chrome-muted-fill)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <span style={SEARCH_KIND_BADGE}>County</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>
+                          {COUNTIES[key].name} County
                         </span>
-                      ) : null}
-                    </div>
-                ))}
-                <div style={{ padding: '8px 14px', fontSize: 11, color: 'var(--mm-chrome-muted)', borderTop: '1px solid var(--mm-chrome-border)', background: 'var(--mm-chrome-surface)' }}>
-                  {searchResults.length} results
-                </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {globalTractMatches.length > 0 && (
+                  <>
+                    <div style={SEARCH_GROUP_HEADING}>Tracts in {COUNTIES[selectedCounty].name} County</div>
+                    {globalTractMatches.map((tract, i) => (
+                      <div
+                        key={`tract-${tract.abstract_label}-${i}`}
+                        onMouseDown={() => handleTractSearchSelect(tract)}
+                        style={{ padding: '10px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--mm-chrome-muted-fill)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <span style={SEARCH_KIND_BADGE}>Tract</span>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>{tract.abstract_label}</div>
+                            <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {tract.level1_sur || tract.surv_name || '—'}
+                            </div>
+                          </div>
+                        </div>
+                        {tract.owner_count ? (
+                          <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)', flexShrink: 0 }}>
+                            {tract.owner_count} owner{tract.owner_count === 1 ? '' : 's'}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {searchResults.length > 0 && (
+                  <>
+                    <div style={SEARCH_GROUP_HEADING}>Owners</div>
+                    {searchResults.map((result, i) => (
+                      <div
+                        key={`${result.owner_name}-${i}`}
+                        onMouseDown={() => {
+                          setSearchQuery(result.owner_name)
+                          setSearchOpen(false)
+                          void handleSearchSelect(result)
+                        }}
+                        style={{
+                          padding: '10px 14px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--mm-chrome-muted-fill)' }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--mm-chrome-fg)' }}>{result.owner_name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginTop: 2 }}>
+                            {result.mailing_city && result.mailing_state ? `${result.mailing_city}, ${result.mailing_state}` : ''}
+                            {result.countyName ? ` · ${result.countyName}` : ''}
+                            {Number(result.leaseCount ?? 1) > 1 ? (
+                              <span
+                                style={{
+                                  marginLeft: 6,
+                                  background: 'var(--mm-chrome-muted-fill)',
+                                  border: '1px solid var(--mm-chrome-border)',
+                                  borderRadius: 4,
+                                  padding: '1px 5px',
+                                  fontSize: 10,
+                                  color: 'var(--mm-chrome-muted)',
+                                }}
+                              >
+                                {result.leaseCount} leases
+                              </span>
+                            ) : result.operator_name ? ` · ${result.operator_name}` : ''}
+                          </div>
+                        </div>
+                        {result.acreage ? (
+                          <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }}>
+                            {Number(result.acreage).toFixed(1)} ac
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
             )}
 
-            {searchOpen && searchQuery.length >= 3 && searchResults.length === 0 && !searching && (
+            {searchOpen && searchQuery.trim().length >= 2 && !hasGlobalResults && !searching && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4,
                 background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 10,
                 padding: '16px 14px', fontSize: 13, color: 'var(--mm-chrome-muted)', textAlign: 'center',
                 boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000
               }}>
-                No owners found for &quot;{searchQuery}&quot;
+                No matches for &quot;{searchQuery}&quot;
               </div>
             )}
           </div>
@@ -4508,6 +4730,7 @@ export default function Home() {
 
         {/* Map area */}
         <div
+          data-tour="map"
           style={{
             flex: isMobile ? '0 0 48dvh' : 1,
             minWidth: 0,
