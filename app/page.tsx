@@ -243,6 +243,152 @@ type WellSummary = {
   longitude?: number | null
   rrc_lease_id?: string | null
   oil_gas_code?: string | null
+  // Populated when the tract's wells are matched by geometry against the
+  // rendered wells GeoJSON (grid + abstract counties alike).
+  api_number?: string | null
+  kind?: string | null
+}
+
+// Well-status kind → short badge label + color. Mirrors the map legend in
+// app/components/Map.tsx so the "Wells in this tract" list reads the same as
+// what's drawn on the map.
+const WELL_KIND_BADGE: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  producing: { label: 'PDP', color: '#166534', bg: '#DCFCE7', border: '#86EFAC' },
+  duc: { label: 'DUC', color: '#6B21A8', bg: '#F3E8FF', border: '#D8B4FE' },
+  shut_in: { label: 'SHUT-IN', color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
+  injection: { label: 'INJ', color: '#0F766E', bg: '#CCFBF1', border: '#5EEAD4' },
+  permitted: { label: 'PERMIT', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
+  horizontal: { label: 'DRILLED', color: '#44403C', bg: '#F5F5F4', border: '#D6D3D1' },
+  vertical: { label: 'WELL', color: '#4B5563', bg: '#F9FAFB', border: '#E5E7EB' },
+}
+
+// ── Geometry helpers for matching wells to a tract polygon (same result as
+// the map overlay, which draws wells by their shapefile geometry). ──
+type LngLat = [number, number]
+
+function pointInRing(pt: LngLat, ring: number[][]): boolean {
+  // Ray-casting; ring is an array of [lng, lat].
+  let inside = false
+  const [x, y] = pt
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1]
+    const xj = ring[j][0], yj = ring[j][1]
+    const intersect = (yi > y) !== (yj > y) &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function pointInPolygonGeom(pt: LngLat, geom: GeoJSON.Geometry): boolean {
+  if (geom.type === 'Polygon') {
+    const rings = geom.coordinates as number[][][]
+    if (rings.length === 0 || !pointInRing(pt, rings[0])) return false
+    // Exclude holes.
+    for (let h = 1; h < rings.length; h++) {
+      if (pointInRing(pt, rings[h])) return false
+    }
+    return true
+  }
+  if (geom.type === 'MultiPolygon') {
+    const polys = geom.coordinates as number[][][][]
+    return polys.some((rings) => {
+      if (rings.length === 0 || !pointInRing(pt, rings[0])) return false
+      for (let h = 1; h < rings.length; h++) {
+        if (pointInRing(pt, rings[h])) return false
+      }
+      return true
+    })
+  }
+  return false
+}
+
+function geomBbox(geom: GeoJSON.Geometry): [number, number, number, number] {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  const visit = (coords: unknown) => {
+    if (typeof (coords as number[])[0] === 'number' && typeof (coords as number[])[1] === 'number' && !Array.isArray((coords as number[])[0])) {
+      const [x, y] = coords as number[]
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+      return
+    }
+    for (const c of coords as unknown[]) visit(c)
+  }
+  if ('coordinates' in geom) visit((geom as { coordinates: unknown }).coordinates)
+  return [minX, minY, maxX, maxY]
+}
+
+// Outer-ring edges of a polygon/multipolygon, as [start, end] segments.
+// Used to catch laterals that cross a tract edge without landing a vertex
+// inside it (a vertex-only test undercounts those clip-through wells).
+function polygonOuterEdges(geom: GeoJSON.Geometry): [LngLat, LngLat][] {
+  const edges: [LngLat, LngLat][] = []
+  const addRing = (ring: number[][]) => {
+    for (let i = 0; i < ring.length - 1; i++) {
+      edges.push([ring[i] as LngLat, ring[i + 1] as LngLat])
+    }
+  }
+  if (geom.type === 'Polygon') {
+    const rings = geom.coordinates as number[][][]
+    if (rings[0]) addRing(rings[0])
+  } else if (geom.type === 'MultiPolygon') {
+    for (const rings of geom.coordinates as number[][][][]) {
+      if (rings[0]) addRing(rings[0])
+    }
+  }
+  return edges
+}
+
+function segmentsIntersect(p1: LngLat, p2: LngLat, p3: LngLat, p4: LngLat): boolean {
+  const d = (a: LngLat, b: LngLat, c: LngLat) =>
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+  const d1 = d(p3, p4, p1)
+  const d2 = d(p3, p4, p2)
+  const d3 = d(p1, p2, p3)
+  const d4 = d(p1, p2, p4)
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))
+}
+
+// Collect coordinates from a well feature's geometry.
+function wellCoords(geom: GeoJSON.Geometry): LngLat[] {
+  if (geom.type === 'Point') return [geom.coordinates as LngLat]
+  if (geom.type === 'LineString') return geom.coordinates as LngLat[]
+  if (geom.type === 'MultiLineString') return (geom.coordinates as number[][][]).flat() as LngLat[]
+  if (geom.type === 'MultiPoint') return geom.coordinates as LngLat[]
+  return []
+}
+
+// True when any part of a well (point or lateral) falls on the tract —
+// either a vertex inside the polygon, or (for laterals) a segment that
+// crosses a tract edge. Matches what the map draws.
+function wellHitsTract(
+  wellGeom: GeoJSON.Geometry,
+  tractGeom: GeoJSON.Geometry,
+  tractBbox: [number, number, number, number],
+  tractEdges: [LngLat, LngLat][],
+): boolean {
+  const [minX, minY, maxX, maxY] = tractBbox
+  const coords = wellCoords(wellGeom)
+  // Fast path: any vertex inside the polygon.
+  for (const [x, y] of coords) {
+    if (x < minX || x > maxX || y < minY || y > maxY) continue
+    if (pointInPolygonGeom([x, y], tractGeom)) return true
+  }
+  // Laterals may clip through a corner without an interior vertex — test
+  // each well segment against the tract's edges.
+  if (coords.length >= 2) {
+    for (let i = 0; i < coords.length - 1; i++) {
+      const a = coords[i]
+      const b = coords[i + 1]
+      for (const [c, d] of tractEdges) {
+        if (segmentsIntersect(a, b, c, d)) return true
+      }
+    }
+  }
+  return false
 }
 
 export type DevelopmentStatus =
@@ -894,6 +1040,10 @@ export default function Home() {
   const [ownerTractsLoading, setOwnerTractsLoading] = useState(false)
   const county = COUNTIES[selectedCounty]
   const countyRef = useRef(county)
+  // Per-county wells GeoJSON (the same file the map draws) cached so the
+  // "Wells in this tract" list can be matched by geometry — see
+  // loadCountyWellsGeo / the tract-wells effect below.
+  const wellsGeoCacheRef = useRef<Record<string, GeoJSON.FeatureCollection | null>>({})
   const ownershipTable = county.ownershipTable
   const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyBreakdown = county.breakdown
@@ -1563,6 +1713,37 @@ export default function Home() {
 
   const tractOwners = embeddedOwners.length > 0 ? embeddedOwners : dbTractOwners
 
+  // Fetch + cache the county's wells GeoJSON (the exact file the map draws),
+  // so tract-wells can be matched by geometry rather than a brittle abstract
+  // string join. Storage first, then the /public fallback, mirroring Map.tsx.
+  const loadCountyWellsGeo = useCallback(
+    async (countyId: string): Promise<GeoJSON.FeatureCollection | null> => {
+      const cached = wellsGeoCacheRef.current[countyId]
+      if (cached !== undefined) return cached
+      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
+      const urls = [
+        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${countyId}_wells.geojson` : '',
+        `/${countyId}_wells.geojson?v=1`,
+      ].filter(Boolean)
+      for (const url of urls) {
+        try {
+          const r = await fetch(url, { cache: 'force-cache' })
+          if (!r.ok) continue
+          const gj = (await r.json()) as GeoJSON.FeatureCollection
+          if (gj && Array.isArray(gj.features)) {
+            wellsGeoCacheRef.current[countyId] = gj
+            return gj
+          }
+        } catch {
+          /* try next url */
+        }
+      }
+      wellsGeoCacheRef.current[countyId] = null
+      return null
+    },
+    [],
+  )
+
   useEffect(() => {
     let cancelled = false
 
@@ -1576,35 +1757,71 @@ export default function Home() {
       return
     }
 
-    const fetchTractWells = async () => {
-      setTractWellsLoading(true)
-      setTractWellsLoaded(false)
-      setOwnerWells({})
-      setOwnerWellsLoading({})
-      setWellsExpanded(false)
+    // Match wells to the tract by GEOMETRY against the same wells GeoJSON the
+    // map renders. This is the only approach that agrees with what the user
+    // sees — grid-county tracts (Block/Section labels) never matched the
+    // wells table's `abstract` column, so the old string join returned 0
+    // even when laterals clearly crossed the tract.
+    const matchTractWellsByGeometry = async (): Promise<boolean> => {
+      const tractGeom = activeTractGeometry
+      if (!tractGeom) return false
+      const geo = await loadCountyWellsGeo(countyRef.current.id)
+      if (cancelled) return true
+      if (!geo || !Array.isArray(geo.features)) return false
 
+      const bbox = geomBbox(tractGeom)
+      const edges = polygonOuterEdges(tractGeom)
+      const seen = new Set<string>()
+      const wells: WellSummary[] = []
+      for (const f of geo.features) {
+        const g = f.geometry as GeoJSON.Geometry | null
+        if (!g) continue
+        if (!wellHitsTract(g, tractGeom, bbox, edges)) continue
+        const p = (f.properties ?? {}) as Record<string, unknown>
+        const api = String(p.api ?? '').trim()
+        const operator = String(p.operator ?? '').trim()
+        const kind = String(p.kind ?? '').trim()
+        const wellType = String(p.well_type ?? '').trim().toUpperCase()
+        const dedupeKey = api || `${operator}|${kind}|${wellType}`
+        if (dedupeKey && seen.has(dedupeKey)) continue
+        if (dedupeKey) seen.add(dedupeKey)
+        wells.push({
+          lease_name: api ? `API ${api}` : (WELL_KIND_BADGE[kind]?.label ?? 'Well'),
+          operator_name: operator || 'Unknown',
+          well_type: wellType === 'HORIZONTAL' ? 'HORIZONTAL' : 'VERTICAL',
+          api_number: api || null,
+          kind: kind || null,
+          rrc_lease_id: null,
+        })
+      }
+      const rank: Record<string, number> = {
+        producing: 0, duc: 1, permitted: 2, shut_in: 3, injection: 4, horizontal: 5, vertical: 6,
+      }
+      wells.sort((a, b) => (rank[a.kind ?? ''] ?? 9) - (rank[b.kind ?? ''] ?? 9))
+      if (!cancelled) {
+        setTractWells(wells)
+        setTractWellsLoaded(true)
+        setTractWellsLoading(false)
+      }
+      return true
+    }
+
+    // Fallback for the rare case where tract geometry or the wells GeoJSON
+    // isn't available: the original abstract/operator lookup via /api/wells.
+    const fetchTractWellsViaApi = async () => {
       const operator = selected.top_operator
       const fieldName = selected.field_name
-
-      // Counties that join wells via abstract require a parsed abstract
-      // value before they can produce any results — bail out early when
-      // missing.
-      if (countyRef.current.wellsJoinStrategy === 'abstract') {
-        const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
-        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
-
-        if (!tractAbstract) {
-          if (!cancelled) {
-            setTractWells([])
-            setTractWellsLoaded(true)
-            setTractWellsLoading(false)
-          }
-          return
+      const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
+      const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
+      if (countyRef.current.wellsJoinStrategy === 'abstract' && !tractAbstract) {
+        if (!cancelled) {
+          setTractWells([])
+          setTractWellsLoaded(true)
+          setTractWellsLoading(false)
         }
+        return
       }
       try {
-        const tractAbstractLabel = String(selected.abstract_label ?? selected.ABSTRACT_L ?? '').trim()
-        const tractAbstract = tractAbstractLabel.replace(/^A-\s*/i, '').trim()
         const response = await fetch('/api/wells', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1616,7 +1833,7 @@ export default function Home() {
             fieldName: fieldName ?? null,
           }),
         })
-        const payload = await response.json() as { wells?: WellSummary[]; error?: string }
+        const payload = (await response.json()) as { wells?: WellSummary[]; error?: string }
         if (!cancelled) {
           setTractWells(Array.isArray(payload.wells) ? payload.wells : [])
           setTractWellsLoaded(true)
@@ -1632,11 +1849,21 @@ export default function Home() {
       }
     }
 
-    void fetchTractWells()
+    const run = async () => {
+      setTractWellsLoading(true)
+      setTractWellsLoaded(false)
+      setOwnerWells({})
+      setOwnerWellsLoading({})
+      setWellsExpanded(false)
+      const matched = await matchTractWellsByGeometry()
+      if (!matched && !cancelled) await fetchTractWellsViaApi()
+    }
+
+    void run()
     return () => {
       cancelled = true
     }
-  }, [selected])
+  }, [selected, activeTractGeometry, loadCountyWellsGeo])
 
   const fetchOwnerWells = useCallback(async (owner: TractOwner, ownerKey: string) => {
     setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: true }))
@@ -3940,19 +4167,35 @@ export default function Home() {
                               </div>
                             </div>
                             <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                              <span
-                                style={{
-                                  fontSize: 9,
-                                  fontWeight: 700,
-                                  padding: '1px 5px',
-                                  borderRadius: 3,
-                                  background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
-                                  color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
-                                  border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
-                                }}
-                              >
-                                {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
-                              </span>
+                              {well.kind && WELL_KIND_BADGE[well.kind] ? (
+                                <span
+                                  style={{
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: 3,
+                                    background: WELL_KIND_BADGE[well.kind].bg,
+                                    color: WELL_KIND_BADGE[well.kind].color,
+                                    border: `1px solid ${WELL_KIND_BADGE[well.kind].border}`,
+                                  }}
+                                >
+                                  {WELL_KIND_BADGE[well.kind].label}
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    padding: '1px 5px',
+                                    borderRadius: 3,
+                                    background: well.oil_gas_code === 'G' ? '#EFF6FF' : '#FEF3C7',
+                                    color: well.oil_gas_code === 'G' ? '#1D4ED8' : '#92400E',
+                                    border: `1px solid ${well.oil_gas_code === 'G' ? '#BFDBFE' : '#FDE68A'}`,
+                                  }}
+                                >
+                                  {well.oil_gas_code === 'G' ? 'GAS' : 'OIL'}
+                                </span>
+                              )}
                               <span
                                 style={{
                                   fontSize: 9,
