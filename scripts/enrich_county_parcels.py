@@ -528,8 +528,14 @@ def main() -> None:
                 if isinstance(raw_record, dict):
                     interest_value = raw_record.get("Interest")
                 try:
+                    # Store the raw 0-1 decimal interest, matching the DB
+                    # (<county>_mineral_ownership.ownership_pct) and the
+                    # frontend's ownershipPctIsDecimal convention, which
+                    # multiplies by 100 for display. Multiplying here too
+                    # double-scaled every embedded interest 100x (a 0.25%
+                    # override royalty rendered as "25%").
                     ownership_pct = (
-                        round(float(interest_value) * 100.0, 4)
+                        round(float(interest_value), 6)
                         if interest_value is not None
                         else None
                     )
