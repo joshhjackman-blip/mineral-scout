@@ -4587,13 +4587,41 @@ export default function Home() {
                     </div>
                   )
                 })}
+                {!dbOwnersLoading && displayedOwners.length === 0 && (
+                  <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--mm-chrome-muted)', lineHeight: 1.55 }}>
+                    {(() => {
+                      const q = ownerNameQuery.trim()
+                      // Search returned nothing but the tract does have owners.
+                      if (q && cleanOwnersList.length > 0) {
+                        return `No owners on this tract match “${q}”.`
+                      }
+                      const label = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
+                      // West Texas Block/Section grid (e.g. "B10--S5") = University /
+                      // State survey lands: mineral title is retained by the State of
+                      // Texas / University Lands, so no private royalty owners appear
+                      // in the county appraisal roll even where wells are producing.
+                      const isUniversityBlock = /^B\d+--S/i.test(label)
+                      const hasWells = tractWells.length > 0
+                      if (isUniversityBlock) {
+                        return hasWells
+                          ? 'No private mineral owners are on file for this University / State survey tract. The wells here are held under a state lease — mineral title is retained by the State of Texas / University Lands, so no private royalty owners appear in the county roll.'
+                          : 'No private mineral owners are on file for this University / State survey tract. Mineral title is typically retained by the State of Texas / University Lands.'
+                      }
+                      return hasWells
+                        ? 'No mineral owners are on file for this tract in the county appraisal roll, though wells are present here — the acreage is often held under lease.'
+                        : 'No mineral owners are on file for this tract in the county appraisal roll.'
+                    })()}
+                  </div>
+                )}
               </div>
 
-              <div style={{ display: 'flex', marginTop: 14 }}>
-                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                  Add all to pipeline
-                </button>
-              </div>
+              {displayedOwners.length > 0 && (
+                <div style={{ display: 'flex', marginTop: 14 }}>
+                  <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                    Add all to pipeline
+                  </button>
+                </div>
+              )}
             </div>
           ) : ownerTractsName ? (
             <div>
