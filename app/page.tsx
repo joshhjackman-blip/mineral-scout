@@ -1668,7 +1668,10 @@ export default function Home() {
     const abstract = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
       .replace(/^A-\s*/i, '')
       .trim()
-    if (!selected || embeddedOwners.length > 0 || !abstract) {
+    // Always load the complete owner list from the DB (the source of truth,
+    // uncapped) for the selected tract — embedded owners_json is only a
+    // fast-loading preview and may be capped or missing recovered owners.
+    if (!selected || !abstract) {
       setDbOwnersLoading(false)
       return
     }
@@ -1711,7 +1714,28 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, embeddedOwners])
 
-  const tractOwners = embeddedOwners.length > 0 ? embeddedOwners : dbTractOwners
+  // Merge the embedded preview with the complete DB list (deduped by owner +
+  // lease), so nothing is lost and recovered/uncapped owners are included.
+  const tractOwners = useMemo<TractOwner[]>(() => {
+    if (dbTractOwners.length === 0) return embeddedOwners
+    if (embeddedOwners.length === 0) return dbTractOwners
+    const keyOf = (o: TractOwner) =>
+      `${String(o.owner_name ?? '').toUpperCase().trim()}|${normalizeLeaseId(o.rrc_lease_id)}`
+    const seen = new Set<string>()
+    const merged: TractOwner[] = []
+    for (const o of embeddedOwners) {
+      seen.add(keyOf(o))
+      merged.push(o)
+    }
+    for (const o of dbTractOwners) {
+      const k = keyOf(o)
+      if (!seen.has(k)) {
+        seen.add(k)
+        merged.push(o)
+      }
+    }
+    return merged
+  }, [embeddedOwners, dbTractOwners])
 
   // Fetch + cache the county's wells GeoJSON (the exact file the map draws),
   // so tract-wells can be matched by geometry rather than a brittle abstract
