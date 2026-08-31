@@ -862,11 +862,24 @@ export default function PermitsPage() {
                         or its coordinates didn't land inside any
                         known tract polygon). */}
                     <Link
-                      href={
-                        permit.abstract
-                          ? `/?county=${permit.county_id}&abstract=${encodeURIComponent(permit.abstract)}`
-                          : `/?county=${permit.county_id}`
-                      }
+                      href={(() => {
+                        // Always carry the permit's coordinates when we have
+                        // them so the map flies to *where the permit was
+                        // filed* even when we couldn't resolve an abstract
+                        // (permit on University/State land or a tract-coverage
+                        // gap). The map resolves the tract from the abstract
+                        // when present, otherwise via point-in-polygon on the
+                        // lat/lon — and always zooms to the point.
+                        const qs = new URLSearchParams({ county: permit.county_id })
+                        if (permit.abstract) qs.set('abstract', permit.abstract)
+                        const lat = Number(permit.latitude)
+                        const lon = Number(permit.longitude)
+                        if (Number.isFinite(lat) && Number.isFinite(lon) && (lat !== 0 || lon !== 0)) {
+                          qs.set('lat', String(lat))
+                          qs.set('lon', String(lon))
+                        }
+                        return `/?${qs.toString()}`
+                      })()}
                       title={permit.abstract
                         ? `Open ${permit.abstract} in ${permit.county_display} on the map`
                         : `Open ${permit.county_display} on the map`}
