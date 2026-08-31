@@ -41,7 +41,7 @@ const easedMove = (
 // Well-overlay coloring. Status mode = producing/shut-in/injection/permitted/
 // drilled-horizontal/vertical; operator mode = a fixed palette keyed on the
 // per-county operator rank (`op_idx`) stamped by build_wells_geojson.py.
-// Well/blob status palette — chosen to stay distinct from each other.
+// Well status palette — chosen to stay distinct from each other.
 const WELL_KIND_COLORS: Record<string, string> = {
   producing: '#16A34A', // green
   duc: '#A855F7',       // purple
@@ -475,12 +475,6 @@ export default function Map({
   // "Wells only" hides the tract fill entirely (grid outline + wells remain,
   // and tracts stay clickable since the fill layer is only made transparent).
   const [wellsOnly, setWellsOnly] = useState(false)
-  // Prototype: status-colored "blob" footprints (buffered laterals/wells) so a
-  // tract shows its mix of designations, not one flat color.
-  const [showBlobs, setShowBlobs] = useState(false)
-  const showBlobsRef = useRef(showBlobs)
-  useEffect(() => { showBlobsRef.current = showBlobs }, [showBlobs])
-  const blobsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const [wellsByOperator, setWellsByOperator] = useState(false)
   const wellsByOperatorRef = useRef(wellsByOperator)
   useEffect(() => {
@@ -621,7 +615,7 @@ export default function Map({
   const fitGeometry = (
     mapInstance: mapboxgl.Map,
     geometry: GeoJSON.Geometry,
-    options?: { padding?: number; duration?: number; maxZoom?: number }
+    options?: { padding?: number; duration?: number; maxZoom?: number; focusPoint?: [number, number] }
   ) => {
     const bounds = new mapboxgl.LngLatBounds()
     const addCoords = (coords: number[][]) => {
@@ -631,7 +625,41 @@ export default function Map({
     if (geometry.type === 'Polygon') {
       addCoords(geometry.coordinates[0] as number[][])
     } else if (geometry.type === 'MultiPolygon') {
-      geometry.coordinates.forEach((polygon) => addCoords(polygon[0] as number[][]))
+      // Many tracts are dissolved into one MultiPolygon whose parts can sit
+      // miles apart (same abstract/block-section label on non-contiguous
+      // parcels). Fitting bounds over ALL parts zooms the camera way out to
+      // the scattered extent. Instead focus a single coherent part: the one
+      // under the click point when provided, otherwise the largest part.
+      const polys = geometry.coordinates as number[][][][]
+      const outerOf = (poly: number[][][]) => (poly[0] ?? []) as number[][]
+      const ringContains = (ring: number[][], pt: [number, number]) => {
+        let inside = false
+        const [x, y] = pt
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          const xi = ring[i][0], yi = ring[i][1]
+          const xj = ring[j][0], yj = ring[j][1]
+          if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+        }
+        return inside
+      }
+      const ringArea = (ring: number[][]) => {
+        let a = 0
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+          a += (ring[j][0] + ring[i][0]) * (ring[j][1] - ring[i][1])
+        }
+        return Math.abs(a / 2)
+      }
+      let chosen: number[][] | null = null
+      if (options?.focusPoint) {
+        const hit = polys.find((p) => ringContains(outerOf(p), options.focusPoint as [number, number]))
+        if (hit) chosen = outerOf(hit)
+      }
+      if (!chosen && polys.length > 0) {
+        chosen = outerOf(
+          polys.reduce((best, p) => (ringArea(outerOf(p)) > ringArea(outerOf(best)) ? p : best), polys[0]),
+        )
+      }
+      if (chosen) addCoords(chosen)
     }
 
     if (!bounds.isEmpty()) {
@@ -710,8 +738,6 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'wells-laterals-layer')
     removeLayerIfExists(mapInstance, 'wells-points-layer')
     removeSourceIfExists(mapInstance, 'wells')
-    removeLayerIfExists(mapInstance, 'wells-blobs-fill')
-    removeSourceIfExists(mapInstance, 'wells-blobs')
 
     // Removing the layer detaches every listener attached to that
     // layer id, so we don't need to explicitly `off()` the
@@ -878,7 +904,7 @@ export default function Map({
   )
 
   // Neutral, subtle-black tract grid — always on (independent of status) and
-  // drawn above the blobs/wells so the survey grid is always readable and the
+  // drawn above the wells so the survey grid is always readable and the
   // tracts stay clickable.
   const selectedOutlineColorExpr = useMemo<string>(() => 'rgba(0,0,0,0.4)', [])
 
@@ -986,17 +1012,15 @@ export default function Map({
     const cid = selectedConfig.id
     // Full z-order, bottom -> top. moveLayer() with no beforeId pushes to the
     // very top, so calling in this order yields exactly this stack:
-    //   tract fill -> permit halos -> blobs -> laterals -> well dots ->
+    //   tract fill -> permit halos -> laterals -> well dots ->
     //   tract OUTLINE (subtle-black grid, above the wells) -> labels -> rigs.
-    // Putting the grid above the wells means it's always readable; putting the
-    // well lines/dots above the blobs keeps them crisp.
+    // Putting the grid above the wells means it's always readable.
     const zOrderBottomToTop = [
       `parcels-fill-${cid}`,
       `parcels-permit-glow-outer-${cid}`,
       `parcels-permit-glow-core-${cid}`,
       `parcels-permit-submitted-outer-${cid}`,
       `parcels-permit-submitted-core-${cid}`,
-      'wells-blobs-fill',
       'wells-laterals-layer',
       'wells-points-layer',
       `parcels-outline-${cid}`,
@@ -1451,55 +1475,6 @@ export default function Map({
       ;(mapInstance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
       for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
         if (mapInstance.getLayer(id)) mapInstance.setLayoutProperty(id, 'visibility', vis)
-      }
-    }
-    // Prototype blob footprints: a status-colored fill under the well lines.
-    let blobsGeoJSON = blobsCacheRef.current[countyKey] ?? null
-    if (!blobsGeoJSON) {
-      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
-      const burls = [
-        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${cfg.id}_blobs.geojson` : '',
-        `/${cfg.id}_blobs.geojson?v=1`,
-      ].filter(Boolean)
-      for (const url of burls) {
-        try {
-          const res = await fetch(url)
-          if (!res.ok) continue
-          blobsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
-          break
-        } catch {
-          // try next / none
-        }
-      }
-      if (blobsGeoJSON) blobsCacheRef.current[countyKey] = blobsGeoJSON
-      if (countyKey !== selectedCountyRef.current || !map.current) return
-    }
-    if (blobsGeoJSON) {
-      const bvis: 'visible' | 'none' = showBlobsRef.current ? 'visible' : 'none'
-      if (!mapInstance.getSource('wells-blobs')) {
-        mapInstance.addSource('wells-blobs', { type: 'geojson', data: blobsGeoJSON })
-        mapInstance.addLayer({
-          id: 'wells-blobs-fill',
-          type: 'fill',
-          source: 'wells-blobs',
-          layout: { visibility: bvis },
-          paint: { 'fill-color': WELL_STATUS_COLOR, 'fill-opacity': 0.5, 'fill-antialias': true },
-        })
-      } else {
-        ;(mapInstance.getSource('wells-blobs') as mapboxgl.GeoJSONSource).setData(blobsGeoJSON)
-        if (mapInstance.getLayer('wells-blobs-fill')) {
-          mapInstance.setLayoutProperty('wells-blobs-fill', 'visibility', bvis)
-        }
-      }
-      // Keep the blob fill beneath the tract outline (so outlines stay visible)
-      // and beneath the well lines/dots.
-      const outlineId = `parcels-outline-${cfg.id}`
-      if (mapInstance.getLayer('wells-blobs-fill')) {
-        if (mapInstance.getLayer(outlineId)) {
-          mapInstance.moveLayer('wells-blobs-fill', outlineId)
-        } else if (mapInstance.getLayer('wells-laterals-layer')) {
-          mapInstance.moveLayer('wells-blobs-fill', 'wells-laterals-layer')
-        }
       }
     }
 
@@ -2156,11 +2131,14 @@ export default function Map({
           String(featureProps?.CODE) === String(clickedAbstract)
       })
       const geometry = matchedFeature?.geometry ?? (topFeature.geometry as GeoJSON.Geometry | undefined)
+      const clickPoint: [number, number] = [event.lngLat.lng, event.lngLat.lat]
       if (geometry && !clickedWell) {
         setTimeout(() => {
           if (map.current) {
             try {
-              fitGeometry(map.current, geometry)
+              // Focus the polygon part the user actually clicked, so
+              // dissolved multi-part tracts don't zoom to a scattered extent.
+              fitGeometry(map.current, geometry, { focusPoint: clickPoint })
             } catch (e) {
               console.error('fitGeometry error:', e)
             }
@@ -2664,13 +2642,6 @@ export default function Map({
         )
       }
     }
-    if (mapInstance.getLayer('wells-blobs-fill')) {
-      mapInstance.setLayoutProperty(
-        'wells-blobs-fill',
-        'visibility',
-        tractLevel && showBlobs ? 'visible' : 'none',
-      )
-    }
     for (const [, countyConfig] of countyEntries) {
       // Approved-permit blue halo (existing).
       for (const suffix of ['permit-glow-outer', 'permit-glow-core']) {
@@ -2695,7 +2666,7 @@ export default function Map({
         }
       }
     }
-  }, [mapLevel, showRigs, showWells, showBlobs, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
+  }, [mapLevel, showRigs, showWells, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
     if (mapLevel !== 'tract') return
@@ -2798,8 +2769,6 @@ export default function Map({
           onBoldTracts={setBoldTracts}
           wellsOnly={wellsOnly}
           onWellsOnly={setWellsOnly}
-          blobsVisible={showBlobs}
-          onBlobs={setShowBlobs}
           permitGlowVisible={showPermitGlow}
           onPermitGlow={setShowPermitGlow}
           submittedGlowVisible={showSubmittedGlow}
@@ -2829,7 +2798,6 @@ function LayerTogglePanel({
   wellsByOperator, onWellsByOperator,
   boldTracts, onBoldTracts,
   wellsOnly, onWellsOnly,
-  blobsVisible, onBlobs,
   permitGlowVisible, onPermitGlow,
   submittedGlowVisible, onSubmittedGlow,
   operatorOptions,
@@ -2851,8 +2819,6 @@ function LayerTogglePanel({
   onBoldTracts: (v: boolean) => void
   wellsOnly: boolean
   onWellsOnly: (v: boolean) => void
-  blobsVisible: boolean
-  onBlobs: (v: boolean) => void
   permitGlowVisible: boolean
   onPermitGlow: (v: boolean) => void
   submittedGlowVisible: boolean
@@ -2978,15 +2944,6 @@ function LayerTogglePanel({
               />
             </div>
           )}
-          <ToggleRow
-            row={{
-              label: 'Development blobs (beta)',
-              swatch: 'fill',
-              color: '#EA580C',
-              checked: blobsVisible,
-              onChange: onBlobs,
-            }}
-          />
         </div>
         <div
           style={{
@@ -3004,7 +2961,7 @@ function LayerTogglePanel({
         </div>
       </CollapsibleSection>
 
-      {(wellsVisible || blobsVisible) && (
+      {wellsVisible && (
         <CollapsibleSection title="Well status" topBorder>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'horizontal', 'vertical'].map(
