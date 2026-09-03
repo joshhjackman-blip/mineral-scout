@@ -488,6 +488,9 @@ export default function Map({
     if (mapInstance.getLayer('wells-points-layer')) {
       mapInstance.setPaintProperty('wells-points-layer', 'circle-color', expr)
     }
+    if (mapInstance.getLayer('wells-arrows-layer')) {
+      mapInstance.setPaintProperty('wells-arrows-layer', 'text-color', expr)
+    }
   }, [wellsByOperator])
   const wellsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
   const wellsHandlersRef = useRef<{
@@ -735,6 +738,7 @@ export default function Map({
       if (h.mouseLeaveHandler) mapInstance.off('mouseleave', layerId, h.mouseLeaveHandler)
     }
     wellsHandlersRef.current = {}
+    removeLayerIfExists(mapInstance, 'wells-arrows-layer')
     removeLayerIfExists(mapInstance, 'wells-laterals-layer')
     removeLayerIfExists(mapInstance, 'wells-points-layer')
     removeSourceIfExists(mapInstance, 'wells')
@@ -879,10 +883,17 @@ export default function Map({
         'LEASING_ACTIVE', statusVisible.LEASING_ACTIVE ? STATUS_OPACITY.LEASING_ACTIVE : 0,
         statusVisible.FRONTIER ? STATUS_OPACITY.FRONTIER : 0,
       ]
-      // Soft backdrop by default (so wells/laterals read on top); full
-      // strength in bold mode. Applied as a final multiplier so it composes
-      // with the status-off (0) and operator-dim (0.12) cases.
-      const scale = wellsOnly ? 0 : boldTracts ? 1 : 0.42
+      // PRODUCTION-INTENSITY CHANNEL: instead of a flat backdrop, scale the
+      // fill by how developed the tract is (producing-well count). Heavily
+      // drilled tracts read as a deeper "heat"; frontier tracts stay light
+      // (but keep a floor so their status hue is still visible). This layers a
+      // production-heat channel onto the status-hue channel without adding any
+      // new marks. Bold mode = full strength; wells-only = transparent.
+      const intensity: mapboxgl.Expression = [
+        'interpolate', ['linear'], ['coalesce', ['to-number', ['get', 'pdp_well_count']], 0],
+        0, 0.18, 2, 0.3, 6, 0.4, 15, 0.5, 30, 0.6,
+      ]
+      const scale: number | mapboxgl.Expression = wellsOnly ? 0 : boldTracts ? 1 : intensity
       const withScale = (expr: mapboxgl.Expression): mapboxgl.Expression =>
         scale === 1 ? expr : (['*', expr, scale] as mapboxgl.Expression)
       if (operatorMatchAbstracts == null) return withScale(byStatus)
@@ -903,15 +914,57 @@ export default function Map({
     [statusVisible, operatorMatchAbstracts, boldTracts, wellsOnly]
   )
 
-  // Neutral, subtle-black tract grid — always on (independent of status) and
-  // drawn above the wells so the survey grid is always readable and the
-  // tracts stay clickable.
-  const selectedOutlineColorExpr = useMemo<string>(() => 'rgba(0,0,0,0.4)', [])
+  // OPERATOR CHANNEL: color the tract outline by its top operator (major
+  // Permian operators get a distinct hue; everything else keeps the neutral
+  // grid line). This encodes operator footprint on the border so the fill
+  // stays free for status + production heat — all three read at once.
+  const selectedOutlineColorExpr = useMemo<mapboxgl.Expression>(() => {
+    const up: mapboxgl.Expression = ['upcase', ['coalesce', ['get', 'top_operator'], '']]
+    const has = (s: string): mapboxgl.Expression => ['in', s, up] as mapboxgl.Expression
+    return [
+      'case',
+      has('DIAMONDBACK'), '#2563EB',
+      ['any', has('PIONEER'), has('EXXON'), has('XTO')], '#DC2626',
+      has('PERMIAN RESOURCES'), '#7C3AED',
+      has('OVINTIV'), '#0D9488',
+      has('APACHE'), '#EA580C',
+      has('SM ENERGY'), '#CA8A04',
+      has('ENDEAVOR'), '#DB2777',
+      ['any', has('COG'), has('CONCHO'), has('CONOCO')], '#4338CA',
+      ['any', has('OCCIDENTAL'), has('OXY')], '#059669',
+      has('BIRCH'), '#92400E',
+      'rgba(0,0,0,0.38)',
+    ] as mapboxgl.Expression
+  }, [])
 
-  // Thin, always-on grid line (zoom-scaled). Kept constant so toggling a status
-  // hides only that status's fill, never the survey grid.
+  // Outline width — thin neutral grid, a touch heavier where a known operator
+  // colors the border so the operator hue actually reads. Zoom-scaled.
   const selectedOutlineWidthExpr = useMemo<mapboxgl.Expression>(
-    () => ['interpolate', ['linear'], ['zoom'], 8, 0.4, 12, 0.7, 15, 1.1] as unknown as mapboxgl.Expression,
+    () => {
+      const hasOperator: mapboxgl.Expression = ['any',
+        ['in', 'DIAMONDBACK', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'PIONEER', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'EXXON', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'XTO', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'PERMIAN RESOURCES', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'OVINTIV', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'APACHE', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'SM ENERGY', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'ENDEAVOR', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'COG', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'CONCHO', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'CONOCO', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'OCCIDENTAL', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'OXY', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+        ['in', 'BIRCH', ['upcase', ['coalesce', ['get', 'top_operator'], '']]],
+      ]
+      return [
+        'interpolate', ['linear'], ['zoom'],
+        8, ['case', hasOperator, 0.8, 0.35],
+        12, ['case', hasOperator, 1.6, 0.7],
+        15, ['case', hasOperator, 2.6, 1.1],
+      ] as mapboxgl.Expression
+    },
     []
   )
 
@@ -1023,6 +1076,7 @@ export default function Map({
       `parcels-permit-submitted-core-${cid}`,
       'wells-laterals-layer',
       'wells-points-layer',
+      'wells-arrows-layer',
       `parcels-outline-${cid}`,
       `parcels-labels-${cid}`,
       `parcels-sections-${cid}`,
@@ -1418,7 +1472,9 @@ export default function Map({
         paint: {
           'line-color': colorExpr,
           'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 12, 1.4, 15, 2.4],
-          'line-opacity': 0.9,
+          // Fade laterals in as you zoom so the county view stays clean and
+          // detail reveals progressively.
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.35, 11, 0.7, 13, 0.92],
         },
       })
       mapInstance.addLayer({
@@ -1431,9 +1487,35 @@ export default function Map({
           // Deliberately small dots (the old vertical markers were oversized).
           'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 1.4, 12, 2.4, 15, 3.8],
           'circle-color': colorExpr,
-          'circle-opacity': 0.85,
+          // Vertical/permit dots fade in with zoom too.
+          'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.25, 12, 0.7, 14, 0.85],
           'circle-stroke-width': 0.5,
           'circle-stroke-color': '#ffffff',
+        },
+      })
+      // Heel→toe direction arrows along each lateral. Only appear once zoomed
+      // in (z>=12) so they never clutter the county overview.
+      mapInstance.addLayer({
+        id: 'wells-arrows-layer',
+        type: 'symbol',
+        source: 'wells',
+        filter: ['==', ['get', 'geom'], 'line'],
+        layout: {
+          visibility: vis,
+          'symbol-placement': 'line',
+          'symbol-spacing': 90,
+          'text-field': '▶',
+          'text-keep-upright': false,
+          'text-rotation-alignment': 'map',
+          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 15, 12],
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': colorExpr,
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1,
+          'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, 0, 12.5, 0.9],
         },
       })
 
@@ -1473,7 +1555,7 @@ export default function Map({
       }
     } else {
       ;(mapInstance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
-      for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
+      for (const id of ['wells-laterals-layer', 'wells-points-layer', 'wells-arrows-layer']) {
         if (mapInstance.getLayer(id)) mapInstance.setLayoutProperty(id, 'visibility', vis)
       }
     }
@@ -2632,8 +2714,8 @@ export default function Map({
         tractLevel && showRigs ? 'visible' : 'none',
       )
     }
-    // Well-geometry overlay (laterals + vertical/permit dots).
-    for (const layerId of ['wells-laterals-layer', 'wells-points-layer']) {
+    // Well-geometry overlay (laterals + vertical/permit dots + direction arrows).
+    for (const layerId of ['wells-laterals-layer', 'wells-points-layer', 'wells-arrows-layer']) {
       if (mapInstance.getLayer(layerId)) {
         mapInstance.setLayoutProperty(
           layerId,
@@ -2954,10 +3036,33 @@ function LayerTogglePanel({
             lineHeight: 1.35,
           }}
         >
-          Blue halo: permit APPROVED in the last 90 days.
-          Teal halo: permit FILED but not yet approved.
-          Red dot: oil/gas well spudded in the last 12 months
-          with no completion on file (SWDs excluded).
+          Tract fill: color = development status, depth = producing-well
+          density (heat). Tract border: color = top operator (see key).
+          Lines = laterals with heel→toe arrows; blue halo = permit approved
+          (90d); teal halo = permit filed; red dot = active rig.
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Operator (tract border)" topBorder>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {[
+            ['Diamondback', '#2563EB'],
+            ['Pioneer / ExxonMobil / XTO', '#DC2626'],
+            ['Permian Resources', '#7C3AED'],
+            ['Ovintiv', '#0D9488'],
+            ['Apache', '#EA580C'],
+            ['SM Energy', '#CA8A04'],
+            ['Endeavor', '#DB2777'],
+            ['COG / Concho / ConocoPhillips', '#4338CA'],
+            ['Occidental / Oxy', '#059669'],
+            ['Birch', '#92400E'],
+            ['Other / none', 'rgba(0,0,0,0.38)'],
+          ].map(([label, color]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+              <span style={{ width: 16, height: 3, borderRadius: 2, background: color, flexShrink: 0 }} />
+              <span style={{ color: 'var(--mm-chrome-fg)' }}>{label}</span>
+            </div>
+          ))}
         </div>
       </CollapsibleSection>
 
