@@ -48,7 +48,10 @@ const WELL_KIND_COLORS: Record<string, string> = {
   shut_in: '#F59E0B',   // amber
   injection: '#0D9488', // teal
   permitted: '#2563EB', // blue
-  horizontal: '#57534E', // stone/dark gray — drilled, status unknown
+  // A drilled lateral with no completion IS a DUC — the legacy "horizontal"
+  // (drilled, status unknown) bucket now reads as DUC (data is being
+  // reclassified upstream; this keeps older geojson correct too).
+  horizontal: '#A855F7', // purple — DUC
   vertical: '#9CA3AF',  // light gray
 }
 const WELL_KIND_LABEL: Record<string, string> = {
@@ -57,7 +60,7 @@ const WELL_KIND_LABEL: Record<string, string> = {
   shut_in: 'Shut-in',
   injection: 'Injection / disposal',
   permitted: 'Permitted',
-  horizontal: 'Drilled (status unknown)',
+  horizontal: 'DUC',
   vertical: 'Vertical well',
 }
 const WELL_STATUS_COLOR = [
@@ -67,7 +70,8 @@ const WELL_STATUS_COLOR = [
   'shut_in', WELL_KIND_COLORS.shut_in,
   'injection', WELL_KIND_COLORS.injection,
   'permitted', WELL_KIND_COLORS.permitted,
-  'horizontal', WELL_KIND_COLORS.horizontal,
+  // Legacy 'horizontal' features still in older geojson render as DUC.
+  'horizontal', WELL_KIND_COLORS.duc,
   'vertical', WELL_KIND_COLORS.vertical,
   WELL_KIND_COLORS.vertical,
 ] as unknown as mapboxgl.Expression
@@ -3069,7 +3073,7 @@ function LayerTogglePanel({
       {wellsVisible && (
         <CollapsibleSection title="Well status" topBorder>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'horizontal', 'vertical'].map(
+            {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'vertical'].map(
               (k) => (
                 <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                   <span

@@ -82,9 +82,11 @@ def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
       injection  — well status / lease is disposal/injection
       shut_in    — well status SHUT IN
       producing  — has a completion (PDP) or status PRODUCING/ACTIVE
-      duc        — spudded (permit) but no completion on file
+      duc        — a drilled lateral with no completion/production on file
+                   (Drilled UnCompleted), whether or not a permit spud date
+                   was matched — a drawn lateral IS evidence the well was
+                   drilled, so an uncompleted one is a DUC
       permitted  — a permitted location (SYMNUM permit code), not yet spudded
-      horizontal — a drilled lateral with no other signal
       vertical   — a point well with no other signal
     """
     s = (winfo.get("status") or "").upper()
@@ -100,7 +102,10 @@ def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
         return "duc"
     if is_permit:
         return "permitted"
-    return "horizontal" if is_line else "vertical"
+    # A drawn lateral with no completion/production/shut/injection signal is,
+    # by definition, drilled but not completed -> DUC. Only point wells fall
+    # through to the neutral vertical bucket.
+    return "duc" if is_line else "vertical"
 
 
 def _paged(table: str, select: str, base: str, headers: dict) -> list[dict]:
