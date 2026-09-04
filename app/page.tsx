@@ -258,7 +258,8 @@ const WELL_KIND_BADGE: Record<string, { label: string; color: string; bg: string
   shut_in: { label: 'SHUT-IN', color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
   injection: { label: 'INJ', color: '#0F766E', bg: '#CCFBF1', border: '#5EEAD4' },
   permitted: { label: 'PERMIT', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
-  horizontal: { label: 'DRILLED', color: '#44403C', bg: '#F5F5F4', border: '#D6D3D1' },
+  // Legacy "drilled, status unknown" laterals are DUCs.
+  horizontal: { label: 'DUC', color: '#6B21A8', bg: '#F3E8FF', border: '#D8B4FE' },
   vertical: { label: 'WELL', color: '#4B5563', bg: '#F9FAFB', border: '#E5E7EB' },
 }
 
