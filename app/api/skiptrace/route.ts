@@ -164,9 +164,17 @@ async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult
 /** idiCORE (IDI) skip-trace — primary for individuals.
  *
  * Activated once IDICORE_API_URL + IDICORE_API_KEY are set; until then this
- * no-ops and the person chain falls through to Tracerfy. The request/response
- * mapping is intentionally generic (defensive contact extraction) — finalize
- * the body/field names against idiCORE's API contract when wiring the key. */
+ * no-ops and the person chain falls through to Tracerfy.
+ *
+ * Static-IP egress: idiCORE allow-lists a single US IP for API access. On
+ * Vercel Pro the serverless egress IP is dynamic (rotating AWS ranges), so we
+ * route this one call through a fixed-IP proxy when IDICORE_PROXY_URL is set
+ * (e.g. a QuotaGuard/Fixie endpoint or a US VM with an Elastic IP). idiCORE
+ * then sees the registered address. Leave the var unset to call directly.
+ *
+ * The request/response mapping is intentionally generic (defensive contact
+ * extraction). Finalize the exact body/field names + auth scheme against
+ * idiCORE's API contract when wiring the live key. */
 async function traceIdicore(apiKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
@@ -181,11 +189,19 @@ async function traceIdicore(apiKey: string, a: TraceArgs): Promise<TraceResult> 
     state: a.state || '',
     zip: a.zip || '',
   }
-  const res = await fetch(url, {
+  const init: RequestInit & { dispatcher?: unknown } = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
-  })
+  }
+  const proxyUrl =
+    process.env.IDICORE_PROXY_URL?.trim() || process.env.SKIPTRACE_PROXY_URL?.trim()
+  if (proxyUrl) {
+    // Route egress through the static-IP proxy so idiCORE sees the allow-listed IP.
+    const { ProxyAgent } = await import('undici')
+    init.dispatcher = new ProxyAgent(proxyUrl)
+  }
+  const res = await fetch(url, init as RequestInit)
   if (!res.ok) return { phones, emails }
   const data = JSON.parse(await res.text()) as Record<string, unknown>
   extractContactsFromPayload(data, phones, emails)
