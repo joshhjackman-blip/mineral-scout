@@ -9,6 +9,13 @@ import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
 import { getWorkspaceContext } from '@/lib/workspace'
+import {
+  DEFAULT_LEASE_ROYALTY,
+  estimateGrossAcres,
+  formatAcres,
+  mineralOwnerNriPct,
+  netMineralAcres,
+} from '@/lib/tract-math'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -803,14 +810,20 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     owner.ownership_pct ?? owner.decimal_interest,
     county.ownershipPctIsDecimal,
   )
-  // Royalty / override lines (RI, OR) carry no gross acreage on the CAD
-  // roll, so acreage comes through as 0. Treat that as "not on file" rather
-  // than "owns zero acres" — otherwise NMA (gross × interest) reads as a
-  // misleading 0.000 for what is really a revenue-share royalty interest.
-  const hasAcreage = owner.acreage != null && Number(owner.acreage) > 0
-  const acreage = hasAcreage ? displayNumber(owner.acreage) : null
+  // Royalty / override lines (RI, OR) often carry 0 gross acres on the
+  // CAD roll. Fall back to section math: a regular square T&P / PSL
+  // tract is 640 acres, aliquot calls are fractions of that.
+  const acreageEstimate = estimateGrossAcres({
+    cadAcres: owner.acreage,
+    legal: tractLegalDescription,
+  })
+  const hasAcreage = acreageEstimate.acres != null && acreageEstimate.acres > 0
+  const acreage = hasAcreage ? formatAcres(acreageEstimate.acres!) : null
   const nra = (hasAcreage && ownershipPct != null)
-    ? Number(owner.acreage) * (ownershipPct / 100)
+    ? netMineralAcres(acreageEstimate.acres!, ownershipPct)
+    : null
+  const nriPct = ownershipPct != null
+    ? mineralOwnerNriPct(ownershipPct)
     : null
   const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
   const royaltyEstimate = (ownershipPct != null && cumOil > 0)
@@ -1282,7 +1295,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             owner={owner}
             ownershipPct={ownershipPct}
             acreage={acreage}
+            acreageEstimated={acreageEstimate.estimated}
             nra={nra}
+            nriPct={nriPct}
             royaltyEstimate={royaltyEstimate}
             cumOil={cumOil}
             tractLabel={tractLabel ?? null}
@@ -1481,7 +1496,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 }
 
 function OverviewPanel({
-  owner, ownershipPct, acreage, nra, royaltyEstimate, cumOil,
+  owner, ownershipPct, acreage, acreageEstimated = false, nra, nriPct, royaltyEstimate, cumOil,
   tractLabel, tractLegalDescription, rrcLease, county, tractDevStatus,
   editingContact = false,
   onCancelEdit,
@@ -1493,7 +1508,9 @@ function OverviewPanel({
   owner: OwnerLike
   ownershipPct: number | null
   acreage: string | null
+  acreageEstimated?: boolean
   nra: number | null
+  nriPct?: number | null
   royaltyEstimate: number | null
   cumOil: number
   tractLabel: string | null
@@ -1553,7 +1570,9 @@ function OverviewPanel({
           value={acreage ?? '—'}
           hint={
             acreage != null
-              ? (owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
+              ? (acreageEstimated
+                  ? 'Estimated from section / legal (640 ac square section)'
+                  : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
               : (clean(owner.sptb_code)
                   ? `${owner.sptb_code} interest — no acreage on roll`
                   : 'No acreage on roll for this interest')
@@ -1563,6 +1582,11 @@ function OverviewPanel({
           label="Net mineral acres"
           value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
           hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
+        />
+        <StatCard
+          label="NRI"
+          value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
+          hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
         />
         <StatCard
           label="Est. royalty"
@@ -2072,7 +2096,13 @@ function HoldingsPanel({
               <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">County</th>
               <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Interest</th>
               <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Acres</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pr-3.5 text-right">NMA</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">NMA</th>
+              <th
+                className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pr-3.5 text-right"
+                title={`Mineral-owner NRI at assumed ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% (1/8) royalty`}
+              >
+                NRI
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -2126,10 +2156,6 @@ function HoldingsPanel({
                 h.ownership_pct ?? h.decimal_interest,
                 cfg.ownershipPctIsDecimal,
               )
-              const acres = displayNumber(h.acreage)
-              const nra = (ownershipPct != null && h.acreage != null)
-                ? Number(h.acreage) * (ownershipPct / 100)
-                : null
 
               const unitLabel = clean(h.county_lease_name)
                 || clean(h.field_name)
@@ -2150,6 +2176,22 @@ function HoldingsPanel({
                 if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
                 return abstractLabel
               })()
+
+              const acreageEstimate = estimateGrossAcres({
+                cadAcres: h.acreage,
+                legal: composedLegal,
+                survey: clean(h.survey),
+                section: parts.section,
+                block: parts.block,
+                township: parts.township,
+              })
+              const acres = acreageEstimate.acres
+              const nra = (ownershipPct != null && acres != null)
+                ? netMineralAcres(acres, ownershipPct)
+                : null
+              const nriPct = ownershipPct != null
+                ? mineralOwnerNriPct(ownershipPct)
+                : null
 
               const fieldName = clean(h.field_name)
               const countyLabelShort = cfg.displayName.replace(/\s+County,\s+TX$/i, '')
@@ -2212,14 +2254,36 @@ function HoldingsPanel({
                   >
                     {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono">
-                    {acres ?? '—'}
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
+                    title={
+                      acres != null
+                        ? acreageEstimate.estimated
+                          ? `${formatAcres(acres)} ac estimated from section / legal`
+                          : `${formatAcres(acres)} ac from CAD`
+                        : undefined
+                    }
+                  >
+                    {acres != null ? formatAcres(acres) : '—'}
+                    {acres != null && acreageEstimate.estimated && (
+                      <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
+                    )}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right font-mono text-gray-600"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono text-gray-600"
                     title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
                   >
                     {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
+                  </td>
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right font-mono text-gray-600"
+                    title={
+                      nriPct != null
+                        ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
+                        : undefined
+                    }
+                  >
+                    {nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
                   </td>
                 </tr>
               )
