@@ -198,6 +198,9 @@ export default function CRM() {
           state: deal.mailing_state ?? '',
           zip: deal.mailing_zip ?? '',
           ownerName: deal.owner_name,
+          county: deal.county ?? null,
+          tractAbstract: deal.tract_abstract ?? null,
+          dealId: deal.id,
         }),
       })
       const result = await res.json()
@@ -206,9 +209,13 @@ export default function CRM() {
       const phone = phones[0] ?? null
       const email = emails[0] ?? null
 
-      if (!phone && !email) {
-        alert('No contact info found for this owner.')
-        return
+      if (!phone) {
+        alert(
+          result.needs_review
+            ? 'No phone number came back. This lead was sent to the owner portal for a manual lookup.'
+            : 'No phone number found for this owner.',
+        )
+        if (!email) return
       }
 
       const derivedCounty = deal.county ?? (() => {
