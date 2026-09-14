@@ -45,6 +45,7 @@ import BasinActivityWidget from './components/BasinActivityWidget'
 import PermitsNavLink from './components/PermitsNavLink'
 import ProductTour, { TOUR_EVENT, TOUR_ADVANCE_EVENT, type TourStep } from './components/ProductTour'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
+import { estimateGrossAcres } from '@/lib/tract-math'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // Single interactive product tour for newcomers. Steps anchor to
@@ -760,9 +761,24 @@ const classifyOwner = (name: string): 'trust' | 'company' | 'individual' => {
 const SQM_PER_ACRE = 4046.86
 
 const getTractGrossAcres = (tractProperties?: TractSelection | null): number => {
-  const shapeArea = Number(tractProperties?.SHAPE_AREA ?? 0)
-  if (shapeArea > 0) return shapeArea / SQM_PER_ACRE
-  return 0
+  if (!tractProperties) return 0
+  const shapeArea = Number(tractProperties.SHAPE_AREA ?? 0)
+  const legal = buildLegalDescription(tractProperties)
+  const block = String(tractProperties.block ?? tractProperties.Block ?? '')
+  const section = String(
+    tractProperties.surv_sect ??
+      tractProperties.Surv_Sect ??
+      tractProperties.level3_sur ??
+      tractProperties.LEVEL3_SUR ??
+      '',
+  )
+  const estimated = estimateGrossAcres({
+    legal,
+    block,
+    section,
+    shapeAcres: shapeArea > 0 ? shapeArea / SQM_PER_ACRE : null,
+  })
+  return estimated.acres ?? 0
 }
 
 const getOwnershipPctValue = (

@@ -9,6 +9,13 @@ import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
 import { getWorkspaceContext } from '@/lib/workspace'
+import {
+  DEFAULT_LEASE_ROYALTY,
+  estimateGrossAcres,
+  formatAcres,
+  mineralOwnerNriPct,
+  netMineralAcres,
+} from '@/lib/tract-math'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -803,14 +810,20 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     owner.ownership_pct ?? owner.decimal_interest,
     county.ownershipPctIsDecimal,
   )
-  // Royalty / override lines (RI, OR) carry no gross acreage on the CAD
-  // roll, so acreage comes through as 0. Treat that as "not on file" rather
-  // than "owns zero acres" — otherwise NMA (gross × interest) reads as a
-  // misleading 0.000 for what is really a revenue-share royalty interest.
-  const hasAcreage = owner.acreage != null && Number(owner.acreage) > 0
-  const acreage = hasAcreage ? displayNumber(owner.acreage) : null
+  // Royalty / override lines (RI, OR) often carry 0 gross acres on the
+  // CAD roll. Fall back to section math: a regular square T&P / PSL
+  // tract is 640 acres, aliquot calls are fractions of that.
+  const acreageEstimate = estimateGrossAcres({
+    cadAcres: owner.acreage,
+    legal: tractLegalDescription,
+  })
+  const hasAcreage = acreageEstimate.acres != null && acreageEstimate.acres > 0
+  const acreage = hasAcreage ? formatAcres(acreageEstimate.acres!) : null
   const nra = (hasAcreage && ownershipPct != null)
-    ? Number(owner.acreage) * (ownershipPct / 100)
+    ? netMineralAcres(acreageEstimate.acres!, ownershipPct)
+    : null
+  const nriPct = ownershipPct != null
+    ? mineralOwnerNriPct(ownershipPct)
     : null
   const cumOil = Number(owner.prod_cumulative_sum_oil ?? 0)
   const royaltyEstimate = (ownershipPct != null && cumOil > 0)
@@ -834,10 +847,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       aria-label={`Details for ${owner.owner_name}`}
       style={{ minHeight: 0 }}
     >
-      <header className="flex items-start gap-4 px-6 py-4 border-b border-gray-100">
+      <header className="shrink-0 flex items-start gap-4 px-6 py-4 border-b border-gray-100 bg-white">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <div className="text-2xl font-serif font-bold text-gray-900 truncate">
+            <div className={`font-serif font-bold text-gray-900 truncate ${crmMode ? 'text-3xl' : 'text-2xl'}`}>
               {displayName}
             </div>
             {ownerIsHidden && (
@@ -871,7 +884,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               </span>
             ))}
           </div>
-          {address && (
+          {!crmMode && address && (
             <div className="mt-2 text-xs text-gray-500">{address}</div>
           )}
         </div>
@@ -884,8 +897,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         </button>
       </header>
 
+      {!crmMode && (
       <div className="border-b border-gray-100 px-6 py-3">
-        <div className={crmMode ? 'flex flex-col items-start gap-2' : 'flex flex-wrap items-center gap-2'}>
+        <div className="flex flex-wrap items-center gap-2">
         {phoneList.length > 0 ? (
           phoneList.map((p) => (
             <ContactPill
@@ -997,8 +1011,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         )}
         </div>
       </div>
+      )}
 
-      {removing && onRemoveOwner && (
+      {!crmMode && removing && onRemoveOwner && (
         <div className="border-b border-rose-100 bg-rose-50/60 px-6 py-3">
           <div className="text-sm font-semibold text-rose-800">
             Remove from your working list?
@@ -1095,7 +1110,173 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </nav>
       )}
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-6 py-6' : 'px-6 py-5'}`}>
+        <div className={crmMode ? 'mx-auto w-full max-w-7xl' : undefined}>
+        {crmMode && (
+          <div className="mb-6">
+            {address && (
+              <div className="mb-3 text-sm text-gray-500">{address}</div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+              {phoneList.length > 0 ? (
+                phoneList.map((p) => (
+                  <ContactPill
+                    key={p.href}
+                    icon="📞"
+                    label={p.display}
+                    href={p.href}
+                    wide
+                    onActivate={() => {
+                      void logUsageEvent({
+                        eventType: 'call_clicked',
+                        countyId,
+                        ownerName: owner.owner_name,
+                      })
+                    }}
+                  />
+                ))
+              ) : (
+                <ContactPill icon="📞" label="No phone on file" disabled wide />
+              )}
+              {emailList.length > 0 ? (
+                emailList.map((e) => (
+                  <ContactPill
+                    key={e.href}
+                    icon="✉︎"
+                    label={e.display}
+                    href={e.href}
+                    wide
+                    onActivate={() => {
+                      void logUsageEvent({
+                        eventType: 'email_clicked',
+                        countyId,
+                        ownerName: owner.owner_name,
+                      })
+                    }}
+                  />
+                ))
+              ) : (
+                <ContactPill icon="✉︎" label="No email on file" disabled wide />
+              )}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => onSkipTrace(owner)}
+                className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
+              >
+                ⚡ Skip trace
+              </button>
+              {onSaveOwnerDetails && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('overview')
+                    setEditingContact(true)
+                    setRemoving(false)
+                    setActionError(null)
+                  }}
+                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Update owner
+                </button>
+              )}
+              {ownerIsHidden && onRestoreOwner ? (
+                <button
+                  type="button"
+                  disabled={actionBusy}
+                  onClick={async () => {
+                    setActionBusy(true)
+                    setActionError(null)
+                    const result = await onRestoreOwner(owner)
+                    setActionBusy(false)
+                    if (!result.success) {
+                      setActionError(result.error || 'Failed to restore owner')
+                    }
+                  }}
+                  className="rounded-md border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
+                >
+                  Restore to list
+                </button>
+              ) : onRemoveOwner ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRemoving(true)
+                    setEditingContact(false)
+                    setActionError(null)
+                  }}
+                  className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                >
+                  Remove from list
+                </button>
+              ) : null}
+              <button
+                onClick={() => onAddToPipeline(owner)}
+                className={`rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${
+                  inPipeline
+                    ? 'border-lime-300 bg-lime-50 text-lime-700 hover:bg-lime-100'
+                    : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {inPipeline ? '✓ In pipeline' : '+ Add to pipeline'}
+              </button>
+            </div>
+            {removing && onRemoveOwner && (
+              <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3">
+                <div className="text-sm font-semibold text-rose-800">
+                  Remove from your working list?
+                </div>
+                <p className="mt-1 text-xs text-rose-700/90">
+                  Hides this owner on this tract for you. The CAD tax-roll record is not deleted.
+                </p>
+                <input
+                  value={removeNote}
+                  onChange={(e) => setRemoveNote(e.target.value)}
+                  placeholder="Optional reason (wrong payee, deceased, sold)"
+                  className="mt-2 w-full rounded-md border border-rose-200 bg-white px-3 py-2 text-sm text-gray-800"
+                />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={async () => {
+                      setActionBusy(true)
+                      setActionError(null)
+                      const result = await onRemoveOwner(owner, {
+                        status: 'incorrect',
+                        note: removeNote.trim() || undefined,
+                      })
+                      setActionBusy(false)
+                      if (!result.success) {
+                        setActionError(result.error || 'Failed to remove owner')
+                        return
+                      }
+                      setRemoving(false)
+                      setRemoveNote('')
+                    }}
+                    className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+                  >
+                    {actionBusy ? 'Removing...' : 'Confirm remove'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusy}
+                    onClick={() => {
+                      setRemoving(false)
+                      setRemoveNote('')
+                    }}
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {actionError && (
+                  <div className="mt-2 text-xs text-rose-700">{actionError}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {crmMode && onSetStatus && (
           <StatusPicker
             current={dealStatus}
@@ -1114,7 +1295,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             owner={owner}
             ownershipPct={ownershipPct}
             acreage={acreage}
+            acreageEstimated={acreageEstimate.estimated}
             nra={nra}
+            nriPct={nriPct}
             royaltyEstimate={royaltyEstimate}
             cumOil={cumOil}
             tractLabel={tractLabel ?? null}
@@ -1150,7 +1333,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         )}
         {(crmMode || tab === 'holdings') && (
           <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Leases</SectionHeading>}
             <HoldingsPanel
               holdings={holdings}
               loading={holdingsLoading}
@@ -1158,6 +1340,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               legalDescByAbstract={legalDescByAbstract}
               errorMessages={holdingsErrors}
               highlightOperators={highlightOperators}
+              crmMode={crmMode}
             />
           </div>
         )}
@@ -1186,6 +1369,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           />
           </div>
         )}
+        </div>
       </div>
     </div>
   )
@@ -1239,17 +1423,19 @@ function StatusPicker({
 }
 
 function ContactPill({
-  icon, label, href, disabled, onActivate,
+  icon, label, href, disabled, onActivate, wide,
 }: {
   icon: string
   label: string
   href?: string
   disabled?: boolean
   onActivate?: () => void
+  wide?: boolean
 }) {
+  const width = wide ? 'w-full justify-start' : ''
   if (disabled || !href) {
     return (
-      <span className="inline-flex items-center gap-2 rounded-md border border-dashed border-gray-200 bg-white px-4 py-2 text-sm text-gray-400">
+      <span className={`inline-flex items-center gap-2 rounded-md border border-dashed border-gray-200 bg-white px-4 py-2 text-sm text-gray-400 ${width}`}>
         <span aria-hidden>{icon}</span>
         {label}
       </span>
@@ -1259,7 +1445,7 @@ function ContactPill({
     <a
       href={href}
       onClick={() => onActivate?.()}
-      className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+      className={`inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800 ${width}`}
     >
       <span aria-hidden>{icon}</span>
       {label}
@@ -1310,7 +1496,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
 }
 
 function OverviewPanel({
-  owner, ownershipPct, acreage, nra, royaltyEstimate, cumOil,
+  owner, ownershipPct, acreage, acreageEstimated = false, nra, nriPct, royaltyEstimate, cumOil,
   tractLabel, tractLegalDescription, rrcLease, county, tractDevStatus,
   editingContact = false,
   onCancelEdit,
@@ -1322,7 +1508,9 @@ function OverviewPanel({
   owner: OwnerLike
   ownershipPct: number | null
   acreage: string | null
+  acreageEstimated?: boolean
   nra: number | null
+  nriPct?: number | null
   royaltyEstimate: number | null
   cumOil: number
   tractLabel: string | null
@@ -1382,7 +1570,9 @@ function OverviewPanel({
           value={acreage ?? '—'}
           hint={
             acreage != null
-              ? (owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
+              ? (acreageEstimated
+                  ? 'Estimated from section / legal (640 ac square section)'
+                  : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
               : (clean(owner.sptb_code)
                   ? `${owner.sptb_code} interest — no acreage on roll`
                   : 'No acreage on roll for this interest')
@@ -1392,6 +1582,11 @@ function OverviewPanel({
           label="Net mineral acres"
           value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
           hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
+        />
+        <StatCard
+          label="NRI"
+          value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
+          hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
         />
         <StatCard
           label="Est. royalty"
@@ -1794,7 +1989,7 @@ function WellActivityCard({
 }
 
 function HoldingsPanel({
-  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators,
+  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators, crmMode = false,
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
@@ -1802,6 +1997,7 @@ function HoldingsPanel({
   legalDescByAbstract: Record<string, string> | undefined
   errorMessages?: Array<{ county: CountyKey; message: string }>
   highlightOperators?: string[] | null
+  crmMode?: boolean
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -1829,18 +2025,16 @@ function HoldingsPanel({
   // pre-computed legal description, so those columns show "—" and
   // the Legal column falls back to the bare abstract label.
   //
-  // Sticky top strip + sticky table header: the count / counties
-  // summary and every column label stay pinned to the top of the
-  // drawer's scroll area as the broker scrolls through a long
-  // holdings list (700+ rows is common for a large owner). Uses
-  // `position: sticky` inside the drawer's overflow-y-auto container
-  // so no extra scroll-position tracking is needed.
+  // Sticky top strip + sticky table header stay pinned in the map
+  // drawer. CRM uses page scroll under a fixed name bar, so the
+  // negative sticky offset would clip this heading and the first row.
   return (
     <div className="flex flex-col gap-2">
-      {/* Compact sticky counter — replaces the preachy amber banner. */}
       <div
-        className="sticky z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 backdrop-blur"
-        style={{ top: '-20px' }}
+        className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 ${
+          crmMode ? '' : 'sticky backdrop-blur'
+        }`}
+        style={crmMode ? undefined : { top: '-20px' }}
       >
         <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
           Leases
@@ -1885,25 +2079,30 @@ function HoldingsPanel({
         </div>
       )}
 
-      {/* Compact 10-column table with a sticky <thead>. Column labels
-          stay pinned to the top of the scrolling drawer as the user
-          scrolls through 700+ rows so they never lose orientation.
-          `top: 28px` accounts for the sticky Leases counter above. */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full border-collapse text-[11px]">
+        <table className="w-max min-w-full border-collapse text-[11px]">
           <thead className="text-[9px] font-bold uppercase tracking-widest text-gray-500">
-            <tr className="sticky z-10 bg-gray-50" style={{ top: '11px' }}>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Unit</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Legal</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Sec</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Twp</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Block</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Range</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Operator</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">County</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Interest</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Acres</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">NMA</th>
+            <tr
+              className={`${crmMode ? '' : 'sticky z-10'} bg-gray-50`}
+              style={crmMode ? undefined : { top: '11px' }}
+            >
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pl-3.5 text-left">Unit</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Legal</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Sec</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Twp</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Block</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Range</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Operator</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">County</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Interest</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Acres</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">NMA</th>
+              <th
+                className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pr-3.5 text-right"
+                title={`Mineral-owner NRI at assumed ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% (1/8) royalty`}
+              >
+                NRI
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1957,10 +2156,6 @@ function HoldingsPanel({
                 h.ownership_pct ?? h.decimal_interest,
                 cfg.ownershipPctIsDecimal,
               )
-              const acres = displayNumber(h.acreage)
-              const nra = (ownershipPct != null && h.acreage != null)
-                ? Number(h.acreage) * (ownershipPct / 100)
-                : null
 
               const unitLabel = clean(h.county_lease_name)
                 || clean(h.field_name)
@@ -1982,6 +2177,22 @@ function HoldingsPanel({
                 return abstractLabel
               })()
 
+              const acreageEstimate = estimateGrossAcres({
+                cadAcres: h.acreage,
+                legal: composedLegal,
+                survey: clean(h.survey),
+                section: parts.section,
+                block: parts.block,
+                township: parts.township,
+              })
+              const acres = acreageEstimate.acres
+              const nra = (ownershipPct != null && acres != null)
+                ? netMineralAcres(acres, ownershipPct)
+                : null
+              const nriPct = ownershipPct != null
+                ? mineralOwnerNriPct(ownershipPct)
+                : null
+
               const fieldName = clean(h.field_name)
               const countyLabelShort = cfg.displayName.replace(/\s+County,\s+TX$/i, '')
               return (
@@ -1996,25 +2207,25 @@ function HoldingsPanel({
                   } ${!opHit && i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
                 >
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-medium text-gray-900"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
                     title={fieldName && clean(h.county_lease_name) ? `${unitLabel} · ${fieldName}` : unitLabel}
                   >
                     {unitLabel}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono"
+                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 font-mono leading-snug"
                     title={composedLegal && abstractLabel && composedLegal !== abstractLabel
                       ? `${composedLegal} · ${abstractLabel}`
                       : composedLegal || abstractLabel || undefined}
                   >
                     {composedLegal || abstractLabel || '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.section || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.township || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.block || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.range || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.section || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.township || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.block || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.range || '—'}</td>
                   <td
-                    className={`whitespace-nowrap border-b border-gray-100 px-2 py-1.5 ${
+                    className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
                       opHit ? 'font-semibold text-amber-900' : ''
                     }`}
                     title={clean(h.operator_name) || undefined}
@@ -2026,7 +2237,7 @@ function HoldingsPanel({
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5" title={cfg.displayName}>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={cfg.displayName}>
                     <span
                       className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
                         isActive
@@ -2038,19 +2249,41 @@ function HoldingsPanel({
                     </span>
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
                     title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
                   >
                     {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono">
-                    {acres ?? '—'}
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
+                    title={
+                      acres != null
+                        ? acreageEstimate.estimated
+                          ? `${formatAcres(acres)} ac estimated from section / legal`
+                          : `${formatAcres(acres)} ac from CAD`
+                        : undefined
+                    }
+                  >
+                    {acres != null ? formatAcres(acres) : '—'}
+                    {acres != null && acreageEstimate.estimated && (
+                      <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
+                    )}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono text-gray-600"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono text-gray-600"
                     title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
                   >
                     {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
+                  </td>
+                  <td
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right font-mono text-gray-600"
+                    title={
+                      nriPct != null
+                        ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
+                        : undefined
+                    }
+                  >
+                    {nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
                   </td>
                 </tr>
               )
