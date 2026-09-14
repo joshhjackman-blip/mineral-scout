@@ -34,7 +34,14 @@ import {
   formatDate,
   getDealCounty,
   isOverdue,
+  parsePhoneActivity,
+  waitingOnNumber,
 } from './crm-utils'
+import {
+  applyCallOutcome,
+  waitingOnNumberCopy,
+  type CallOutcome,
+} from '@/lib/phone-activity'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,6 +94,11 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
   rrc_lease_id: deal.rrc_lease_id,
 })
 
+const hydrateDeal = (deal: Deal): Deal => ({
+  ...deal,
+  phone_activity: parsePhoneActivity(deal.phone_activity),
+})
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export default function CRM() {
@@ -95,13 +107,17 @@ export default function CRM() {
   const [view, setView] = useState<'dashboard' | 'leads' | 'calendar'>(() => {
     if (typeof window === 'undefined') return 'dashboard'
     const params = new URLSearchParams(window.location.search)
-    return params.get('lead') || params.get('owner') ? 'leads' : 'dashboard'
+    return params.get('lead') || params.get('owner') || params.get('waiting')
+      ? 'leads'
+      : 'dashboard'
   })
   const [activeTag, setActiveTag] = useState('all')
   const [countyFilter, setCountyFilter] = useState<'all' | CountyKey>('all')
   const [search, setSearch] = useState('')
   const [followUpFilter, setFollowUpFilter] = useState<'all' | 'overdue' | 'upcoming'>('all')
   const [needContact, setNeedContact] = useState(false)
+  const [waitingFilter, setWaitingFilter] = useState(false)
+  const [callNow, setCallNow] = useState(false)
   const [dealsReady, setDealsReady] = useState(false)
   const openedDeepLink = useRef(false)
 
@@ -110,7 +126,7 @@ export default function CRM() {
       try {
         const workspace = await getWorkspaceContext()
         if (!workspace) {
-          setDeals(shouldLoadPreviewDeals() ? PREVIEW_DEALS : [])
+          setDeals(shouldLoadPreviewDeals() ? PREVIEW_DEALS.map(hydrateDeal) : [])
           return
         }
         // RLS also scopes by team_owner_id; filter explicitly so a missing
@@ -120,7 +136,7 @@ export default function CRM() {
           .select('*')
           .eq('team_owner_id', workspace.workspaceId)
           .order('updated_at', { ascending: false })
-        setDeals((data as Deal[]) ?? [])
+        setDeals(((data as Deal[]) ?? []).map(hydrateDeal))
       } finally {
         setDealsReady(true)
       }
@@ -135,39 +151,51 @@ export default function CRM() {
         search,
         followUp: followUpFilter,
         needContact,
+        waitingOnNumber: waitingFilter,
       }),
-    [deals, activeTag, countyFilter, search, followUpFilter, needContact],
+    [deals, activeTag, countyFilter, search, followUpFilter, needContact, waitingFilter],
   )
 
-  const extraFiltersOn = followUpFilter !== 'all' || needContact
+  const extraFiltersOn = followUpFilter !== 'all' || needContact || waitingFilter
+  const waitingCount = useMemo(() => deals.filter((d) => waitingOnNumber(d)).length, [deals])
 
-  const openLead = useCallback((deal: Deal) => {
+  const openLead = useCallback((deal: Deal, opts?: { callNow?: boolean }) => {
     setActiveTag('all')
     setCountyFilter('all')
     setFollowUpFilter('all')
     setNeedContact(false)
+    setWaitingFilter(false)
     setSearch('')
     setSelected(deal)
+    setCallNow(Boolean(opts?.callNow))
     setView('leads')
   }, [])
 
   // Map skip-trace "Go to CRM" lands on /crm?lead=<deal id> (owner name
   // as fallback) and should open that lead, not the dashboard.
+  // ?call=1 puts the lead in call-now. ?waiting=1 opens the bad-skip-trace queue.
   useEffect(() => {
     if (!dealsReady || openedDeepLink.current) return
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const leadId = params.get('lead')?.trim()
     const ownerName = params.get('owner')?.trim()
-    if (!leadId && !ownerName) {
+    const wantCall = params.get('call') === '1'
+    const wantWaiting = params.get('waiting') === '1'
+    if (!leadId && !ownerName && !wantWaiting) {
       openedDeepLink.current = true
+      return
+    }
+    openedDeepLink.current = true
+    if (wantWaiting && !leadId && !ownerName) {
+      setWaitingFilter(true)
+      setView('leads')
       return
     }
     const deal = leadId
       ? deals.find((d) => d.id === leadId)
       : deals.find((d) => d.owner_name === ownerName)
-    openedDeepLink.current = true
-    if (deal) openLead(deal)
+    if (deal) openLead(deal, { callNow: wantCall })
   }, [deals, dealsReady, openLead])
 
   const openLeadsFilter = useCallback((next: DashboardOpenFilter) => {
@@ -175,15 +203,72 @@ export default function CRM() {
     setCountyFilter(next.county ?? 'all')
     setFollowUpFilter(next.followUp ?? 'all')
     setNeedContact(Boolean(next.needContact))
+    setWaitingFilter(Boolean(next.waitingOnNumber))
     setSearch('')
     setSelected(null)
+    setCallNow(false)
     setView('leads')
   }, [])
 
   const clearExtraFilters = useCallback(() => {
     setFollowUpFilter('all')
     setNeedContact(false)
+    setWaitingFilter(false)
   }, [])
+
+  const handleLogCallOutcome = useCallback(async (
+    owner: OwnerLike,
+    phone: string,
+    outcome: CallOutcome,
+  ) => {
+    const deal = deals.find((d) => d.id === owner.id) ?? selected
+    if (!deal) return
+    const workspace = await getWorkspaceContext()
+    const { data: auth } = await supabase.auth.getUser()
+    const calledByName =
+      (auth.user?.user_metadata as { full_name?: string } | undefined)?.full_name
+      || auth.user?.email
+      || null
+    const next = applyCallOutcome(parsePhoneActivity(deal.phone_activity), phone, outcome, {
+      calledBy: workspace?.userId ?? null,
+      calledByName,
+    })
+    const patch: Partial<Deal> = {
+      phone_activity: next.activity,
+      connected_phone: next.connectedPhone,
+      updated_at: new Date().toISOString(),
+    }
+    if (!deal.id.startsWith('preview-')) {
+      const { error } = await supabase
+        .from('deals')
+        .update({
+          phone_activity: next.activity,
+          connected_phone: next.connectedPhone,
+          updated_at: patch.updated_at,
+        })
+        .eq('id', deal.id)
+      if (error) {
+        console.error('Failed to save call outcome:', error)
+        return
+      }
+      if (workspace) {
+        const digits = phone.replace(/\D/g, '')
+        const phoneKeyValue = digits.slice(-10) || digits
+        const { error: logError } = await supabase.from('deal_phone_calls').insert({
+          team_owner_id: workspace.workspaceId,
+          deal_id: deal.id,
+          phone_key: phoneKeyValue,
+          phone_display: phone,
+          outcome,
+          called_by: workspace.userId,
+          called_by_name: calledByName,
+        })
+        if (logError) console.error('Call log insert failed:', logError)
+      }
+    }
+    setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
+    setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } : prev))
+  }, [deals, selected])
 
   const handleSetFollowUp = useCallback(async (deal: Deal, followUpDate: string | null) => {
     const next = { follow_up_date: followUpDate, updated_at: new Date().toISOString() }
@@ -241,10 +326,9 @@ export default function CRM() {
       if (!phone) {
         alert(
           result.needs_review
-            ? 'No phone number came back. This lead was sent to the owner portal for a manual lookup.'
+            ? 'No phone number came back. This lead is waiting on a number (owner portal queue).'
             : 'No phone number found for this owner.',
         )
-        if (!email) return
       }
 
       const derivedCounty = deal.county ?? (() => {
@@ -258,14 +342,24 @@ export default function CRM() {
         phones,
         emails,
         tag: 'skip_traced',
+        needs_phone: !phone,
         updated_at: new Date().toISOString(),
       }
       if (!deal.county && derivedCounty) updatePayload.county = derivedCounty
 
       await supabase.from('deals').update(updatePayload).eq('id', deal.id)
-      const patch: Partial<Deal> = { phone, email, phones, emails, tag: 'skip_traced', county: deal.county ?? derivedCounty ?? null }
+      const patch: Partial<Deal> = {
+        phone,
+        email,
+        phones,
+        emails,
+        tag: 'skip_traced',
+        needs_phone: !phone,
+        county: deal.county ?? derivedCounty ?? null,
+      }
       setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
       setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } as Deal : prev))
+      setCallNow(Boolean(phone))
     } catch (err) {
       console.error('Skip trace failed:', err)
       alert('Skip trace request failed. Please try again.')
@@ -484,6 +578,8 @@ export default function CRM() {
       selected?.mailing_state,
       selected?.mailing_zip,
       selected?.tag,
+      selected?.phone_activity,
+      selected?.connected_phone,
     ],
   )
 
@@ -538,6 +634,17 @@ export default function CRM() {
           </Link>
         </nav>
       </header>
+
+      {waitingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => openLeadsFilter({ waitingOnNumber: true })}
+          className="shrink-0 w-full bg-amber-50 border-b border-amber-200 px-4 py-2 text-left text-sm text-amber-900 hover:bg-amber-100"
+        >
+          <span className="font-semibold">{waitingOnNumberCopy(waitingCount)}</span>
+          <span className="text-amber-800">. Skip traces that came back empty. Open the queue.</span>
+        </button>
+      )}
 
       {view === 'dashboard' ? (
         <CrmDashboard
@@ -608,6 +715,11 @@ export default function CRM() {
                     Need skip trace
                   </span>
                 )}
+                {waitingFilter && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-amber-50 border border-amber-200 text-amber-700">
+                    Waiting on a number
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={clearExtraFilters}
@@ -664,7 +776,10 @@ export default function CRM() {
             ) : filtered.map((deal) => (
               <button
                 key={deal.id}
-                onClick={() => setSelected(deal)}
+                onClick={() => {
+                  setCallNow(false)
+                  setSelected(deal)
+                }}
                 className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 transition-colors ${
                   selected?.id === deal.id ? 'bg-white border-l-2 border-l-amber-500 shadow-sm' : ''
                 }`}
@@ -680,6 +795,11 @@ export default function CRM() {
                   {deal.mailing_city && <span>{deal.mailing_city}, {deal.mailing_state}</span>}
                   {deal.acreage ? <span>{deal.acreage} ac</span> : null}
                 </div>
+                {waitingOnNumber(deal) && (
+                  <div className="mt-1.5 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                    Waiting on a number
+                  </div>
+                )}
                 {deal.follow_up_date && (
                   <div className={`mt-1.5 inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${
                     isOverdue(deal.follow_up_date)
@@ -718,10 +838,18 @@ export default function CRM() {
               }
               inPipeline={true}
               crmMode={true}
+              callNow={callNow}
+              onDismissCallNow={() => setCallNow(false)}
+              phoneActivity={parsePhoneActivity(selected?.phone_activity)}
+              connectedPhone={selected?.connected_phone ?? null}
+              onLogCallOutcome={handleLogCallOutcome}
               dealStatus={selected?.tag ?? null}
               onSetStatus={handleSetStatus}
               ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
-              onClose={() => setSelected(null)}
+              onClose={() => {
+                setCallNow(false)
+                setSelected(null)
+              }}
               onSkipTrace={handleSkipTrace}
               onAddToPipeline={handleAddToPipeline}
               onSaveOwnerDetails={handleSaveOwnerDetails}

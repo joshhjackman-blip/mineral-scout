@@ -46,6 +46,7 @@ import PermitsNavLink from './components/PermitsNavLink'
 import ProductTour, { TOUR_EVENT, TOUR_ADVANCE_EVENT, type TourStep } from './components/ProductTour'
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 import { estimateGrossAcres } from '@/lib/tract-math'
+import { waitingOnNumber, waitingOnNumberCopy } from '@/lib/phone-activity'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // Single interactive product tour for newcomers. Steps anchor to
@@ -995,6 +996,7 @@ export default function Home() {
   const [pipelineTag, setPipelineTag] = useState<PipelineTag>('prospect')
   const [pipelineSaving, setPipelineSaving] = useState(false)
   const [pipelineOwners, setPipelineOwners] = useState<Set<string>>(new Set())
+  const [waitingLeadCount, setWaitingLeadCount] = useState(0)
   const [toast, setToast] = useState<string | null>(null)
   const [toastType, setToastType] = useState<'success' | 'error'>('success')
   const [navMenuOpen, setNavMenuOpen] = useState(false)
@@ -1292,9 +1294,18 @@ export default function Home() {
       if (!mounted || !workspace) return
       const { data } = await supabase
         .from('deals')
-        .select('owner_name')
+        .select('owner_name, phone, phones, tag, source, needs_phone')
         .eq('team_owner_id', workspace.workspaceId)
       if (!mounted || !data) return
+      setWaitingLeadCount(
+        data.filter((row) => waitingOnNumber(row as {
+          phone?: string | null
+          phones?: string[] | null
+          tag?: string | null
+          source?: string | null
+          needs_phone?: boolean | null
+        })).length,
+      )
       setPipelineOwners(
         new Set(
           data
@@ -2171,6 +2182,7 @@ export default function Home() {
           email,
           phones,
           emails,
+          needs_phone: phones.length === 0,
           source: 'skip_trace',
           county: selectedCounty,
           updated_at: new Date().toISOString(),
@@ -2201,6 +2213,7 @@ export default function Home() {
               email: email ?? null,
               phones,
               emails,
+              needs_phone: phones.length === 0,
               updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id)
@@ -3348,7 +3361,7 @@ export default function Home() {
                 </PermitsNavLink>
                 {/* Satellite Imagery archived — see lib/feature-flags.ts */}
                 <a
-                  href="/crm"
+                  href={waitingLeadCount > 0 ? '/crm?waiting=1' : '/crm'}
                   style={{
                     display: 'block',
                     padding: '10px 16px',
@@ -3623,7 +3636,7 @@ export default function Home() {
           </PermitsNavLink>
           {/* Satellite Imagery archived — see lib/feature-flags.ts */}
           <a
-            href="/crm"
+            href={waitingLeadCount > 0 ? '/crm?waiting=1' : '/crm'}
             style={{
               fontSize: 12,
               color: '#EF9F27',
@@ -3635,8 +3648,9 @@ export default function Home() {
               fontFamily: 'Geist, Inter, system-ui, sans-serif',
               whiteSpace: 'nowrap',
             }}
+            title={waitingLeadCount > 0 ? waitingOnNumberCopy(waitingLeadCount) : 'CRM'}
           >
-            CRM →
+            {waitingLeadCount > 0 ? `CRM · ${waitingLeadCount}` : 'CRM →'}
           </a>
           {showOwnerNav && !hideSecondaryNavActions && (
             <a
@@ -5670,6 +5684,8 @@ export default function Home() {
                   const params = new URLSearchParams()
                   if (skipTraceResult.dealId) params.set('lead', skipTraceResult.dealId)
                   else if (skipTraceResult.ownerName) params.set('owner', skipTraceResult.ownerName)
+                  if (skipTraceResult.phones.length > 0) params.set('call', '1')
+                  else params.set('waiting', '1')
                   const qs = params.toString()
                   window.location.href = qs ? `/crm?${qs}` : '/crm'
                 }}
