@@ -221,6 +221,7 @@ type SkipTraceResult = {
   emails: string[]
   dealId: string | null
   cached?: boolean
+  needsReview?: boolean
 }
 
 type OwnerSearchResult = {
@@ -2114,6 +2115,8 @@ export default function Home() {
           state: skipTracing.mailing_state ?? '',
           zip: skipTracing.mailing_zip ?? '',
           ownerName: skipTracing.owner_name,
+          county: selectedCounty,
+          tractAbstract: selected?.ABSTRACT_L ?? '',
         }),
       })
 
@@ -2220,6 +2223,7 @@ export default function Home() {
           emails,
           dealId: savedDeal?.id ?? null,
           cached: Boolean(result.cached),
+          needsReview: Boolean(result.needs_review),
         })
         trackEvent('skip_trace_run', {
           owner_name: skipTracing.owner_name,
@@ -5610,7 +5614,11 @@ export default function Home() {
                   </div>
                 ))
               ) : (
-                <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)', marginBottom: 8 }}>No phone found</div>
+                <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)', marginBottom: 8 }}>
+                  {skipTraceResult.needsReview
+                    ? 'No phone found. Sent to the owner portal for a manual lookup.'
+                    : 'No phone found'}
+                </div>
               )}
               {skipTraceResult.emails.length > 0 ? (
                 skipTraceResult.emails.map((em) => (

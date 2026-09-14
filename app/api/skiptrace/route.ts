@@ -10,6 +10,7 @@ import {
   isAgreementGateEnabled,
 } from '@/lib/agreement'
 import { reportSkipTraceMeterEvent } from '@/lib/stripe-meter'
+import { queueSkipTraceReview } from '@/lib/skip-trace-review'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
 // for internal accounting / abuse detection, but there is no monthly
@@ -332,7 +333,18 @@ async function traceTracerfy(apiKey: string, a: TraceArgs): Promise<TraceResult>
 }
 
 export async function POST(req: NextRequest) {
-  const { firstName, lastName, address, city, state, zip, ownerName } = await req.json()
+  const {
+    firstName,
+    lastName,
+    address,
+    city,
+    state,
+    zip,
+    ownerName,
+    county,
+    tractAbstract,
+    dealId,
+  } = await req.json()
 
   const res = NextResponse.next()
   const supabaseAuth = createServerClient(
@@ -437,14 +449,36 @@ export async function POST(req: NextRequest) {
     }
 
     if (cached) {
+      const cachedPhones = (cached as { phones?: string[] }).phones ?? []
+      const cachedEmails = (cached as { emails?: string[] }).emails ?? []
+      let needsReview = false
+      if (cachedPhones.length === 0) {
+        needsReview = await queueSkipTraceReview(adminClient, {
+          ownerName,
+          firstName,
+          lastName,
+          address,
+          city,
+          state,
+          zip,
+          county,
+          tractAbstract,
+          dealId,
+          teamOwnerId: workspaceId,
+          requestedBy: userId,
+          requestedByEmail: user.email ?? null,
+          emails: cachedEmails,
+        })
+      }
       return NextResponse.json({
         success: true,
-        phones: (cached as { phones?: string[] }).phones ?? [],
-        emails: (cached as { emails?: string[] }).emails ?? [],
+        phones: cachedPhones,
+        emails: cachedEmails,
         cached: true,
         billable: false,
         unit_price_usd: 0,
         limit: MONTHLY_LIMIT,
+        needs_review: needsReview,
       })
     }
   }
@@ -586,6 +620,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let needsReview = false
+    if (phones.length === 0) {
+      needsReview = await queueSkipTraceReview(adminClient, {
+        ownerName,
+        firstName,
+        lastName,
+        address,
+        city,
+        state,
+        zip,
+        county,
+        tractAbstract,
+        dealId,
+        teamOwnerId: workspaceId,
+        requestedBy: userId,
+        requestedByEmail: user.email ?? null,
+        emails,
+      })
+    }
+
     return NextResponse.json({
       success: true,
       phones,
@@ -600,6 +654,7 @@ export async function POST(req: NextRequest) {
       credits_deducted: 0,
       count: nextCount,
       limit: MONTHLY_LIMIT,
+      needs_review: needsReview,
     })
   } catch (err) {
     console.error('Skip trace error:', err)

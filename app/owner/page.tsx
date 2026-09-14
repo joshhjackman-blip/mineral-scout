@@ -19,6 +19,9 @@ import {
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import { isPlatformOwner } from '@/lib/team'
+import SkipTraceReviewQueue from './SkipTraceReviewQueue'
+import type { SkipTraceReview } from '@/lib/skip-trace-review'
+import { PREVIEW_REVIEWS, shouldLoadPreviewReviews } from './preview-reviews'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +72,8 @@ export default function OwnerPortfolioPage() {
   const [users, setUsers] = useState<UserRow[]>([])
   const [email, setEmail] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState(new Date())
+  const [reviews, setReviews] = useState<SkipTraceReview[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(true)
 
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
@@ -79,9 +84,10 @@ export default function OwnerPortfolioPage() {
     setRefreshing(true)
     setError(null)
     try {
-      const [usageRes, usersRes] = await Promise.all([
+      const [usageRes, usersRes, reviewsRes] = await Promise.all([
         fetch('/api/admin/usage', { cache: 'no-store' }),
         fetch('/api/admin/users', { cache: 'no-store' }),
+        fetch('/api/owner/skip-trace-reviews?status=open', { cache: 'no-store' }),
       ])
       if (usageRes.status === 401 || usersRes.status === 401) {
         setError('Not authorized as platform owner. Sign in as management@mineralmapllc.com.')
@@ -96,14 +102,57 @@ export default function OwnerPortfolioPage() {
         const data = (await usersRes.json()) as { users?: UserRow[] }
         setUsers(data.users ?? [])
       }
+      if (reviewsRes.ok) {
+        const data = (await reviewsRes.json()) as { reviews?: SkipTraceReview[] }
+        setReviews(data.reviews ?? [])
+      }
+      setReviewsLoading(false)
       setLastUpdated(new Date())
     } catch {
       setError('Failed to load owner dashboard.')
     } finally {
       setRefreshing(false)
       setLoading(false)
+      setReviewsLoading(false)
     }
   }, [])
+
+  const resolveReview = async (input: {
+    id: string
+    phones: string
+    emails: string
+    notes: string
+  }) => {
+    if (input.id.startsWith('preview-')) {
+      setReviews((prev) => prev.filter((r) => r.id !== input.id))
+      return { success: true }
+    }
+    const res = await fetch('/api/owner/skip-trace-reviews', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'resolve', ...input }),
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok) return { success: false, error: data.error || 'Save failed' }
+    setReviews((prev) => prev.filter((r) => r.id !== input.id))
+    return { success: true }
+  }
+
+  const dismissReview = async (id: string, notes: string) => {
+    if (id.startsWith('preview-')) {
+      setReviews((prev) => prev.filter((r) => r.id !== id))
+      return { success: true }
+    }
+    const res = await fetch('/api/owner/skip-trace-reviews', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'dismiss', id, notes }),
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok) return { success: false, error: data.error || 'Dismiss failed' }
+    setReviews((prev) => prev.filter((r) => r.id !== id))
+    return { success: true }
+  }
 
   useEffect(() => {
     const gate = async () => {
@@ -111,12 +160,24 @@ export default function OwnerPortfolioPage() {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session?.user) {
+        if (shouldLoadPreviewReviews()) {
+          setReviews(PREVIEW_REVIEWS)
+          setReviewsLoading(false)
+          setLoading(false)
+          return
+        }
         window.location.href = '/auth'
         return
       }
       const userEmail = session.user.email ?? ''
       setEmail(userEmail)
       if (!isPlatformOwner(userEmail)) {
+        if (shouldLoadPreviewReviews()) {
+          setReviews(PREVIEW_REVIEWS)
+          setReviewsLoading(false)
+          setLoading(false)
+          return
+        }
         // Staff admins go to /admin; everyone else home.
         window.location.href = session.user.user_metadata?.is_admin ? '/admin' : '/'
         return
@@ -141,6 +202,11 @@ export default function OwnerPortfolioPage() {
           <AppLogo variant="light" width={120} />
           <span className="text-gray-600">·</span>
           <span className="text-sm font-semibold text-amber-400">Owner portfolio</span>
+          {reviews.filter((r) => r.status === 'open').length > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500 text-white">
+              {reviews.filter((r) => r.status === 'open').length} skip traces
+            </span>
+          )}
         </div>
         <nav className="flex items-center gap-1">
           <Link
@@ -197,6 +263,13 @@ export default function OwnerPortfolioPage() {
             {error}
           </div>
         )}
+
+        <SkipTraceReviewQueue
+          reviews={reviews}
+          loading={reviewsLoading}
+          onResolve={resolveReview}
+          onDismiss={dismissReview}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card
