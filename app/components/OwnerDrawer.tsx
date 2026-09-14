@@ -1097,8 +1097,8 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </nav>
       )}
 
-      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-8 py-6' : 'px-6 py-5'}`}>
-        <div className={crmMode ? 'mx-auto w-full max-w-6xl' : undefined}>
+      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-6 py-6' : 'px-6 py-5'}`}>
+        <div className={crmMode ? 'mx-auto w-full max-w-7xl' : undefined}>
         {crmMode && (
           <div className="mb-6">
             {address && (
@@ -1318,7 +1318,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         )}
         {(crmMode || tab === 'holdings') && (
           <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Leases</SectionHeading>}
             <HoldingsPanel
               holdings={holdings}
               loading={holdingsLoading}
@@ -1326,6 +1325,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               legalDescByAbstract={legalDescByAbstract}
               errorMessages={holdingsErrors}
               highlightOperators={highlightOperators}
+              crmMode={crmMode}
             />
           </div>
         )}
@@ -1965,7 +1965,7 @@ function WellActivityCard({
 }
 
 function HoldingsPanel({
-  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators,
+  holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators, crmMode = false,
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
@@ -1973,6 +1973,7 @@ function HoldingsPanel({
   legalDescByAbstract: Record<string, string> | undefined
   errorMessages?: Array<{ county: CountyKey; message: string }>
   highlightOperators?: string[] | null
+  crmMode?: boolean
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -2000,18 +2001,16 @@ function HoldingsPanel({
   // pre-computed legal description, so those columns show "—" and
   // the Legal column falls back to the bare abstract label.
   //
-  // Sticky top strip + sticky table header: the count / counties
-  // summary and every column label stay pinned to the top of the
-  // drawer's scroll area as the broker scrolls through a long
-  // holdings list (700+ rows is common for a large owner). Uses
-  // `position: sticky` inside the drawer's overflow-y-auto container
-  // so no extra scroll-position tracking is needed.
+  // Sticky top strip + sticky table header stay pinned in the map
+  // drawer. CRM uses page scroll under a fixed name bar, so the
+  // negative sticky offset would clip this heading and the first row.
   return (
     <div className="flex flex-col gap-2">
-      {/* Compact sticky counter — replaces the preachy amber banner. */}
       <div
-        className="sticky z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 backdrop-blur"
-        style={{ top: '-20px' }}
+        className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 ${
+          crmMode ? '' : 'sticky backdrop-blur'
+        }`}
+        style={crmMode ? undefined : { top: '-20px' }}
       >
         <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
           Leases
@@ -2056,25 +2055,24 @@ function HoldingsPanel({
         </div>
       )}
 
-      {/* Compact 10-column table with a sticky <thead>. Column labels
-          stay pinned to the top of the scrolling drawer as the user
-          scrolls through 700+ rows so they never lose orientation.
-          `top: 28px` accounts for the sticky Leases counter above. */}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        <table className="min-w-full border-collapse text-[11px]">
+        <table className="w-max min-w-full border-collapse text-[11px]">
           <thead className="text-[9px] font-bold uppercase tracking-widest text-gray-500">
-            <tr className="sticky z-10 bg-gray-50" style={{ top: '11px' }}>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Unit</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Legal</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Sec</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Twp</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Block</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Range</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">Operator</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-left">County</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Interest</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">Acres</th>
-              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2 py-1.5 text-right">NMA</th>
+            <tr
+              className={`${crmMode ? '' : 'sticky z-10'} bg-gray-50`}
+              style={crmMode ? undefined : { top: '11px' }}
+            >
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pl-3.5 text-left">Unit</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Legal</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Sec</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Twp</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Block</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Range</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">Operator</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-left">County</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Interest</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 text-right">Acres</th>
+              <th className="whitespace-nowrap border-b border-gray-200 bg-gray-50 px-2.5 py-2 pr-3.5 text-right">NMA</th>
             </tr>
           </thead>
           <tbody>
@@ -2167,25 +2165,25 @@ function HoldingsPanel({
                   } ${!opHit && i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
                 >
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-medium text-gray-900"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
                     title={fieldName && clean(h.county_lease_name) ? `${unitLabel} · ${fieldName}` : unitLabel}
                   >
                     {unitLabel}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono"
+                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 font-mono leading-snug"
                     title={composedLegal && abstractLabel && composedLegal !== abstractLabel
                       ? `${composedLegal} · ${abstractLabel}`
                       : composedLegal || abstractLabel || undefined}
                   >
                     {composedLegal || abstractLabel || '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.section || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.township || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.block || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 font-mono">{parts.range || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.section || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.township || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.block || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.range || '—'}</td>
                   <td
-                    className={`whitespace-nowrap border-b border-gray-100 px-2 py-1.5 ${
+                    className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
                       opHit ? 'font-semibold text-amber-900' : ''
                     }`}
                     title={clean(h.operator_name) || undefined}
@@ -2197,7 +2195,7 @@ function HoldingsPanel({
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5" title={cfg.displayName}>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={cfg.displayName}>
                     <span
                       className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
                         isActive
@@ -2209,16 +2207,16 @@ function HoldingsPanel({
                     </span>
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
                     title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
                   >
                     {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono">
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono">
                     {acres ?? '—'}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2 py-1.5 text-right font-mono text-gray-600"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right font-mono text-gray-600"
                     title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
                   >
                     {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
