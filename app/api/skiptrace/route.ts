@@ -181,59 +181,45 @@ let idicoreToken: { value: string; expiresAt: number } | null = null
 
 /** Authenticate against idiCORE and return a bearer token.
  *
- * idiCORE is a TWO-STEP API: POST credentials + permissible-use codes to the
- * auth endpoint (url1, e.g. https://login-api-test.idicore.com/apiclient) to
- * get a token, then send that token on the search call (url2).
+ * idiCORE is a TWO-STEP API. Per idiCORE's sample: POST to the auth endpoint
+ * (url1, https://login-api-test.idicore.com/apiclient) with HTTP Basic auth
+ * — `Authorization: Basic base64(clientId:clientSecret)` — and a JSON body of
+ * permissible-use codes `{"glba": "...", "dppa": "..."}`. The response body IS
+ * the token (raw string); it expires in ~15 minutes.
  *
- * Config (env): IDICORE_AUTH_URL, IDICORE_GLBA, IDICORE_DPPA,
- * IDICORE_CLIENT_KEY_ID (or IDICORE_CLIENT_ID), IDICORE_USERNAME,
- * IDICORE_PASSWORD. The exact `/apiclient` body field names + whether the
- * token is returned raw or wrapped in JSON should be confirmed against the
- * sample authentication script idiCORE provides; this handles both shapes. */
+ * Config (env): IDICORE_AUTH_URL, IDICORE_CLIENT_ID, IDICORE_CLIENT_SECRET,
+ * IDICORE_GLBA (default "otheruse"), IDICORE_DPPA (default "none"). */
 async function idicoreAuthenticate(): Promise<string | null> {
   if (idicoreToken && idicoreToken.expiresAt > Date.now() + 30_000) {
     return idicoreToken.value
   }
   const authUrl = process.env.IDICORE_AUTH_URL?.trim()
-  if (!authUrl) return null
+  const clientId = process.env.IDICORE_CLIENT_ID?.trim()
+  const clientSecret = process.env.IDICORE_CLIENT_SECRET?.trim()
+  if (!authUrl || !clientId || !clientSecret) return null
 
-  // idiCORE /apiclient credential payload. Only include what's configured.
-  const authBody: Record<string, unknown> = {}
-  const glba = process.env.IDICORE_GLBA?.trim()
-  const dppa = process.env.IDICORE_DPPA?.trim()
-  const clientKeyID =
-    process.env.IDICORE_CLIENT_KEY_ID?.trim() || process.env.IDICORE_CLIENT_ID?.trim()
-  const username = process.env.IDICORE_USERNAME?.trim()
-  const password = process.env.IDICORE_PASSWORD?.trim()
-  if (glba) authBody.glba = glba
-  if (dppa) authBody.dppa = dppa
-  if (clientKeyID) authBody.clientKeyID = clientKeyID
-  if (username) authBody.username = username
-  if (password) authBody.password = password
+  const glba = process.env.IDICORE_GLBA?.trim() || 'otheruse'
+  const dppa = process.env.IDICORE_DPPA?.trim() || 'none'
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
   const init = await idicoreProxyInit({
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(authBody),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Basic ${basic}`,
+    },
+    body: JSON.stringify({ glba, dppa }),
   })
   const res = await fetch(authUrl, init as RequestInit)
   if (!res.ok) {
     console.error('idiCORE auth failed:', res.status, (await res.text()).slice(0, 300))
     return null
   }
-  const text = (await res.text()).trim()
-  // idiCORE returns the JWT as the raw response body; some deployments wrap it
-  // as JSON ({ token | access_token }). Accept both.
-  let token = text
-  try {
-    const parsed = JSON.parse(text) as Record<string, unknown>
-    token = String(parsed.token ?? parsed.access_token ?? parsed.accessToken ?? text)
-  } catch {
-    /* raw string token */
-  }
+  // The response body is the token itself (a raw JWT string).
+  const token = (await res.text()).trim()
   if (!token) return null
-  // idiCORE tokens are long-lived; cache conservatively for 20 minutes.
-  idicoreToken = { value: token, expiresAt: Date.now() + 20 * 60_000 }
+  // idiCORE tokens expire in ~15 min; cache for 12 to stay safely inside that.
+  idicoreToken = { value: token, expiresAt: Date.now() + 12 * 60_000 }
   return token
 }
 
@@ -258,10 +244,11 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
   const token = (await idicoreAuthenticate()) || process.env.IDICORE_API_KEY?.trim()
   if (!token) return { phones, emails }
 
+  // idiCORE person-search inputs. First/last + address narrow the match; the
+  // tailored MineralMap template returns only phone + email.
   const body = {
     firstName: a.firstName || '',
     lastName: a.lastName || '',
-    name: a.ownerName || '',
     address: a.address || '',
     city: a.city || '',
     state: a.state || '',
@@ -284,6 +271,27 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
     return { phones, emails }
   }
   const data = JSON.parse(await res.text()) as Record<string, unknown>
+  // idiCORE MineralMap response: { result: [ { phone: [{number,...}],
+  // email: [{data,...}] }, ... ], error?, ... }. A too-broad query returns an
+  // `error` (e.g. TooManyMatches) with result=[]; we just yield no contacts
+  // and the chain falls through to Tracerfy.
+  const results = Array.isArray(data.result) ? (data.result as Array<Record<string, unknown>>) : []
+  for (const identity of results) {
+    for (const p of (identity?.phone as Array<Record<string, unknown>>) ?? []) {
+      if (p?.fake === true) continue
+      const num = String(p?.number ?? '').trim()
+      if (num && !phones.includes(num)) phones.push(num)
+    }
+    for (const e of (identity?.email as Array<Record<string, unknown>>) ?? []) {
+      const addr = String(e?.data ?? '').trim()
+      if (addr && !emails.includes(addr)) emails.push(addr)
+    }
+  }
+  const err = data.error as { message?: string } | undefined
+  if (err?.message && results.length === 0) {
+    console.warn('idiCORE search returned no results:', err.message)
+  }
+  // Defensive fallback for any other shape.
   extractContactsFromPayload(data, phones, emails)
   return { phones, emails }
 }
