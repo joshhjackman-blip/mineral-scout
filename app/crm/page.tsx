@@ -444,7 +444,7 @@ export default function CRM() {
         <div className="flex-1 flex justify-center min-w-0 px-2">
           <CrmGlobalSearch deals={deals} onSelect={openLead} />
         </div>
-        <nav className="flex items-center gap-1 shrink-0">
+        <nav className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setView('dashboard')}
@@ -467,6 +467,7 @@ export default function CRM() {
           >
             Leads
           </button>
+          <span className="w-px h-4 bg-gray-700" aria-hidden="true" />
           <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
           </Link>
