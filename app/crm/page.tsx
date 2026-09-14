@@ -1,24 +1,12 @@
 'use client'
 
-// CRM — leads list + full-screen owner detail view.
+// CRM: dashboard home + leads workspace.
 //
-// Redesigned 2026-07-20 (user ask): "I want the CRM to be the same
-// as the overview when you click on a lead. Just with everything on
-// one full screen. All leads are in the CRM, the only thing that is
-// needed is the user to skiptrace."
-//
-// So the CRM is now a two-panel view:
+// Dashboard is the default view (pipeline KPIs, status/county mix,
+// follow-up queue). Leads is the existing two-panel workspace:
 //   Left  — filterable / searchable leads list, one row per Deal.
-//   Right — full-height OwnerDrawer (the same component that pops
-//           over the map when you click an owner) rendered as the
-//           main content instead of a bottom drawer.
-//
-// The pipeline / PSA / deed / tasks / activity-log UI was removed
-// because none of it was pulling weight now that Skip Trace is the
-// only action a broker takes on this screen. The `deals` table
-// schema is preserved (skip trace still writes phone/email/tag/
-// county back to the deal row) so we can re-introduce pipeline
-// features later without a data migration.
+//   Right — full-height OwnerDrawer.
+// Header search jumps to a lead from any view.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -34,41 +22,19 @@ import {
   upsertOwnerOverride,
 } from '@/lib/owner-overrides'
 import { getWorkspaceContext } from '@/lib/workspace'
+import { PREVIEW_DEALS, shouldLoadPreviewDeals } from './preview-deals'
+import CrmDashboard from './CrmDashboard'
+import type { DashboardOpenFilter } from './CrmDashboard'
+import CrmGlobalSearch from './CrmGlobalSearch'
+import {
+  type Deal,
+  filterDeals,
+  formatDate,
+  getDealCounty,
+  isOverdue,
+} from './crm-utils'
 
 export const dynamic = 'force-dynamic'
-
-// ─── Types ────────────────────────────────────────────────────────────────
-
-type Deal = {
-  id: string
-  owner_name: string
-  tract_abstract?: string | null
-  tract_survey?: string | null
-  rrc_lease_id?: string | null
-  operator_name?: string | null
-  county?: string | null
-  surv_name?: string | null
-  block?: string | null
-  surv_sect?: string | null
-  mailing_address?: string | null
-  mailing_city?: string | null
-  mailing_state?: string | null
-  mailing_zip?: string | null
-  acreage?: number | null
-  monthly_royalty?: number | null
-  propensity_score?: number | null
-  tag?: string | null
-  offer_amount?: number | null
-  follow_up_date?: string | null
-  source?: string | null
-  notes?: string | null
-  phone?: string | null
-  email?: string | null
-  phones?: string[] | null
-  emails?: string[] | null
-  created_at?: string | null
-  updated_at?: string | null
-}
 
 // Small compatibility badge system carried over from the previous
 // CRM. Only the badge (label + color) survives — no more clicking
@@ -98,41 +64,6 @@ const TagBadge = ({ tag }: { tag: string }) => {
   )
 }
 
-const isOverdue = (date: string) => new Date(date) < new Date()
-
-const formatDate = (date: string) => {
-  const d = new Date(date)
-  const today = new Date()
-  const diff = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-  if (diff === 0) return 'Today'
-  if (diff === 1) return 'Tomorrow'
-  if (diff < 0) return `${Math.abs(diff)}d overdue`
-  return `in ${diff}d`
-}
-
-// ─── County derivation ────────────────────────────────────────────────────
-
-type DealCounty = CountyKey | 'unknown'
-const KNOWN_COUNTY_IDS = new Set<CountyKey>(Object.keys(COUNTIES) as CountyKey[])
-
-// Deals carry a `county` column when they were added to the pipeline
-// from the map, but legacy rows may not. Fall back to matching the
-// operator name against every county's operatorPatterns list — the
-// same pattern the old CRM used so nothing regresses.
-const getDealCounty = (deal: Deal): DealCounty => {
-  const stored = (deal.county ?? '').toLowerCase().trim() as CountyKey
-  if (stored && KNOWN_COUNTY_IDS.has(stored)) return stored
-  const op = (deal.operator_name ?? '').toLowerCase()
-  if (op) {
-    for (const [countyId, county] of Object.entries(COUNTIES) as Array<[CountyKey, County]>) {
-      if (county.operatorPatterns.some((p) => op.includes(p))) {
-        return countyId
-      }
-    }
-  }
-  return 'unknown'
-}
-
 // ─── Deal → OwnerLike mapping ────────────────────────────────────────────
 
 // The OwnerDrawer expects an OwnerLike from the map — same shape,
@@ -159,15 +90,18 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
 export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [selected, setSelected] = useState<Deal | null>(null)
+  const [view, setView] = useState<'dashboard' | 'leads'>('dashboard')
   const [activeTag, setActiveTag] = useState('all')
   const [countyFilter, setCountyFilter] = useState<'all' | CountyKey>('all')
   const [search, setSearch] = useState('')
+  const [followUpFilter, setFollowUpFilter] = useState<'all' | 'overdue' | 'upcoming'>('all')
+  const [needContact, setNeedContact] = useState(false)
 
   useEffect(() => {
     void (async () => {
       const workspace = await getWorkspaceContext()
       if (!workspace) {
-        setDeals([])
+        setDeals(shouldLoadPreviewDeals() ? PREVIEW_DEALS : [])
         return
       }
       // RLS also scopes by team_owner_id; filter explicitly so a missing
@@ -181,16 +115,44 @@ export default function CRM() {
     })()
   }, [])
 
-  const filtered = useMemo(() => deals.filter((d) => {
-    if (activeTag !== 'all' && (d.tag ?? 'prospect') !== activeTag) return false
-    if (countyFilter !== 'all' && getDealCounty(d) !== countyFilter) return false
-    if (
-      search &&
-      !(d.owner_name ?? '').toLowerCase().includes(search.toLowerCase()) &&
-      !(d.operator_name ?? '').toLowerCase().includes(search.toLowerCase())
-    ) return false
-    return true
-  }), [deals, activeTag, countyFilter, search])
+  const filtered = useMemo(
+    () =>
+      filterDeals(deals, {
+        tag: activeTag,
+        county: countyFilter,
+        search,
+        followUp: followUpFilter,
+        needContact,
+      }),
+    [deals, activeTag, countyFilter, search, followUpFilter, needContact],
+  )
+
+  const extraFiltersOn = followUpFilter !== 'all' || needContact
+
+  const openLead = useCallback((deal: Deal) => {
+    setActiveTag('all')
+    setCountyFilter('all')
+    setFollowUpFilter('all')
+    setNeedContact(false)
+    setSearch('')
+    setSelected(deal)
+    setView('leads')
+  }, [])
+
+  const openLeadsFilter = useCallback((next: DashboardOpenFilter) => {
+    setActiveTag(next.tag ?? 'all')
+    setCountyFilter(next.county ?? 'all')
+    setFollowUpFilter(next.followUp ?? 'all')
+    setNeedContact(Boolean(next.needContact))
+    setSearch('')
+    setSelected(null)
+    setView('leads')
+  }, [])
+
+  const clearExtraFilters = useCallback(() => {
+    setFollowUpFilter('all')
+    setNeedContact(false)
+  }, [])
 
   const handleSkipTrace = useCallback(async (owner: OwnerLike) => {
     // Kept the CRM-scoped skip-trace flow (writes back to the deal
@@ -473,19 +435,47 @@ export default function CRM() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 font-sans">
-      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-4 shrink-0 shadow-sm">
-        <div className="flex items-center gap-3">
+      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center gap-3 px-4 shrink-0 shadow-sm">
+        <div className="flex items-center gap-3 shrink-0">
           <AppLogo width={130} variant="light" />
           <span className="text-gray-300 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">CRM</span>
         </div>
-        <nav className="flex items-center gap-1">
+        <div className="flex-1 flex justify-center min-w-0 px-2">
+          <CrmGlobalSearch deals={deals} onSelect={openLead} />
+        </div>
+        <nav className="flex items-center gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={() => setView('dashboard')}
+            className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+              view === 'dashboard'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            Dashboard
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('leads')}
+            className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+              view === 'leads'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            Leads
+          </button>
           <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
           </Link>
         </nav>
       </header>
 
+      {view === 'dashboard' ? (
+        <CrmDashboard deals={deals} onOpenLead={openLead} onOpenFilter={openLeadsFilter} />
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar — leads list, search, filter chips, county filter.
             Preserved from the previous CRM layout because it was already
@@ -511,7 +501,7 @@ export default function CRM() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search owners, operators..."
+                placeholder="Filter this list..."
                 className="w-full pl-8 pr-3 py-1.5 text-sm bg-white border border-gray-200 rounded-md focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 focus:bg-white transition-all"
               />
             </div>
@@ -533,6 +523,27 @@ export default function CRM() {
                 </button>
               ))}
             </div>
+            {extraFiltersOn && (
+              <div className="mt-2 flex items-center gap-1 flex-wrap">
+                {followUpFilter !== 'all' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-amber-50 border border-amber-200 text-amber-700">
+                    {followUpFilter === 'overdue' ? 'Overdue follow-up' : 'Upcoming follow-up'}
+                  </span>
+                )}
+                {needContact && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-md bg-gray-100 border border-gray-200 text-gray-600">
+                    Need skip trace
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={clearExtraFilters}
+                  className="text-xs text-gray-500 hover:text-gray-800 underline"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
             <div className="mt-2">
               <label className="sr-only" htmlFor="crm-county-filter">County</label>
               <div className="relative">
@@ -657,6 +668,7 @@ export default function CRM() {
           )}
         </main>
       </div>
+      )}
     </div>
   )
 }
