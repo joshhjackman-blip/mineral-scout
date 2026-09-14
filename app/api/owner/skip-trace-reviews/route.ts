@@ -74,7 +74,10 @@ export async function GET(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const { user, error } = await requireOwner(req)
-  if (error || !user) return error
+  if (error) return error
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const body = (await req.json()) as {
     id?: string
