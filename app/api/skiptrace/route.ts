@@ -161,25 +161,103 @@ async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult
   return { phones, emails }
 }
 
+/** Build a RequestInit that egresses through the static-IP proxy when
+ * IDICORE_PROXY_URL / SKIPTRACE_PROXY_URL is set. idiCORE allow-lists a fixed
+ * US IP; Vercel Pro egresses from rotating AWS ranges, so both the auth and
+ * the search call must go through the registered-IP proxy. */
+async function idicoreProxyInit(base: RequestInit): Promise<RequestInit> {
+  const proxyUrl =
+    process.env.IDICORE_PROXY_URL?.trim() || process.env.SKIPTRACE_PROXY_URL?.trim()
+  if (!proxyUrl) return base
+  const { ProxyAgent } = await import('undici')
+  return { ...base, dispatcher: new ProxyAgent(proxyUrl) } as RequestInit & {
+    dispatcher: unknown
+  }
+}
+
+// Cached idiCORE bearer token (survives across calls on a warm serverless
+// instance so we don't re-authenticate on every skip-trace).
+let idicoreToken: { value: string; expiresAt: number } | null = null
+
+/** Authenticate against idiCORE and return a bearer token.
+ *
+ * idiCORE is a TWO-STEP API: POST credentials + permissible-use codes to the
+ * auth endpoint (url1, e.g. https://login-api-test.idicore.com/apiclient) to
+ * get a token, then send that token on the search call (url2).
+ *
+ * Config (env): IDICORE_AUTH_URL, IDICORE_GLBA, IDICORE_DPPA,
+ * IDICORE_CLIENT_KEY_ID (or IDICORE_CLIENT_ID), IDICORE_USERNAME,
+ * IDICORE_PASSWORD. The exact `/apiclient` body field names + whether the
+ * token is returned raw or wrapped in JSON should be confirmed against the
+ * sample authentication script idiCORE provides; this handles both shapes. */
+async function idicoreAuthenticate(): Promise<string | null> {
+  if (idicoreToken && idicoreToken.expiresAt > Date.now() + 30_000) {
+    return idicoreToken.value
+  }
+  const authUrl = process.env.IDICORE_AUTH_URL?.trim()
+  if (!authUrl) return null
+
+  // idiCORE /apiclient credential payload. Only include what's configured.
+  const authBody: Record<string, unknown> = {}
+  const glba = process.env.IDICORE_GLBA?.trim()
+  const dppa = process.env.IDICORE_DPPA?.trim()
+  const clientKeyID =
+    process.env.IDICORE_CLIENT_KEY_ID?.trim() || process.env.IDICORE_CLIENT_ID?.trim()
+  const username = process.env.IDICORE_USERNAME?.trim()
+  const password = process.env.IDICORE_PASSWORD?.trim()
+  if (glba) authBody.glba = glba
+  if (dppa) authBody.dppa = dppa
+  if (clientKeyID) authBody.clientKeyID = clientKeyID
+  if (username) authBody.username = username
+  if (password) authBody.password = password
+
+  const init = await idicoreProxyInit({
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(authBody),
+  })
+  const res = await fetch(authUrl, init as RequestInit)
+  if (!res.ok) {
+    console.error('idiCORE auth failed:', res.status, (await res.text()).slice(0, 300))
+    return null
+  }
+  const text = (await res.text()).trim()
+  // idiCORE returns the JWT as the raw response body; some deployments wrap it
+  // as JSON ({ token | access_token }). Accept both.
+  let token = text
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>
+    token = String(parsed.token ?? parsed.access_token ?? parsed.accessToken ?? text)
+  } catch {
+    /* raw string token */
+  }
+  if (!token) return null
+  // idiCORE tokens are long-lived; cache conservatively for 20 minutes.
+  idicoreToken = { value: token, expiresAt: Date.now() + 20 * 60_000 }
+  return token
+}
+
 /** idiCORE (IDI) skip-trace — primary for individuals.
  *
- * Activated once IDICORE_API_URL + IDICORE_API_KEY are set; until then this
- * no-ops and the person chain falls through to Tracerfy.
+ * Two-step: authenticate (idicoreAuthenticate) then POST the search to
+ * IDICORE_SEARCH_URL (the tailored "/search/MineralMap" template). Falls back
+ * to the legacy single-URL Bearer flow (IDICORE_API_URL + IDICORE_API_KEY)
+ * when no auth URL is configured. No-ops (-> Tracerfy) when neither is set.
  *
- * Static-IP egress: idiCORE allow-lists a single US IP for API access. On
- * Vercel Pro the serverless egress IP is dynamic (rotating AWS ranges), so we
- * route this one call through a fixed-IP proxy when IDICORE_PROXY_URL is set
- * (e.g. a QuotaGuard/Fixie endpoint or a US VM with an Elastic IP). idiCORE
- * then sees the registered address. Leave the var unset to call directly.
- *
- * The request/response mapping is intentionally generic (defensive contact
- * extraction). Finalize the exact body/field names + auth scheme against
- * idiCORE's API contract when wiring the live key. */
-async function traceIdicore(apiKey: string, a: TraceArgs): Promise<TraceResult> {
+ * The search request/response mapping uses defensive contact extraction;
+ * confirm the exact input field names + response shape against idiCORE's
+ * tailored MineralMap documentation / sample script. */
+async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
-  const url = process.env.IDICORE_API_URL?.trim()
-  if (!url) return { phones, emails }
+  const searchUrl =
+    process.env.IDICORE_SEARCH_URL?.trim() || process.env.IDICORE_API_URL?.trim()
+  if (!searchUrl) return { phones, emails }
+
+  // Token: two-step auth when IDICORE_AUTH_URL is set, else legacy static key.
+  const token = (await idicoreAuthenticate()) || process.env.IDICORE_API_KEY?.trim()
+  if (!token) return { phones, emails }
+
   const body = {
     firstName: a.firstName || '',
     lastName: a.lastName || '',
@@ -189,20 +267,22 @@ async function traceIdicore(apiKey: string, a: TraceArgs): Promise<TraceResult> 
     state: a.state || '',
     zip: a.zip || '',
   }
-  const init: RequestInit & { dispatcher?: unknown } = {
+  // idiCORE expects the token as the raw Authorization header value; set
+  // IDICORE_AUTH_SCHEME=bearer if the account requires a "Bearer " prefix.
+  const authHeader =
+    process.env.IDICORE_AUTH_SCHEME?.trim().toLowerCase() === 'bearer'
+      ? `Bearer ${token}`
+      : token
+  const init = await idicoreProxyInit({
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: authHeader },
     body: JSON.stringify(body),
+  })
+  const res = await fetch(searchUrl, init as RequestInit)
+  if (!res.ok) {
+    console.error('idiCORE search failed:', res.status, (await res.text()).slice(0, 300))
+    return { phones, emails }
   }
-  const proxyUrl =
-    process.env.IDICORE_PROXY_URL?.trim() || process.env.SKIPTRACE_PROXY_URL?.trim()
-  if (proxyUrl) {
-    // Route egress through the static-IP proxy so idiCORE sees the allow-listed IP.
-    const { ProxyAgent } = await import('undici')
-    init.dispatcher = new ProxyAgent(proxyUrl)
-  }
-  const res = await fetch(url, init as RequestInit)
-  if (!res.ok) return { phones, emails }
   const data = JSON.parse(await res.text()) as Record<string, unknown>
   extractContactsFromPayload(data, phones, emails)
   return { phones, emails }
@@ -396,13 +476,17 @@ export async function POST(req: NextRequest) {
   //    Tracerfy is the shared last-resort backstop for both.
   const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
   const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
-  const idiKey = process.env.IDICORE_API_KEY?.trim()
-  if (!tracerfyKey && !batchKey && !idiKey) {
+  // idiCORE is enabled once a search endpoint is configured (two-step auth via
+  // IDICORE_AUTH_URL, or legacy IDICORE_API_URL + IDICORE_API_KEY).
+  const idicoreEnabled = Boolean(
+    process.env.IDICORE_SEARCH_URL?.trim() || process.env.IDICORE_API_URL?.trim(),
+  )
+  if (!tracerfyKey && !batchKey && !idicoreEnabled) {
     return NextResponse.json(
       {
         error:
           'Skip trace providers are not configured ' +
-          '(BATCHSKIPTRACING_API_KEY / IDICORE_API_KEY / TRACERFY_API_KEY)',
+          '(BATCHSKIPTRACING_API_KEY / IDICORE_SEARCH_URL / TRACERFY_API_KEY)',
       },
       { status: 500 },
     )
@@ -413,7 +497,7 @@ export async function POST(req: NextRequest) {
 
   const runners: Record<string, (() => Promise<TraceResult>) | null> = {
     batchdata: batchKey ? () => traceBatchData(batchKey, traceArgs) : null,
-    idicore: idiKey ? () => traceIdicore(idiKey, traceArgs) : null,
+    idicore: idicoreEnabled ? () => traceIdicore(traceArgs) : null,
     tracerfy: tracerfyKey ? () => traceTracerfy(tracerfyKey, traceArgs) : null,
   }
   // Tracerfy always runs last; the primary is chosen by owner type.
