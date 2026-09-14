@@ -82,6 +82,11 @@ const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; ico
   skip_traced:    { label: 'Skip Traced',   color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
   offer_sent:     { label: 'Offer Sent',    color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',     icon: <DollarSign size={11} /> },
   closed:         { label: 'Closed',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
+  // Lead-workspace status designations (set from the lead detail view).
+  interested:     { label: 'Interested',    color: 'text-green-700',   bg: 'bg-green-50 border-green-200',    icon: <CheckCircle2 size={11} /> },
+  closed_won:     { label: 'Closed Won',    color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
+  closed_lost:    { label: 'Closed Lost',   color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200',     icon: <XCircle size={11} /> },
+  call_back:      { label: 'Call Back Later', color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200', icon: <TrendingUp size={11} /> },
 }
 
 const TagBadge = ({ tag }: { tag: string }) => {
@@ -289,6 +294,8 @@ export default function CRM() {
         email: patch.email ?? null,
         updated_at: new Date().toISOString(),
       }
+      if (patch.phones) updatePayload.phones = patch.phones
+      if (patch.emails) updatePayload.emails = patch.emails
 
       const { error } = await supabase
         .from('deals')
@@ -318,6 +325,8 @@ export default function CRM() {
         mailing_zip: patch.mailing_zip ?? null,
         phone: patch.phone ?? null,
         email: patch.email ?? null,
+        ...(patch.phones ? { phones: patch.phones } : {}),
+        ...(patch.emails ? { emails: patch.emails } : {}),
       }
       setDeals((prev) =>
         prev.map((d) => (d.id === deal.id ? { ...d, ...nextPatch } : d)),
@@ -328,6 +337,22 @@ export default function CRM() {
       return { success: true }
     },
     [deals, selected, selectedCountyId],
+  )
+
+  const handleSetStatus = useCallback(
+    async (owner: OwnerLike, status: string) => {
+      const deal = deals.find((d) => d.id === owner.id) ?? selected
+      if (!deal) return { success: false, error: 'Deal not found' }
+      const { error } = await supabase
+        .from('deals')
+        .update({ tag: status, updated_at: new Date().toISOString() })
+        .eq('id', deal.id)
+      if (error) return { success: false, error: error.message }
+      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: status } : d)))
+      setSelected((prev) => (prev?.id === deal.id ? ({ ...prev, tag: status } as Deal) : prev))
+      return { success: true }
+    },
+    [deals, selected],
   )
 
   const handleRemoveOwner = useCallback(
@@ -597,7 +622,20 @@ export default function CRM() {
               owner={drawerOwner}
               countyId={selectedCountyId}
               tractLabel={selected?.tract_abstract ?? null}
+              tractLegalDescription={
+                [
+                  selected?.surv_name ?? selected?.tract_survey,
+                  selected?.block ? `BLK ${selected.block}` : null,
+                  selected?.surv_sect ? `SEC ${selected.surv_sect}` : null,
+                  selected?.tract_abstract ?? null,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || null
+              }
               inPipeline={true}
+              crmMode={true}
+              dealStatus={selected?.tag ?? null}
+              onSetStatus={handleSetStatus}
               ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
               onClose={() => setSelected(null)}
               onSkipTrace={handleSkipTrace}

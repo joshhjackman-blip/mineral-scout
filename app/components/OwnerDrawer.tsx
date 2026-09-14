@@ -59,8 +59,21 @@ export type OwnerDetailsPatch = {
   mailing_zip?: string | null
   phone?: string | null
   email?: string | null
+  phones?: string[] | null
+  emails?: string[] | null
   note?: string | null
 }
+
+// CRM lead statuses (the pipeline designations shown in the lead workspace).
+export const LEAD_STATUSES: { key: string; label: string }[] = [
+  { key: 'interested', label: 'Interested' },
+  { key: 'not_interested', label: 'Not interested' },
+  { key: 'offer_sent', label: 'Offer sent' },
+  { key: 'closed_won', label: 'Closed won' },
+  { key: 'closed_lost', label: 'Closed lost' },
+  { key: 'call_back', label: 'Call back later' },
+  { key: 'nurture', label: 'Nurture' },
+]
 
 export type OwnerDrawerHolding = {
   id?: string | number
@@ -175,6 +188,16 @@ export type OwnerDrawerProps = {
   ) => Promise<{ success: boolean; error?: string }>
   /** When true, this owner is currently hidden from the tract list. */
   ownerIsHidden?: boolean
+  /** CRM lead-workspace mode: single-page (no tabs), vertical contacts,
+   *  lead-status designations, and full inline editing. */
+  crmMode?: boolean
+  /** Current CRM lead status (deal tag) — drives the status picker. */
+  dealStatus?: string | null
+  /** Set the CRM lead status (interested / offer_sent / closed_won / …). */
+  onSetStatus?: (
+    owner: OwnerLike,
+    status: string,
+  ) => Promise<{ success: boolean; error?: string }>
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -713,6 +736,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     onRemoveOwner,
     onRestoreOwner,
     ownerIsHidden = false,
+    crmMode = false,
+    dealStatus = null,
+    onSetStatus,
   } = props
 
   const county = COUNTIES[countyId]
@@ -738,6 +764,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   const [removeNote, setRemoveNote] = useState('')
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [statusBusy, setStatusBusy] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -857,7 +884,8 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         </button>
       </header>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-6 py-3">
+      <div className="border-b border-gray-100 px-6 py-3">
+        <div className={crmMode ? 'flex flex-col items-start gap-2' : 'flex flex-wrap items-center gap-2'}>
         {phoneList.length > 0 ? (
           phoneList.map((p) => (
             <ContactPill
@@ -896,6 +924,8 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         ) : (
           <ContactPill icon="✉︎" label="No email on file" disabled />
         )}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           onClick={() => onSkipTrace(owner)}
           className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
@@ -965,6 +995,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             Show all tracts
           </button>
         )}
+        </div>
       </div>
 
       {removing && onRemoveOwner && (
@@ -1022,6 +1053,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
         </div>
       )}
 
+      {!crmMode && (
       <nav className="flex items-center gap-1 border-b border-gray-100 px-6 pt-2">
         {[
           { key: 'overview' as const, label: 'Overview' },
@@ -1061,9 +1093,23 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           )
         })}
       </nav>
+      )}
 
       <div className="flex-1 overflow-y-auto px-6 py-5">
-        {tab === 'overview' && (
+        {crmMode && onSetStatus && (
+          <StatusPicker
+            current={dealStatus}
+            busy={statusBusy}
+            onSelect={async (status) => {
+              setStatusBusy(true)
+              setActionError(null)
+              const result = await onSetStatus(owner, status)
+              setStatusBusy(false)
+              if (!result.success) setActionError(result.error || 'Failed to set status')
+            }}
+          />
+        )}
+        {(crmMode || tab === 'overview') && (
           <OverviewPanel
             owner={owner}
             ownershipPct={ownershipPct}
@@ -1099,27 +1145,36 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             }
             saveBusy={actionBusy}
             saveError={actionError}
+            crmMode={crmMode}
           />
         )}
-        {tab === 'holdings' && (
-          <HoldingsPanel
-            holdings={holdings}
-            loading={holdingsLoading}
-            county={county}
-            legalDescByAbstract={legalDescByAbstract}
-            errorMessages={holdingsErrors}
-            highlightOperators={highlightOperators}
-          />
+        {(crmMode || tab === 'holdings') && (
+          <div className={crmMode ? 'mt-8' : ''}>
+            {crmMode && <SectionHeading>Leases</SectionHeading>}
+            <HoldingsPanel
+              holdings={holdings}
+              loading={holdingsLoading}
+              county={county}
+              legalDescByAbstract={legalDescByAbstract}
+              errorMessages={holdingsErrors}
+              highlightOperators={highlightOperators}
+            />
+          </div>
         )}
-        {tab === 'wells' && (
+        {(crmMode || tab === 'wells') && (
+          <div className={crmMode ? 'mt-8' : ''}>
+            {crmMode && <SectionHeading>Wells</SectionHeading>}
           <WellsPanel
             wells={wells}
             loading={wellsLoading}
             county={county}
             highlightOperators={highlightOperators}
           />
+          </div>
         )}
-        {tab === 'notes' && (
+        {(crmMode || tab === 'notes') && (
+          <div className={crmMode ? 'mt-8' : ''}>
+            {crmMode && <SectionHeading>Notes</SectionHeading>}
           <NotesPanel
             value={note}
             loading={noteLoading}
@@ -1129,7 +1184,55 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             onChange={setNote}
             onBlur={() => { void saveNote(note) }}
           />
+          </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h3 className="mb-3 border-b border-gray-100 pb-1 text-xs font-bold uppercase tracking-widest text-gray-400">
+      {children}
+    </h3>
+  )
+}
+
+/** CRM lead-status designations (interested / offer sent / closed won / …). */
+function StatusPicker({
+  current,
+  busy,
+  onSelect,
+}: {
+  current?: string | null
+  busy?: boolean
+  onSelect: (status: string) => void
+}) {
+  return (
+    <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">
+        Lead status
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {LEAD_STATUSES.map((s) => {
+          const active = current === s.key
+          return (
+            <button
+              key={s.key}
+              type="button"
+              disabled={busy}
+              onClick={() => onSelect(s.key)}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-60 ${
+                active
+                  ? 'border-amber-500 bg-amber-500 text-white'
+                  : 'border-gray-300 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700'
+              }`}
+            >
+              {s.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -1214,6 +1317,7 @@ function OverviewPanel({
   onSaveDetails,
   saveBusy = false,
   saveError = null,
+  crmMode = false,
 }: {
   owner: OwnerLike
   ownershipPct: number | null
@@ -1231,7 +1335,14 @@ function OverviewPanel({
   onSaveDetails?: (patch: OwnerDetailsPatch) => Promise<boolean>
   saveBusy?: boolean
   saveError?: string | null
+  crmMode?: boolean
 }) {
+  const ownerPhones = (owner.phones && owner.phones.length ? owner.phones : [owner.phone])
+    .map((p) => clean(p))
+    .filter(Boolean)
+  const ownerEmails = (owner.emails && owner.emails.length ? owner.emails : [owner.email])
+    .map((e) => clean(e))
+    .filter(Boolean)
   const [displayName, setDisplayName] = useState(
     clean(owner.display_name) || owner.owner_name,
   )
@@ -1241,8 +1352,10 @@ function OverviewPanel({
   const [mailingCity, setMailingCity] = useState(clean(owner.mailing_city))
   const [mailingState, setMailingState] = useState(clean(owner.mailing_state))
   const [mailingZip, setMailingZip] = useState(clean(owner.mailing_zip))
-  const [phoneValue, setPhoneValue] = useState(clean(owner.phone))
-  const [emailValue, setEmailValue] = useState(clean(owner.email))
+  // Editable lists (skip-trace can yield several). Keep at least one blank
+  // input so the user can always add a number/email.
+  const [phoneList, setPhoneList] = useState<string[]>(ownerPhones.length ? ownerPhones : [''])
+  const [emailList, setEmailList] = useState<string[]>(ownerEmails.length ? ownerEmails : [''])
 
   useEffect(() => {
     if (!editingContact) return
@@ -1251,8 +1364,9 @@ function OverviewPanel({
     setMailingCity(clean(owner.mailing_city))
     setMailingState(clean(owner.mailing_state))
     setMailingZip(clean(owner.mailing_zip))
-    setPhoneValue(clean(owner.phone))
-    setEmailValue(clean(owner.email))
+    setPhoneList(ownerPhones.length ? ownerPhones : [''])
+    setEmailList(ownerEmails.length ? ownerEmails : [''])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingContact, owner])
 
   return (
@@ -1313,21 +1427,35 @@ function OverviewPanel({
                 <OwnerField label="State" value={mailingState} onChange={setMailingState} />
                 <OwnerField label="ZIP" value={mailingZip} onChange={setMailingZip} />
               </div>
-              <OwnerField label="Phone" value={phoneValue} onChange={setPhoneValue} />
-              <OwnerField label="Email" value={emailValue} onChange={setEmailValue} />
+              <ContactListEditor
+                label="Phone numbers"
+                values={phoneList}
+                onChange={setPhoneList}
+                placeholder="(555) 123-4567"
+              />
+              <ContactListEditor
+                label="Emails"
+                values={emailList}
+                onChange={setEmailList}
+                placeholder="name@example.com"
+              />
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   type="button"
                   disabled={saveBusy}
                   onClick={async () => {
+                    const phones = phoneList.map((p) => p.trim()).filter(Boolean)
+                    const emails = emailList.map((e) => e.trim()).filter(Boolean)
                     await onSaveDetails({
                       display_name: displayName.trim() || owner.owner_name,
                       mailing_address: mailingAddress.trim() || null,
                       mailing_city: mailingCity.trim() || null,
                       mailing_state: mailingState.trim() || null,
                       mailing_zip: mailingZip.trim() || null,
-                      phone: phoneValue.trim() || null,
-                      email: emailValue.trim() || null,
+                      phone: phones[0] ?? null,
+                      email: emails[0] ?? null,
+                      phones,
+                      emails,
                     })
                   }}
                   className="rounded-md bg-amber-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
@@ -1392,7 +1520,7 @@ function OverviewPanel({
         <SectionCard title="Lease context">
           <KVRow
             k="Legal description"
-            v={tractLegalDescription || tractLabel || 'Selected tract'}
+            v={tractLegalDescription || tractLabel || 'Not recorded'}
             mono
           />
           <KVRow k="RRC lease" v={rrcLease || 'Not linked'} mono />
@@ -1407,6 +1535,62 @@ function OverviewPanel({
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
       {tractDevStatus && <DevTimeline status={tractDevStatus} />}
       {/* Satellite Imagery / pad activity archived — see lib/feature-flags.ts */}
+    </div>
+  )
+}
+
+/** Editable list of contacts (phones or emails) with add/remove rows. */
+function ContactListEditor({
+  label,
+  values,
+  onChange,
+  placeholder,
+}: {
+  label: string
+  values: string[]
+  onChange: (v: string[]) => void
+  placeholder?: string
+}) {
+  const rows = values.length ? values : ['']
+  const setAt = (i: number, v: string) => {
+    const next = [...rows]
+    next[i] = v
+    onChange(next)
+  }
+  const removeAt = (i: number) => {
+    const next = rows.filter((_, idx) => idx !== i)
+    onChange(next.length ? next : [''])
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-gray-500">{label}</span>
+      <div className="flex flex-col gap-2">
+        {rows.map((val, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input
+              value={val}
+              placeholder={placeholder}
+              onChange={(e) => setAt(i, e.target.value)}
+              className="flex-1 rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+            />
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              aria-label={`Remove ${label}`}
+              className="flex h-8 w-8 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400 hover:border-rose-300 hover:text-rose-600"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={() => onChange([...rows, ''])}
+          className="self-start rounded-md border border-dashed border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:border-amber-300 hover:text-amber-700"
+        >
+          + Add {label.toLowerCase().replace(/s$/, '')}
+        </button>
+      </div>
     </div>
   )
 }
