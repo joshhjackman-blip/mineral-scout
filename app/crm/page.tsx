@@ -3,7 +3,8 @@
 // CRM: dashboard home + leads workspace.
 //
 // Dashboard is the default view (pipeline KPIs, status/county mix,
-// follow-up queue). Leads is the existing two-panel workspace:
+// follow-up queue). Calendar shows follow-up dates. Leads is the
+// existing two-panel workspace:
 //   Left  — filterable / searchable leads list, one row per Deal.
 //   Right — full-height OwnerDrawer.
 // Header search jumps to a lead from any view.
@@ -25,6 +26,7 @@ import { getWorkspaceContext } from '@/lib/workspace'
 import { PREVIEW_DEALS, shouldLoadPreviewDeals } from './preview-deals'
 import CrmDashboard from './CrmDashboard'
 import type { DashboardOpenFilter } from './CrmDashboard'
+import CrmCalendar from './CrmCalendar'
 import CrmGlobalSearch from './CrmGlobalSearch'
 import {
   type Deal,
@@ -90,7 +92,7 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
 export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [selected, setSelected] = useState<Deal | null>(null)
-  const [view, setView] = useState<'dashboard' | 'leads'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'leads' | 'calendar'>('dashboard')
   const [activeTag, setActiveTag] = useState('all')
   const [countyFilter, setCountyFilter] = useState<'all' | CountyKey>('all')
   const [search, setSearch] = useState('')
@@ -152,6 +154,22 @@ export default function CRM() {
   const clearExtraFilters = useCallback(() => {
     setFollowUpFilter('all')
     setNeedContact(false)
+  }, [])
+
+  const handleSetFollowUp = useCallback(async (deal: Deal, followUpDate: string | null) => {
+    const next = { follow_up_date: followUpDate, updated_at: new Date().toISOString() }
+    if (!deal.id.startsWith('preview-')) {
+      const { error } = await supabase
+        .from('deals')
+        .update(next)
+        .eq('id', deal.id)
+      if (error) {
+        console.error('Failed to set follow-up:', error)
+        return
+      }
+    }
+    setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...next } : d)))
+    setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...next } : prev))
   }, [])
 
   const handleSkipTrace = useCallback(async (owner: OwnerLike) => {
@@ -467,6 +485,17 @@ export default function CRM() {
           >
             Leads
           </button>
+          <button
+            type="button"
+            onClick={() => setView('calendar')}
+            className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+              view === 'calendar'
+                ? 'bg-gray-800 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            Calendar
+          </button>
           <span className="w-px h-4 bg-gray-700" aria-hidden="true" />
           <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
@@ -475,7 +504,14 @@ export default function CRM() {
       </header>
 
       {view === 'dashboard' ? (
-        <CrmDashboard deals={deals} onOpenLead={openLead} onOpenFilter={openLeadsFilter} />
+        <CrmDashboard
+          deals={deals}
+          onOpenLead={openLead}
+          onOpenFilter={openLeadsFilter}
+          onOpenCalendar={() => setView('calendar')}
+        />
+      ) : view === 'calendar' ? (
+        <CrmCalendar deals={deals} onOpenLead={openLead} onSetFollowUp={handleSetFollowUp} />
       ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* Left sidebar — leads list, search, filter chips, county filter.

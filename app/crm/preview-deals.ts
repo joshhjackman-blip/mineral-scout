@@ -44,6 +44,7 @@ export const PREVIEW_DEALS: Deal[] = [
     monthly_royalty: 9100,
     tag: 'offer_sent',
     offer_amount: 185000,
+    follow_up_date: new Date(Date.now() + 86400000 * 10).toISOString(),
     updated_at: new Date(Date.now() - 86400000).toISOString(),
   },
   {
@@ -71,6 +72,7 @@ export const PREVIEW_DEALS: Deal[] = [
     tag: 'skip_traced',
     phone: '4325550144',
     email: 'rsalinas@example.com',
+    follow_up_date: new Date().toISOString(),
     updated_at: new Date(Date.now() - 7200000).toISOString(),
   },
   {

@@ -104,9 +104,6 @@ export const formatDate = (date: string) => {
   return `in ${diff}d`
 }
 
-export const formatMoney = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-
 export const hasContact = (deal: Deal): boolean => {
   if (deal.phone || deal.email) return true
   if ((deal.phones ?? []).some(Boolean)) return true
@@ -171,6 +168,86 @@ export const filterDeals = (deals: Deal[], filter: CrmListFilter): Deal[] => {
   })
 }
 
+export const toDateKey = (value: string | Date): string => {
+  const d = value instanceof Date ? value : new Date(value)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+export const dateKeyToIso = (key: string): string => {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+}
+
+export const formatDateKey = (key: string): string => {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
+export type CalendarCell = {
+  key: string
+  day: number
+  inMonth: boolean
+  isToday: boolean
+}
+
+export const buildMonthCells = (year: number, month: number): CalendarCell[] => {
+  const todayKey = toDateKey(new Date())
+  const first = new Date(year, month, 1)
+  const startDow = first.getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells: CalendarCell[] = []
+
+  for (let i = 0; i < startDow; i += 1) {
+    const d = new Date(year, month, 1 - (startDow - i))
+    cells.push({
+      key: toDateKey(d),
+      day: d.getDate(),
+      inMonth: false,
+      isToday: toDateKey(d) === todayKey,
+    })
+  }
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const d = new Date(year, month, day)
+    cells.push({
+      key: toDateKey(d),
+      day,
+      inMonth: true,
+      isToday: toDateKey(d) === todayKey,
+    })
+  }
+  while (cells.length % 7 !== 0) {
+    const last = cells[cells.length - 1]
+    const [y, m, d] = last.key.split('-').map(Number)
+    const next = new Date(y, m - 1, d + 1)
+    cells.push({
+      key: toDateKey(next),
+      day: next.getDate(),
+      inMonth: false,
+      isToday: toDateKey(next) === todayKey,
+    })
+  }
+  return cells
+}
+
+export const groupDealsByDate = (deals: Deal[]): Map<string, Deal[]> => {
+  const map = new Map<string, Deal[]>()
+  for (const deal of deals) {
+    if (!deal.follow_up_date) continue
+    const key = toDateKey(deal.follow_up_date)
+    const list = map.get(key) ?? []
+    list.push(deal)
+    map.set(key, list)
+  }
+  return map
+}
+
 export type CrmDashboardStats = {
   total: number
   open: number
@@ -179,8 +256,6 @@ export type CrmDashboardStats = {
   needContact: number
   offers: number
   closedWon: number
-  openAcres: number
-  openRoyalty: number
   byStage: { key: string; label: string; count: number }[]
   byCounty: { id: string; label: string; count: number }[]
   followUps: Deal[]
@@ -227,8 +302,6 @@ export const buildDashboardStats = (deals: Deal[]): CrmDashboardStats => {
     needContact: deals.filter((d) => !hasContact(d)).length,
     offers: deals.filter((d) => dealTag(d) === 'offer_sent').length,
     closedWon: deals.filter((d) => dealTag(d) === 'closed_won' || dealTag(d) === 'closed').length,
-    openAcres: openDeals.reduce((sum, d) => sum + (d.acreage ?? 0), 0),
-    openRoyalty: openDeals.reduce((sum, d) => sum + (d.monthly_royalty ?? 0), 0),
     byStage,
     byCounty,
     followUps,

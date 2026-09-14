@@ -10,7 +10,6 @@ import {
   countyLabel,
   dealTag,
   formatDate,
-  formatMoney,
   isOverdue,
   TAG_LABELS,
 } from './crm-utils'
@@ -26,9 +25,10 @@ type CrmDashboardProps = {
   deals: Deal[]
   onOpenLead: (deal: Deal) => void
   onOpenFilter: (filter: DashboardOpenFilter) => void
+  onOpenCalendar: () => void
 }
 
-export default function CrmDashboard({ deals, onOpenLead, onOpenFilter }: CrmDashboardProps) {
+export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCalendar }: CrmDashboardProps) {
   const stats = buildDashboardStats(deals)
   const stageMax = Math.max(1, ...stats.byStage.map((s) => s.count))
   const countyMax = Math.max(1, ...stats.byCounty.map((s) => s.count))
@@ -78,21 +78,6 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter }: CrmDas
             tone="text-emerald-600"
             onClick={() => onOpenFilter({ tag: 'closed_won' })}
           />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3">
-            <div className="text-xs text-gray-400">Open acres</div>
-            <div className="text-xl font-serif font-bold text-gray-900">
-              {stats.openAcres.toLocaleString()} <span className="text-sm font-sans font-medium text-gray-400">ac</span>
-            </div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-3">
-            <div className="text-xs text-gray-400">Est. monthly royalty (open)</div>
-            <div className="text-xl font-serif font-bold text-gray-900">
-              {stats.openRoyalty ? formatMoney(stats.openRoyalty) : '$0'}
-            </div>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -167,6 +152,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter }: CrmDas
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <LeadList
             title="Follow-up queue"
+            action={{ label: 'Open calendar', onClick: onOpenCalendar }}
             empty="No follow-up dates set."
             deals={stats.followUps}
             onOpenLead={onOpenLead}
@@ -238,12 +224,14 @@ function EmptyNote({ text }: { text: string }) {
 
 function LeadList({
   title,
+  action,
   empty,
   deals,
   onOpenLead,
   renderMeta,
 }: {
   title: string
+  action?: { label: string; onClick: () => void }
   empty: string
   deals: Deal[]
   onOpenLead: (deal: Deal) => void
@@ -251,7 +239,18 @@ function LeadList({
 }) {
   return (
     <section className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 flex flex-col min-h-[280px]">
-      <h2 className="text-sm font-semibold text-gray-900 mb-3">{title}</h2>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+        {action ? (
+          <button
+            type="button"
+            onClick={action.onClick}
+            className="text-xs text-amber-700 hover:text-amber-800"
+          >
+            {action.label}
+          </button>
+        ) : null}
+      </div>
       {deals.length === 0 ? (
         <EmptyNote text={empty} />
       ) : (
