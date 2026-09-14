@@ -19,6 +19,7 @@ export type DashboardOpenFilter = {
   county?: CountyKey
   followUp?: 'overdue' | 'upcoming'
   needContact?: boolean
+  waitingOnNumber?: boolean
 }
 
 type CrmDashboardProps = {
@@ -43,7 +44,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
           <Kpi
             label="Open pipeline"
             value={stats.open}
@@ -66,6 +67,12 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
             label="Need skip trace"
             value={stats.needContact}
             onClick={() => onOpenFilter({ needContact: true })}
+          />
+          <Kpi
+            label="Waiting on a number"
+            value={stats.waitingOnNumber}
+            tone="text-amber-600"
+            onClick={() => onOpenFilter({ waitingOnNumber: true })}
           />
           <Kpi
             label="Offers sent"
@@ -149,7 +156,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
           </section>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
           <LeadList
             title="Follow-up queue"
             action={{ label: 'Open calendar', onClick: onOpenCalendar }}
@@ -164,6 +171,18 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
                 </span>
               ) : null
             }
+          />
+          <LeadList
+            title="Waiting on a number"
+            empty="No skip traces waiting on a phone."
+            deals={stats.waitingOnNumberDeals}
+            onOpenLead={onOpenLead}
+            renderMeta={() => (
+              <span className="inline-flex items-center gap-1 text-amber-700">
+                <PhoneOff size={10} />
+                Bad skip trace
+              </span>
+            )}
           />
           <LeadList
             title="Needs skip trace"

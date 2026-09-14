@@ -16,6 +16,8 @@ import {
   mineralOwnerNriPct,
   netMineralAcres,
 } from '@/lib/tract-math'
+import LeadPhones from '@/app/components/LeadPhones'
+import type { CallOutcome, PhoneActivityMap } from '@/lib/phone-activity'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
 // flex sibling below the map+sidebar row (not a modal overlay) so the
@@ -205,6 +207,16 @@ export type OwnerDrawerProps = {
     owner: OwnerLike,
     status: string,
   ) => Promise<{ success: boolean; error?: string }>
+  /** After skip-trace, put phones in front and ask for a call outcome. */
+  callNow?: boolean
+  onDismissCallNow?: () => void
+  phoneActivity?: PhoneActivityMap
+  connectedPhone?: string | null
+  onLogCallOutcome?: (
+    owner: OwnerLike,
+    phone: string,
+    outcome: CallOutcome,
+  ) => Promise<void>
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -746,6 +758,11 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     crmMode = false,
     dealStatus = null,
     onSetStatus,
+    callNow = false,
+    onDismissCallNow,
+    phoneActivity = {},
+    connectedPhone = null,
+    onLogCallOutcome,
   } = props
 
   const county = COUNTIES[countyId]
@@ -1117,27 +1134,25 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             {address && (
               <div className="mb-3 text-sm text-gray-500">{address}</div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
-              {phoneList.length > 0 ? (
-                phoneList.map((p) => (
-                  <ContactPill
-                    key={p.href}
-                    icon="📞"
-                    label={p.display}
-                    href={p.href}
-                    wide
-                    onActivate={() => {
-                      void logUsageEvent({
-                        eventType: 'call_clicked',
-                        countyId,
-                        ownerName: owner.owner_name,
-                      })
-                    }}
-                  />
-                ))
-              ) : (
-                <ContactPill icon="📞" label="No phone on file" disabled wide />
-              )}
+            <LeadPhones
+              phones={phoneList.map((p) => ({ ...p, raw: p.href }))}
+              activity={phoneActivity}
+              connectedPhone={connectedPhone}
+              callNow={callNow}
+              onDismissCallNow={onDismissCallNow}
+              onCall={(phone) => {
+                void logUsageEvent({
+                  eventType: 'call_clicked',
+                  countyId,
+                  ownerName: owner.owner_name,
+                  meta: { phone: phone.display },
+                })
+              }}
+              onLogOutcome={(phone, outcome) => {
+                void onLogCallOutcome?.(owner, phone.raw, outcome)
+              }}
+            />
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
               {emailList.length > 0 ? (
                 emailList.map((e) => (
                   <ContactPill

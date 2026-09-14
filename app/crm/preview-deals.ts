@@ -71,8 +71,23 @@ export const PREVIEW_DEALS: Deal[] = [
     monthly_royalty: 2600,
     tag: 'skip_traced',
     phone: '4325550144',
+    phones: ['4325550144', '4325550188'],
     email: 'rsalinas@example.com',
     follow_up_date: new Date().toISOString(),
+    connected_phone: '4325550144',
+    phone_activity: {
+      '4325550144': {
+        lastCalledAt: new Date(Date.now() - 3600000).toISOString(),
+        lastOutcome: 'connected',
+        lastCalledByName: 'Josh',
+        connected: true,
+      },
+      '4325550188': {
+        lastCalledAt: new Date(Date.now() - 86400000).toISOString(),
+        lastOutcome: 'voicemail',
+        lastCalledByName: 'Josh',
+      },
+    },
     updated_at: new Date(Date.now() - 7200000).toISOString(),
   },
   {
@@ -100,6 +115,20 @@ export const PREVIEW_DEALS: Deal[] = [
     monthly_royalty: 15000,
     tag: 'closed_won',
     updated_at: new Date(Date.now() - 86400000 * 10).toISOString(),
+  },
+  {
+    id: 'preview-8',
+    owner_name: 'Lila J. Pennington',
+    tract_abstract: 'A-54',
+    operator_name: 'Pioneer Natural Resources',
+    county: 'midland',
+    mailing_city: 'Odessa',
+    mailing_state: 'TX',
+    acreage: 640,
+    tag: 'skip_traced',
+    source: 'skip_trace',
+    needs_phone: true,
+    updated_at: new Date(Date.now() - 1800000).toISOString(),
   },
 ]
 

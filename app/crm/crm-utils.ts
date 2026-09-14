@@ -1,5 +1,11 @@
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
+import {
+  hasPhone,
+  parsePhoneActivity,
+  waitingOnNumber,
+  type PhoneActivityMap,
+} from '@/lib/phone-activity'
 
 export type Deal = {
   id: string
@@ -28,6 +34,9 @@ export type Deal = {
   email?: string | null
   phones?: string[] | null
   emails?: string[] | null
+  phone_activity?: PhoneActivityMap | null
+  connected_phone?: string | null
+  needs_phone?: boolean | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -150,6 +159,7 @@ export type CrmListFilter = {
   search: string
   followUp: 'all' | 'overdue' | 'upcoming'
   needContact: boolean
+  waitingOnNumber: boolean
 }
 
 export const filterDeals = (deals: Deal[], filter: CrmListFilter): Deal[] => {
@@ -158,6 +168,7 @@ export const filterDeals = (deals: Deal[], filter: CrmListFilter): Deal[] => {
     if (filter.county !== 'all' && getDealCounty(d) !== filter.county) return false
     if (filter.search && !dealMatchesQuery(d, filter.search)) return false
     if (filter.needContact && hasContact(d)) return false
+    if (filter.waitingOnNumber && !waitingOnNumber(d)) return false
     if (filter.followUp === 'overdue') {
       if (!d.follow_up_date || !isOverdue(d.follow_up_date)) return false
     }
@@ -254,6 +265,7 @@ export type CrmDashboardStats = {
   hot: number
   overdue: number
   needContact: number
+  waitingOnNumber: number
   offers: number
   closedWon: number
   byStage: { key: string; label: string; count: number }[]
@@ -261,6 +273,7 @@ export type CrmDashboardStats = {
   followUps: Deal[]
   recent: Deal[]
   missingContact: Deal[]
+  waitingOnNumberDeals: Deal[]
 }
 
 export const buildDashboardStats = (deals: Deal[]): CrmDashboardStats => {
@@ -293,6 +306,7 @@ export const buildDashboardStats = (deals: Deal[]): CrmDashboardStats => {
     .slice(0, 8)
 
   const missingContact = deals.filter((d) => !hasContact(d)).slice(0, 8)
+  const waitingOnNumberDeals = deals.filter((d) => waitingOnNumber(d)).slice(0, 8)
 
   return {
     total: deals.length,
@@ -300,6 +314,7 @@ export const buildDashboardStats = (deals: Deal[]): CrmDashboardStats => {
     hot: deals.filter((d) => dealTag(d) === 'hot').length,
     overdue: deals.filter((d) => d.follow_up_date && isOverdue(d.follow_up_date)).length,
     needContact: deals.filter((d) => !hasContact(d)).length,
+    waitingOnNumber: deals.filter((d) => waitingOnNumber(d)).length,
     offers: deals.filter((d) => dealTag(d) === 'offer_sent').length,
     closedWon: deals.filter((d) => dealTag(d) === 'closed_won' || dealTag(d) === 'closed').length,
     byStage,
@@ -307,5 +322,8 @@ export const buildDashboardStats = (deals: Deal[]): CrmDashboardStats => {
     followUps,
     recent,
     missingContact,
+    waitingOnNumberDeals,
   }
 }
+
+export { hasPhone, parsePhoneActivity, waitingOnNumber }
