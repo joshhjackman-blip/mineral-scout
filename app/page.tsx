@@ -217,6 +217,8 @@ type SkipTraceResult = {
   ownerName: string
   phone: string | null
   email: string | null
+  phones: string[]
+  emails: string[]
   dealId: string | null
   cached?: boolean
 }
@@ -2121,8 +2123,10 @@ export default function Home() {
       }
 
       if (result.success) {
-        const phone = result.phones?.[0] ?? null
-        const email = result.emails?.[0] ?? null
+        const phones: string[] = Array.isArray(result.phones) ? result.phones : []
+        const emails: string[] = Array.isArray(result.emails) ? result.emails : []
+        const phone = phones[0] ?? null
+        const email = emails[0] ?? null
 
         const workspace = await getWorkspaceContext()
         if (!workspace) {
@@ -2146,10 +2150,15 @@ export default function Home() {
           tag: 'skip_traced',
           phone,
           email,
+          phones,
+          emails,
           source: 'skip_trace',
           county: selectedCounty,
           updated_at: new Date().toISOString(),
-          notes: `Skip traced ${new Date().toLocaleDateString()}\nPhone: ${phone ?? 'not found'}\nEmail: ${email ?? 'not found'}`,
+          notes:
+            `Skip traced ${new Date().toLocaleDateString()}\n` +
+            `Phone${phones.length > 1 ? `s (${phones.length})` : ''}: ${phones.join(', ') || 'not found'}\n` +
+            `Email${emails.length > 1 ? `s (${emails.length})` : ''}: ${emails.join(', ') || 'not found'}`,
         }
 
         const { data: existing, error: existingError } = await supabase
@@ -2171,6 +2180,8 @@ export default function Home() {
               tag: 'skip_traced',
               phone: phone ?? null,
               email: email ?? null,
+              phones,
+              emails,
               updated_at: new Date().toISOString(),
             })
             .eq('id', existing.id)
@@ -2205,6 +2216,8 @@ export default function Home() {
           ownerName: skipTracing.owner_name,
           phone,
           email,
+          phones,
+          emails,
           dealId: savedDeal?.id ?? null,
           cached: Boolean(result.cached),
         })
@@ -5587,23 +5600,27 @@ export default function Home() {
             )}
 
             <div style={{ background: 'var(--mm-chrome-surface)', borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
-              {skipTraceResult.phone ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 16 }}>📞</span>
-                  <a href={`tel:${skipTraceResult.phone}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
-                    {skipTraceResult.phone}
-                  </a>
-                </div>
+              {skipTraceResult.phones.length > 0 ? (
+                skipTraceResult.phones.map((ph) => (
+                  <div key={ph} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 16 }}>📞</span>
+                    <a href={`tel:${ph}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
+                      {ph}
+                    </a>
+                  </div>
+                ))
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)', marginBottom: 8 }}>No phone found</div>
               )}
-              {skipTraceResult.email ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 16 }}>✉️</span>
-                  <a href={`mailto:${skipTraceResult.email}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
-                    {skipTraceResult.email}
-                  </a>
-                </div>
+              {skipTraceResult.emails.length > 0 ? (
+                skipTraceResult.emails.map((em) => (
+                  <div key={em} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    <span style={{ fontSize: 16 }}>✉️</span>
+                    <a href={`mailto:${em}`} style={{ fontSize: 14, color: 'var(--mm-chrome-fg)', fontWeight: 500, textDecoration: 'none' }}>
+                      {em}
+                    </a>
+                  </div>
+                ))
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--mm-chrome-muted)' }}>No email found</div>
               )}

@@ -64,6 +64,8 @@ type Deal = {
   notes?: string | null
   phone?: string | null
   email?: string | null
+  phones?: string[] | null
+  emails?: string[] | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -142,6 +144,8 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
   acreage: deal.acreage,
   phone: deal.phone,
   email: deal.email,
+  phones: deal.phones,
+  emails: deal.emails,
   rrc_lease_id: deal.rrc_lease_id,
 })
 
@@ -212,8 +216,10 @@ export default function CRM() {
         }),
       })
       const result = await res.json()
-      const phone = result.phones?.[0] ?? null
-      const email = result.emails?.[0] ?? null
+      const phones: string[] = Array.isArray(result.phones) ? result.phones : []
+      const emails: string[] = Array.isArray(result.emails) ? result.emails : []
+      const phone = phones[0] ?? null
+      const email = emails[0] ?? null
 
       if (!phone && !email) {
         alert('No contact info found for this owner.')
@@ -228,13 +234,15 @@ export default function CRM() {
       const updatePayload: Record<string, unknown> = {
         phone,
         email,
+        phones,
+        emails,
         tag: 'skip_traced',
         updated_at: new Date().toISOString(),
       }
       if (!deal.county && derivedCounty) updatePayload.county = derivedCounty
 
       await supabase.from('deals').update(updatePayload).eq('id', deal.id)
-      const patch: Partial<Deal> = { phone, email, tag: 'skip_traced', county: deal.county ?? derivedCounty ?? null }
+      const patch: Partial<Deal> = { phone, email, phones, emails, tag: 'skip_traced', county: deal.county ?? derivedCounty ?? null }
       setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
       setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } as Deal : prev))
     } catch (err) {

@@ -43,6 +43,10 @@ export type OwnerLike = {
   prod_cumulative_sum_oil?: number | null
   phone?: string | null
   email?: string | null
+  // Full skip-trace contact lists (idiCORE et al. can return several). The
+  // scalar phone/email above stay the primary/first contact for back-compat.
+  phones?: (string | null)[] | null
+  emails?: (string | null)[] | null
   rrc_lease_id?: string | number | null
   sptb_code?: string | null
 }
@@ -217,6 +221,22 @@ function formatEmail(raw: string | null | undefined): { display: string; href: s
   const text = clean(raw)
   if (!text || !/.+@.+\..+/.test(text)) return null
   return { display: text, href: `mailto:${text}` }
+}
+
+/** Drop nulls + de-dupe formatted contacts by their display string. */
+function dedupeContacts(
+  items: ({ display: string; href: string } | null)[],
+): { display: string; href: string }[] {
+  const seen = new Set<string>()
+  const out: { display: string; href: string }[] = []
+  for (const item of items) {
+    if (!item) continue
+    const key = item.display.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
 }
 
 function abstractKey(raw: unknown): string {
@@ -741,8 +761,16 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   if (!open || !owner) return null
 
   const displayName = clean(owner.display_name) || owner.owner_name
-  const phone = formatPhone(owner.phone)
-  const email = formatEmail(owner.email)
+  // Full contact lists. Prefer the arrays (multiple skip-trace hits); fall
+  // back to the scalar phone/email. De-dupe by formatted display.
+  const rawPhones =
+    owner.phones && owner.phones.length ? owner.phones : [owner.phone]
+  const rawEmails =
+    owner.emails && owner.emails.length ? owner.emails : [owner.email]
+  const phoneList = dedupeContacts(rawPhones.map(formatPhone))
+  const emailList = dedupeContacts(rawEmails.map(formatEmail))
+  const phone = phoneList[0] ?? null
+  const email = emailList[0] ?? null
   const badges = ownerBadges(owner)
   const ownershipPct = ownershipPctValue(
     owner.ownership_pct ?? owner.decimal_interest,
@@ -830,32 +858,44 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </header>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-6 py-3">
-        <ContactPill
-          icon="📞"
-          label={phone ? phone.display : 'No phone on file'}
-          href={phone?.href}
-          disabled={!phone}
-          onActivate={() => {
-            void logUsageEvent({
-              eventType: 'call_clicked',
-              countyId,
-              ownerName: owner.owner_name,
-            })
-          }}
-        />
-        <ContactPill
-          icon="✉︎"
-          label={email ? email.display : 'No email on file'}
-          href={email?.href}
-          disabled={!email}
-          onActivate={() => {
-            void logUsageEvent({
-              eventType: 'email_clicked',
-              countyId,
-              ownerName: owner.owner_name,
-            })
-          }}
-        />
+        {phoneList.length > 0 ? (
+          phoneList.map((p) => (
+            <ContactPill
+              key={p.href}
+              icon="📞"
+              label={p.display}
+              href={p.href}
+              onActivate={() => {
+                void logUsageEvent({
+                  eventType: 'call_clicked',
+                  countyId,
+                  ownerName: owner.owner_name,
+                })
+              }}
+            />
+          ))
+        ) : (
+          <ContactPill icon="📞" label="No phone on file" disabled />
+        )}
+        {emailList.length > 0 ? (
+          emailList.map((e) => (
+            <ContactPill
+              key={e.href}
+              icon="✉︎"
+              label={e.display}
+              href={e.href}
+              onActivate={() => {
+                void logUsageEvent({
+                  eventType: 'email_clicked',
+                  countyId,
+                  ownerName: owner.owner_name,
+                })
+              }}
+            />
+          ))
+        ) : (
+          <ContactPill icon="✉︎" label="No email on file" disabled />
+        )}
         <button
           onClick={() => onSkipTrace(owner)}
           className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
@@ -1101,7 +1141,7 @@ function ContactPill({
   icon: string
   label: string
   href?: string
-  disabled: boolean
+  disabled?: boolean
   onActivate?: () => void
 }) {
   if (disabled || !href) {
@@ -1327,8 +1367,24 @@ function OverviewPanel({
                   ].filter(Boolean).join(' · ') || 'Not on file'
                 }
               />
-              <KVRow k="Phone" v={owner.phone || 'Not on file — run skip trace above'} />
-              <KVRow k="Email" v={owner.email || 'Not on file — run skip trace above'} />
+              <KVRow
+                k="Phone"
+                v={
+                  (owner.phones && owner.phones.length ? owner.phones : [owner.phone])
+                    .map((p) => clean(p))
+                    .filter(Boolean)
+                    .join(', ') || 'Not on file — run skip trace above'
+                }
+              />
+              <KVRow
+                k="Email"
+                v={
+                  (owner.emails && owner.emails.length ? owner.emails : [owner.email])
+                    .map((e) => clean(e))
+                    .filter(Boolean)
+                    .join(', ') || 'Not on file — run skip trace above'
+                }
+              />
             </>
           )}
         </SectionCard>
