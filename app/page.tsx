@@ -5666,7 +5666,13 @@ export default function Home() {
                 Stay here
               </button>
               <button
-                onClick={() => window.location.href = '/crm'}
+                onClick={() => {
+                  const params = new URLSearchParams()
+                  if (skipTraceResult.dealId) params.set('lead', skipTraceResult.dealId)
+                  else if (skipTraceResult.ownerName) params.set('owner', skipTraceResult.ownerName)
+                  const qs = params.toString()
+                  window.location.href = qs ? `/crm?${qs}` : '/crm'
+                }}
                 style={{
                   flex: 1, padding: '10px', borderRadius: 8,
                   background: '#EF9F27', border: 'none',

@@ -9,7 +9,7 @@
 //   Right — full-height OwnerDrawer.
 // Header search jumps to a lead from any view.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { COUNTIES } from '@/lib/counties'
@@ -92,28 +92,38 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
 export default function CRM() {
   const [deals, setDeals] = useState<Deal[]>([])
   const [selected, setSelected] = useState<Deal | null>(null)
-  const [view, setView] = useState<'dashboard' | 'leads' | 'calendar'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'leads' | 'calendar'>(() => {
+    if (typeof window === 'undefined') return 'dashboard'
+    const params = new URLSearchParams(window.location.search)
+    return params.get('lead') || params.get('owner') ? 'leads' : 'dashboard'
+  })
   const [activeTag, setActiveTag] = useState('all')
   const [countyFilter, setCountyFilter] = useState<'all' | CountyKey>('all')
   const [search, setSearch] = useState('')
   const [followUpFilter, setFollowUpFilter] = useState<'all' | 'overdue' | 'upcoming'>('all')
   const [needContact, setNeedContact] = useState(false)
+  const [dealsReady, setDealsReady] = useState(false)
+  const openedDeepLink = useRef(false)
 
   useEffect(() => {
     void (async () => {
-      const workspace = await getWorkspaceContext()
-      if (!workspace) {
-        setDeals(shouldLoadPreviewDeals() ? PREVIEW_DEALS : [])
-        return
+      try {
+        const workspace = await getWorkspaceContext()
+        if (!workspace) {
+          setDeals(shouldLoadPreviewDeals() ? PREVIEW_DEALS : [])
+          return
+        }
+        // RLS also scopes by team_owner_id; filter explicitly so a missing
+        // migration can't accidentally paint another team's CRM.
+        const { data } = await supabase
+          .from('deals')
+          .select('*')
+          .eq('team_owner_id', workspace.workspaceId)
+          .order('updated_at', { ascending: false })
+        setDeals((data as Deal[]) ?? [])
+      } finally {
+        setDealsReady(true)
       }
-      // RLS also scopes by team_owner_id; filter explicitly so a missing
-      // migration can't accidentally paint another team's CRM.
-      const { data } = await supabase
-        .from('deals')
-        .select('*')
-        .eq('team_owner_id', workspace.workspaceId)
-        .order('updated_at', { ascending: false })
-      setDeals((data as Deal[]) ?? [])
     })()
   }, [])
 
@@ -140,6 +150,25 @@ export default function CRM() {
     setSelected(deal)
     setView('leads')
   }, [])
+
+  // Map skip-trace "Go to CRM" lands on /crm?lead=<deal id> (owner name
+  // as fallback) and should open that lead, not the dashboard.
+  useEffect(() => {
+    if (!dealsReady || openedDeepLink.current) return
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    const leadId = params.get('lead')?.trim()
+    const ownerName = params.get('owner')?.trim()
+    if (!leadId && !ownerName) {
+      openedDeepLink.current = true
+      return
+    }
+    const deal = leadId
+      ? deals.find((d) => d.id === leadId)
+      : deals.find((d) => d.owner_name === ownerName)
+    openedDeepLink.current = true
+    if (deal) openLead(deal)
+  }, [deals, dealsReady, openLead])
 
   const openLeadsFilter = useCallback((next: DashboardOpenFilter) => {
     setActiveTag(next.tag ?? 'all')
