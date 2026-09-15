@@ -94,7 +94,6 @@ const TOUR_STEPS: TourStep[] = [
     title: 'Owners & outreach',
     body: "This is the owner list for the tract. Open a row for holdings across every county, skip-trace for phone and email, or add them to your CRM pipeline.",
     placement: 'right',
-    spotlightMaxHeight: 280,
   },
   {
     selector: '[data-tour="nav-menu"]',
