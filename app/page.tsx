@@ -92,8 +92,9 @@ const TOUR_STEPS: TourStep[] = [
   {
     selector: '[data-tour="owner-panel"]',
     title: 'Owners & outreach',
-    body: "This is the full owner list for the tract. Sort or search it, open a row to see an owner's holdings across every county, skip-trace for phone and email, or add them straight to your CRM pipeline.",
+    body: "This is the owner list for the tract. Open a row for holdings across every county, skip-trace for phone and email, or add them to your CRM pipeline.",
     placement: 'right',
+    spotlightMaxHeight: 280,
   },
   {
     selector: '[data-tour="nav-menu"]',
@@ -1357,6 +1358,13 @@ export default function Home() {
       window.dispatchEvent(new CustomEvent(TOUR_ADVANCE_EVENT, { detail: { id: 'tract' } }))
     }
   }, [selected])
+
+  const handleTourStepChange = useCallback((_: number, step: TourStep) => {
+    if (step.selector !== '[data-tour="owner-panel"]') return
+    setDrawerOwner(null)
+    setDrawerTractLabel(null)
+    setExpandedOwner(null)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -3251,6 +3259,7 @@ export default function Home() {
           mapLevel,
           tractSelected: Boolean(selected && (selected.abstract_label || selected.ABSTRACT_L)),
         }}
+        onStepChange={handleTourStepChange}
       />
       {/* Top header */}
       <div

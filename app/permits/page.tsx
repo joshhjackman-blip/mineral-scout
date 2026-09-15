@@ -25,6 +25,39 @@ import { COUNTIES } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
 import { writePermitsLastSeen } from '@/lib/permits-seen'
 import { skipTraceOwnerKey } from '@/lib/workspace'
+import ProductTour, { TOUR_EVENT, type TourStep } from '@/app/components/ProductTour'
+
+const PERMITS_TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Recent permits',
+    body: 'New drilling permits across your counties, so you can call owners before the next buyer does.',
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="permits-window"]',
+    title: 'Pick the window',
+    body: '3 days is the freshest filings. Widen to 90 days or a year when you want a bigger list.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="permits-status"]',
+    title: 'Approved vs pending',
+    body: 'Approved means the well can be drilled. Pending is still in the queue. Filter to whichever you work first.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="permits-list"]',
+    title: 'Open a permit',
+    body: 'Each card is a filing. Expand it to see the mineral owners on that tract, then skip-trace, call, or jump to the map.',
+    placement: 'top',
+    spotlightMaxHeight: 260,
+  },
+  {
+    title: 'You are set',
+    body: 'Work the newest approved permits first. Replay this tour anytime from Tour in the header.',
+    placement: 'center',
+  },
+]
 
 type PermitStatus = 'approved' | 'pending' | 'other'
 
@@ -621,6 +654,7 @@ export default function PermitsPage() {
 
   return (
     <div style={{ minHeight: '100dvh', background: '#F8FAFC', display: 'flex', flexDirection: 'column' }}>
+      <ProductTour steps={PERMITS_TOUR_STEPS} storageKey="mineral_permits_tour_v1" />
       {/* Header — mirrors the map page's chrome with the same subtle
           photo texture, so the whole app reads as one product. */}
       <div
@@ -646,6 +680,23 @@ export default function PermitsPage() {
         </span>
         <div style={{ flex: 1 }} />
         {/* Satellite Imagery archived — see lib/feature-flags.ts */}
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
+          style={{
+            fontSize: 12,
+            color: '#6B7280',
+            background: 'none',
+            textDecoration: 'none',
+            padding: '6px 12px',
+            borderRadius: 6,
+            border: '1px solid #E5E7EB',
+            fontFamily: 'Geist, Inter, system-ui, sans-serif',
+            cursor: 'pointer',
+          }}
+        >
+          Tour
+        </button>
         <Link
           href="/"
           style={{
@@ -687,7 +738,7 @@ export default function PermitsPage() {
 
         {/* Filter row */}
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <div data-tour="permits-window" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginRight: 4 }}>
               Window:
             </span>
@@ -718,7 +769,7 @@ export default function PermitsPage() {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <div data-tour="permits-status" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'Geist, Inter, system-ui, sans-serif', marginRight: 4 }}>
               Status:
             </span>
@@ -773,7 +824,7 @@ export default function PermitsPage() {
             No permits match the current filters.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div data-tour="permits-list" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filtered.map((permit, i) => {
               const permitKey = `${permit.county_id}-${permit.id ?? i}`
               const isOpen = !!expanded[permitKey]

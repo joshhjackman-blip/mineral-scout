@@ -23,6 +23,8 @@ export type TourStep = {
   title: string
   body: string
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'center'
+  // Cap a tall sidebar so the amber ring does not wrap the whole viewport.
+  spotlightMaxHeight?: number
   // Action-gated step: instead of a Next button, wait for the host page to
   // dispatch `mm:tour-advance` with detail.id === awaitId (e.g. the user
   // clicks a county / a tract). `actionHint` is the nudge shown meanwhile.
@@ -40,18 +42,43 @@ export const TOUR_ADVANCE_EVENT = 'mm:tour-advance'
 
 const SPOTLIGHT_PADDING = 8
 const CARD_WIDTH = 320
+const CARD_EST_HEIGHT = 240
+const DEFAULT_SPOTLIGHT_MAX_HEIGHT = 320
 const ACCENT = '#EF9F27'
+
+function visibleAnchorRect(el: HTMLElement | null): DOMRect | null {
+  if (!el) return null
+  const style = window.getComputedStyle(el)
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    return null
+  }
+  const rect = el.getBoundingClientRect()
+  if (rect.width < 12 || rect.height < 12) return null
+  if (rect.bottom < 0 || rect.right < 0 || rect.top > window.innerHeight || rect.left > window.innerWidth) {
+    return null
+  }
+  return rect
+}
+
+function capHighlight(rect: DOMRect, maxHeight: number): DOMRect {
+  if (rect.height <= maxHeight) return rect
+  return new DOMRect(rect.x, rect.y, rect.width, maxHeight)
+}
 
 export default function ProductTour({
   steps,
   storageKey = 'mm_product_tour_v1',
   autoStart = true,
   context = {},
+  onStart,
+  onStepChange,
 }: {
   steps: TourStep[]
   storageKey?: string
   autoStart?: boolean
   context?: TourContext
+  onStart?: () => void
+  onStepChange?: (index: number, step: TourStep) => void
 }) {
   const [mounted, setMounted] = useState(false)
   const [active, setActive] = useState(false)
@@ -61,9 +88,10 @@ export default function ProductTour({
   useEffect(() => setMounted(true), [])
 
   const start = useCallback(() => {
+    onStart?.()
     setIndex(0)
     setActive(true)
-  }, [])
+  }, [onStart])
 
   const finish = useCallback(() => {
     setActive(false)
@@ -123,13 +151,18 @@ export default function ProductTour({
     return () => window.removeEventListener(TOUR_ADVANCE_EVENT, handler)
   }, [active, step, next])
 
+  useEffect(() => {
+    if (!active || !step) return
+    onStepChange?.(index, step)
+  }, [active, index, step, onStepChange])
+
   const measure = useCallback(() => {
     if (!step || !step.selector) {
       setRect(null)
       return
     }
     const el = document.querySelector(step.selector) as HTMLElement | null
-    setRect(el ? el.getBoundingClientRect() : null)
+    setRect(visibleAnchorRect(el))
   }, [step])
 
   useLayoutEffect(() => {
@@ -183,36 +216,50 @@ export default function ProductTour({
   const placement = step.placement ?? (rect ? 'bottom' : 'center')
   const isLast = index === steps.length - 1
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
+  const highlight = rect
+    ? capHighlight(rect, step.spotlightMaxHeight ?? DEFAULT_SPOTLIGHT_MAX_HEIGHT)
+    : null
 
   const cardPos: CSSProperties = (() => {
-    if (!rect || placement === 'center') {
+    if (!highlight || placement === 'center') {
       return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
     }
-    const gap = 12
-    const estHeight = 210
-    if (placement === 'right' && rect.right + gap + CARD_WIDTH <= vw) {
-      return { top: clamp(rect.top, 12, vh - estHeight - 12), left: rect.right + gap }
+    const gap = 16
+    const cardW = Math.min(CARD_WIDTH, vw - 24)
+    const spaceRight = vw - highlight.right - gap
+    const spaceLeft = highlight.left - gap
+    const spaceBelow = vh - highlight.bottom - gap
+    const top = clamp(highlight.top, 16, Math.max(16, vh - CARD_EST_HEIGHT - 16))
+
+    if (placement === 'right' && spaceRight >= cardW) {
+      return { top, left: highlight.right + gap }
     }
-    if (placement === 'left' && rect.left - gap - CARD_WIDTH >= 0) {
-      return { top: clamp(rect.top, 12, vh - estHeight - 12), left: rect.left - gap - CARD_WIDTH }
+    if (placement === 'left' && spaceLeft >= cardW) {
+      return { top, left: highlight.left - gap - cardW }
     }
-    const below = rect.bottom + gap + estHeight <= vh
-    const left = clamp(rect.left, 12, vw - CARD_WIDTH - 12)
-    return below
-      ? { top: rect.bottom + gap, left }
-      : { top: rect.top - gap, left, transform: 'translateY(-100%)' }
+    if ((placement === 'bottom' || placement === 'right' || placement === 'left') && spaceBelow >= CARD_EST_HEIGHT) {
+      return { top: highlight.bottom + gap, left: clamp(highlight.left, 16, vw - cardW - 16) }
+    }
+    if (placement === 'top' && highlight.top - gap - CARD_EST_HEIGHT >= 16) {
+      return { top: highlight.top - gap, left: clamp(highlight.left, 16, vw - cardW - 16), transform: 'translateY(-100%)' }
+    }
+    if (spaceRight >= cardW) return { top, left: highlight.right + gap }
+    if (spaceLeft >= cardW) return { top, left: highlight.left - gap - cardW }
+    // Last resort: park in the open corner so a tall drawer cannot
+    // shove the card into the remaining sliver of map.
+    return { top: 72, left: clamp(vw - cardW - 16, 16, vw - cardW - 16) }
   })()
 
   const overlay = (
     <div style={{ position: 'fixed', inset: 0, zIndex: 4000, pointerEvents: 'none' }}>
-      {rect ? (
+      {highlight ? (
         <div
           style={{
             position: 'fixed',
-            top: rect.top - SPOTLIGHT_PADDING,
-            left: rect.left - SPOTLIGHT_PADDING,
-            width: rect.width + SPOTLIGHT_PADDING * 2,
-            height: rect.height + SPOTLIGHT_PADDING * 2,
+            top: highlight.top - SPOTLIGHT_PADDING,
+            left: highlight.left - SPOTLIGHT_PADDING,
+            width: highlight.width + SPOTLIGHT_PADDING * 2,
+            height: highlight.height + SPOTLIGHT_PADDING * 2,
             borderRadius: 10,
             boxShadow: '0 0 0 9999px rgba(15, 23, 42, 0.55)',
             border: `2px solid ${ACCENT}`,
@@ -240,6 +287,8 @@ export default function ProductTour({
           padding: 18,
           fontFamily: 'Geist, Inter, system-ui, sans-serif',
           pointerEvents: 'auto',
+          maxHeight: 'min(70vh, 420px)',
+          overflowY: 'auto',
           ...cardPos,
         }}
       >
