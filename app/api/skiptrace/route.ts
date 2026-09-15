@@ -113,13 +113,13 @@ const ENTITY_RE = new RegExp(
   'i',
 )
 
-/** Route entities (LLC/trust/estate/…) to BatchData, individuals to IDICORE. */
+/** Label only — both entities and people now try idiCORE first, then BatchData. */
 function classifyOwner(ownerName?: string, firstName?: string, lastName?: string): 'entity' | 'person' {
   const s = `${ownerName ?? ''} ${firstName ?? ''} ${lastName ?? ''}`.toUpperCase()
   return ENTITY_RE.test(s) ? 'entity' : 'person'
 }
 
-/** BatchData property skip-trace — primary for entities. */
+/** BatchData property skip-trace — backup after idiCORE for every owner. */
 async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
@@ -224,7 +224,7 @@ async function idicoreAuthenticate(): Promise<string | null> {
   return token
 }
 
-/** idiCORE (IDI) skip-trace — primary for individuals.
+/** idiCORE (IDI) skip-trace — first provider for every owner.
  *
  * Two-step: authenticate (idicoreAuthenticate) then POST the search to
  * IDICORE_SEARCH_URL (the tailored "/search/MineralMap" template). Falls back
@@ -512,10 +512,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) Provider chain, ordered by owner type:
-  //      entity (LLC / trust / estate / …) -> BatchData first
-  //      person (individual)               -> IDICORE first
-  //    Tracerfy is the shared last-resort backstop for both.
+  // 3) Provider chain (same for LLC / trust / estate / person):
+  //      idiCORE first, BatchData backup, Tracerfy last-resort.
   const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
   const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
   // idiCORE is enabled once a search endpoint is configured (two-step auth via
@@ -542,11 +540,7 @@ export async function POST(req: NextRequest) {
     idicore: idicoreEnabled ? () => traceIdicore(traceArgs) : null,
     tracerfy: tracerfyKey ? () => traceTracerfy(tracerfyKey, traceArgs) : null,
   }
-  // Tracerfy always runs last; the primary is chosen by owner type.
-  const order =
-    ownerType === 'entity'
-      ? ['batchdata', 'tracerfy']
-      : ['idicore', 'tracerfy']
+  const order = ['idicore', 'batchdata', 'tracerfy']
 
   try {
     let phones: string[] = []
