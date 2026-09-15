@@ -42,6 +42,46 @@ import {
   waitingOnNumberCopy,
   type CallOutcome,
 } from '@/lib/phone-activity'
+import ProductTour, { TOUR_EVENT, type TourStep } from '@/app/components/ProductTour'
+
+const CRM_TOUR_STEPS: TourStep[] = [
+  {
+    title: 'Welcome to the CRM',
+    body: 'This is your working book. Pipeline home shows who to call, Leads is the full owner file, and Calendar holds follow-ups.',
+    placement: 'center',
+  },
+  {
+    selector: '[data-tour="crm-search"]',
+    title: 'Find a lead fast',
+    body: 'Search any owner, tract, operator, or phone. Cmd/Ctrl+K opens this from anywhere in the CRM.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="crm-nav"]',
+    title: 'Dashboard, Leads, Calendar',
+    body: 'Dashboard is the snapshot. Leads opens a record. Calendar is every follow-up you have set.',
+    placement: 'bottom',
+  },
+  {
+    selector: '[data-tour="crm-kpis"]',
+    title: 'The numbers that matter',
+    body: 'Open pipeline, hot leads, overdue follow-ups, and skip traces waiting on a number. Click a tile to jump into that list.',
+    placement: 'bottom',
+    spotlightMaxHeight: 220,
+  },
+  {
+    selector: '[data-tour="crm-queues"]',
+    title: 'Today\'s queues',
+    body: 'Follow-ups, bad skip traces waiting on a number, and leads that still need a trace. This is the daily call list.',
+    placement: 'top',
+    spotlightMaxHeight: 280,
+  },
+  {
+    title: 'You are set',
+    body: 'Skip-trace from a lead, mark what happened on each number, and come back tomorrow to the same queues. Replay this tour anytime from Tour.',
+    placement: 'center',
+  },
+]
 
 export const dynamic = 'force-dynamic'
 
@@ -585,16 +625,25 @@ export default function CRM() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 font-sans">
+      <ProductTour
+        steps={CRM_TOUR_STEPS}
+        storageKey="mineral_crm_tour_v1"
+        onStart={() => {
+          setView('dashboard')
+          setSelected(null)
+          setCallNow(false)
+        }}
+      />
       <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center gap-3 px-4 shrink-0 shadow-sm">
         <div className="flex items-center gap-3 shrink-0">
           <AppLogo width={130} variant="light" />
           <span className="text-gray-300 text-sm">·</span>
           <span className="text-sm font-medium text-gray-400">CRM</span>
         </div>
-        <div className="flex-1 flex justify-center min-w-0 px-2">
+        <div className="flex-1 flex justify-center min-w-0 px-2" data-tour="crm-search">
           <CrmGlobalSearch deals={deals} onSelect={openLead} />
         </div>
-        <nav className="flex items-center gap-2 shrink-0">
+        <nav className="flex items-center gap-2 shrink-0" data-tour="crm-nav">
           <button
             type="button"
             onClick={() => setView('dashboard')}
@@ -632,6 +681,13 @@ export default function CRM() {
           <Link href="/" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <MapPin size={13} />Map
           </Link>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))}
+            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors"
+          >
+            Tour
+          </button>
         </nav>
       </header>
 

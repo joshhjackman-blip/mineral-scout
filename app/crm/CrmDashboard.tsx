@@ -44,7 +44,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
           </p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-3" data-tour="crm-kpis">
           <Kpi
             label="Open pipeline"
             value={stats.open}
@@ -156,7 +156,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
           </section>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4" data-tour="crm-queues">
           <LeadList
             title="Follow-up queue"
             action={{ label: 'Open calendar', onClick: onOpenCalendar }}
