@@ -271,6 +271,11 @@ export default function ProductTour({
     if (placement === 'top' && highlight.top - gap - CARD_EST_HEIGHT >= 16) {
       return { top: highlight.top - gap, left: clamp(highlight.left, 16, vw - cardW - 16), transform: 'translateY(-100%)' }
     }
+    // If the target is tall, keep the card in the dimmed strip above it
+    // instead of parking on top of the highlighted queues / list.
+    if (placement === 'top' && highlight.top > 88) {
+      return { top: 16, left: clamp(highlight.left, 16, vw - cardW - 16) }
+    }
     if (spaceRight >= cardW) return { top, left: highlight.right + gap }
     if (spaceLeft >= cardW) return { top, left: highlight.left - gap - cardW }
     // Last resort: park in the open corner so a tall drawer cannot
