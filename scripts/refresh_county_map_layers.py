@@ -5,8 +5,8 @@ Downloads rematched enriched GeoJSON from public map-data, classifies
 tracts from the wells shapefile (bottom-hole = PDP), rebuilds laterals
 with real kinds, and uploads the slim map + wells layers.
 
-Pecos/Reeves also rebuild Abstracts from TNRIS so unmatched CAD parcels
-are kept (fills holes the LEGAL_DESC parser used to drop).
+Pecos/Reeves rebuild Abstracts from TNRIS using survey abstracts / section
+grid only (town lots are dropped; large CAD-footprint holes are filled).
 """
 
 from __future__ import annotations

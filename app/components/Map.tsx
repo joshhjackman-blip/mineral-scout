@@ -292,7 +292,11 @@ const buildBlockLabelFeatureCollection = (
       : blockRaw != null
         ? String(blockRaw).trim()
         : ''
-    if (!blockValue) continue
+    // Survey blocks only (39, 48 T8, C-16, X). Skip CAD leftovers like
+    // MOBILE, 53PSL, 55TWP that used to paint as "BlockMOBILE".
+    if (!blockValue || !/^(?:\d{1,4}[A-Z]?|[A-Z]-\d{1,3}|[A-Z]{1,2})(?:\s+T?\d+[NS]?)?$/i.test(blockValue)) {
+      continue
+    }
 
     const center = featureBboxCenter(feature)
     if (!center) continue
@@ -1437,7 +1441,7 @@ export default function Map({
     if (!wellsGeoJSON) {
       // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
       // committed /public baseline so the overlay still works if Storage misses.
-      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026roll-2')
+      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026roll-3')
       for (const url of urls) {
         try {
           const res = await fetch(url)
@@ -1835,7 +1839,7 @@ export default function Map({
       countyConfig: (typeof COUNTIES)[CountyKey],
     ): Promise<GeoJSON.FeatureCollection | null> => {
       const file = `${countyConfig.id}_parcels_map.geojson`
-      const response = await fetchCountyAsset(file, '2026roll-2')
+      const response = await fetchCountyAsset(file, '2026roll-3')
       if (!response) {
         const fallback = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
         if (!fallback.ok) {

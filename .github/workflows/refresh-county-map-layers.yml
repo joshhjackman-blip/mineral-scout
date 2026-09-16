@@ -13,6 +13,7 @@ on:
   push:
     branches:
       - cursor/fix-new-county-map-634a
+      - cursor/fix-pecos-reeves-cad-634a
     paths:
       - '.github/workflows/refresh-county-map-layers.yml'
       - 'scripts/refresh_county_map_layers.py'

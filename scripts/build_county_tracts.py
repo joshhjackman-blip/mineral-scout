@@ -17,6 +17,15 @@ So the natural tract = one (block, township, section) cell. This script:
      Surv_Sect / SHAPE_AREA) that abstract_match.py + rematch_taxroll_to_map.py
      already understand.
 
+Town / city lots (no survey section or abstract) are dropped. Keeping them
+painted a 10k-lot grid over Pecos and Reeves, stacked dark-green overlaps on
+top of the real sections, and labeled junk like BlockMOBILE / Block53PSL.
+
+Pecos CAD writes the abstract as a leading number and T&P township as
+"{block}-{twn}", e.g. "5270  48-8 T&P SEC 20". Reeves often glues tokens
+("AB 5603BLK 55 SEC 33PSL"). Both are accepted; English words after BLK/BLOCK
+are not.
+
 Usage:
   python3 scripts/build_county_tracts.py --county midland \
       --src data/_src_midland/midland.shp --roll data/owners_2026_Midland.csv
@@ -39,33 +48,76 @@ ROOT = Path(__file__).resolve().parent.parent
 #   Upton U-Lands: "UNIVERSITY LAND BLOCK 5 SECT 19 227 AC" (spelled "SECT"/"SECTION")
 #   Reagan surveys:"AB 935 SEC 2 D L CARVER"               (abstract written "AB <n>")
 #   Upton surveys: "1270 PATTERSON W A SEC 98 1303 AC"      (leading-number abstract)
+#   Pecos T&P:     "5270  48-8 T&P SEC 20"                 (abstract, block-twn, survey)
+#   Reeves glued:  "AB 5603BLK 55 SEC 33PSL"               (missing spaces / PSL suffix)
 # So: accept BLK/BLOCK, SEC/SECT/SECTION, an explicit A####/AB #### abstract, and
 # (guarded) a leading abstract number. Missing SECT lost ~73% of Upton and the
 # "AB <n>" gap lost ~64% of Reagan, which is why rigs sat in un-tracted white space.
-_P_SEC = re.compile(r"\bSEC(?:TION|T)?\.?[:\s]*([0-9]+[A-Z]?)", re.I)
-_P_BLK = re.compile(r"\b(?:BLK|BLOCK)[:\.\s]*([0-9A-Z]+)(?:\s*-\s*(T\d+[NS]))?", re.I)
+#
+# Block tokens are survey blocks only: digits, digits+one letter, a single
+# letter, or letter-hyphen-digits (C-16). Greedy [0-9A-Z]+ turned
+# "BLOCK MOBILE HOME", "BLK 53PSL", and "BLK 55TWP" into map labels.
+_P_SEC = re.compile(
+    r"(?:\bSEC(?:TION|T)?|(?<=[A-Z&])SEC)\.?[:\s]*([0-9]+)(?![0-9])",
+    re.I,
+)
+# Pecos sometimes writes "SE 17" instead of "SEC 17".
+_P_SE = re.compile(r"\bSE\s+(\d{1,3})\b", re.I)
+_P_BLK = re.compile(
+    # No leading \b — Reeves glues AB 5603BLK. Reject a letter immediately
+    # before BLK so "PUBLIC" does not match.
+    r"(?<![A-Z])(?:BLK|BLOCK)[:\.\s]*"
+    r"([0-9]{1,4}(?:[A-Z](?![A-Z]))?|[A-Z]-\d{1,3}|[A-Z]{1,2}(?![A-Z]))"
+    r"(?:-(\d{1,2}))?"
+    r"(?:PSL|TWP)?"
+    r"(?:\s*-\s*(T\d+[NS]))?",
+    re.I,
+)
 _P_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
-# Explicit abstract token, e.g. "A425", "A-425", "AB 935", or inside "(A425 & A579)".
-_P_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]{1,4})[A-Z]?\b", re.I)
-# Leading-number abstract, e.g. "1270 PATTERSON W A SEC 98" or Pecos CAD
-# "8795  1 H&TC  SEC 16" (abstract, optional block number, survey, section).
-# Only trusted when the desc also has a section and no block/A-abstract
-# (see parcel_info), so acreage figures and subdivision lots aren't mistaken
-# for an abstract.
+# Explicit abstract token, e.g. "A425", "A-425", "AB 935", "AB 5603BLK".
+# Do not require a trailing word-boundary after the digits: Reeves glues
+# BLK onto the abstract number.
+_P_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]{1,5})(?![0-9])", re.I)
+# Leading-number abstract, e.g. "1270 PATTERSON W A SEC 98" or Pecos
+# "5270  48-8 T&P SEC 20" / "8795  1 H&TC  SEC 16".
+# Trusted only when the desc also has a section (see parcel_info).
 _P_LEADABS = re.compile(
-    r"^\s*([0-9]{1,4})(?:,\s*[0-9]{1,4})*\s+(?:\d{1,3}\s+)?[A-Z]",
+    r"^\s*([0-9]{1,5})",
+    re.I,
+)
+# Optional block sitting between the leading abstract and the survey name.
+_P_LEADBLK = re.compile(
+    r"^\s*[0-9]{1,5}(?:[-&,]\s*[0-9]{1,5})*\s+"
+    r"([0-9]{1,4}|[A-Z](?:-\d{1,3})?|[A-Z])(?:-([0-9]{1,2}))?\s+[A-Z&]",
     re.I,
 )
 
 # Roll survey: "T2S BLK 39 SEC 9     A-62" / "HILLIARD HP BLK X SEC 1 A-11"
 _R_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
-_R_BLK = re.compile(r"\bBLK\s*([0-9A-Z]+)", re.I)
-_R_SEC = re.compile(r"\bSEC(?:TION|T)?\.?[:\s]*([0-9]+[A-Z]?)", re.I)
-_R_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]+[A-Z]?)\b", re.I)
+_R_BLK = re.compile(
+    r"\bBLK\s*([0-9]{1,4}(?:[A-Z](?![A-Z]))?|[A-Z]-\d{1,3}|[A-Z]{1,2}(?![A-Z]))",
+    re.I,
+)
+_R_SEC = re.compile(r"\bSEC(?:TION|T)?\.?[:\s]*([0-9]+)(?![0-9])", re.I)
+_R_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]+[A-Z]?)(?![0-9])", re.I)
+
+# English / subdivision words that must never become a survey block label.
+_BLOCK_REJECT = re.compile(
+    r"^(MOBILE|ORIGINAL|COLLEGE|PECOS|IRAAN|ORIENT|ADDITION|TOWN|CITY|"
+    r"LOT|LOTS|TRACT|PARK|HOME|VILLAGE|MEADOW|VET|VETS)$",
+    re.I,
+)
 
 
 def norm(s) -> str:
     return re.sub(r"\s+", " ", str(s or "").strip().upper())
+
+
+def _clean_block(block: str) -> str:
+    b = (block or "").strip().upper()
+    if not b or _BLOCK_REJECT.match(b):
+        return ""
+    return b
 
 
 def parcel_info(legal: str):
@@ -73,26 +125,40 @@ def parcel_info(legal: str):
 
     Prefer an explicit abstract (Ward-style) as the dissolve key; otherwise
     fall back to the (block, township, section) grid (Midland-style).
+    Town lots with no abstract and no section are dropped.
     """
     u = norm(legal)
     b = _P_BLK.search(u)
     s = _P_SEC.search(u)
     a = _P_ABS.search(u)
-    block = b.group(1).upper() if b else ""
-    twn = (b.group(2) if b and b.group(2) else "")
+    block = _clean_block(b.group(1) if b else "")
+    twn = ""
+    if b and b.group(3):
+        twn = b.group(3)
+    elif b and b.group(2):
+        twn = f"T{b.group(2)}"
     if not twn:
         t = _P_TWN.search(u)
         twn = t.group(1) if t else ""
     twn = twn.upper()
     sec = s.group(1).upper() if s else ""
+    if not sec:
+        se = _P_SE.search(u)
+        sec = se.group(1).upper() if se else ""
     abstract = a.group(1) if a else ""
-    # Leading-number abstract only when there's a section but no block and no
-    # A/AB abstract — this is the "1270 PATTERSON W A SEC 98" survey shape, and
-    # the section requirement keeps acreage/lot numbers from sneaking in.
-    if not abstract and not block and sec:
+    # Leading-number abstract when there's a section but no A/AB abstract.
+    # Pecos writes "5270  48-8 T&P SEC 20"; requiring a following letter
+    # (old leadabs) dropped every T&P block-township cell.
+    if not abstract and sec:
         la = _P_LEADABS.search(u)
         if la:
             abstract = la.group(1)
+            if not block:
+                lb = _P_LEADBLK.search(u)
+                if lb:
+                    block = _clean_block(lb.group(1))
+                    if not twn and lb.group(2):
+                        twn = f"T{lb.group(2)}"
     if abstract:
         return (f"A:{abstract}", abstract, block, twn, sec)
     if block and sec:
@@ -140,6 +206,47 @@ def build_roll_lookup(roll_path: Path):
     return out
 
 
+def fill_county_holes(tracts: gpd.GeoDataFrame, source: gpd.GeoDataFrame,
+                      min_acres: float = 200.0) -> gpd.GeoDataFrame:
+    """Add large leftover polygons inside the CAD footprint.
+
+    Union of source parcels minus union of dissolved survey tracts. Only
+    pieces >= min_acres are kept so Fort Stockton / Pecos city lots do not
+    become a second tract layer. Labels have no block, so they never render
+    as BlockMOBILE.
+    """
+    if tracts.empty or source.empty:
+        return tracts
+    src_u = source.geometry.union_all() if hasattr(source.geometry, "union_all") else source.unary_union
+    tr_u = tracts.geometry.union_all() if hasattr(tracts.geometry, "union_all") else tracts.unary_union
+    if src_u is None or src_u.is_empty or tr_u is None or tr_u.is_empty:
+        return tracts
+    leftover = src_u.difference(tr_u)
+    if leftover is None or leftover.is_empty:
+        return tracts
+    holes = gpd.GeoDataFrame(geometry=[leftover], crs=tracts.crs).explode(index_parts=False)
+    holes = holes[~holes.geometry.is_empty & holes.geometry.notna()].copy()
+    if holes.empty:
+        return tracts
+    acres = holes.to_crs("EPSG:5070").geometry.area / 4046.8564224
+    holes = holes.loc[acres.values >= min_acres].copy()
+    if holes.empty:
+        return tracts
+    rows = []
+    for i, geom in enumerate(holes.geometry):
+        rows.append({
+            "tkey": f"H:{i}",
+            "pabs": "",
+            "block": "",
+            "twn": "",
+            "sec": "",
+            "geometry": geom,
+        })
+    extra = gpd.GeoDataFrame(rows, crs=tracts.crs)
+    print(f"  hole-fill tracts: {len(extra)} (>= {min_acres:.0f} ac CAD gaps)", flush=True)
+    return gpd.GeoDataFrame(pd.concat([tracts, extra], ignore_index=True), crs=tracts.crs)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--county", required=True)
@@ -158,42 +265,37 @@ def main() -> None:
         g = g.set_crs("EPSG:4326")
     else:
         g = g.to_crs("EPSG:4326")
-    id_col = next(
-        (c for c in ("PROP_ID", "PARCEL_ID", "PARCELID", "GEOID", "OBJECTID") if c in g.columns),
-        None,
-    )
+    source_all = g[["geometry"]].copy()
     parsed = []
-    kept_unmatched = 0
-    for i, legal in enumerate(g["LEGAL_DESC"].tolist()):
+    dropped = 0
+    for legal in g["LEGAL_DESC"].tolist():
         info = parcel_info(legal)
         if info:
             parsed.append(info)
-            continue
-        # Keep unmatched CAD polygons so Pecos / Reeves do not show holes
-        # where LEGAL_DESC did not parse as a grid or abstract.
-        raw_id = ""
-        if id_col is not None:
-            raw_id = str(g.iloc[i][id_col] or "").strip()
-        parsed.append((f"U:{raw_id or i}", "", "", "", ""))
-        kept_unmatched += 1
-    placed = len(parsed) - kept_unmatched
+        else:
+            parsed.append(None)
+            dropped += 1
+    placed = len(g) - dropped
     print(
         f"  parcels resolved to a tract: {placed}/{len(g)} ({100*placed/len(g):.1f}%); "
-        f"kept unmatched: {kept_unmatched}",
+        f"dropped town/unparsed lots: {dropped}",
         flush=True,
     )
-    g = g.copy()
-    g["tkey"] = [k[0] for k in parsed]
-    g["pabs"] = [k[1] for k in parsed]
-    g["block"] = [k[2] for k in parsed]
-    g["twn"] = [k[3] for k in parsed]
-    g["sec"] = [k[4] for k in parsed]
+    keep_idx = [i for i, info in enumerate(parsed) if info is not None]
+    g = g.iloc[keep_idx].copy()
+    kept = [parsed[i] for i in keep_idx]
+    g["tkey"] = [k[0] for k in kept]
+    g["pabs"] = [k[1] for k in kept]
+    g["block"] = [k[2] for k in kept]
+    g["twn"] = [k[3] for k in kept]
+    g["sec"] = [k[4] for k in kept]
 
     print("Dissolving into tracts (explicit abstract, else block/township/section)...", flush=True)
     tracts = g.dissolve(by="tkey", as_index=False, aggfunc="first")[
         ["tkey", "pabs", "block", "twn", "sec", "geometry"]
     ]
     print(f"  tracts: {len(tracts)}", flush=True)
+    tracts = fill_county_holes(tracts, source_all)
 
     lookup = {}
     if args.roll:
@@ -202,9 +304,6 @@ def main() -> None:
         print(f"  roll grid cells with data: {len(lookup)}", flush=True)
     else:
         print("No owner roll: labeling tracts from parcel LEGAL_DESC only", flush=True)
-
-    # acreage: project to TX-centric equal-area → acres
-    area_ac = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224
 
     def label_row(i, r):
         # Prefer the parcel's own explicit abstract; else the roll-derived one
@@ -246,6 +345,10 @@ def main() -> None:
     if len(tracts) != before:
         print(f"  merged duplicate-abstract tracts: {before} -> {len(tracts)}", flush=True)
     tracts["SHAPE_AREA"] = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224
+    try:
+        tracts["geometry"] = tracts.geometry.make_valid()
+    except Exception:
+        pass
 
     out_dir = ROOT / "data" / args.county
     out_dir.mkdir(parents=True, exist_ok=True)
