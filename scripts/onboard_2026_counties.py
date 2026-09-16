@@ -195,7 +195,7 @@ def list_raw_data() -> list[str]:
 
 
 def _extract_roll(archive: Path, dest: Path) -> bool:
-    if archive.suffix.lower() not in {".zip"}:
+    if not zipfile.is_zipfile(archive):
         if archive != dest:
             dest.write_bytes(archive.read_bytes())
         return dest.exists() and dest.stat().st_size > 100
@@ -213,7 +213,12 @@ def _extract_roll(archive: Path, dest: Path) -> bool:
         chosen = names[0]
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_bytes(zf.read(chosen))
-        print(f"  extracted {chosen} -> {dest} ({dest.stat().st_size:,} bytes)", flush=True)
+        head = dest.read_bytes()[:80]
+        print(
+            f"  extracted {chosen} -> {dest} ({dest.stat().st_size:,} bytes) "
+            f"head={head[:40]!r}",
+            flush=True,
+        )
         return dest.stat().st_size > 100
 
 
@@ -429,6 +434,8 @@ def onboard(county: str, dry: bool) -> None:
             run(load, dry)
         except subprocess.CalledProcessError as exc:
             print(f"owners table load failed ({exc.returncode}); continuing with rematch", flush=True)
+
+    # enrich_county_parcels must not abort the remaining counties.
     elif roll.exists():
         print("skip owners load: no SUPABASE_SERVICE_ROLE_KEY", flush=True)
     else:
@@ -461,8 +468,11 @@ def onboard(county: str, dry: bool) -> None:
             "--input-parcels", str(abstracts),
             "--owners-csv", str(roll),
         ]
-        run(enrich, dry)
-        run([sys.executable, "scripts/build_map_geojson.py", "--county", county], dry)
+        try:
+            run(enrich, dry)
+            run([sys.executable, "scripts/build_map_geojson.py", "--county", county], dry)
+        except subprocess.CalledProcessError as exc:
+            print(f"enrich failed ({exc.returncode}); continuing", flush=True)
     elif abstracts.exists() and not dry:
         print("no owner roll: writing baseline tract GeoJSON", flush=True)
         emit_baseline_parcels(county, abstracts)
