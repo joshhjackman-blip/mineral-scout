@@ -5,8 +5,9 @@ Downloads rematched enriched GeoJSON from public map-data, classifies
 tracts from the wells shapefile (bottom-hole = PDP), rebuilds laterals
 with real kinds, and uploads the slim map + wells layers.
 
-Pecos/Reeves rebuild Abstracts from TNRIS using survey abstracts / section
-grid only (town lots are dropped; large CAD-footprint holes are filled).
+Pecos/Reeves rebuild Abstracts from the RRC public survey grid (official
+GLO abstracts / sections). TNRIS CAD ownership parcels leave ranch-sized
+holes and over-merged beige blobs.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ from onboard_2026_counties import (  # noqa: E402
     _storage_creds,
     curl,
     download_storage_object,
-    download_tnris_parcels,
     pull_roll_from_storage,
     upload_map_asset,
 )
@@ -81,15 +81,10 @@ def main() -> None:
 
         abstracts = ROOT / "data" / county / "Abstracts.shp"
         if county in REBUILD_TRACTS and not args.skip_tract_rebuild:
-            src = download_tnris_parcels(county, cfg)
-            if src is not None:
-                cmd = [
-                    sys.executable, "scripts/build_county_tracts.py",
-                    "--county", county, "--src", str(src),
-                ]
-                if roll.exists():
-                    cmd += ["--roll", str(roll)]
-                run(cmd)
+            run([
+                sys.executable, "scripts/download_rrc_surveys.py",
+                "--county", county,
+            ])
 
         # Always rematch the roll onto Abstracts.shp so we never publish
         # the empty git baseline (that wiped Reeves/Pecos owners once).

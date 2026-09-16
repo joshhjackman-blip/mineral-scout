@@ -418,7 +418,9 @@ def onboard(county: str, dry: bool, tables_only: bool = False) -> None:
     print(f"wells={wells_zip} exists={wells_zip.exists()}", flush=True)
     print(f"src={src}", flush=True)
 
-    if not abstracts.exists() and src is not None:
+    if county in {"pecos", "reeves"} and not abstracts.exists():
+        run([sys.executable, "scripts/download_rrc_surveys.py", "--county", county], dry)
+    elif not abstracts.exists() and src is not None:
         cmd = [
             sys.executable, "scripts/build_county_tracts.py",
             "--county", county, "--src", str(src),
