@@ -47,6 +47,7 @@ import ProductTour, { TOUR_EVENT, TOUR_ADVANCE_EVENT, type TourStep } from './co
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 import { estimateGrossAcres } from '@/lib/tract-math'
 import { waitingOnNumber, waitingOnNumberCopy } from '@/lib/phone-activity'
+import { normalizeApi } from '@/lib/rrc-ids'
 import {
   pairedSectionsFromLeases,
   parseGridKey,
@@ -1736,9 +1737,23 @@ export default function Home() {
   // (Howard/Martin) keep using it, so their behavior is unchanged.
   const [dbTractOwners, setDbTractOwners] = useState<TractOwner[]>([])
   const [dbOwnersLoading, setDbOwnersLoading] = useState(false)
+  const [ownerListSource, setOwnerListSource] = useState<string>('')
+  const tractWellApis = useMemo(() => {
+    const apis = new Set<string>()
+    for (const well of tractWells) {
+      const api = normalizeApi(well.api_number)
+      if (api) apis.add(api)
+    }
+    for (const permit of visiblePermits) {
+      const api = normalizeApi(permit.api_number)
+      if (api) apis.add(api)
+    }
+    return [...apis]
+  }, [tractWells, visiblePermits])
   useEffect(() => {
     let cancelled = false
     setDbTractOwners([])
+    setOwnerListSource('')
     setOwnerNameQuery('')
     const abstract = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
       .replace(/^A-\s*/i, '')
@@ -1763,10 +1778,12 @@ export default function Home() {
         })
         if (block) params.set('block', block)
         if (section) params.set('section', section)
+        if (tractWellApis.length > 0) params.set('apis', tractWellApis.join(','))
         const res = await fetch(`/api/tract-owners?${params.toString()}`)
         const json = await res.json()
         if (cancelled) return
         const rows = (json?.data?.owners ?? []) as Array<Record<string, unknown>>
+        setOwnerListSource(String(json?.data?.source ?? ''))
         setDbTractOwners(
           rows.map((r, idx): TractOwner => ({
             id: (r.id as string | undefined) ?? String(idx),
@@ -1795,7 +1812,7 @@ export default function Home() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, embeddedOwners])
+  }, [selected, embeddedOwners, tractWellApis.join(',')])
 
   // Merge the embedded preview with the complete DB list (deduped by owner +
   // lease), so nothing is lost and recovered/uncapped owners are included.
@@ -4363,6 +4380,21 @@ export default function Home() {
                   }}
                 >
                   All owners in tract ({dbOwnersLoading ? 'loading…' : displayedOwners.length})
+                  {ownerListSource === 'well_lease' && !dbOwnersLoading && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: 0,
+                        textTransform: 'none',
+                        color: 'var(--mm-chrome-muted)',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Matched through the RRC lease on wells in this tract. The county roll does not list them on this section.
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                   {hiddenOwnerCount > 0 && (
