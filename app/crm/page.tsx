@@ -18,6 +18,7 @@ import AppLogo from '@/app/components/AppLogo'
 import { MapPin, Search, User, Flame, TrendingUp, XCircle, ThumbsDown, CheckCircle2, DollarSign, Clock } from 'lucide-react'
 import OwnerDrawer from '@/app/components/OwnerDrawer'
 import type { OwnerDetailsPatch, OwnerLike } from '@/app/components/OwnerDrawer'
+import OfferDocuments from '@/app/components/OfferDocuments'
 import {
   deleteOwnerOverride,
   upsertOwnerOverride,
@@ -410,6 +411,24 @@ export default function CRM() {
   // hand a callback down because OwnerDrawer's prop is required.
   const handleAddToPipeline = useCallback(() => {
     // No-op. Every deal in the CRM is already in the pipeline.
+  }, [])
+
+  const handleOfferSent = useCallback(async (dealId: string) => {
+    const updated_at = new Date().toISOString()
+    try {
+      await supabase
+        .from('deals')
+        .update({ tag: 'offer_sent', updated_at })
+        .eq('id', dealId)
+    } catch (err) {
+      console.error('Failed to mark offer_sent:', err)
+    }
+    setDeals((prev) =>
+      prev.map((d) => (d.id === dealId ? { ...d, tag: 'offer_sent', updated_at } : d)),
+    )
+    setSelected((prev) =>
+      prev?.id === dealId ? { ...prev, tag: 'offer_sent', updated_at } : prev,
+    )
   }, [])
 
   // Derive the countyId for the selected deal. OwnerDrawer needs a
@@ -873,43 +892,52 @@ export default function CRM() {
             selected, empty state otherwise. OwnerDrawer fills whatever
             container we give it via `flex flex-1 h-full`, so a plain
             flex parent is all we need. */}
-        <main className="flex-1 overflow-hidden flex bg-white">
+        <main className="flex-1 overflow-hidden flex flex-col bg-white">
           {selected && drawerOwner ? (
-            <OwnerDrawer
-              open={true}
-              owner={drawerOwner}
-              countyId={selectedCountyId}
-              tractLabel={selected?.tract_abstract ?? null}
-              tractLegalDescription={
-                [
-                  selected?.surv_name ?? selected?.tract_survey,
-                  selected?.block ? `BLK ${selected.block}` : null,
-                  selected?.surv_sect ? `SEC ${selected.surv_sect}` : null,
-                  selected?.tract_abstract ?? null,
-                ]
-                  .filter(Boolean)
-                  .join(' ') || null
-              }
-              inPipeline={true}
-              crmMode={true}
-              callNow={callNow}
-              onDismissCallNow={() => setCallNow(false)}
-              phoneActivity={parsePhoneActivity(selected?.phone_activity)}
-              connectedPhone={selected?.connected_phone ?? null}
-              onLogCallOutcome={handleLogCallOutcome}
-              dealStatus={selected?.tag ?? null}
-              onSetStatus={handleSetStatus}
-              ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
-              onClose={() => {
-                setCallNow(false)
-                setSelected(null)
-              }}
-              onSkipTrace={handleSkipTrace}
-              onAddToPipeline={handleAddToPipeline}
-              onSaveOwnerDetails={handleSaveOwnerDetails}
-              onRemoveOwner={handleRemoveOwner}
-              onRestoreOwner={handleRestoreOwner}
-            />
+            <>
+              <OfferDocuments
+                deal={selected}
+                countyLabel={COUNTIES[selectedCountyId]?.name ?? selectedCountyId}
+                onOfferSent={handleOfferSent}
+              />
+              <div className="flex-1 overflow-hidden min-h-0">
+                <OwnerDrawer
+                  open={true}
+                  owner={drawerOwner}
+                  countyId={selectedCountyId}
+                  tractLabel={selected?.tract_abstract ?? null}
+                  tractLegalDescription={
+                    [
+                      selected?.surv_name ?? selected?.tract_survey,
+                      selected?.block ? `BLK ${selected.block}` : null,
+                      selected?.surv_sect ? `SEC ${selected.surv_sect}` : null,
+                      selected?.tract_abstract ?? null,
+                    ]
+                      .filter(Boolean)
+                      .join(' ') || null
+                  }
+                  inPipeline={true}
+                  crmMode={true}
+                  callNow={callNow}
+                  onDismissCallNow={() => setCallNow(false)}
+                  phoneActivity={parsePhoneActivity(selected?.phone_activity)}
+                  connectedPhone={selected?.connected_phone ?? null}
+                  onLogCallOutcome={handleLogCallOutcome}
+                  dealStatus={selected?.tag ?? null}
+                  onSetStatus={handleSetStatus}
+                  ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
+                  onClose={() => {
+                    setCallNow(false)
+                    setSelected(null)
+                  }}
+                  onSkipTrace={handleSkipTrace}
+                  onAddToPipeline={handleAddToPipeline}
+                  onSaveOwnerDetails={handleSaveOwnerDetails}
+                  onRemoveOwner={handleRemoveOwner}
+                  onRestoreOwner={handleRestoreOwner}
+                />
+              </div>
+            </>
           ) : (
             <div className="h-full flex items-center justify-center flex-1">
               <div className="text-center">
@@ -917,7 +945,9 @@ export default function CRM() {
                   <User size={20} className="text-gray-400" />
                 </div>
                 <div className="text-sm font-medium text-gray-500">Select a lead</div>
-                <div className="text-xs text-gray-400 mt-1">Choose a lead from the list to view details and skip trace.</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  Choose a lead to skip trace or generate a PSA / mineral deed offer.
+                </div>
               </div>
             </div>
           )}
