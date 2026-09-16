@@ -85,18 +85,29 @@ jobs:
       - name: Install dependencies
         # compute_development_status.py needs geopandas + shapely
         # for the adjacency + point-in-polygon logic. supabase-py
-        # for DB writes. pyshp so the wells-zip lateral loader can
-        # feed the infill-gap detection.
+        # for those DB writes. pyshp so the wells-zip lateral loader
+        # can feed the infill-gap detection.
         #
-        # supabase-py pinned to <2.15 as of 2026-07-22. The 2.31
-        # release generates request URLs Supabase's edge-routing
-        # layer rejects with PGRST125 'Invalid path specified in
-        # request URL'. Same error was blocking scrape_rrc_permits.py
-        # earlier this week. 2.14.x has been stable for us across
-        # multiple prior compute runs.
+        # scrape_rrc_permits.py and backfill_ownership_legal.py talk
+        # to PostgREST via scripts/supabase_rest.py (httpx) so a
+        # trailing slash on SUPABASE_URL cannot produce PGRST125.
+        # supabase-py stays pinned to <2.15 for compute only.
         run: |
           python -m pip install --upgrade pip
           pip install 'supabase<2.15' pyshp geopandas shapely httpx
+
+      - name: Backfill Reeves/Pecos ownership abstracts from survey text
+        # 2026 Reeves/Pecos rolls stored abstract='B' because "AB 2210" was
+        # parsed as the letter B. Map rematch already ignores those ghosts;
+        # CRM / tract-owners still query the ownership table, so we rewrite
+        # the columns from raw_record.survey before well-abstract backfill
+        # and compute read them.
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python scripts/backfill_ownership_legal.py \
+            --county reeves,pecos,glasscock
 
       - name: Enrich permits with well-shapefile coordinates + EWA spud/completion dates
         # The Vercel HTML scrape (step 1) upserts fresh approved/pending
