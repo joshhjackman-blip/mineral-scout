@@ -29,6 +29,22 @@
       "schedule": "30 21 * * *"
     },
     {
+      "path": "/api/cron/scrape-wells?county=winkler",
+      "schedule": "35 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=glasscock",
+      "schedule": "40 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=reeves",
+      "schedule": "45 21 * * *"
+    },
+    {
+      "path": "/api/cron/scrape-wells?county=pecos",
+      "schedule": "50 21 * * *"
+    },
+    {
       "path": "/api/cron/scrape-permits",
       "schedule": "0 22 * * *"
     }

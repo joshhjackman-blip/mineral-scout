@@ -90,6 +90,15 @@ COUNTY_FIPS = {
     "gonzales": "177",
     "howard":   "227",
     "martin":   "317",
+    "midland":  "329",
+    "glasscock": "173",
+    "loving":   "301",
+    "reagan":   "383",
+    "upton":    "461",
+    "ward":     "475",
+    "winkler":  "495",
+    "reeves":   "389",
+    "pecos":    "371",
 }
 
 # RRC SYMNUM codes we treat as "permit / not producing" when materializing

@@ -42,8 +42,9 @@ from shapely.geometry import LineString, MultiLineString
 ROOT = Path(__file__).resolve().parent.parent
 
 COUNTY_FIPS = {
-    "howard": "227", "martin": "317", "midland": "329", "loving": "301",
-    "reagan": "383", "upton": "461", "ward": "475", "winkler": "495",
+    "howard": "227", "martin": "317", "midland": "329", "glasscock": "173",
+    "loving": "301", "reagan": "383", "upton": "461", "ward": "475",
+    "winkler": "495", "reeves": "389", "pecos": "371",
 }
 
 # RRC SYMNUM codes for a permitted / located-but-not-completed well.
@@ -189,8 +190,8 @@ def ensure_well_zip(fips: str, base: str, headers: dict) -> Path:
 def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
     zp = ensure_well_zip(fips, base, headers)
     features: list[dict] = []
-    status_by_api = wells_status_lookup(fips, county, base, headers)
-    permits_by_api = permits_lookup(county, base, headers)
+    status_by_api = wells_status_lookup(fips, county, base, headers) if base else {}
+    permits_by_api = permits_lookup(county, base, headers) if base else {}
 
     with tempfile.TemporaryDirectory() as t:
         extract = Path(t)

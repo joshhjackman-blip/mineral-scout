@@ -47,10 +47,15 @@ _P_BLK = re.compile(r"\b(?:BLK|BLOCK)[:\.\s]*([0-9A-Z]+)(?:\s*-\s*(T\d+[NS]))?",
 _P_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
 # Explicit abstract token, e.g. "A425", "A-425", "AB 935", or inside "(A425 & A579)".
 _P_ABS = re.compile(r"\bA(?:B)?[-\s]?([0-9]{1,4})[A-Z]?\b", re.I)
-# Leading-number abstract, e.g. "1270 PATTERSON W A SEC 98". Only trusted when the
-# desc also has a section and no block/A-abstract (see parcel_info), so acreage
-# figures ("100 ACRES ...") and subdivision lots aren't mistaken for an abstract.
-_P_LEADABS = re.compile(r"^\s*([0-9]{1,4})\s+[A-Z]", re.I)
+# Leading-number abstract, e.g. "1270 PATTERSON W A SEC 98" or Pecos CAD
+# "8795  1 H&TC  SEC 16" (abstract, optional block number, survey, section).
+# Only trusted when the desc also has a section and no block/A-abstract
+# (see parcel_info), so acreage figures and subdivision lots aren't mistaken
+# for an abstract.
+_P_LEADABS = re.compile(
+    r"^\s*([0-9]{1,4})(?:,\s*[0-9]{1,4})*\s+(?:\d{1,3}\s+)?[A-Z]",
+    re.I,
+)
 
 # Roll survey: "T2S BLK 39 SEC 9     A-62" / "HILLIARD HP BLK X SEC 1 A-11"
 _R_TWN = re.compile(r"\b(T\d+[NS])\b", re.I)
@@ -138,8 +143,13 @@ def build_roll_lookup(roll_path: Path):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--county", required=True)
-    ap.add_argument("--src", required=True, help="land-parcel .shp path")
-    ap.add_argument("--roll", required=True, help="owners_2026_<County>.csv path")
+    ap.add_argument("--src", required=True, help="land-parcel .shp or .gdb path")
+    ap.add_argument(
+        "--roll",
+        default=None,
+        help="owners_2026_<County>.csv path. Optional: without it, abstracts "
+             "come only from parcel LEGAL_DESC (grid keys when missing).",
+    )
     args = ap.parse_args()
 
     print(f"Reading parcels: {args.src}", flush=True)
@@ -165,9 +175,13 @@ def main() -> None:
     ]
     print(f"  tracts: {len(tracts)}", flush=True)
 
-    print(f"Deriving abstract/survey labels from roll: {args.roll}", flush=True)
-    lookup = build_roll_lookup(Path(args.roll))
-    print(f"  roll grid cells with data: {len(lookup)}", flush=True)
+    lookup = {}
+    if args.roll:
+        print(f"Deriving abstract/survey labels from roll: {args.roll}", flush=True)
+        lookup = build_roll_lookup(Path(args.roll))
+        print(f"  roll grid cells with data: {len(lookup)}", flush=True)
+    else:
+        print("No owner roll: labeling tracts from parcel LEGAL_DESC only", flush=True)
 
     # acreage: project to TX-centric equal-area → acres
     area_ac = tracts.to_crs("EPSG:5070").geometry.area / 4046.8564224

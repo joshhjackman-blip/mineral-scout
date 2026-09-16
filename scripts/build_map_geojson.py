@@ -143,6 +143,9 @@ INPUT_OUTPUT_PAIRS = [
     ('public/upton_parcels_enriched.geojson',    'public/upton_parcels_map.geojson'),
     ('public/ward_parcels_enriched.geojson',     'public/ward_parcels_map.geojson'),
     ('public/winkler_parcels_enriched.geojson',  'public/winkler_parcels_map.geojson'),
+    ('public/glasscock_parcels_enriched.geojson', 'public/glasscock_parcels_map.geojson'),
+    ('public/reeves_parcels_enriched.geojson',   'public/reeves_parcels_map.geojson'),
+    ('public/pecos_parcels_enriched.geojson',    'public/pecos_parcels_map.geojson'),
 ]
 
 
@@ -158,8 +161,18 @@ def slim_feature(feature: dict) -> dict:
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        '--county',
+        help='Only slim this county (e.g. glasscock). Default: every pair that exists.',
+    )
+    args = parser.parse_args()
     repo_root = Path(__file__).resolve().parent.parent
+    wanted = args.county.lower() if args.county else None
     for in_rel, out_rel in INPUT_OUTPUT_PAIRS:
+        if wanted and Path(in_rel).name.split('_')[0] != wanted:
+            continue
         in_path = repo_root / in_rel
         out_path = repo_root / out_rel
         if not in_path.exists():

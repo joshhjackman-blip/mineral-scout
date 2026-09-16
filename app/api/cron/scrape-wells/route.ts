@@ -49,7 +49,8 @@ const COUNTY_FIPS: Record<string, string> = {
 
 // Active product counties with wells tables today.
 const DEFAULT_COUNTIES: string[] = [
-  'howard', 'martin', 'midland', 'loving', 'reagan', 'upton', 'ward',
+  'howard', 'martin', 'midland', 'glasscock', 'loving', 'reagan', 'upton',
+  'ward', 'winkler', 'reeves', 'pecos',
 ]
 
 // Status overlay shards. The primary pull is one Current/all-types

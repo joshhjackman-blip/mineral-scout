@@ -13,11 +13,7 @@ const AMBER = '#EF9F27'
 
 /** Same Permian roadmap counties as the in-app county overview. */
 const UPCOMING_COUNTIES: Array<{ fips: string }> = [
-  { fips: '48173' }, // Glasscock
   { fips: '48103' }, // Crane
-  { fips: '48371' }, // Pecos
-  { fips: '48495' }, // Winkler
-  { fips: '48389' }, // Reeves
 ]
 
 const TX_BOUNDS: [[number, number], [number, number]] = [
