@@ -1437,7 +1437,7 @@ export default function Map({
     if (!wellsGeoJSON) {
       // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
       // committed /public baseline so the overlay still works if Storage misses.
-      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026roll-1')
+      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026roll-2')
       for (const url of urls) {
         try {
           const res = await fetch(url)
@@ -1828,38 +1828,28 @@ export default function Map({
     clearCountyMarkers()
     clearTractLayers(mapInstance)
 
-    // Always pull the slim map-only GeoJSON (props the renderer needs, no
-    // owners_json payload). The full enriched file is still fetched by the
-    // side panel in app/page.tsx for owner data. Counties load in parallel
-    // so adding more never serializes the cold-load latency.
-    const fetchTasks = countyEntries.map(async ([countyKey, countyConfig]) => {
+    // Slim map-only GeoJSON (no owners_json). Paint the selected county
+    // first so Reeves/Pecos/Midland (10+ MB) cannot block the first frame.
+    const loadCountyParcels = async (
+      countyKey: CountyKey,
+      countyConfig: (typeof COUNTIES)[CountyKey],
+    ): Promise<GeoJSON.FeatureCollection | null> => {
       const file = `${countyConfig.id}_parcels_map.geojson`
-      const response = await fetchCountyAsset(file, '2026roll-1')
+      const response = await fetchCountyAsset(file, '2026roll-2')
       if (!response) {
         const fallback = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
         if (!fallback.ok) {
           console.warn(`Parcels source missing for ${countyConfig.id}`)
           return null
         }
-        const geojson = await fallback.json() as GeoJSON.FeatureCollection
-        return [countyKey, geojson] as const
+        return await fallback.json() as GeoJSON.FeatureCollection
       }
-      const geojson = await response.json() as GeoJSON.FeatureCollection
-      return [countyKey, geojson] as const
-    })
-    const parcelsByCounty = (await Promise.all(fetchTasks)).filter(
-      (row): row is readonly [CountyKey, GeoJSON.FeatureCollection] => Boolean(row),
-    )
-    if (renderToken !== renderTokenRef.current || !map.current) return
+      return await response.json() as GeoJSON.FeatureCollection
+    }
 
     currentParcelsByCountyRef.current = {}
-    parcelsByCounty.forEach(([countyKey, geojson]) => {
-      injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
-      currentParcelsByCountyRef.current[countyKey] = geojson
-    })
-    // Signal that parcel features are ready for focusTarget fitBounds.
-    setParcelsVersion((v) => v + 1)
-    parcelsByCounty.forEach(([countyKey, geojson]) => {
+
+    const mountCountyParcels = (countyKey: CountyKey, geojson: GeoJSON.FeatureCollection) => {
       const countyConfig = COUNTIES[countyKey]
       const sourceId = `parcels-${countyConfig.id}`
       const fillId = `parcels-fill-${countyConfig.id}`
@@ -2154,7 +2144,38 @@ export default function Map({
       if (!map.current) return
       map.current.on('mouseenter', fillId, mouseEnterHandler)
       map.current.on('mouseleave', fillId, mouseLeaveHandler)
+    }
+
+    const selectedKey = selectedCountyRef.current
+    const selectedCfg = COUNTIES[selectedKey]
+    if (selectedCfg) {
+      const selectedGeo = await loadCountyParcels(selectedKey, selectedCfg)
+      if (renderToken !== renderTokenRef.current || !map.current) return
+      if (selectedGeo) {
+        injectDevStatusIntoFeatures(selectedGeo, devStatusByAbstractRef.current)
+        currentParcelsByCountyRef.current[selectedKey] = selectedGeo
+        mountCountyParcels(selectedKey, selectedGeo)
+        setParcelsVersion((v) => v + 1)
+      }
+    }
+
+    const rest = await Promise.all(
+      countyEntries
+        .filter(([countyKey]) => countyKey !== selectedKey)
+        .map(async ([countyKey, countyConfig]) => {
+          const geojson = await loadCountyParcels(countyKey, countyConfig)
+          return geojson ? ([countyKey, geojson] as const) : null
+        }),
+    )
+    if (renderToken !== renderTokenRef.current || !map.current) return
+    rest.forEach((row) => {
+      if (!row) return
+      const [countyKey, geojson] = row
+      injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
+      currentParcelsByCountyRef.current[countyKey] = geojson
+      mountCountyParcels(countyKey, geojson)
     })
+    setParcelsVersion((v) => v + 1)
 
     if (tractClickHandlerRef.current) {
       map.current?.off('click', tractClickHandlerRef.current)

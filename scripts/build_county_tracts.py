@@ -158,16 +158,36 @@ def main() -> None:
         g = g.set_crs("EPSG:4326")
     else:
         g = g.to_crs("EPSG:4326")
-    info = g["LEGAL_DESC"].map(parcel_info)
-    placed = info.notna().sum()
-    print(f"  parcels resolved to a tract: {placed}/{len(g)} ({100*placed/len(g):.1f}%)", flush=True)
-    g = g[info.notna()].copy()
-    info = info[info.notna()]
-    g["tkey"] = info.map(lambda k: k[0])
-    g["pabs"] = info.map(lambda k: k[1])
-    g["block"] = info.map(lambda k: k[2])
-    g["twn"] = info.map(lambda k: k[3])
-    g["sec"] = info.map(lambda k: k[4])
+    id_col = next(
+        (c for c in ("PROP_ID", "PARCEL_ID", "PARCELID", "GEOID", "OBJECTID") if c in g.columns),
+        None,
+    )
+    parsed = []
+    kept_unmatched = 0
+    for i, legal in enumerate(g["LEGAL_DESC"].tolist()):
+        info = parcel_info(legal)
+        if info:
+            parsed.append(info)
+            continue
+        # Keep unmatched CAD polygons so Pecos / Reeves do not show holes
+        # where LEGAL_DESC did not parse as a grid or abstract.
+        raw_id = ""
+        if id_col is not None:
+            raw_id = str(g.iloc[i][id_col] or "").strip()
+        parsed.append((f"U:{raw_id or i}", "", "", "", ""))
+        kept_unmatched += 1
+    placed = len(parsed) - kept_unmatched
+    print(
+        f"  parcels resolved to a tract: {placed}/{len(g)} ({100*placed/len(g):.1f}%); "
+        f"kept unmatched: {kept_unmatched}",
+        flush=True,
+    )
+    g = g.copy()
+    g["tkey"] = [k[0] for k in parsed]
+    g["pabs"] = [k[1] for k in parsed]
+    g["block"] = [k[2] for k in parsed]
+    g["twn"] = [k[3] for k in parsed]
+    g["sec"] = [k[4] for k in parsed]
 
     print("Dissolving into tracts (explicit abstract, else block/township/section)...", flush=True)
     tracts = g.dissolve(by="tkey", as_index=False, aggfunc="first")[
@@ -199,8 +219,11 @@ def main() -> None:
         if absn:
             abstract_l = f"A-{absn}"
             abstract_n = absn
-        else:
+        elif r["block"] and r["sec"]:
             abstract_l = f"B{r['block']}-{r['twn']}-S{r['sec']}"
+            abstract_n = ""
+        else:
+            abstract_l = str(r["tkey"])
             abstract_n = ""
         return abstract_l, abstract_n, survey, blk_lvl, r["sec"]
 

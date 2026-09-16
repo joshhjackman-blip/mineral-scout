@@ -78,17 +78,18 @@ def _kind(status: str | None, is_permit: bool, is_line: bool) -> str:
 
 
 def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
-              lease: str = "") -> str:
+              lease: str = "", has_bottom: bool = False) -> str:
     """Per-well designation from the RRC signals we have:
       injection  — well status / lease is disposal/injection (dropped later)
       shut_in    — well status SHUT IN
-      producing  — has a completion (PDP) or status PRODUCING/ACTIVE
+      producing  — completion, bottom-hole, or PRODUCING/OIL/GAS status
       duc        — a drilled lateral with no completion/production on file
-                   (Drilled UnCompleted), whether or not a permit spud date
-                   was matched — a drawn lateral IS evidence the well was
-                   drilled, so an uncompleted one is a DUC
       permitted  — a permitted location (SYMNUM permit code), not yet spudded
       vertical   — a point well with no other signal
+
+    Bare ``ACTIVE`` from the shapefile loader is not a production signal —
+    those rows used to paint every lateral purple (no status) or green
+    (ACTIVE treated as PDP). Infer from geometry instead.
     """
     s = (winfo.get("status") or "").upper()
     lu = (lease or "").upper()
@@ -97,15 +98,16 @@ def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
     if "SHUT" in s:
         return "shut_in"
     completed = bool(winfo.get("completion")) or bool(pinfo.get("completion"))
-    if completed or "PROD" in s or s in ("ACTIVE", "OIL", "GAS"):
+    if completed or "PROD" in s or s in ("OIL", "GAS"):
+        return "producing"
+    # Planned permit laterals carry a bottom-hole target; that is not a
+    # completion. Check permit before inferring PDP from geometry.
+    if is_permit:
+        return "permitted"
+    if has_bottom:
         return "producing"
     if pinfo.get("spud"):
         return "duc"
-    if is_permit:
-        return "permitted"
-    # A drawn lateral with no completion/production/shut/injection signal is,
-    # by definition, drilled but not completed -> DUC. Only point wells fall
-    # through to the neutral vertical bucket.
     return "duc" if is_line else "vertical"
 
 
@@ -262,7 +264,7 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
             "geometry": {"type": "LineString", "coordinates": coords},
             "properties": {
                 "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                "kind": _classify(w, p, False, True),
+                "kind": _classify(w, p, False, True, has_bottom=api in bottom),
                 "status": w.get("status"), "operator": operator,
             },
         })
@@ -287,7 +289,7 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                 ]},
                 "properties": {
                     "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                    "kind": _classify(w, p, True, True),
+                    "kind": _classify(w, p, True, True, has_bottom=True),
                     "status": w.get("status"), "operator": operator,
                 },
             })
@@ -300,7 +302,7 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                     "geom": "point",
                     "well_type": "VERTICAL" if not is_permit else "PERMIT",
                     "api": api,
-                    "kind": _classify(w, p, is_permit, False),
+                    "kind": _classify(w, p, is_permit, False, has_bottom=bool(bh)),
                     "status": w.get("status"), "operator": operator,
                 },
             })

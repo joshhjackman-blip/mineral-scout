@@ -1841,7 +1841,7 @@ export default function Home() {
     async (countyId: string): Promise<GeoJSON.FeatureCollection | null> => {
       const cached = wellsGeoCacheRef.current[countyId]
       if (cached !== undefined) return cached
-      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026roll-1')
+      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026roll-2')
       for (const url of urls) {
         try {
           const r = await fetch(url, { cache: 'force-cache' })
@@ -2347,16 +2347,19 @@ export default function Home() {
       // switches so the camera flyTo still has a live map instance.
       if (!mapHasMountedRef.current) setLoading(true)
       try {
+        // Slim map layer only. The rematched enriched files embed every
+        // owner row (Glasscock is 77 MB) and froze county switches.
+        // Tract owners still load from /api/tract-owners.
         const response = await fetchCountyAsset(
-          `${county.id}_parcels_enriched.geojson`,
-          '2026roll-1',
+          `${county.id}_parcels_map.geojson`,
+          '2026roll-2',
         )
         let parcelsData: unknown
 
         if (response) {
           parcelsData = await response.json()
         } else {
-          const fallback = await fetch(county.geoJsonPath, { cache: 'no-store' })
+          const fallback = await fetch(county.mapGeoJsonPath ?? county.geoJsonPath, { cache: 'no-store' })
           if (!fallback.ok) {
             throw new Error(
               `${county.displayName} parcels are not on the map yet (${fallback.status})`,
