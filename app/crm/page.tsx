@@ -15,16 +15,17 @@ import { supabase } from '@/lib/supabase'
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
 import AppLogo from '@/app/components/AppLogo'
-import { MapPin, Search, User, Flame, TrendingUp, XCircle, ThumbsDown, CheckCircle2, DollarSign, Clock } from 'lucide-react'
+import { MapPin, Search, User, Flame, TrendingUp, XCircle, ThumbsDown, CheckCircle2, DollarSign, Clock, Ban } from 'lucide-react'
 import OwnerDrawer from '@/app/components/OwnerDrawer'
 import type { OwnerDetailsPatch, OwnerLike } from '@/app/components/OwnerDrawer'
 import OfferDocuments from '@/app/components/OfferDocuments'
+import type { CallLogDraft } from '@/app/components/CallLog'
 import {
   deleteOwnerOverride,
   upsertOwnerOverride,
 } from '@/lib/owner-overrides'
 import { getWorkspaceContext } from '@/lib/workspace'
-import { PREVIEW_DEALS, shouldLoadPreviewDeals } from './preview-deals'
+import { PREVIEW_CALL_LOGS, PREVIEW_DEALS, shouldLoadPreviewDeals } from './preview-deals'
 import CrmDashboard from './CrmDashboard'
 import type { DashboardOpenFilter } from './CrmDashboard'
 import CrmCalendar from './CrmCalendar'
@@ -43,6 +44,11 @@ import {
   waitingOnNumberCopy,
   type CallOutcome,
 } from '@/lib/phone-activity'
+import {
+  isCallLogDesignation,
+  parseCallLogRows,
+  type CallLogRow,
+} from '@/lib/call-logs'
 import ProductTour, { TOUR_EVENT, type TourStep } from '@/app/components/ProductTour'
 
 const CRM_TOUR_STEPS: TourStep[] = [
@@ -95,6 +101,8 @@ const TAG_CONFIG: Record<string, { label: string; color: string; bg: string; ico
   bad_lead:       { label: 'Bad Lead',      color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200',     icon: <ThumbsDown size={11} /> },
   skip_traced:    { label: 'Skip Traced',   color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
   offer_sent:     { label: 'Offer Sent',    color: 'text-blue-700',    bg: 'bg-blue-50 border-blue-200',     icon: <DollarSign size={11} /> },
+  offer_declined: { label: 'Offer Declined',color: 'text-rose-700',    bg: 'bg-rose-50 border-rose-200',     icon: <XCircle size={11} /> },
+  already_sold:   { label: 'Already Sold',  color: 'text-slate-600',   bg: 'bg-slate-100 border-slate-200',  icon: <Ban size={11} /> },
   closed:         { label: 'Closed',        color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200', icon: <CheckCircle2 size={11} /> },
   // Lead-workspace status designations (set from the lead detail view).
   interested:     { label: 'Interested',    color: 'text-green-700',   bg: 'bg-green-50 border-green-200',    icon: <CheckCircle2 size={11} /> },
@@ -158,6 +166,9 @@ export default function CRM() {
   const [waitingFilter, setWaitingFilter] = useState(false)
   const [callNow, setCallNow] = useState(false)
   const [dealsReady, setDealsReady] = useState(false)
+  const [callLogs, setCallLogs] = useState<CallLogRow[]>([])
+  const [callLogSaving, setCallLogSaving] = useState(false)
+  const [callLogError, setCallLogError] = useState<string | null>(null)
   const openedDeepLink = useRef(false)
 
   useEffect(() => {
@@ -181,6 +192,36 @@ export default function CRM() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    setCallLogError(null)
+    if (!selected) {
+      setCallLogs([])
+      return
+    }
+    if (selected.id.startsWith('preview-')) {
+      setCallLogs(PREVIEW_CALL_LOGS[selected.id] ?? [])
+      return
+    }
+    void (async () => {
+      const { data, error } = await supabase
+        .from('deal_phone_calls')
+        .select('id, called_at, designation, notes, outcome, phone_display, called_by_name')
+        .eq('deal_id', selected.id)
+        .order('called_at', { ascending: false })
+      if (cancelled) return
+      if (error) {
+        setCallLogs([])
+        setCallLogError(error.message)
+        return
+      }
+      setCallLogs(parseCallLogRows(data))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selected?.id])
 
   const filtered = useMemo(
     () =>
@@ -293,20 +334,107 @@ export default function CRM() {
       if (workspace) {
         const digits = phone.replace(/\D/g, '')
         const phoneKeyValue = digits.slice(-10) || digits
-        const { error: logError } = await supabase.from('deal_phone_calls').insert({
+        const { data: inserted, error: logError } = await supabase.from('deal_phone_calls').insert({
           team_owner_id: workspace.workspaceId,
           deal_id: deal.id,
           phone_key: phoneKeyValue,
           phone_display: phone,
           outcome,
+          designation: deal.tag ?? null,
           called_by: workspace.userId,
           called_by_name: calledByName,
-        })
+        }).select('id, called_at, designation, notes, outcome, phone_display, called_by_name').single()
         if (logError) console.error('Call log insert failed:', logError)
+        else setCallLogs((prev) => parseCallLogRows([inserted, ...prev]))
       }
+    } else {
+      setCallLogs((prev) => [
+        {
+          id: `preview-log-${Date.now()}`,
+          called_at: new Date().toISOString(),
+          designation: deal.tag ?? null,
+          notes: null,
+          outcome,
+          phone_display: phone,
+          called_by_name: calledByName,
+        },
+        ...prev,
+      ])
     }
     setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
     setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } : prev))
+  }, [deals, selected])
+
+  const handleAddCallLog = useCallback(async (owner: OwnerLike, draft: CallLogDraft) => {
+    const deal = deals.find((d) => d.id === owner.id) ?? selected
+    if (!deal) return { success: false, error: 'Deal not found' }
+    setCallLogSaving(true)
+    setCallLogError(null)
+    const designation = isCallLogDesignation(draft.designation) ? draft.designation : null
+    const notes = draft.notes.trim() || null
+    try {
+      const workspace = deal.id.startsWith('preview-') ? null : await getWorkspaceContext()
+      const { data: auth } = deal.id.startsWith('preview-')
+        ? { data: { user: null } }
+        : await supabase.auth.getUser()
+      const who =
+        (auth.user?.user_metadata as { full_name?: string } | undefined)?.full_name
+        || auth.user?.email
+        || null
+      const phone = deal.connected_phone || deal.phone || (deal.phones ?? []).find(Boolean) || ''
+      const digits = String(phone).replace(/\D/g, '')
+      const row = {
+        id: `local-${Date.now()}`,
+        called_at: draft.calledAt,
+        designation,
+        notes,
+        outcome: 'logged',
+        phone_display: phone || null,
+        called_by_name: who,
+      }
+      if (deal.id.startsWith('preview-')) {
+        setCallLogs((prev) => parseCallLogRows([row, ...prev]))
+      } else if (workspace) {
+        const { data: inserted, error } = await supabase.from('deal_phone_calls').insert({
+          team_owner_id: workspace.workspaceId,
+          deal_id: deal.id,
+          phone_key: digits.slice(-10) || digits || 'none',
+          phone_display: phone || 'No number',
+          outcome: 'logged',
+          designation,
+          notes,
+          called_at: draft.calledAt,
+          called_by: workspace.userId,
+          called_by_name: who,
+        }).select('id, called_at, designation, notes, outcome, phone_display, called_by_name').single()
+        if (error) {
+          setCallLogError(error.message)
+          return { success: false, error: error.message }
+        }
+        setCallLogs((prev) => parseCallLogRows([inserted, ...prev]))
+      } else {
+        setCallLogError('Not signed in')
+        return { success: false, error: 'Not signed in' }
+      }
+      if (designation && designation !== deal.tag) {
+        const updated_at = new Date().toISOString()
+        if (!deal.id.startsWith('preview-')) {
+          const { error } = await supabase
+            .from('deals')
+            .update({ tag: designation, updated_at })
+            .eq('id', deal.id)
+          if (error) {
+            setCallLogError(error.message)
+            return { success: false, error: error.message }
+          }
+        }
+        setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: designation, updated_at } : d)))
+        setSelected((prev) => (prev?.id === deal.id ? { ...prev, tag: designation, updated_at } : prev))
+      }
+      return { success: true }
+    } finally {
+      setCallLogSaving(false)
+    }
   }, [deals, selected])
 
   const handleSetFollowUp = useCallback(async (deal: Deal, followUpDate: string | null) => {
@@ -510,13 +638,16 @@ export default function CRM() {
     async (owner: OwnerLike, status: string) => {
       const deal = deals.find((d) => d.id === owner.id) ?? selected
       if (!deal) return { success: false, error: 'Deal not found' }
-      const { error } = await supabase
-        .from('deals')
-        .update({ tag: status, updated_at: new Date().toISOString() })
-        .eq('id', deal.id)
-      if (error) return { success: false, error: error.message }
-      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: status } : d)))
-      setSelected((prev) => (prev?.id === deal.id ? ({ ...prev, tag: status } as Deal) : prev))
+      const updated_at = new Date().toISOString()
+      if (!deal.id.startsWith('preview-')) {
+        const { error } = await supabase
+          .from('deals')
+          .update({ tag: status, updated_at })
+          .eq('id', deal.id)
+        if (error) return { success: false, error: error.message }
+      }
+      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: status, updated_at } : d)))
+      setSelected((prev) => (prev?.id === deal.id ? ({ ...prev, tag: status, updated_at } as Deal) : prev))
       return { success: true }
     },
     [deals, selected],
@@ -923,6 +1054,10 @@ export default function CRM() {
                   phoneActivity={parsePhoneActivity(selected?.phone_activity)}
                   connectedPhone={selected?.connected_phone ?? null}
                   onLogCallOutcome={handleLogCallOutcome}
+                  callLogs={callLogs}
+                  callLogSaving={callLogSaving}
+                  callLogError={callLogError}
+                  onAddCallLog={handleAddCallLog}
                   dealStatus={selected?.tag ?? null}
                   onSetStatus={handleSetStatus}
                   ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
