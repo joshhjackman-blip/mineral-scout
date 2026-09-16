@@ -48,6 +48,9 @@ from typing import Any
 
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from abstract_match import parse_legal_description  # noqa: E402
+
 DEFAULT_COUNTY_ID = "martin"
 
 # Source columns we care about, normalized to lowercase.
@@ -120,64 +123,6 @@ def sanitize_json_value(value: Any) -> Any:
     return value
 
 
-_TOWNSHIP_RE = re.compile(r"\bT\d+[NS]\b", re.IGNORECASE)
-_BLOCK_RE = re.compile(r"\bBLK\s*([A-Z0-9]+)", re.IGNORECASE)
-_SECTION_RE = re.compile(r"\bSEC\s*([A-Z0-9]+)", re.IGNORECASE)
-# Martin abstracts come through as "A-1013", "A-U34", etc. Howard owner
-# rows just store the bare number. Accept both shapes here.
-_ABSTRACT_RE = re.compile(r"\bA[-\s]?([A-Z0-9]+)\b", re.IGNORECASE)
-
-
-def parse_legal_description(survey_text: str) -> dict[str, str | None]:
-    """Pull abstract / block / section / surveyor out of a free-form survey string.
-
-    Examples seen in production data:
-        ``"T1N BLK 35 SEC 36 A-1013"``        -> abstract=1013, block=35 T1N, section=36
-        ``"T&P RR T1S BLK 35 SEC 4 A-654"``   -> abstract=654, block=35 T1S, section=4, survey=T&P RR
-        ``"T&P T1S BLK 27 SEC 10 A-645"``     -> abstract=645, block=27 T1S, section=10, survey=T&P
-        ``""`` (empty)                         -> all None
-    """
-    text = clean_str(survey_text)
-    if not text:
-        return {"abstract": None, "block": None, "section": None, "survey": None}
-
-    upper = text.upper()
-    township_match = _TOWNSHIP_RE.search(upper)
-    block_match = _BLOCK_RE.search(upper)
-    section_match = _SECTION_RE.search(upper)
-    abstract_match = _ABSTRACT_RE.search(upper)
-
-    abstract = abstract_match.group(1) if abstract_match else None
-    block_value: str | None
-    if block_match:
-        # Howard stores the block as "<num> <township>" (e.g. "35 T1S"), so
-        # mirror that when both pieces are available.
-        block_num = block_match.group(1)
-        if township_match:
-            block_value = f"{block_num} {township_match.group(0).upper()}"
-        else:
-            block_value = block_num
-    else:
-        block_value = None
-    section_value = section_match.group(1) if section_match else None
-
-    # Strip the parsed tokens to leave only the surveyor / system name.
-    cleaned = _ABSTRACT_RE.sub("", upper)
-    cleaned = _SECTION_RE.sub("", cleaned)
-    cleaned = _BLOCK_RE.sub("", cleaned)
-    cleaned = _TOWNSHIP_RE.sub("", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·")
-    survey_value = cleaned or None
-
-    return {
-        "abstract": abstract,
-        "block": block_value,
-        "section": section_value,
-        "survey": survey_value,
-    }
-
-
-
 def build_abstract_lookups(abstracts_path: Path) -> dict[str, dict]:
     """Build fallback abstract lookups from a county's Abstracts.shp.
 
@@ -191,12 +136,6 @@ def build_abstract_lookups(abstracts_path: Path) -> dict[str, dict]:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from abstract_match import build_abstract_lookups as _build
     return _build(abstracts_path)
-
-
-_BLK_RE = _BLOCK_RE  # alias for the fallback
-_SEC_RE = _SECTION_RE
-_CSL_RE = re.compile(r"\b(\w+)\s+CSL\b", re.IGNORECASE)
-_LGE_RE = re.compile(r"\bLGE\s+(\d+)", re.IGNORECASE)
 
 
 def lookup_abstract_via_shapefile(survey_text: str, lookups: dict[str, dict]) -> str | None:
@@ -230,6 +169,9 @@ def build_payload(
     mailing_address = ", ".join(p for p in address_parts if p) or None
 
     abstract = clean_str(src("abstract"))
+    # "AB 2210" must not land as abstract "B".
+    if abstract and len(abstract) <= 2 and abstract.isalpha():
+        abstract = None
     block = clean_str(src("block"))
     section = clean_str(src("section"))
     survey_raw = clean_str(src("survey"))
