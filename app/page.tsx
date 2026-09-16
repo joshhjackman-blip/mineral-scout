@@ -47,6 +47,7 @@ import ProductTour, { TOUR_EVENT, TOUR_ADVANCE_EVENT, type TourStep } from './co
 import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 import { estimateGrossAcres } from '@/lib/tract-math'
 import { waitingOnNumber, waitingOnNumberCopy } from '@/lib/phone-activity'
+import { isInjectionWell, omitInjectionWellFeatures } from '@/lib/well-kind'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // Single interactive product tour for newcomers. Steps anchor to
@@ -260,7 +261,6 @@ const WELL_KIND_BADGE: Record<string, { label: string; color: string; bg: string
   producing: { label: 'PDP', color: '#166534', bg: '#DCFCE7', border: '#86EFAC' },
   duc: { label: 'DUC', color: '#6B21A8', bg: '#F3E8FF', border: '#D8B4FE' },
   shut_in: { label: 'SHUT-IN', color: '#92400E', bg: '#FEF3C7', border: '#FDE68A' },
-  injection: { label: 'INJ', color: '#0F766E', bg: '#CCFBF1', border: '#5EEAD4' },
   permitted: { label: 'PERMIT', color: '#1D4ED8', bg: '#EFF6FF', border: '#BFDBFE' },
   // Legacy "drilled, status unknown" laterals are DUCs.
   horizontal: { label: 'DUC', color: '#6B21A8', bg: '#F3E8FF', border: '#D8B4FE' },
@@ -1796,8 +1796,9 @@ export default function Home() {
           if (!r.ok) continue
           const gj = (await r.json()) as GeoJSON.FeatureCollection
           if (gj && Array.isArray(gj.features)) {
-            wellsGeoCacheRef.current[countyId] = gj
-            return gj
+            const kept = omitInjectionWellFeatures(gj)
+            wellsGeoCacheRef.current[countyId] = kept
+            return kept
           }
         } catch {
           /* try next url */
@@ -1847,6 +1848,7 @@ export default function Home() {
         const operator = String(p.operator ?? '').trim()
         const kind = String(p.kind ?? '').trim()
         const wellType = String(p.well_type ?? '').trim().toUpperCase()
+        if (isInjectionWell({ kind, status: String(p.status ?? ''), lease_name: String(p.lease ?? '') })) continue
         const dedupeKey = api || `${operator}|${kind}|${wellType}`
         if (dedupeKey && seen.has(dedupeKey)) continue
         if (dedupeKey) seen.add(dedupeKey)
@@ -1860,7 +1862,7 @@ export default function Home() {
         })
       }
       const rank: Record<string, number> = {
-        producing: 0, duc: 1, permitted: 2, shut_in: 3, injection: 4, horizontal: 5, vertical: 6,
+        producing: 0, duc: 1, permitted: 2, shut_in: 3, horizontal: 4, vertical: 5,
       }
       wells.sort((a, b) => (rank[a.kind ?? ''] ?? 9) - (rank[b.kind ?? ''] ?? 9))
       if (!cancelled) {
@@ -1900,7 +1902,10 @@ export default function Home() {
         })
         const payload = (await response.json()) as { wells?: WellSummary[]; error?: string }
         if (!cancelled) {
-          setTractWells(Array.isArray(payload.wells) ? payload.wells : [])
+          const wells = (Array.isArray(payload.wells) ? payload.wells : []).filter(
+            (well) => !isInjectionWell({ kind: well.kind, lease_name: well.lease_name }),
+          )
+          setTractWells(wells)
           setTractWellsLoaded(true)
           setTractWellsLoading(false)
         }
@@ -1950,7 +1955,10 @@ export default function Home() {
         }),
       })
       const payload = await response.json() as { wells?: WellSummary[]; error?: string }
-      setOwnerWells((prev) => ({ ...prev, [ownerKey]: Array.isArray(payload.wells) ? payload.wells : [] }))
+      const wells = (Array.isArray(payload.wells) ? payload.wells : []).filter(
+        (well) => !isInjectionWell({ kind: well.kind, lease_name: well.lease_name }),
+      )
+      setOwnerWells((prev) => ({ ...prev, [ownerKey]: wells }))
     } finally {
       setOwnerWellsLoading((prev) => ({ ...prev, [ownerKey]: false }))
     }

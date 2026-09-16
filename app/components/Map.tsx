@@ -9,6 +9,7 @@ import type { County, CountyKey } from '@/lib/counties'
 import TractSearch from './TractSearch'
 import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
+import { omitInjectionWellFeatures } from '@/lib/well-kind'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -38,15 +39,14 @@ const easedMove = (
   essential: true,
 })
 
-// Well-overlay coloring. Status mode = producing/shut-in/injection/permitted/
+// Well-overlay coloring. Status mode = producing/shut-in/permitted/
 // drilled-horizontal/vertical; operator mode = a fixed palette keyed on the
 // per-county operator rank (`op_idx`) stamped by build_wells_geojson.py.
-// Well status palette — chosen to stay distinct from each other.
+// Injection / disposal wells are omitted from the overlay.
 const WELL_KIND_COLORS: Record<string, string> = {
   producing: '#16A34A', // green
   duc: '#A855F7',       // purple
   shut_in: '#F59E0B',   // amber
-  injection: '#0D9488', // teal
   permitted: '#2563EB', // blue
   // A drilled lateral with no completion IS a DUC — the legacy "horizontal"
   // (drilled, status unknown) bucket now reads as DUC (data is being
@@ -58,7 +58,6 @@ const WELL_KIND_LABEL: Record<string, string> = {
   producing: 'Producing (PDP)',
   duc: 'DUC',
   shut_in: 'Shut-in',
-  injection: 'Injection / disposal',
   permitted: 'Permitted',
   horizontal: 'DUC',
   vertical: 'Vertical well',
@@ -68,7 +67,6 @@ const WELL_STATUS_COLOR = [
   'producing', WELL_KIND_COLORS.producing,
   'duc', WELL_KIND_COLORS.duc,
   'shut_in', WELL_KIND_COLORS.shut_in,
-  'injection', WELL_KIND_COLORS.injection,
   'permitted', WELL_KIND_COLORS.permitted,
   // Legacy 'horizontal' features still in older geojson render as DUC.
   'horizontal', WELL_KIND_COLORS.duc,
@@ -1457,6 +1455,7 @@ export default function Map({
         }
       }
       if (!wellsGeoJSON) return
+      wellsGeoJSON = omitInjectionWellFeatures(wellsGeoJSON)
       wellsCacheRef.current[countyKey] = wellsGeoJSON
       if (countyKey !== selectedCountyRef.current || !map.current) return
     }
@@ -1470,7 +1469,7 @@ export default function Map({
         id: 'wells-laterals-layer',
         type: 'line',
         source: 'wells',
-        filter: ['==', ['get', 'geom'], 'line'],
+        filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
         layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': colorExpr,
@@ -1484,7 +1483,7 @@ export default function Map({
         id: 'wells-points-layer',
         type: 'circle',
         source: 'wells',
-        filter: ['==', ['get', 'geom'], 'point'],
+        filter: ['all', ['==', ['get', 'geom'], 'point'], ['!=', ['get', 'kind'], 'injection']],
         layout: { visibility: vis },
         paint: {
           // Deliberately small dots (the old vertical markers were oversized).
@@ -1502,7 +1501,7 @@ export default function Map({
         id: 'wells-arrows-layer',
         type: 'symbol',
         source: 'wells',
-        filter: ['==', ['get', 'geom'], 'line'],
+        filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
         layout: {
           visibility: vis,
           'symbol-placement': 'line',
@@ -3086,7 +3085,7 @@ function LayerTogglePanel({
       {wellsVisible && (
         <CollapsibleSection title="Well status" topBorder>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {['producing', 'duc', 'shut_in', 'injection', 'permitted', 'vertical'].map(
+            {['producing', 'duc', 'shut_in', 'permitted', 'vertical'].map(
               (k) => (
                 <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
                   <span

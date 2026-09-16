@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { COUNTIES } from '@/lib/counties'
 import type { CountyKey } from '@/lib/counties'
+import { isInjectionWell } from '@/lib/well-kind'
 
 type WellsRequestBody = {
   mode: 'tract' | 'owner'
@@ -25,6 +26,10 @@ type WellRow = {
 
 const normalizeLeaseId = (value: unknown): string =>
   String(value ?? '').replace(/^0+/, '').trim()
+
+function dropInjectionWells<T extends { lease_name?: string | null }>(wells: T[]): T[] {
+  return wells.filter((well) => !isInjectionWell({ lease_name: well.lease_name }))
+}
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as WellsRequestBody
@@ -135,7 +140,7 @@ export async function POST(req: NextRequest) {
             oil_gas_code: String(well.oil_gas_code ?? 'O').toUpperCase(),
           }))
 
-        return NextResponse.json({ success: true, wells })
+        return NextResponse.json({ success: true, wells: dropInjectionWells(wells) })
       }
 
       // Counties that join by rrc_lease_id (e.g. Gonzales) — fall back to
@@ -177,7 +182,7 @@ export async function POST(req: NextRequest) {
         .filter(Boolean)
 
       if (wellLeaseIds.length === 0) {
-        return NextResponse.json({ success: true, wells: unique })
+        return NextResponse.json({ success: true, wells: dropInjectionWells(unique) })
       }
 
       const normalizedLeaseIds = wellLeaseIds
@@ -207,7 +212,7 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      return NextResponse.json({ success: true, wells: wellsWithCode })
+      return NextResponse.json({ success: true, wells: dropInjectionWells(wellsWithCode) })
     }
 
     const leaseCandidates = new Set<string>(
@@ -372,7 +377,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    return NextResponse.json({ success: true, wells })
+    return NextResponse.json({ success: true, wells: dropInjectionWells(wells) })
   } catch (error) {
     console.error('Wells API error:', error)
     return NextResponse.json({ error: 'Failed to fetch wells' }, { status: 500 })
