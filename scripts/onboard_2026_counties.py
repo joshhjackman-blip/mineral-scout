@@ -389,7 +389,7 @@ def find_src(county: str) -> Path | None:
     return shps[0] if shps else None
 
 
-def onboard(county: str, dry: bool) -> None:
+def onboard(county: str, dry: bool, tables_only: bool = False) -> None:
     cfg = COUNTIES[county]
     roll = roll_path(county, cfg)
     abstracts = ROOT / "data" / county / "Abstracts.shp"
@@ -428,8 +428,7 @@ def onboard(county: str, dry: bool) -> None:
             sys.executable, "scripts/load_county_mineral_records.py",
             "--county", county, "--input", str(roll),
         ]
-        if county == "howard":
-            load.append("--truncate")
+        load.append("--truncate")
         try:
             run(load, dry)
         except subprocess.CalledProcessError as exc:
@@ -454,12 +453,17 @@ def onboard(county: str, dry: bool) -> None:
         ]
         if roll.exists():
             wcmd += ["--cad-roll", str(roll)]
+        wcmd.append("--truncate")
         try:
             run(wcmd, dry)
         except subprocess.CalledProcessError as exc:
             print(f"wells table load failed ({exc.returncode}); continuing", flush=True)
     else:
         print("skip wells table load (new empty counties only)", flush=True)
+
+    if tables_only:
+        print("tables-only: skip rematch + map upload", flush=True)
+        return
 
     if abstracts.exists() and roll.exists():
         enrich = [
@@ -496,6 +500,38 @@ def onboard(county: str, dry: bool) -> None:
             )
 
 
+def print_table_counts() -> None:
+    creds = _storage_creds()
+    if not creds:
+        return
+    base, key_env = creds
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import httpx
+    from supabase_rest import rest_headers, table_count
+
+    headers = rest_headers(key_env)
+    tables = [
+        "howard_mineral_ownership",
+        "howard_wells",
+        "glasscock_mineral_ownership",
+        "glasscock_wells",
+        "reeves_mineral_ownership",
+        "reeves_wells",
+        "pecos_mineral_ownership",
+        "pecos_wells",
+    ]
+    print("\n=== table counts ===", flush=True)
+    with httpx.Client(timeout=60) as client:
+        for table in tables:
+            try:
+                n = table_count(client, base, table, headers)
+                print(f"  {table}: {n:,}", flush=True)
+            except Exception as exc:
+                print(f"  {table}: count failed ({exc})", flush=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -503,10 +539,17 @@ def main() -> None:
     )
     ap.add_argument("--county", choices=["all", *COUNTIES], default="all")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--tables-only",
+        action="store_true",
+        help="Download rolls/wells and load Supabase tables; skip rematch + map upload.",
+    )
     args = ap.parse_args()
     names = list(COUNTIES) if args.county == "all" else [args.county]
     for name in names:
-        onboard(name, args.dry_run)
+        onboard(name, args.dry_run, tables_only=args.tables_only)
+    if not args.dry_run:
+        print_table_counts()
 
 
 if __name__ == "__main__":

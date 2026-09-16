@@ -4,8 +4,8 @@ name: Onboard 2026 Howard / Glasscock / Reeves / Pecos
 # role), loads the new county tables, rematches tracts, and uploads map
 # GeoJSON to the public map-data bucket.
 #
-# Runs once when this workflow file lands on the feature branch, and on
-# manual dispatch after that.
+# Default mode is tables-only: rematch + map-data upload already landed.
+# Dispatch with mode=full to rebuild GeoJSON.
 
 on:
   workflow_dispatch:
@@ -14,12 +14,19 @@ on:
         description: 'County id or "all"'
         required: false
         default: 'all'
+      mode:
+        description: 'tables-only or full'
+        required: false
+        default: 'tables-only'
   push:
     branches:
       - cursor/add-2026-howard-glasscock-reeves-pecos-634a
     paths:
       - '.github/workflows/onboard-2026-counties.yml'
       - 'scripts/onboard_2026_counties.py'
+      - 'scripts/load_county_mineral_records.py'
+      - 'scripts/load_county_wells_shapefile.py'
+      - 'scripts/supabase_rest.py'
 
 concurrency:
   group: onboard-2026-counties
@@ -28,7 +35,7 @@ concurrency:
 jobs:
   onboard:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v6
 
@@ -49,4 +56,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
           COUNTY="${{ github.event.inputs.county || 'all' }}"
-          python scripts/onboard_2026_counties.py --county "$COUNTY"
+          MODE="${{ github.event.inputs.mode || 'tables-only' }}"
+          EXTRA=""
+          if [ "$MODE" = "tables-only" ]; then
+            EXTRA="--tables-only"
+          fi
+          python scripts/onboard_2026_counties.py --county "$COUNTY" $EXTRA
