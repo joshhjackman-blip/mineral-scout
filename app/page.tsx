@@ -21,6 +21,7 @@ import {
   permitMatchesTractWells,
 } from '@/lib/permit-match'
 import { COUNTIES } from '@/lib/counties'
+import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
 import {
   abstractsMatchingOperators,
   collectOperatorOptions,
@@ -120,10 +121,7 @@ const TOUR_STEPS: TourStep[] = [
 // prospective users see the full basin roadmap. Names match the
 // UPCOMING_COUNTIES list in app/components/Map.tsx.
 const UPCOMING_PERMIAN_COUNTIES = [
-  'Glasscock County, TX',
   'Crane County, TX',
-  'Pecos County, TX',
-  'Reeves County, TX',
 ]
 
 type TractOwner = {
@@ -1843,11 +1841,7 @@ export default function Home() {
     async (countyId: string): Promise<GeoJSON.FeatureCollection | null> => {
       const cached = wellsGeoCacheRef.current[countyId]
       if (cached !== undefined) return cached
-      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
-      const urls = [
-        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${countyId}_wells.geojson` : '',
-        `/${countyId}_wells.geojson?v=1`,
-      ].filter(Boolean)
+      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026roll-1')
       for (const url of urls) {
         try {
           const r = await fetch(url, { cache: 'force-cache' })
@@ -2353,14 +2347,22 @@ export default function Home() {
       // switches so the camera flyTo still has a live map instance.
       if (!mapHasMountedRef.current) setLoading(true)
       try {
-        const parcelSource = county.geoJsonPath
-        const response = await fetch(parcelSource, { cache: 'no-store' })
+        const response = await fetchCountyAsset(
+          `${county.id}_parcels_enriched.geojson`,
+          '2026roll-1',
+        )
         let parcelsData: unknown
 
-        if (response.ok) {
+        if (response) {
           parcelsData = await response.json()
         } else {
-          throw new Error(`${county.displayName} parcel source failed (${response.status})`)
+          const fallback = await fetch(county.geoJsonPath, { cache: 'no-store' })
+          if (!fallback.ok) {
+            throw new Error(
+              `${county.displayName} parcels are not on the map yet (${fallback.status})`,
+            )
+          }
+          parcelsData = await fallback.json()
         }
 
         if (!mounted) return

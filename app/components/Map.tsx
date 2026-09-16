@@ -6,6 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
+import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
 import TractSearch from './TractSearch'
 import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
@@ -576,10 +577,7 @@ export default function Map({
   // coordinates are the county centroids (used for the "COMING
   // SOON" label anchor).
   const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = [
-    { name: 'GLASSCOCK', fips: '48173', mapCenter: [-101.52, 31.87] },
     { name: 'CRANE',     fips: '48103', mapCenter: [-102.55, 31.40] },
-    { name: 'PECOS',     fips: '48371', mapCenter: [-102.72, 30.87] },
-    { name: 'REEVES',    fips: '48389', mapCenter: [-103.68, 31.30] },
   ]
 
   const countyEntries = useMemo(
@@ -1439,11 +1437,7 @@ export default function Map({
     if (!wellsGeoJSON) {
       // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
       // committed /public baseline so the overlay still works if Storage misses.
-      const supaUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, '')
-      const urls = [
-        supaUrl ? `${supaUrl}/storage/v1/object/public/map-data/${cfg.id}_wells.geojson` : '',
-        `/${cfg.id}_wells.geojson?v=1`,
-      ].filter(Boolean)
+      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026roll-1')
       for (const url of urls) {
         try {
           const res = await fetch(url)
@@ -1658,12 +1652,10 @@ export default function Map({
       paint: { 'line-color': '#D97706', 'line-width': 1.5 },
     })
 
-    // "Coming soon" grey squares for the 10 Permian counties whose
-    // data hasn't shipped yet — Midland, Glasscock, Upton, Reagan,
-    // Crane, Pecos, Ward, Winkler, Loving, Reeves. Painted as
-    // subtle grey fills with a "COMING SOON" label so the map
-    // visually communicates the roadmap without the polygons
-    // being clickable. Their FIPS codes come from UPCOMING_COUNTIES.
+    // "Coming soon" grey squares for Permian counties whose parcel
+    // layer has not shipped yet. Painted as subtle grey fills with a
+    // COMING SOON label so the map shows the basin roadmap without
+    // those polygons being clickable. FIPS codes come from UPCOMING_COUNTIES.
     const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
     if (!map.current) return
     map.current.addLayer({
@@ -1841,14 +1833,23 @@ export default function Map({
     // side panel in app/page.tsx for owner data. Counties load in parallel
     // so adding more never serializes the cold-load latency.
     const fetchTasks = countyEntries.map(async ([countyKey, countyConfig]) => {
-      const response = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
-      if (!response.ok) {
-        throw new Error(`Parcels source failed for ${countyConfig.id} (${response.status})`)
+      const file = `${countyConfig.id}_parcels_map.geojson`
+      const response = await fetchCountyAsset(file, '2026roll-1')
+      if (!response) {
+        const fallback = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
+        if (!fallback.ok) {
+          console.warn(`Parcels source missing for ${countyConfig.id}`)
+          return null
+        }
+        const geojson = await fallback.json() as GeoJSON.FeatureCollection
+        return [countyKey, geojson] as const
       }
       const geojson = await response.json() as GeoJSON.FeatureCollection
       return [countyKey, geojson] as const
     })
-    const parcelsByCounty: Array<readonly [CountyKey, GeoJSON.FeatureCollection]> = await Promise.all(fetchTasks)
+    const parcelsByCounty = (await Promise.all(fetchTasks)).filter(
+      (row): row is readonly [CountyKey, GeoJSON.FeatureCollection] => Boolean(row),
+    )
     if (renderToken !== renderTokenRef.current || !map.current) return
 
     currentParcelsByCountyRef.current = {}

@@ -58,8 +58,9 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 BUCKET_NAME = "Raw-Data"
 
 COUNTY_FIPS = {
-    "howard": "227", "martin": "317", "midland": "329", "loving": "301",
-    "reagan": "383", "upton": "461", "ward": "475",
+    "howard": "227", "martin": "317", "midland": "329", "glasscock": "173",
+    "loving": "301", "reagan": "383", "upton": "461", "ward": "475",
+    "winkler": "495", "reeves": "389", "pecos": "371",
 }
 FIPS_TO_COUNTY = {v: k for k, v in COUNTY_FIPS.items()}
 

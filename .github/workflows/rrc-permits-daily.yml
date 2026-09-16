@@ -117,7 +117,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/scrape_rrc_permits.py \
-            --county howard,martin,midland,loving,reagan,upton,ward
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos
 
       - name: Refresh spud dates from the RRC daily drilling-permit master
         # The step above sources spud dates from a static OG_WELLBORE EWA
@@ -137,7 +137,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/scrape_rrc_drilling_permits.py \
-            --county howard,martin,midland,loving,reagan,upton,ward
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos
 
       - name: Recompute tract_development_status
         # Reclassifies every abstract now that fresh permits landed
@@ -152,6 +152,6 @@ jobs:
           # backfill each well's abstract from the owner roll (rrc_lease_id ->
           # dominant abstract) so producing wells place onto tracts (PDP).
           python scripts/backfill_well_abstracts.py \
-            midland loving reagan upton ward
+            midland loving reagan upton ward winkler glasscock reeves pecos
           python scripts/compute_development_status.py \
-            --county howard,martin,midland,loving,reagan,upton,ward
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos

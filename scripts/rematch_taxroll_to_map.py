@@ -31,29 +31,43 @@ from abstract_match import AbstractMatcher, bare_abstract, clean_str  # noqa: E4
 from load_county_mineral_records import compute_propensity_score  # noqa: E402
 
 COUNTY_ROLLS = {
-    "howard": ROOT / "data" / "howard_mineral_roll.csv",
+    "howard": ROOT / "data" / "owners_2026_Howard.csv",
     "martin": ROOT / "data" / "owners_2026_Martin.csv",
     "midland": ROOT / "data" / "owners_2026_Midland.csv",
+    "glasscock": ROOT / "data" / "owners_2026_Glasscock.csv",
     "loving": ROOT / "data" / "owners_2026_Loving.csv",
     "reagan": ROOT / "data" / "owners_2026_Reagan.csv",
     "upton": ROOT / "data" / "owners_2026_Upton.csv",
     "ward": ROOT / "data" / "owners_2026_Ward.csv",
+    "winkler": ROOT / "data" / "owners_2026_Winkler.csv",
+    "reeves": ROOT / "data" / "owners_2026_Reeves.csv",
+    "pecos": ROOT / "data" / "owners_2026_Pecos.csv",
+}
+COUNTY_ROLL_FALLBACKS = {
+    "howard": ROOT / "data" / "howard_mineral_roll.csv",
 }
 COUNTY_ABSTRACTS = {
     "howard": ROOT / "data" / "howard" / "Abstracts.shp",
     "martin": ROOT / "data" / "martin" / "Abstracts.shp",
     "midland": ROOT / "data" / "midland" / "Abstracts.shp",
+    "glasscock": ROOT / "data" / "glasscock" / "Abstracts.shp",
     "loving": ROOT / "data" / "loving" / "Abstracts.shp",
     "reagan": ROOT / "data" / "reagan" / "Abstracts.shp",
     "upton": ROOT / "data" / "upton" / "Abstracts.shp",
     "ward": ROOT / "data" / "ward" / "Abstracts.shp",
+    "winkler": ROOT / "data" / "winkler" / "Abstracts.shp",
+    "reeves": ROOT / "data" / "reeves" / "Abstracts.shp",
+    "pecos": ROOT / "data" / "pecos" / "Abstracts.shp",
 }
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--county", default="all",
-                   choices=["howard", "martin", "midland", "loving", "reagan", "upton", "ward", "all"])
+    p.add_argument(
+        "--county",
+        default="all",
+        choices=["all", *sorted(COUNTY_ROLLS)],
+    )
     p.add_argument("--skip-map-slim", action="store_true")
     return p.parse_args()
 
@@ -178,6 +192,8 @@ def preserve_activity_props(existing_path: Path) -> dict[str, dict[str, Any]]:
 
 def rematch_county(county: str) -> dict[str, Any]:
     roll_path = COUNTY_ROLLS[county]
+    if not roll_path.exists():
+        roll_path = COUNTY_ROLL_FALLBACKS.get(county, roll_path)
     abstracts_path = COUNTY_ABSTRACTS[county]
     if not roll_path.exists():
         raise FileNotFoundError(roll_path)
@@ -334,9 +350,16 @@ def slim_map_geojson(county: str) -> None:
 
 def main() -> None:
     args = parse_args()
-    counties = ["howard", "martin"] if args.county == "all" else [args.county]
+    counties = list(COUNTY_ROLLS) if args.county == "all" else [args.county]
     all_stats = []
     for county in counties:
+        roll = COUNTY_ROLLS[county]
+        if not roll.exists():
+            roll = COUNTY_ROLL_FALLBACKS.get(county, roll)
+        abstracts = COUNTY_ABSTRACTS[county]
+        if not roll.exists() or not abstracts.exists():
+            print(f"skip {county}: missing roll or Abstracts.shp")
+            continue
         all_stats.append(rematch_county(county))
     if not args.skip_map_slim:
         import subprocess

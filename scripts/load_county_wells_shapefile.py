@@ -378,44 +378,32 @@ def main() -> None:
             print(entry)
         return
 
-    try:
-        from supabase import create_client
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "Missing dependency 'supabase'. Install with: pip install supabase"
-        ) from exc
+    import sys
+
+    import httpx
+
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from supabase_rest import insert_rows, rest_base, rest_headers, table_count, truncate_table
 
     supabase_url = require_env_or_arg(args.supabase_url, "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL")
     supabase_key = require_env_or_arg(args.supabase_key, "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_KEY")
-    client = create_client(supabase_url, supabase_key)
+    base = rest_base(supabase_url)
+    headers = rest_headers(supabase_key)
 
-    if args.truncate:
-        print(f"Truncating {table_name} in batches…", flush=True)
-        existing = (
-            client.table(table_name)
-            .select("id")
-            .order("id", desc=True)
-            .limit(1)
-            .execute()
+    with httpx.Client(timeout=180) as client:
+        if args.truncate:
+            print(f"Truncating {table_name} in batches…", flush=True)
+            max_id = truncate_table(client, base, table_name, headers)
+            print(f"  truncate complete (cleared up to id {max_id}).", flush=True)
+
+        written = insert_rows(
+            client, base, table_name, headers, rows, batch_size=args.batch_size
         )
-        max_id = (existing.data[0]["id"] if existing.data else 0)
-        cursor = 0
-        delete_batch = 500
-        while cursor <= max_id:
-            client.table(table_name).delete().gte("id", cursor).lt("id", cursor + delete_batch).execute()
-            cursor += delete_batch
-        print(f"  truncate complete (cleared up to id {max_id}).", flush=True)
+        count = table_count(client, base, table_name, headers)
 
-    total_batches = max(1, math.ceil(len(rows) / args.batch_size))
-    written = 0
-    for batch_index, batch in enumerate(chunked(rows, args.batch_size), start=1):
-        client.table(table_name).insert(batch).execute()
-        written += len(batch)
-        pct = (written / len(rows)) * 100 if rows else 100.0
-        if batch_index == 1 or batch_index % 25 == 0 or batch_index == total_batches:
-            print(f"  [{batch_index}/{total_batches}] inserted {written:,}/{len(rows):,} ({pct:.1f}%)", flush=True)
-
-    print(f"Done. Wrote {written:,} rows into {table_name}.")
+    print(f"Done. Wrote {written:,} rows into {table_name} (table now {count:,}).")
 
 
 if __name__ == "__main__":
