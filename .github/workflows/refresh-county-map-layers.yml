@@ -1,7 +1,7 @@
 name: Refresh 2026 county map layers
 
-# Rebuild well colors + tract production_status (and refill Pecos/Reeves
-# CAD holes) after the ownership tables are loaded.
+# Rebuild well colors + tract production_status and refill Pecos/Reeves
+# from the RRC survey abstract grid.
 
 on:
   workflow_dispatch:
@@ -15,9 +15,11 @@ on:
       - cursor/fix-new-county-map-634a
       - cursor/fix-pecos-reeves-cad-634a
       - cursor/fix-owner-tract-match-634a
+      - cursor/fix-missing-cad-otls-634a
     paths:
       - '.github/workflows/refresh-county-map-layers.yml'
       - 'scripts/refresh_county_map_layers.py'
+      - 'scripts/download_rrc_surveys.py'
       - 'scripts/build_wells_geojson.py'
       - 'scripts/add_production_status.py'
       - 'scripts/build_county_tracts.py'
