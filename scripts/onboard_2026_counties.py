@@ -30,9 +30,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 import zipfile
 from pathlib import Path
+from urllib.parse import quote, urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -41,11 +41,26 @@ COUNTIES = {
         "fips": "227",
         "state_fips": "48227",
         "roll": "owners_2026_Howard.csv",
-        "roll_fallback": "howard_mineral_roll.csv",
+        "load_wells_table": False,  # already live; do not truncate
     },
-    "glasscock": {"fips": "173", "state_fips": "48173", "roll": "owners_2026_Glasscock.csv"},
-    "reeves": {"fips": "389", "state_fips": "48389", "roll": "owners_2026_Reeves.csv"},
-    "pecos": {"fips": "371", "state_fips": "48371", "roll": "owners_2026_Pecos.csv"},
+    "glasscock": {
+        "fips": "173",
+        "state_fips": "48173",
+        "roll": "owners_2026_Glasscock.csv",
+        "load_wells_table": True,
+    },
+    "reeves": {
+        "fips": "389",
+        "state_fips": "48389",
+        "roll": "owners_2026_Reeves.csv",
+        "load_wells_table": True,
+    },
+    "pecos": {
+        "fips": "371",
+        "state_fips": "48371",
+        "roll": "owners_2026_Pecos.csv",
+        "load_wells_table": True,
+    },
 }
 
 TNRIS_LP = (
@@ -69,7 +84,7 @@ def curl(args: list[str], tries: int = 8) -> subprocess.CompletedProcess:
     last = None
     for i in range(tries):
         last = subprocess.run(
-            ["curl", "-sS", "-m", "120", "-A", UA] + args,
+            ["curl", "-sS", "-m", "300", "-A", UA] + args,
             capture_output=True,
         )
         if last.returncode == 0:
@@ -102,7 +117,6 @@ def _storage_creds() -> tuple[str, str] | None:
     key_env = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     if not url or not key_env or "example.supabase.co" in url:
         return None
-    from urllib.parse import urlparse
     p = urlparse(url)
     return f"{p.scheme}://{p.netloc}", key_env
 
@@ -113,13 +127,14 @@ def download_storage_object(key: str, dest: Path) -> bool:
         return False
     base, key_env = creds
     dest.parent.mkdir(parents=True, exist_ok=True)
+    encoded = quote(key, safe="/")
     print(f"  storage GET Raw-Data/{key} -> {dest}", flush=True)
     r = curl([
         "-H", f"apikey: {key_env}",
         "-H", f"Authorization: Bearer {key_env}",
         "-o", str(dest),
         "-w", "%{http_code}",
-        f"{base}/storage/v1/object/Raw-Data/{key}",
+        f"{base}/storage/v1/object/Raw-Data/{encoded}",
     ])
     code = r.stdout.decode().strip() if r and r.returncode == 0 else "ERR"
     if dest.exists() and dest.stat().st_size > 100 and code.startswith("2"):
@@ -179,30 +194,55 @@ def list_raw_data() -> list[str]:
     return paths
 
 
+def _extract_roll(archive: Path, dest: Path) -> bool:
+    if archive.suffix.lower() not in {".zip"}:
+        if archive != dest:
+            dest.write_bytes(archive.read_bytes())
+        return dest.exists() and dest.stat().st_size > 100
+    with zipfile.ZipFile(archive) as zf:
+        names = [
+            n for n in zf.namelist()
+            if not n.endswith("/")
+            and not n.startswith("__")
+            and Path(n).suffix.lower() in {".csv", ".xlsx", ".xls"}
+        ]
+        if not names:
+            print(f"  zip {archive.name} has no csv/xlsx", flush=True)
+            return False
+        names.sort(key=lambda n: (0 if n.lower().endswith(".csv") else 1, len(n)))
+        chosen = names[0]
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(zf.read(chosen))
+        print(f"  extracted {chosen} -> {dest} ({dest.stat().st_size:,} bytes)", flush=True)
+        return dest.stat().st_size > 100
+
+
 def pull_roll_from_storage(county: str, dest: Path) -> bool:
-    """Find a 2026 (or obvious) roll for this county in Raw-Data."""
-    if dest.exists():
+    """Find a 2026 roll for this county in Raw-Data (csv or zip)."""
+    if dest.exists() and dest.stat().st_size > 100:
         return True
     keys = list_raw_data() if _storage_creds() else []
     needle = county.lower()
     year_hits = [
         k for k in keys
         if needle in k.lower()
-        and k.lower().endswith((".csv", ".xlsx", ".xls"))
-        and ("2026" in k or "owners" in k.lower() or "roll" in k.lower() or "tax" in k.lower())
+        and "2026" in k
+        and k.lower().endswith((".csv", ".xlsx", ".xls", ".zip"))
+        and "owner" in k.lower()
     ]
-    # Prefer a 2026 owners_* name.
-    year_hits.sort(key=lambda k: (0 if "2026" in k and "owner" in k.lower() else 1, len(k)))
-    for key in year_hits:
-        if download_storage_object(key, dest):
-            return True
-    for key in (
+    year_hits.sort(key=lambda k: (0 if k.lower().endswith((".csv", ".xlsx", ".xls")) else 1, len(k)))
+    staged = dest.with_suffix(dest.suffix + ".download")
+    for key in year_hits + [
+        f"data/owners__2026_{county.title()}.zip",
+        f"data/owners_2026_{county.title()}.csv",
         f"owners_2026_{county.title()}.csv",
-        f"owners_2026_{county}.csv",
-        f"{county}_mineral_roll.csv",
-    ):
-        if download_storage_object(key, dest):
+    ]:
+        if not download_storage_object(key, staged):
+            continue
+        if _extract_roll(staged, dest):
+            staged.unlink(missing_ok=True)
             return True
+        staged.unlink(missing_ok=True)
     return False
 
 
@@ -313,6 +353,28 @@ def emit_baseline_parcels(county: str, abstracts: Path) -> None:
     print(f"  wrote baseline {out_pub} ({len(g)} tracts, 0 owners)", flush=True)
 
 
+def upload_map_asset(name: str, path: Path) -> None:
+    creds = _storage_creds()
+    if not creds or not path.exists():
+        return
+    base, key_env = creds
+    print(f"  upload map-data/{name}", flush=True)
+    r = curl([
+        "-H", f"apikey: {key_env}",
+        "-H", f"Authorization: Bearer {key_env}",
+        "-H", "Content-Type: application/json",
+        "-H", "x-upsert: true",
+        "-H", "cache-control: max-age=300",
+        "--data-binary", f"@{path}",
+        "-w", "%{http_code}",
+        "-o", os.devnull,
+        "-X", "POST",
+        f"{base}/storage/v1/object/map-data/{name}",
+    ])
+    code = r.stdout.decode().strip() if r and r.returncode == 0 else "ERR"
+    print(f"  upload {name} http={code}", flush=True)
+
+
 def find_src(county: str) -> Path | None:
     src_dir = ROOT / "data" / f"_src_{county}"
     gdbs = list(src_dir.rglob("*.gdb"))
@@ -359,25 +421,38 @@ def onboard(county: str, dry: bool) -> None:
     if roll.exists() and has_db:
         load = [
             sys.executable, "scripts/load_county_mineral_records.py",
-            "--county", county, "--input", str(roll), "--truncate",
+            "--county", county, "--input", str(roll),
         ]
-        run(load, dry)
+        if county == "howard":
+            load.append("--truncate")
+        try:
+            run(load, dry)
+        except subprocess.CalledProcessError as exc:
+            print(f"owners table load failed ({exc.returncode}); continuing with rematch", flush=True)
     elif roll.exists():
         print("skip owners load: no SUPABASE_SERVICE_ROLE_KEY", flush=True)
     else:
         print(f"skip owners load: missing {cfg['roll']}", flush=True)
 
-    if wells_zip.exists() and abstracts.exists() and has_db:
+    if (
+        cfg.get("load_wells_table")
+        and wells_zip.exists()
+        and abstracts.exists()
+        and has_db
+    ):
         wcmd = [
             sys.executable, "scripts/load_county_wells_shapefile.py",
             "--county", county, "--zip", str(wells_zip),
-            "--abstracts", str(abstracts), "--truncate",
+            "--abstracts", str(abstracts),
         ]
         if roll.exists():
             wcmd += ["--cad-roll", str(roll)]
-        run(wcmd, dry)
+        try:
+            run(wcmd, dry)
+        except subprocess.CalledProcessError as exc:
+            print(f"wells table load failed ({exc.returncode}); continuing", flush=True)
     else:
-        print("skip wells table load: need well zip + Abstracts.shp + service role", flush=True)
+        print("skip wells table load (new empty counties only)", flush=True)
 
     if abstracts.exists() and roll.exists():
         enrich = [
@@ -402,6 +477,13 @@ def onboard(county: str, dry: bool) -> None:
         run(wgeo, dry)
     else:
         print("skip wells geojson: missing well zip", flush=True)
+
+    if not dry:
+        for kind in ("parcels_enriched", "parcels_map", "wells"):
+            upload_map_asset(
+                f"{county}_{kind}.geojson",
+                ROOT / "public" / f"{county}_{kind}.geojson",
+            )
 
 
 def main() -> None:
