@@ -23,7 +23,8 @@ export type TourStep = {
   title: string
   body: string
   placement?: 'top' | 'bottom' | 'left' | 'right' | 'center'
-  // Cap a tall sidebar so the amber ring does not wrap the whole viewport.
+  // Optional hard cap. Most steps should omit this so the visible
+  // target (legend, map, queue grid) is ringed in full.
   spotlightMaxHeight?: number
   // Action-gated step: instead of a Next button, wait for the host page to
   // dispatch `mm:tour-advance` with detail.id === awaitId (e.g. the user
@@ -43,7 +44,6 @@ export const TOUR_ADVANCE_EVENT = 'mm:tour-advance'
 const SPOTLIGHT_PADDING = 8
 const CARD_WIDTH = 320
 const CARD_EST_HEIGHT = 240
-const DEFAULT_SPOTLIGHT_MAX_HEIGHT = 320
 const ACCENT = '#EF9F27'
 
 function visibleAnchorRect(el: HTMLElement | null): DOMRect | null {
@@ -60,9 +60,27 @@ function visibleAnchorRect(el: HTMLElement | null): DOMRect | null {
   return rect
 }
 
-function capHighlight(rect: DOMRect, maxHeight: number): DOMRect {
-  if (rect.height <= maxHeight) return rect
-  return new DOMRect(rect.x, rect.y, rect.width, maxHeight)
+// Ring only what the user can see. A 320px default cap was cropping the
+// map counties, the full legend, and the CRM queues.
+function clipToViewport(rect: DOMRect): DOMRect | null {
+  const top = Math.max(rect.top, 0)
+  const left = Math.max(rect.left, 0)
+  const bottom = Math.min(rect.bottom, window.innerHeight)
+  const right = Math.min(rect.right, window.innerWidth)
+  const width = right - left
+  const height = bottom - top
+  if (width < 12 || height < 12) return null
+  return new DOMRect(left, top, width, height)
+}
+
+function resolveHighlight(rect: DOMRect | null, maxHeight?: number): DOMRect | null {
+  if (!rect) return null
+  const visible = clipToViewport(rect)
+  if (!visible) return null
+  if (maxHeight && visible.height > maxHeight) {
+    return new DOMRect(visible.x, visible.y, visible.width, maxHeight)
+  }
+  return visible
 }
 
 export default function ProductTour({
@@ -166,8 +184,14 @@ export default function ProductTour({
   }, [step])
 
   useLayoutEffect(() => {
+    if (!active || !step?.selector) {
+      measure()
+      return
+    }
+    const el = document.querySelector(step.selector) as HTMLElement | null
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' })
     measure()
-  }, [measure, index, active])
+  }, [measure, index, active, step?.selector])
 
   // Poll briefly for anchors that mount late (map tiles, panels that only
   // appear at tract level) so the spotlight lands once they're in the DOM.
@@ -216,12 +240,16 @@ export default function ProductTour({
   const placement = step.placement ?? (rect ? 'bottom' : 'center')
   const isLast = index === steps.length - 1
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v))
-  const highlight = rect
-    ? capHighlight(rect, step.spotlightMaxHeight ?? DEFAULT_SPOTLIGHT_MAX_HEIGHT)
-    : null
+  const highlight = resolveHighlight(rect, step.spotlightMaxHeight)
 
   const cardPos: CSSProperties = (() => {
+    const highlightArea = highlight ? highlight.width * highlight.height : 0
+    const hugeHighlight = highlightArea > vw * vh * 0.4
     if (!highlight || placement === 'center') {
+      // A full-map ring should not hide the Permian counties behind the card.
+      if (highlight && hugeHighlight) {
+        return { top: '50%', left: Math.max(24, highlight.left + 16), transform: 'translateY(-50%)' }
+      }
       return { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }
     }
     const gap = 16
@@ -242,6 +270,11 @@ export default function ProductTour({
     }
     if (placement === 'top' && highlight.top - gap - CARD_EST_HEIGHT >= 16) {
       return { top: highlight.top - gap, left: clamp(highlight.left, 16, vw - cardW - 16), transform: 'translateY(-100%)' }
+    }
+    // If the target is tall, keep the card in the dimmed strip above it
+    // instead of parking on top of the highlighted queues / list.
+    if (placement === 'top' && highlight.top > 88) {
+      return { top: 16, left: clamp(highlight.left, 16, vw - cardW - 16) }
     }
     if (spaceRight >= cardW) return { top, left: highlight.right + gap }
     if (spaceLeft >= cardW) return { top, left: highlight.left - gap - cardW }

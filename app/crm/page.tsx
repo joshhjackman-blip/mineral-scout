@@ -67,14 +67,12 @@ const CRM_TOUR_STEPS: TourStep[] = [
     title: 'The numbers that matter',
     body: 'Open pipeline, hot leads, overdue follow-ups, and skip traces waiting on a number. Click a tile to jump into that list.',
     placement: 'bottom',
-    spotlightMaxHeight: 220,
   },
   {
     selector: '[data-tour="crm-queues"]',
     title: 'Today\'s queues',
     body: 'Follow-ups, bad skip traces waiting on a number, and leads that still need a trace. This is the daily call list.',
     placement: 'top',
-    spotlightMaxHeight: 280,
   },
   {
     title: 'You are set',

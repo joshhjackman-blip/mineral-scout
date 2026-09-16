@@ -2962,7 +2962,8 @@ function LayerTogglePanel({
         gap: 10,
         minWidth: 210,
         maxWidth: 250,
-        overflow: 'visible',
+        maxHeight: 'calc(100vh - 24px)',
+        overflowY: 'auto',
       }}
     >
       <CollapsibleSection title="Legend">

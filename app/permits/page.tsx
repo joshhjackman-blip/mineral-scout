@@ -50,7 +50,6 @@ const PERMITS_TOUR_STEPS: TourStep[] = [
     title: 'Open a permit',
     body: 'Each card is a filing. Expand it to see the mineral owners on that tract, then skip-trace, call, or jump to the map.',
     placement: 'top',
-    spotlightMaxHeight: 260,
   },
   {
     title: 'You are set',
