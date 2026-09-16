@@ -1748,7 +1748,7 @@ export default function Home() {
       const api = normalizeApi(permit.api_number)
       if (api) apis.add(api)
     }
-    return [...apis]
+    return Array.from(apis)
   }, [tractWells, visiblePermits])
   useEffect(() => {
     let cancelled = false

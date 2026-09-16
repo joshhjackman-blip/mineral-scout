@@ -136,7 +136,7 @@ async function loadOwnersFromWellApis(
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const apiVariants = [...new Set(apis.flatMap((api) => apiLookupVariants(api)))]
+  const apiVariants = Array.from(new Set(apis.flatMap((api) => apiLookupVariants(api))))
   if (apiVariants.length === 0) return { owners: [], error: null }
 
   const wells = await admin
@@ -148,13 +148,13 @@ async function loadOwnersFromWellApis(
     return { owners: [], error: wells.error.message }
   }
 
-  const leaseIds = [
-    ...new Set(
+  const leaseIds = Array.from(
+    new Set(
       (wells.data ?? [])
         .flatMap((row) => leaseLookupVariants(row.rrc_lease_id))
         .filter(Boolean),
     ),
-  ]
+  )
   if (leaseIds.length === 0) return { owners: [], error: null }
 
   const rows: TractOwnerRow[] = []

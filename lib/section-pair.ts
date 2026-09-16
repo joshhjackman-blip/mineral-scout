@@ -34,7 +34,7 @@ export function blockVariants(block: string | null | undefined): string[] {
     out.add(`${num}-${township}`)
   }
   if (num) out.add(num)
-  return [...out]
+  return Array.from(out)
 }
 
 export function sameBlockTownship(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -54,7 +54,9 @@ export function pairedSectionFromLease(lease: string, homeSection: string): stri
   const home = normalizeSection(homeSection)
   if (!home) return null
   const text = String(lease ?? '').toUpperCase()
-  for (const match of text.matchAll(/\b(\d{1,2})\s*[-/]\s*(\d{1,2})\b/g)) {
+  const re = /\b(\d{1,2})\s*[-/]\s*(\d{1,2})\b/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
     const a = normalizeSection(match[1])
     const b = normalizeSection(match[2])
     if (a === home && b && b !== home) return b
@@ -69,5 +71,5 @@ export function pairedSectionsFromLeases(leases: string[], homeSection: string):
     const other = pairedSectionFromLease(lease, homeSection)
     if (other) found.add(other)
   }
-  return [...found]
+  return Array.from(found)
 }

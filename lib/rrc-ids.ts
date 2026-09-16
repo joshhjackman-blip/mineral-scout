@@ -9,7 +9,7 @@ export function apiLookupVariants(raw: unknown): string[] {
   const out = new Set<string>([digits])
   if (digits.length === 10 && digits.startsWith('42')) out.add(digits.slice(2))
   if (digits.length === 8) out.add(`42${digits}`)
-  return [...out]
+  return Array.from(out)
 }
 
 export function normalizeLeaseId(raw: unknown): string {
@@ -20,5 +20,5 @@ export function leaseLookupVariants(raw: unknown): string[] {
   const text = String(raw ?? '').trim()
   if (!text) return []
   const stripped = text.replace(/^0+/, '') || '0'
-  return [...new Set([text, stripped])]
+  return Array.from(new Set([text, stripped]))
 }
