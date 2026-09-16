@@ -621,13 +621,16 @@ export default function CRM() {
     async (owner: OwnerLike, status: string) => {
       const deal = deals.find((d) => d.id === owner.id) ?? selected
       if (!deal) return { success: false, error: 'Deal not found' }
-      const { error } = await supabase
-        .from('deals')
-        .update({ tag: status, updated_at: new Date().toISOString() })
-        .eq('id', deal.id)
-      if (error) return { success: false, error: error.message }
-      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: status } : d)))
-      setSelected((prev) => (prev?.id === deal.id ? ({ ...prev, tag: status } as Deal) : prev))
+      const updated_at = new Date().toISOString()
+      if (!deal.id.startsWith('preview-')) {
+        const { error } = await supabase
+          .from('deals')
+          .update({ tag: status, updated_at })
+          .eq('id', deal.id)
+        if (error) return { success: false, error: error.message }
+      }
+      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, tag: status, updated_at } : d)))
+      setSelected((prev) => (prev?.id === deal.id ? ({ ...prev, tag: status, updated_at } as Deal) : prev))
       return { success: true }
     },
     [deals, selected],
