@@ -73,5 +73,9 @@ begin
     execute format(
       'create policy "allow read all" on public.%I for select using (true);', tbl
     );
+    execute format(
+      'grant select on public.%I to anon, authenticated;',
+      tbl
+    );
   end loop;
 end $$;
