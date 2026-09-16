@@ -93,6 +93,12 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/demo') ||
     path.startsWith('/book-demo')
 
+  // Local preview of CRM sample leads. Production still requires login.
+  const isDevCrmPreview =
+    process.env.NODE_ENV !== 'production' &&
+    path.startsWith('/crm') &&
+    request.nextUrl.searchParams.get('preview') === '1'
+
   // Logged-in users may always reach billing / legal / account so they
   // can subscribe, manage seats, or sign the agreement.
   const isBillingOrAccountPath =
@@ -101,7 +107,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/legal') ||
     path.startsWith('/help')
 
-  if (!isLoggedIn && !isPublicPage) {
+  if (!isLoggedIn && !isPublicPage && !isDevCrmPreview) {
     return redirectLoggedOut(new URL('/landing', request.url))
   }
 
