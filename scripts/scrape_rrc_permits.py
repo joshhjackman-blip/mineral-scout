@@ -60,9 +60,19 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from supabase import Client, create_client
+import httpx
+
+from supabase_rest import (
+    download_storage_object,
+    insert_rows,
+    paginate_rows,
+    patch_row,
+    rest_base,
+    rest_headers,
+    truncate_table,
+)
 
 BUCKET_NAME = "Raw-Data"
 BATCH_SIZE = 500
@@ -233,15 +243,20 @@ def ewa_date(value: Any) -> str | None:
 
 # --- Wells-zip permit extraction --------------------------------------
 
-def ensure_wells_zip(county: str, fips: str, client: Client, data_dir: Path) -> Path:
+def ensure_wells_zip(
+    county: str,
+    fips: str,
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    data_dir: Path,
+) -> Path:
     cached = data_dir / f"well{fips}.zip"
     if cached.exists():
         return cached
     key = f"well{fips}.zip"
     print(f"  downloading {BUCKET_NAME}/{key}...")
-    blob = client.storage.from_(BUCKET_NAME).download(key)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    cached.write_bytes(blob)
+    download_storage_object(client, base, headers, BUCKET_NAME, key, cached)
     return cached
 
 
@@ -302,16 +317,20 @@ def permits_from_wells_zip(zip_path: Path, county_fips: str) -> list[dict[str, A
 
 # --- EWA enrichment ---------------------------------------------------
 
-def download_ewa(client: Client, key: str, data_dir: Path) -> Path:
+def download_ewa(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    key: str,
+    data_dir: Path,
+) -> Path:
     cached = data_dir / key
     if cached.exists() and cached.stat().st_size > 0:
         print(f"  reusing cached EWA at {cached} ({cached.stat().st_size:,} bytes)")
         return cached
     print(f"  downloading {BUCKET_NAME}/{key} ({cached.parent}) ...")
-    blob = client.storage.from_(BUCKET_NAME).download(key)
-    data_dir.mkdir(parents=True, exist_ok=True)
-    cached.write_bytes(blob)
-    print(f"  wrote {len(blob):,} bytes to {cached}")
+    size = download_storage_object(client, base, headers, BUCKET_NAME, key, cached)
+    print(f"  wrote {size:,} bytes to {cached}")
     return cached
 
 
@@ -386,59 +405,80 @@ def enrich_with_ewa(rows: list[dict[str, Any]],
 
 # --- Supabase writes --------------------------------------------------
 
-def wipe_table(client: Client, table: str) -> None:
+MINIMAL_PERMIT_COLS = {
+    "api_number", "permit_number", "operator_name", "lease_name",
+    "county_code", "latitude", "longitude", "permit_type", "status",
+    "filed_date", "approved_date",
+}
+
+
+def _missing_table(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "not find" in message
+        or "does not exist" in message
+        or "(404)" in message
+        or " 404" in message
+    )
+
+
+def _missing_column(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "column" in message and (
+        "does not exist" in message or "not find" in message or "42703" in message
+    )
+
+
+def wipe_table(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    table: str,
+) -> None:
     try:
-        # Delete every row. Using a non-zero id filter to satisfy the
-        # PostgREST safety check that requires a where clause.
-        client.table(table).delete().gt("id", -1).execute()
-        print(f"  wiped {table}")
+        wiped = truncate_table(client, base, table, headers)
+        print(f"  wiped {table} (max id {wiped})")
     except Exception as exc:
-        message = str(exc).lower()
-        if "not find" in message or "does not exist" in message:
+        if _missing_table(exc):
             print(f"  {table} does not exist yet — nothing to wipe")
             return
         raise
 
 
-def existing_api_map(client: Client, table: str) -> dict[str, int]:
+def existing_api_map(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    table: str,
+) -> dict[str, int]:
+    try:
+        page = paginate_rows(client, base, table, headers, select="id,api_number")
+    except Exception as exc:
+        if _missing_table(exc):
+            return {}
+        raise
     existing: dict[str, int] = {}
-    last_id = 0
-    while True:
-        try:
-            result = (
-                client.table(table)
-                .select("id, api_number")
-                .gt("id", last_id)
-                .order("id", desc=False)
-                .limit(1000)
-                .execute()
-            )
-        except Exception as exc:
-            message = str(exc).lower()
-            if "not find" in message or "does not exist" in message:
-                return {}
-            raise
-        page = result.data or []
-        if not page:
-            break
-        for row in page:
-            api = normalize_api(row.get("api_number"))
-            if api:
-                existing.setdefault(api, row["id"])
-        last_id = page[-1]["id"]
-        if len(page) < 1000:
-            break
+    for row in page:
+        api = normalize_api(row.get("api_number"))
+        if api:
+            existing.setdefault(api, int(row["id"]))
     return existing
 
 
-def chunked(items: list[dict[str, Any]], size: int) -> list[list[dict[str, Any]]]:
-    return [items[i : i + size] for i in range(0, len(items), size)]
+def _minimal_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in row.items() if k in MINIMAL_PERMIT_COLS}
 
 
 # --- Per-county process -----------------------------------------------
 
-def process_county(client: Client, county: str, args: argparse.Namespace,
-                   ewa_lookup_by_county: dict[str, dict[str, dict[str, Any]]]) -> None:
+def process_county(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    county: str,
+    args: argparse.Namespace,
+    ewa_lookup_by_county: dict[str, dict[str, dict[str, Any]]],
+) -> None:
     fips = COUNTY_FIPS.get(county)
     if not fips:
         raise ValueError(f"Unknown county '{county}'; add its FIPS to COUNTY_FIPS.")
@@ -448,11 +488,11 @@ def process_county(client: Client, county: str, args: argparse.Namespace,
     print(f"\n=== {county} (FIPS {fips}) → {table} ===")
 
     if args.wipe and not args.dry_run:
-        wipe_table(client, table)
+        wipe_table(client, base, headers, table)
 
     # Primary source: RRC wells shapefile filtered by SYMNUM
     try:
-        wells_zip = ensure_wells_zip(county, fips, client, data_dir)
+        wells_zip = ensure_wells_zip(county, fips, client, base, headers, data_dir)
     except Exception as exc:
         print(f"  wells zip download failed: {exc}")
         return
@@ -481,7 +521,7 @@ def process_county(client: Client, county: str, args: argparse.Namespace,
 
     # Upsert on api_number when we have one; blind insert when we
     # don't (rare — pre-1970 wells sometimes lack an API).
-    existing = {} if args.wipe else existing_api_map(client, table)
+    existing = {} if args.wipe else existing_api_map(client, base, headers, table)
     if existing:
         print(f"  existing rows in {table}: {len(existing)}")
 
@@ -497,63 +537,55 @@ def process_county(client: Client, county: str, args: argparse.Namespace,
     print(f"  insert: {len(to_insert)}   update: {len(to_update)}")
 
     inserted = 0
-    for batch in chunked(to_insert, BATCH_SIZE):
+    if to_insert:
         try:
-            client.table(table).insert(batch).execute()
-            inserted += len(batch)
+            inserted = insert_rows(client, base, table, headers, to_insert, batch_size=BATCH_SIZE)
         except Exception as exc:
-            message = str(exc).lower()
-            if "not find" in message or "does not exist" in message:
+            if _missing_table(exc):
                 print(f"  {table} does not exist yet — skip (apply migration first).")
                 return
-            # A column-missing error means the table was created before
-            # Ticket 1.3 added spud_date / completion_date. Retry with
-            # the minimum column set so we still land the row.
-            if "column" in message and ("does not exist" in message or "not find" in message):
+            if _missing_column(exc):
                 print(f"  column error, retrying with minimum column set: {exc}")
-                minimal = [
-                    {k: v for k, v in r.items()
-                     if k in {"api_number", "permit_number", "operator_name",
-                              "lease_name", "county_code", "latitude", "longitude",
-                              "permit_type", "status", "filed_date", "approved_date"}}
-                    for r in batch
-                ]
-                client.table(table).insert(minimal).execute()
-                inserted += len(minimal)
-                continue
-            raise
-    if to_insert:
+                inserted = insert_rows(
+                    client, base, table, headers,
+                    [_minimal_row(r) for r in to_insert],
+                    batch_size=BATCH_SIZE,
+                )
+            else:
+                raise
         print(f"  inserted {inserted}")
 
     updated = 0
     for entry in to_update:
-        row_id = entry.pop("id")
+        row_id = int(entry.pop("id"))
         try:
-            client.table(table).update(entry).eq("id", row_id).execute()
+            patch_row(client, base, table, headers, row_id, entry)
         except Exception as exc:
-            message = str(exc).lower()
-            if "column" in message and ("does not exist" in message or "not find" in message):
-                minimal = {k: v for k, v in entry.items()
-                           if k in {"api_number", "permit_number", "operator_name",
-                                    "lease_name", "county_code", "latitude", "longitude",
-                                    "permit_type", "status", "filed_date", "approved_date"}}
-                client.table(table).update(minimal).eq("id", row_id).execute()
+            if _missing_column(exc):
+                patch_row(client, base, table, headers, row_id, _minimal_row(entry))
             else:
                 raise
         updated += 1
+        if updated == 1 or updated % 200 == 0 or updated == len(to_update):
+            print(f"  updated {updated}/{len(to_update)}", flush=True)
     if to_update:
         print(f"  updated {updated}")
 
 
-def load_all_ewa_lookups(client: Client, args: argparse.Namespace,
-                          counties: list[str]) -> dict[str, dict[str, dict[str, Any]]]:
+def load_all_ewa_lookups(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    args: argparse.Namespace,
+    counties: list[str],
+) -> dict[str, dict[str, dict[str, Any]]]:
     """Build one EWA lookup per requested county in a single pass over
     the giant CSV. Returns {UPPER_COUNTY_NAME: {api: {...}}}.
     """
     if args.skip_ewa or args.wells_only:
         return {}
     try:
-        ewa_path = download_ewa(client, args.ewa_key, Path(args.data_dir))
+        ewa_path = download_ewa(client, base, headers, args.ewa_key, Path(args.data_dir))
     except Exception as exc:
         print(f"EWA download failed ({exc}); falling back to unenriched rows")
         return {}
@@ -593,21 +625,22 @@ def main() -> None:
     args = parse_args()
     supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
     supabase_key = require_env("SUPABASE_SERVICE_ROLE_KEY", ("SUPABASE_KEY",))
-    client = create_client(supabase_url, supabase_key)
+    base = rest_base(supabase_url)
+    headers = rest_headers(supabase_key)
 
     counties = [c.strip() for c in args.county.split(",") if c.strip()]
     if not counties:
         print("No counties provided.")
         sys.exit(1)
 
-    ewa_lookups = load_all_ewa_lookups(client, args, counties)
-
-    for county in counties:
-        try:
-            process_county(client, county, args, ewa_lookups)
-        except Exception as exc:
-            print(f"!! {county} failed: {exc}", file=sys.stderr)
-            raise
+    with httpx.Client(timeout=180.0) as client:
+        ewa_lookups = load_all_ewa_lookups(client, base, headers, args, counties)
+        for county in counties:
+            try:
+                process_county(client, base, headers, county, args, ewa_lookups)
+            except Exception as exc:
+                print(f"!! {county} failed: {exc}", file=sys.stderr)
+                raise
 
 
 if __name__ == "__main__":

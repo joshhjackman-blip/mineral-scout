@@ -186,3 +186,128 @@ def insert_rows(
                 flush=True,
             )
     return written
+
+
+def download_storage_object(
+    client: httpx.Client,
+    base: str,
+    headers: dict[str, str],
+    bucket: str,
+    key: str,
+    dest: Any,
+) -> int:
+    """Download a Storage object. ``dest`` is a pathlib Path."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    encoded = key.replace(" ", "%20")
+    response = _request(
+        client,
+        "GET",
+        f"{base}/storage/v1/object/{bucket}/{encoded}",
+        headers={"apikey": headers["apikey"], "Authorization": headers["Authorization"]},
+    )
+    if response.status_code >= 300:
+        raise RuntimeError(
+            f"storage GET {bucket}/{key} failed "
+            f"({response.status_code}): {response.text[:300]}"
+        )
+    dest.write_bytes(response.content)
+    return len(response.content)
+
+
+def paginate_rows(
+    client: httpx.Client,
+    base: str,
+    table: str,
+    headers: dict[str, str],
+    *,
+    select: str,
+    extra: dict[str, str] | None = None,
+    page_size: int = 1000,
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    last_id = 0
+    sel = select if "id" in {p.strip() for p in select.split(",")} else f"id,{select}"
+    while True:
+        params: dict[str, str] = {
+            "select": sel,
+            "order": "id.asc",
+            "limit": str(page_size),
+            "id": f"gt.{last_id}",
+        }
+        if extra:
+            params.update(extra)
+        response = _request(
+            client,
+            "GET",
+            f"{base}/rest/v1/{table}",
+            params=params,
+            headers={**headers, "Prefer": "return=representation"},
+        )
+        if response.status_code >= 300:
+            raise RuntimeError(
+                f"page {table} failed ({response.status_code}): {response.text[:400]}"
+            )
+        page = response.json()
+        if not isinstance(page, list) or not page:
+            break
+        out.extend(page)
+        last_id = int(page[-1]["id"])
+        if len(page) < page_size:
+            break
+    return out
+
+
+def patch_row(
+    client: httpx.Client,
+    base: str,
+    table: str,
+    headers: dict[str, str],
+    row_id: int,
+    payload: dict[str, Any],
+) -> None:
+    response = _request(
+        client,
+        "PATCH",
+        f"{base}/rest/v1/{table}",
+        params={"id": f"eq.{row_id}"},
+        headers=headers,
+        json=jsonable(payload),
+    )
+    if response.status_code >= 300:
+        raise RuntimeError(
+            f"patch {table} id={row_id} failed "
+            f"({response.status_code}): {response.text[:400]}"
+        )
+
+
+def patch_ids(
+    client: httpx.Client,
+    base: str,
+    table: str,
+    headers: dict[str, str],
+    ids: list[int],
+    payload: dict[str, Any],
+    *,
+    batch_size: int = 200,
+) -> int:
+    if not ids:
+        return 0
+    written = 0
+    body = jsonable(payload)
+    for index in range(0, len(ids), batch_size):
+        chunk = ids[index : index + batch_size]
+        id_list = ",".join(str(i) for i in chunk)
+        response = _request(
+            client,
+            "PATCH",
+            f"{base}/rest/v1/{table}",
+            params={"id": f"in.({id_list})"},
+            headers=headers,
+            json=body,
+        )
+        if response.status_code >= 300:
+            raise RuntimeError(
+                f"patch {table} failed ({response.status_code}): {response.text[:400]}"
+            )
+        written += len(chunk)
+    return written
