@@ -48,6 +48,12 @@ import { useActivityRefreshTick } from '@/lib/use-activity-refresh'
 import { estimateGrossAcres } from '@/lib/tract-math'
 import { waitingOnNumber, waitingOnNumberCopy } from '@/lib/phone-activity'
 import { isInjectionWell, omitInjectionWellFeatures } from '@/lib/well-kind'
+import { normalizeApi } from '@/lib/rrc-ids'
+import {
+  pairedSectionsFromLeases,
+  parseGridKey,
+  sameBlockTownship,
+} from '@/lib/section-pair'
 const MineralMap = dynamic(() => import('./components/Map'), { ssr: false })
 
 // Single interactive product tour for newcomers. Steps anchor to
@@ -175,6 +181,7 @@ type TractSelection = {
   Surv_Sect?: string
   TEXTSTRING?: string
   LEVEL3_SUR?: string
+  LEVEL2_BLO?: string
   NAME?: string
   DESC_?: string
   geometry?: GeoJSON.Geometry
@@ -1689,6 +1696,33 @@ export default function Home() {
     tractWellsLoaded,
   ])
 
+  const pairedOwnerTract = useMemo(() => {
+    if (!selected) return null
+    const homeSection = String(
+      selected.surv_sect ?? selected.Surv_Sect ?? selected.level3_sur ?? selected.LEVEL3_SUR ?? '',
+    ).trim()
+    const homeBlock = String(selected.block ?? selected.Block ?? selected.LEVEL2_BLO ?? '').trim()
+    const grid = parseGridKey(String(selected.abstract_label ?? selected.ABSTRACT_L ?? ''))
+    const section = homeSection || grid?.section || ''
+    const block = homeBlock || (grid ? `${grid.block} ${grid.township}` : '')
+    if (!section || !block) return null
+    const others = pairedSectionsFromLeases(
+      visiblePermits.map((permit) => String(permit.lease_name ?? '')),
+      section,
+    )
+    if (others.length === 0) return null
+    const matches = tracts.filter((tract) => {
+      const tractSection = String(tract.surv_sect || tract.level3_sur || '').replace(/^0+/, '').trim()
+      return (
+        others.includes(tractSection) &&
+        sameBlockTownship(tract.block, block) &&
+        tract.owner_count > 0
+      )
+    })
+    matches.sort((a, b) => b.owner_count - a.owner_count)
+    return matches[0] ?? null
+  }, [selected, visiblePermits, tracts])
+
   const embeddedOwners = useMemo(
     () => parseOwners(selected?.owners_json ?? ''),
     [selected]
@@ -1702,13 +1736,31 @@ export default function Home() {
   // (Howard/Martin) keep using it, so their behavior is unchanged.
   const [dbTractOwners, setDbTractOwners] = useState<TractOwner[]>([])
   const [dbOwnersLoading, setDbOwnersLoading] = useState(false)
+  const [ownerListSource, setOwnerListSource] = useState<string>('')
+  const tractWellApis = useMemo(() => {
+    const apis = new Set<string>()
+    for (const well of tractWells) {
+      const api = normalizeApi(well.api_number)
+      if (api) apis.add(api)
+    }
+    for (const permit of visiblePermits) {
+      const api = normalizeApi(permit.api_number)
+      if (api) apis.add(api)
+    }
+    return Array.from(apis)
+  }, [tractWells, visiblePermits])
   useEffect(() => {
     let cancelled = false
     setDbTractOwners([])
+    setOwnerListSource('')
     setOwnerNameQuery('')
     const abstract = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
       .replace(/^A-\s*/i, '')
       .trim()
+    const block = String(selected?.block ?? selected?.Block ?? selected?.LEVEL2_BLO ?? '').trim()
+    const section = String(
+      selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.level3_sur ?? selected?.LEVEL3_SUR ?? '',
+    ).trim()
     // Always load the complete owner list from the DB (the source of truth,
     // uncapped) for the selected tract — embedded owners_json is only a
     // fast-loading preview and may be capped or missing recovered owners.
@@ -1719,12 +1771,18 @@ export default function Home() {
     setDbOwnersLoading(true)
     ;(async () => {
       try {
-        const res = await fetch(
-          `/api/tract-owners?county=${countyRef.current.id}&abstract=${encodeURIComponent(abstract)}`,
-        )
+        const params = new URLSearchParams({
+          county: countyRef.current.id,
+          abstract,
+        })
+        if (block) params.set('block', block)
+        if (section) params.set('section', section)
+        if (tractWellApis.length > 0) params.set('apis', tractWellApis.join(','))
+        const res = await fetch(`/api/tract-owners?${params.toString()}`)
         const json = await res.json()
         if (cancelled) return
         const rows = (json?.data?.owners ?? []) as Array<Record<string, unknown>>
+        setOwnerListSource(String(json?.data?.source ?? ''))
         setDbTractOwners(
           rows.map((r, idx): TractOwner => ({
             id: (r.id as string | undefined) ?? String(idx),
@@ -1753,7 +1811,7 @@ export default function Home() {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, embeddedOwners])
+  }, [selected, embeddedOwners, tractWellApis.join(',')])
 
   // Merge the embedded preview with the complete DB list (deduped by owner +
   // lease), so nothing is lost and recovered/uncapped owners are included.
@@ -4329,6 +4387,21 @@ export default function Home() {
                   }}
                 >
                   All owners in tract ({dbOwnersLoading ? 'loading…' : displayedOwners.length})
+                  {ownerListSource === 'well_lease' && !dbOwnersLoading && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        fontWeight: 500,
+                        letterSpacing: 0,
+                        textTransform: 'none',
+                        color: 'var(--mm-chrome-muted)',
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Matched through the RRC lease on wells in this tract. The county roll does not list them on this section.
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                   {hiddenOwnerCount > 0 && (
@@ -4682,24 +4755,57 @@ export default function Home() {
                   <div style={{ padding: '14px 16px', fontSize: 12, color: 'var(--mm-chrome-muted)', lineHeight: 1.55 }}>
                     {(() => {
                       const q = ownerNameQuery.trim()
-                      // Search returned nothing but the tract does have owners.
                       if (q && cleanOwnersList.length > 0) {
                         return `No owners on this tract match “${q}”.`
                       }
                       const label = String(selected?.abstract_label ?? selected?.ABSTRACT_L ?? '')
-                      // West Texas Block/Section grid (e.g. "B10--S5") = University /
-                      // State survey lands: mineral title is retained by the State of
-                      // Texas / University Lands, so no private royalty owners appear
-                      // in the county appraisal roll even where wells are producing.
                       const isUniversityBlock = /^B\d+--S/i.test(label)
                       const hasWells = tractWells.length > 0
                       if (isUniversityBlock) {
                         return hasWells
-                          ? 'No private mineral owners are on file for this University / State survey tract. The wells here are held under a state lease — mineral title is retained by the State of Texas / University Lands, so no private royalty owners appear in the county roll.'
+                          ? 'No private mineral owners are on file for this University / State survey tract. The wells here are held under a state lease. Mineral title is retained by the State of Texas / University Lands, so no private royalty owners appear in the county roll.'
                           : 'No private mineral owners are on file for this University / State survey tract. Mineral title is typically retained by the State of Texas / University Lands.'
                       }
+                      if (pairedOwnerTract) {
+                        const pairSec = String(pairedOwnerTract.surv_sect || pairedOwnerTract.level3_sur || '').trim()
+                        const pairLabel = pairedOwnerTract.abstract_label
+                        const pairCount = pairedOwnerTract.owner_count
+                        return (
+                          <div>
+                            <div>
+                              The county mineral roll has no owners on this section. A two-section permit names both ends of the lateral, and the royalty owners sit on Section {pairSec} ({pairLabel}).
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelected(toTractSelection(pairedOwnerTract))
+                                const bare = String(pairedOwnerTract.abstract_label ?? '')
+                                  .replace(/^A-\s*/i, '')
+                                  .trim()
+                                  .toUpperCase()
+                                const geom = tractGeometryByAbstract[bare]
+                                if (geom) setSelectedTractGeometry(geom)
+                              }}
+                              style={{
+                                marginTop: 10,
+                                border: '1px solid #93C5FD',
+                                background: '#EFF6FF',
+                                color: '#1D4ED8',
+                                borderRadius: 6,
+                                padding: '7px 10px',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: 'pointer',
+                                fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                              }}
+                            >
+                              Open Section {pairSec} · {pairCount.toLocaleString()} owners
+                            </button>
+                          </div>
+                        )
+                      }
                       return hasWells
-                        ? 'No mineral owners are on file for this tract in the county appraisal roll, though wells are present here — the acreage is often held under lease.'
+                        ? 'No mineral owners are on file for this tract in the county appraisal roll. Wells can still show here when laterals or filings cross in from a neighboring section.'
                         : 'No mineral owners are on file for this tract in the county appraisal roll.'
                     })()}
                   </div>

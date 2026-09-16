@@ -10,6 +10,12 @@ import {
   sortOwnersByAcreage,
   type TractOwnerRow,
 } from '@/lib/tract-owners'
+import { blockVariants, parseGridKey } from '@/lib/section-pair'
+import {
+  apiLookupVariants,
+  leaseLookupVariants,
+  normalizeApi,
+} from '@/lib/rrc-ids'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,6 +38,8 @@ function isMissingColumnError(msg: string): boolean {
 async function loadOwnersFromDb(
   countyId: CountyKey,
   abstract: string,
+  block?: string,
+  section?: string,
 ): Promise<{ owners: TractOwnerRow[]; error: string | null }> {
   const cfg = COUNTIES[countyId]
   if (!cfg) return { owners: [], error: 'Unknown county' }
@@ -72,6 +80,94 @@ async function loadOwnersFromDb(
       .order('id', { ascending: true })
       .range(from, from + PAGE_SIZE - 1)
     if (page.error) {
+      return { owners: rows, error: page.error.message }
+    }
+    const batch = (page.data ?? []) as unknown as TractOwnerRow[]
+    rows.push(...batch)
+    if (batch.length < PAGE_SIZE) break
+  }
+
+  // Grid-key tracts (B37-T3S-S36) have no CAD abstract number. Owners
+  // for that cell are stored under block + section when the roll parsed.
+  if (rows.length === 0) {
+    const grid = parseGridKey(abstract)
+    const blockRaw = block || (grid ? `${grid.block} ${grid.township}` : '')
+    const sectionRaw = section || grid?.section || ''
+    const blocks = blockVariants(blockRaw)
+    const sec = String(sectionRaw).trim()
+    if (blocks.length > 0 && sec) {
+      for (let from = 0; from < MAX_OWNERS; from += PAGE_SIZE) {
+        const page = await admin
+          .from(cfg.ownershipTable)
+          .select(cols)
+          .in('block', blocks)
+          .eq('section', sec)
+          .order('acreage', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+        if (page.error) {
+          if (isMissingColumnError(page.error.message)) break
+          return { owners: rows, error: page.error.message }
+        }
+        const batch = (page.data ?? []) as unknown as TractOwnerRow[]
+        rows.push(...batch)
+        if (batch.length < PAGE_SIZE) break
+      }
+    }
+  }
+
+  return { owners: sortOwnersByAcreage(rows), error: null }
+}
+
+/** API number -> wells.rrc_lease_id -> owners on that RRC lease. */
+async function loadOwnersFromWellApis(
+  countyId: CountyKey,
+  apis: string[],
+  cols: string,
+): Promise<{ owners: TractOwnerRow[]; error: string | null }> {
+  const cfg = COUNTIES[countyId]
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!cfg || !url || !key || apis.length === 0) {
+    return { owners: [], error: null }
+  }
+
+  const admin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+
+  const apiVariants = Array.from(new Set(apis.flatMap((api) => apiLookupVariants(api))))
+  if (apiVariants.length === 0) return { owners: [], error: null }
+
+  const wells = await admin
+    .from(cfg.wellsTable)
+    .select('api_number, rrc_lease_id')
+    .in('api_number', apiVariants)
+    .limit(200)
+  if (wells.error) {
+    return { owners: [], error: wells.error.message }
+  }
+
+  const leaseIds = Array.from(
+    new Set(
+      (wells.data ?? [])
+        .flatMap((row) => leaseLookupVariants(row.rrc_lease_id))
+        .filter(Boolean),
+    ),
+  )
+  if (leaseIds.length === 0) return { owners: [], error: null }
+
+  const rows: TractOwnerRow[] = []
+  for (let from = 0; from < MAX_OWNERS; from += PAGE_SIZE) {
+    const page = await admin
+      .from(cfg.ownershipTable)
+      .select(cols)
+      .in('rrc_lease_id', leaseIds)
+      .order('acreage', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (page.error) {
+      if (isMissingColumnError(page.error.message)) break
       return { owners: rows, error: page.error.message }
     }
     const batch = (page.data ?? []) as unknown as TractOwnerRow[]
@@ -137,6 +233,12 @@ export async function GET(req: NextRequest) {
     .trim()
     .toLowerCase() as CountyKey
   const abstract = String(req.nextUrl.searchParams.get('abstract') ?? '').trim()
+  const block = String(req.nextUrl.searchParams.get('block') ?? '').trim()
+  const section = String(req.nextUrl.searchParams.get('section') ?? '').trim()
+  const apis = String(req.nextUrl.searchParams.get('apis') ?? '')
+    .split(',')
+    .map((api) => normalizeApi(api))
+    .filter(Boolean)
 
   if (!county || !COUNTIES[county]) {
     return NextResponse.json(
@@ -152,12 +254,12 @@ export async function GET(req: NextRequest) {
   }
 
   const bare = bareAbstract(abstract)
-  let source: 'db' | 'geojson' | 'empty' = 'empty'
+  let source: 'db' | 'geojson' | 'well_lease' | 'empty' = 'empty'
   let owners: TractOwnerRow[] = []
   let dbError: string | null = null
 
   try {
-    const db = await loadOwnersFromDb(county, abstract)
+    const db = await loadOwnersFromDb(county, abstract, block, section)
     dbError = db.error
     if (db.owners.length > 0) {
       owners = db.owners
@@ -184,6 +286,20 @@ export async function GET(req: NextRequest) {
         },
         { status: 500 },
       )
+    }
+  }
+
+  if (owners.length === 0 && apis.length > 0) {
+    try {
+      const fromWells = await loadOwnersFromWellApis(county, apis, HOWARD_COLS)
+      if (fromWells.error) dbError = dbError ? `${dbError}; ${fromWells.error}` : fromWells.error
+      if (fromWells.owners.length > 0) {
+        owners = fromWells.owners
+        source = 'well_lease'
+      }
+    } catch (err) {
+      const wellErr = err instanceof Error ? err.message : 'Well-lease lookup failed'
+      dbError = dbError ? `${dbError}; ${wellErr}` : wellErr
     }
   }
 
