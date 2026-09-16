@@ -22,12 +22,32 @@ import re
 from pathlib import Path
 from typing import Any
 
-_TOWNSHIP_RE = re.compile(r"\bT\d+[NS]\b", re.IGNORECASE)
+_TOWNSHIP_RE = re.compile(r"\b(T\d+[NS])\b", re.IGNORECASE)
+# Reeves T&P writes the township before the block number: "BLK T2S 57 SEC 46".
+_BLK_TWN_NUM_RE = re.compile(
+    r"\bBLK\s+(T\d+[NS])\s+(\d{1,4}[A-Z]?)\b",
+    re.IGNORECASE,
+)
+# Midland / Howard / Reeves: "BLK 35", "BLK 55-5", "BLK C-16".
+_BLK_NUM_RE = re.compile(
+    r"\bBLK\s+([0-9]{1,4}(?:[A-Z](?![A-Z]))?|[A-Z]-\d{1,3}|[A-Z]{1,2}(?![A-Z]))"
+    r"(?:-(\d{1,2}))?",
+    re.IGNORECASE,
+)
+# Legacy single-token capture (Howard "BLK 35").
 _BLOCK_RE = re.compile(r"\bBLK\s*([A-Z0-9]+)", re.IGNORECASE)
-_SECTION_RE = re.compile(r"\bSEC\s*([A-Z0-9]+)", re.IGNORECASE)
-_ABSTRACT_RE = re.compile(r"\bA[-\s]?([A-Z0-9]+)\b", re.IGNORECASE)
+_SECTION_RE = re.compile(r"\bSEC(?:TION|T)?\.?\s*([0-9]+)(?![0-9])", re.IGNORECASE)
+# "AB 2210" / "A-1013" / "A 654". Do not capture the B of AB as the abstract.
+_ABSTRACT_RE = re.compile(r"\bA(?:B)?[-\s]?([0-9]{1,5}[A-Z]?)\b", re.IGNORECASE)
+# Pecos roll: "GC&SF B-119 S-18" (block / section, no BLK or SEC words).
+_B_DASH_RE = re.compile(r"(?<![A-Z])B-(\d{1,4})\b", re.IGNORECASE)
+_S_DASH_RE = re.compile(r"(?<![A-Z])S-(\d{1,4})\b", re.IGNORECASE)
 _CSL_RE = re.compile(r"\b(\w+)\s+CSL\b", re.IGNORECASE)
 _LGE_RE = re.compile(r"\bLGE\s+(\d+)", re.IGNORECASE)
+_BLO_SPLIT_RE = re.compile(
+    r"^(\d{1,4}[A-Z]?|[A-Z]-\d{1,3}|[A-Z]{1,2})\s+(T\d+[NS]?)$",
+    re.IGNORECASE,
+)
 
 
 def clean_str(value: Any) -> str | None:
@@ -55,37 +75,89 @@ def bare_abstract(value: Any) -> str | None:
     return text
 
 
+def township_variants(twn: str, *, allow_empty: bool = False) -> list[str]:
+    """T2S and CAD 'T2' are the same T&P township. Do not flip N/S."""
+    t = (twn or "").strip().upper()
+    if not t:
+        return [""]
+    out = [t]
+    m = re.fullmatch(r"T(\d+)([NS]?)", t)
+    if m:
+        num, hemi = m.group(1), m.group(2)
+        out.append(f"T{num}")
+        if hemi:
+            out.append(f"T{num}{hemi}")
+    if allow_empty:
+        out.append("")
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for v in out:
+        if v not in seen:
+            seen.add(v)
+            uniq.append(v)
+    return uniq
+
+
+def grid_from_text(survey_text: str) -> tuple[str, str, str]:
+    """Return (block_num, township, section) from a roll or CAD legal string."""
+    upper = (survey_text or "").upper()
+    block = ""
+    twn = ""
+    sec = ""
+    m = _BLK_TWN_NUM_RE.search(upper)
+    if m:
+        twn = m.group(1).upper()
+        block = m.group(2).upper()
+    else:
+        m = _BLK_NUM_RE.search(upper)
+        if m:
+            block = m.group(1).upper()
+            if m.group(2):
+                twn = f"T{m.group(2)}"
+    if not twn:
+        tm = _TOWNSHIP_RE.search(upper)
+        if tm:
+            twn = tm.group(1).upper()
+    sm = _SECTION_RE.search(upper)
+    if sm:
+        sec = sm.group(1).upper()
+    if not block or not sec:
+        bm = list(_B_DASH_RE.finditer(upper))
+        sm2 = list(_S_DASH_RE.finditer(upper))
+        if bm:
+            block = block or bm[-1].group(1)
+        if sm2:
+            sec = sec or sm2[-1].group(1)
+    return block, twn, sec
+
+
 def parse_legal_description(survey_text: str) -> dict[str, str | None]:
     text = clean_str(survey_text)
     if not text:
         return {"abstract": None, "block": None, "section": None, "survey": None}
 
     upper = text.upper()
-    township_match = _TOWNSHIP_RE.search(upper)
-    block_match = _BLOCK_RE.search(upper)
-    section_match = _SECTION_RE.search(upper)
     abstract_match = _ABSTRACT_RE.search(upper)
-
     abstract = abstract_match.group(1) if abstract_match else None
-    if block_match:
-        block_num = block_match.group(1)
-        if township_match:
-            block_value = f"{block_num} {township_match.group(0).upper()}"
-        else:
-            block_value = block_num
+    block_num, twn, sec = grid_from_text(upper)
+    if block_num and twn:
+        block_value = f"{block_num} {twn}"
     else:
-        block_value = None
-    section_value = section_match.group(1) if section_match else None
+        block_value = block_num or None
 
     cleaned = _ABSTRACT_RE.sub("", upper)
     cleaned = _SECTION_RE.sub("", cleaned)
+    cleaned = _BLK_TWN_NUM_RE.sub("", cleaned)
+    cleaned = _BLK_NUM_RE.sub("", cleaned)
     cleaned = _BLOCK_RE.sub("", cleaned)
     cleaned = _TOWNSHIP_RE.sub("", cleaned)
+    cleaned = _B_DASH_RE.sub("", cleaned)
+    cleaned = _S_DASH_RE.sub("", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -·")
     return {
         "abstract": abstract,
         "block": block_value,
-        "section": section_value,
+        "section": sec or None,
         "survey": cleaned or None,
     }
 
@@ -133,10 +205,12 @@ def build_abstract_lookups(abstracts_path: Path) -> dict[str, dict]:
         if not sur_raw:
             sur_raw = (clean_str(row.get("Surv_Name")) or "").upper()
 
-        m = re.match(r"^(\w+)\s+(T\d+[NS])$", blo)
-        if m and sec:
-            tp[(m.group(1), m.group(2), sec)] = codes[code]
-        elif blo and blo.replace(" ", "").isalnum() and sec:
+        blo_m = _BLO_SPLIT_RE.match(blo)
+        if blo_m and sec:
+            blk_n, twn_n = blo_m.group(1).upper(), blo_m.group(2).upper()
+            for twn_v in township_variants(twn_n, allow_empty=True):
+                tp.setdefault((blk_n, twn_v, sec), codes[code])
+        elif blo and blo.replace(" ", "").replace("-", "").isalnum() and sec:
             # Block without township (Howard sometimes stores bare "27")
             tp.setdefault((blo.split()[0], "", sec), codes[code])
 
@@ -158,18 +232,13 @@ def lookup_abstract_via_shapefile(survey_text: str, lookups: dict[str, dict]) ->
     def _bare(label: str) -> str:
         return re.sub(r"^A-", "", label.strip(), flags=re.IGNORECASE)
 
-    m_blk = _BLOCK_RE.search(upper)
-    m_sec = _SECTION_RE.search(upper)
-    m_twn = _TOWNSHIP_RE.search(upper)
-    if m_blk and m_sec:
-        twn = m_twn.group(0).upper() if m_twn else ""
-        key = (m_blk.group(1), twn, m_sec.group(1))
-        if key in lookups.get("tp", {}):
-            return _bare(lookups["tp"][key])
-        if twn:
-            key2 = (m_blk.group(1), "", m_sec.group(1))
-            if key2 in lookups.get("tp", {}):
-                return _bare(lookups["tp"][key2])
+    block, twn, sec = grid_from_text(upper)
+    if block and sec:
+        tp = lookups.get("tp", {})
+        for twn_v in township_variants(twn, allow_empty=not bool(twn)):
+            key = (block, twn_v, sec)
+            if key in tp:
+                return _bare(tp[key])
 
     m_csl = _CSL_RE.search(upper)
     m_lge = _LGE_RE.search(upper)
@@ -269,8 +338,14 @@ class AbstractMatcher:
 
     def resolve(self, row: dict[str, Any]) -> tuple[str | None, str]:
         """Return (bare_abstract, method)."""
-        survey = clean_str(row.get("survey")) or ""
+        rr = row.get("raw_record") if isinstance(row.get("raw_record"), dict) else {}
+        survey = clean_str(row.get("survey")) or clean_str(rr.get("survey")) or ""
+        if rr.get("survey") and len(str(rr.get("survey"))) > len(survey):
+            survey = clean_str(rr.get("survey")) or survey
         abstract = bare_abstract(row.get("abstract"))
+        # "AB 2210" was ingested as abstract "B" — ignore one-letter ghosts.
+        if abstract and len(abstract) <= 2 and abstract.isalpha():
+            abstract = None
         block = clean_str(row.get("block")) or ""
         section = clean_str(row.get("section")) or ""
 
