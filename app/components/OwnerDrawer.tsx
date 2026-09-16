@@ -17,6 +17,8 @@ import {
   netMineralAcres,
 } from '@/lib/tract-math'
 import LeadPhones from '@/app/components/LeadPhones'
+import CallLog, { type CallLogDraft } from '@/app/components/CallLog'
+import type { CallLogRow } from '@/lib/call-logs'
 import type { CallOutcome, PhoneActivityMap } from '@/lib/phone-activity'
 
 // A CRM-style detail panel for a mineral owner. Renders as an inline
@@ -78,6 +80,8 @@ export const LEAD_STATUSES: { key: string; label: string }[] = [
   { key: 'interested', label: 'Interested' },
   { key: 'not_interested', label: 'Not interested' },
   { key: 'offer_sent', label: 'Offer sent' },
+  { key: 'offer_declined', label: 'Offer declined' },
+  { key: 'already_sold', label: 'Already sold' },
   { key: 'closed_won', label: 'Closed won' },
   { key: 'closed_lost', label: 'Closed lost' },
   { key: 'call_back', label: 'Call back later' },
@@ -217,6 +221,13 @@ export type OwnerDrawerProps = {
     phone: string,
     outcome: CallOutcome,
   ) => Promise<void>
+  callLogs?: CallLogRow[]
+  callLogSaving?: boolean
+  callLogError?: string | null
+  onAddCallLog?: (
+    owner: OwnerLike,
+    draft: CallLogDraft,
+  ) => Promise<{ success: boolean; error?: string }>
 }
 
 const ROYALTY_ESTIMATE_BOE_PRICE = 65
@@ -763,6 +774,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     phoneActivity = {},
     connectedPhone = null,
     onLogCallOutcome,
+    callLogs = [],
+    callLogSaving = false,
+    callLogError = null,
+    onAddCallLog,
   } = props
 
   const county = COUNTIES[countyId]
@@ -1304,6 +1319,18 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               if (!result.success) setActionError(result.error || 'Failed to set status')
             }}
           />
+        )}
+        {crmMode && onAddCallLog && (
+          <div className="mb-5">
+            <CallLog
+              key={owner.id}
+              rows={callLogs}
+              currentDesignation={dealStatus}
+              saving={callLogSaving}
+              error={callLogError}
+              onAdd={(draft) => onAddCallLog(owner, draft)}
+            />
+          </div>
         )}
         {(crmMode || tab === 'overview') && (
           <OverviewPanel

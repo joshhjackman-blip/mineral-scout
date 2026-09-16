@@ -51,6 +51,8 @@ export const TAG_LABELS: Record<string, string> = {
   bad_lead: 'Bad Lead',
   skip_traced: 'Skip Traced',
   offer_sent: 'Offer Sent',
+  offer_declined: 'Offer Declined',
+  already_sold: 'Already Sold',
   closed: 'Closed',
   interested: 'Interested',
   closed_won: 'Closed Won',
@@ -75,6 +77,8 @@ export const CLOSED_OUT_TAGS = new Set([
   'closed_lost',
   'not_interested',
   'bad_lead',
+  'offer_declined',
+  'already_sold',
 ])
 
 const KNOWN_COUNTY_IDS = new Set<CountyKey>(Object.keys(COUNTIES) as CountyKey[])

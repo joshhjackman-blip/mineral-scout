@@ -1,3 +1,4 @@
+import type { CallLogRow } from '@/lib/call-logs'
 import type { Deal } from './crm-utils'
 
 /** Local-only sample rows so the dashboard can be previewed without auth. */
@@ -131,6 +132,29 @@ export const PREVIEW_DEALS: Deal[] = [
     updated_at: new Date(Date.now() - 1800000).toISOString(),
   },
 ]
+
+export const PREVIEW_CALL_LOGS: Record<string, CallLogRow[]> = {
+  'preview-5': [
+    {
+      id: 'preview-log-1',
+      called_at: new Date(Date.now() - 3600000).toISOString(),
+      designation: 'interested',
+      notes: 'Picked up. Wants a written offer before he talks numbers.',
+      outcome: 'connected',
+      phone_display: '4325550144',
+      called_by_name: 'Josh',
+    },
+    {
+      id: 'preview-log-2',
+      called_at: new Date(Date.now() - 86400000).toISOString(),
+      designation: null,
+      notes: null,
+      outcome: 'voicemail',
+      phone_display: '4325550188',
+      called_by_name: 'Josh',
+    },
+  ],
+}
 
 export const shouldLoadPreviewDeals = (): boolean => {
   if (process.env.NODE_ENV === 'production') return false
