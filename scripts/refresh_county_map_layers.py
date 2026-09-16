@@ -79,9 +79,9 @@ def main() -> None:
         if not wells_zip.exists():
             download_storage_object(f"well{cfg['fips']}.zip", wells_zip)
 
+        abstracts = ROOT / "data" / county / "Abstracts.shp"
         if county in REBUILD_TRACTS and not args.skip_tract_rebuild:
             src = download_tnris_parcels(county, cfg)
-            abstracts = ROOT / "data" / county / "Abstracts.shp"
             if src is not None:
                 cmd = [
                     sys.executable, "scripts/build_county_tracts.py",
@@ -90,14 +90,17 @@ def main() -> None:
                 if roll.exists():
                     cmd += ["--roll", str(roll)]
                 run(cmd)
-                if roll.exists() and abstracts.exists():
-                    run([
-                        sys.executable, "scripts/rematch_taxroll_to_map.py",
-                        "--county", county, "--skip-map-slim",
-                    ])
+
+        # Always rematch the roll onto Abstracts.shp so we never publish
+        # the empty git baseline (that wiped Reeves/Pecos owners once).
+        if roll.exists() and abstracts.exists():
+            run([
+                sys.executable, "scripts/rematch_taxroll_to_map.py",
+                "--county", county, "--skip-map-slim",
+            ])
 
         enriched = ROOT / "public" / f"{county}_parcels_enriched.geojson"
-        if not enriched.exists() or enriched.stat().st_size < 1_000_000:
+        if not enriched.exists() or enriched.stat().st_size < 10_000_000:
             download_map_data(f"{county}_parcels_enriched.geojson", enriched)
 
         if enriched.exists() and wells_zip.exists():

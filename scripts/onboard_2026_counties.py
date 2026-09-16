@@ -70,7 +70,10 @@ TNRIS_LP = (
 )
 RRC_WELLS_MFT = "https://mft.rrc.texas.gov/link/d551fb20-442e-4b67-84fa-ac3f23ecabb4"
 MFT_HOST = "https://mft.rrc.texas.gov"
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
 
 
 def run(cmd: list[str], dry: bool) -> None:
@@ -261,13 +264,17 @@ def download_tnris_parcels(county: str, cfg: dict[str, str]) -> Path | None:
     url = TNRIS_LP.format(state_fips=cfg["state_fips"])
     print(f"  TNRIS GET {url}", flush=True)
     r = curl([
-        "-L", "-f",
+        "-L",
         "-H", "Referer: https://data.geographic.texas.gov/",
         "-o", str(zpath),
+        "-w", "%{http_code}",
         url,
     ])
-    if r.returncode != 0 or not zpath.exists() or zpath.stat().st_size < 1000:
-        print(f"  TNRIS miss for {county}", flush=True)
+    code = r.stdout.decode().strip() if r and r.returncode == 0 else "ERR"
+    err = (r.stderr.decode(errors="ignore")[-200:] if r and r.stderr else "")
+    if r.returncode != 0 or not zpath.exists() or zpath.stat().st_size < 1000 or not str(code).startswith("2"):
+        print(f"  TNRIS miss for {county} (http={code} err={err})", flush=True)
+        zpath.unlink(missing_ok=True)
         return None
     with zipfile.ZipFile(zpath) as zf:
         zf.extractall(src_dir)
