@@ -58,10 +58,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
-import geopandas as gpd
+import httpx
 import shapely.geometry as sgeom
 from shapely.strtree import STRtree
-from supabase import Client, create_client
+from urllib.parse import urlparse
 
 PAGE_SIZE = 1000
 BUCKET_NAME = "Raw-Data"
@@ -128,14 +128,25 @@ def normalize_api(value: Any) -> str | None:
     return (digits.lstrip("0") or "0") if digits else None
 
 
+def rest_base(url: str) -> str:
+    raw = (url or "").strip().rstrip("/")
+    if raw.lower().endswith("/rest/v1"):
+        raw = raw[: -len("/rest/v1")].rstrip("/")
+    parsed = urlparse(raw)
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def rest_headers(key: str) -> dict[str, str]:
+    return {"apikey": key, "Authorization": f"Bearer {key}"}
+
+
 def resolve_wells_zip(county: str, fips: str, wells_zip_arg: str | None,
-                      data_dir: Path, client: Client) -> Path:
+                      data_dir: Path, base: str, headers: dict[str, str]) -> Path:
     if wells_zip_arg:
         p = Path(wells_zip_arg)
         if not p.exists():
             raise FileNotFoundError(f"--wells-zip not found: {p}")
         return p
-    # Prefer the already-cached local well{fips}.zip if present.
     local_candidates = [
         data_dir / f"well{fips}.zip",
         Path(f"data/well{fips}.zip"),
@@ -143,12 +154,12 @@ def resolve_wells_zip(county: str, fips: str, wells_zip_arg: str | None,
     for cand in local_candidates:
         if cand.exists():
             return cand
-    # Fall back to downloading from the bucket. The bucket has multiple
-    # keys per county in some cases (e.g. well177.zip AND "well177 (1).zip"
-    # for Gonzales) — always prefer the canonical wellNNN.zip name.
     key = f"well{fips}.zip"
     print(f"downloading {BUCKET_NAME}/{key} from Supabase Storage...")
-    blob = client.storage.from_(BUCKET_NAME).download(key)
+    with httpx.Client(timeout=180) as client:
+        response = client.get(f"{base}/storage/v1/object/{BUCKET_NAME}/{key}", headers=headers)
+        response.raise_for_status()
+        blob = response.content
     data_dir.mkdir(parents=True, exist_ok=True)
     out = data_dir / key
     out.write_bytes(blob)
@@ -187,49 +198,64 @@ def read_bundle_api_sets(zip_path: Path) -> tuple[set[str], set[str]]:
         return surface_apis, bottom_apis
 
 
-def paginate_wells(client: Client, table: str) -> list[dict[str, Any]]:
-    """Fetch every well row using keyset pagination.
-
-    County wells schemas diverge: Howard/Martin have a serial ``id`` PK
-    and an ``abstract`` join column populated by the loader's spatial
-    join; Gonzales has neither. Keying on ``api_number`` avoids that
-    schema drift and works for every county the app currently ships.
-    """
+def paginate_wells(base: str, headers: dict[str, str], table: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     last_api = ""
-    while True:
-        query = (
-            client.table(table)
-            .select("api_number, latitude, longitude")
-            .not_.is_("latitude", "null")
-            .not_.is_("longitude", "null")
-            .order("api_number", desc=False)
-            .limit(PAGE_SIZE)
-        )
-        if last_api:
-            query = query.gt("api_number", last_api)
-        result = query.execute()
-        page = result.data or []
-        if not page:
-            break
-        rows.extend(page)
-        last_api = page[-1].get("api_number") or last_api
-        if len(page) < PAGE_SIZE:
-            break
+    with httpx.Client(timeout=90) as client:
+        while True:
+            params = {
+                "select": "api_number,latitude,longitude",
+                "latitude": "not.is.null",
+                "longitude": "not.is.null",
+                "order": "api_number.asc",
+                "limit": str(PAGE_SIZE),
+            }
+            if last_api:
+                params["api_number"] = f"gt.{last_api}"
+            response = client.get(f"{base}/rest/v1/{table}", params=params, headers=headers)
+            if response.status_code >= 300:
+                raise RuntimeError(f"wells {table} failed ({response.status_code}): {response.text[:300]}")
+            page = response.json() or []
+            if not page:
+                break
+            rows.extend(page)
+            last_api = page[-1].get("api_number") or last_api
+            if len(page) < PAGE_SIZE:
+                break
     return rows
 
 
-def paginate_permits(client: Client, table: str) -> list[dict[str, Any]] | None:
-    """Fetch permit rows or None if the table does not exist."""
+def paginate_permits(base: str, headers: dict[str, str], table: str) -> list[dict[str, Any]] | None:
     try:
-        result = (
-            client.table(table)
-            .select("id, latitude, longitude, status")
-            .not_.is_("latitude", "null")
-            .not_.is_("longitude", "null")
-            .execute()
-        )
-        return result.data or []
+        with httpx.Client(timeout=90) as client:
+            rows: list[dict[str, Any]] = []
+            last_id = 0
+            while True:
+                response = client.get(
+                    f"{base}/rest/v1/{table}",
+                    params={
+                        "select": "id,latitude,longitude,status",
+                        "latitude": "not.is.null",
+                        "longitude": "not.is.null",
+                        "order": "id.asc",
+                        "id": f"gt.{last_id}",
+                        "limit": str(PAGE_SIZE),
+                    },
+                    headers=headers,
+                )
+                if response.status_code >= 300:
+                    text = response.text.lower()
+                    if "not find" in text or "does not exist" in text or response.status_code == 404:
+                        return None
+                    raise RuntimeError(f"permits {table} failed ({response.status_code}): {response.text[:300]}")
+                page = response.json() or []
+                if not page:
+                    break
+                rows.extend(page)
+                last_id = int(page[-1].get("id") or last_id)
+                if len(page) < PAGE_SIZE:
+                    break
+            return rows
     except Exception as exc:
         message = str(exc).lower()
         if "not find" in message or "does not exist" in message:
@@ -329,17 +355,18 @@ def main() -> None:
         "SUPABASE_KEY",
         ("SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     )
-    client = create_client(supabase_url, supabase_key)
+    base = rest_base(supabase_url)
+    headers = rest_headers(supabase_key)
 
     data_dir = Path(args.data_dir)
-    zip_path = resolve_wells_zip(county, fips, args.wells_zip, data_dir, client)
+    zip_path = resolve_wells_zip(county, fips, args.wells_zip, data_dir, base, headers)
     print(f"wells bundle: {zip_path}")
     surface_apis, bottom_apis = read_bundle_api_sets(zip_path)
     print(f"  surface APIs: {len(surface_apis):,}")
     print(f"  bottom-hole APIs: {len(bottom_apis):,}")
 
     wells_table = f"{county}_wells"
-    wells_rows = paginate_wells(client, wells_table)
+    wells_rows = paginate_wells(base, headers, wells_table)
     print(f"wells rows in {wells_table} with lat/lon: {len(wells_rows):,}")
 
     with input_path.open() as f:
@@ -405,7 +432,7 @@ def main() -> None:
     print(f"  abstracts with PUD:     {len(pud_per_abstract):,}")
 
     permits_table = f"{county}_permits"
-    permits = paginate_permits(client, permits_table)
+    permits = paginate_permits(base, headers, permits_table)
     if permits is None:
         print(f"permits table {permits_table} not present; skipping permit join.")
         permit_by_abstract: dict[str, dict[str, int]] = {}

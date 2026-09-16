@@ -1,0 +1,51 @@
+name: Refresh 2026 county map layers
+
+# Rebuild well colors + tract production_status (and refill Pecos/Reeves
+# CAD holes) after the ownership tables are loaded.
+
+on:
+  workflow_dispatch:
+    inputs:
+      county:
+        description: 'County id or "all"'
+        required: false
+        default: 'all'
+  push:
+    branches:
+      - cursor/fix-new-county-map-634a
+    paths:
+      - '.github/workflows/refresh-county-map-layers.yml'
+      - 'scripts/refresh_county_map_layers.py'
+      - 'scripts/build_wells_geojson.py'
+      - 'scripts/add_production_status.py'
+      - 'scripts/build_county_tracts.py'
+
+concurrency:
+  group: refresh-county-map-layers
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas geopandas shapely pyogrio httpx pyshp
+
+      - name: Refresh layers
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          COUNTY="${{ github.event.inputs.county || 'all' }}"
+          python scripts/refresh_county_map_layers.py --county "$COUNTY"
