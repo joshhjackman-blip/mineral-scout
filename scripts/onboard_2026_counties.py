@@ -97,14 +97,22 @@ def roll_path(county: str, cfg: dict[str, str]) -> Path:
     return primary
 
 
-def download_storage_object(key: str, dest: Path) -> bool:
+def _storage_creds() -> tuple[str, str] | None:
     url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
     key_env = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY")
     if not url or not key_env or "example.supabase.co" in url:
-        return False
-    dest.parent.mkdir(parents=True, exist_ok=True)
+        return None
     from urllib.parse import urlparse
-    base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+    p = urlparse(url)
+    return f"{p.scheme}://{p.netloc}", key_env
+
+
+def download_storage_object(key: str, dest: Path) -> bool:
+    creds = _storage_creds()
+    if not creds:
+        return False
+    base, key_env = creds
+    dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"  storage GET Raw-Data/{key} -> {dest}", flush=True)
     r = curl([
         "-H", f"apikey: {key_env}",
@@ -119,6 +127,82 @@ def download_storage_object(key: str, dest: Path) -> bool:
         return True
     dest.unlink(missing_ok=True)
     print(f"  storage miss Raw-Data/{key} (http={code})", flush=True)
+    return False
+
+
+_RAW_DATA_LIST: list[str] | None = None
+
+
+def list_raw_data() -> list[str]:
+    """List every object key in Raw-Data. Needs the service role."""
+    global _RAW_DATA_LIST
+    if _RAW_DATA_LIST is not None:
+        return _RAW_DATA_LIST
+    creds = _storage_creds()
+    if not creds:
+        return []
+    base, key_env = creds
+    try:
+        from supabase import create_client
+        client = create_client(base, key_env)
+    except Exception as exc:
+        print(f"  storage list skipped: {exc}", flush=True)
+        return []
+    paths: list[str] = []
+    pending = [""]
+    while pending:
+        prefix = pending.pop()
+        offset = 0
+        while True:
+            entries = client.storage.from_("Raw-Data").list(
+                path=prefix,
+                options={"limit": 1000, "offset": offset, "sortBy": {"column": "name", "order": "asc"}},
+            )
+            if not entries:
+                break
+            for entry in entries:
+                name = entry.get("name")
+                if not name:
+                    continue
+                full = f"{prefix}/{name}" if prefix else name
+                if entry.get("id") is None:
+                    pending.append(full)
+                else:
+                    paths.append(full)
+            if len(entries) < 1000:
+                break
+            offset += 1000
+    print(f"  Raw-Data has {len(paths)} objects", flush=True)
+    for p in paths:
+        print(f"    {p}", flush=True)
+    _RAW_DATA_LIST = paths
+    return paths
+
+
+def pull_roll_from_storage(county: str, dest: Path) -> bool:
+    """Find a 2026 (or obvious) roll for this county in Raw-Data."""
+    if dest.exists():
+        return True
+    keys = list_raw_data() if _storage_creds() else []
+    needle = county.lower()
+    year_hits = [
+        k for k in keys
+        if needle in k.lower()
+        and k.lower().endswith((".csv", ".xlsx", ".xls"))
+        and ("2026" in k or "owners" in k.lower() or "roll" in k.lower() or "tax" in k.lower())
+    ]
+    # Prefer a 2026 owners_* name.
+    year_hits.sort(key=lambda k: (0 if "2026" in k and "owner" in k.lower() else 1, len(k)))
+    for key in year_hits:
+        if download_storage_object(key, dest):
+            return True
+    for key in (
+        f"owners_2026_{county.title()}.csv",
+        f"owners_2026_{county}.csv",
+        f"{county}_mineral_roll.csv",
+    ):
+        if download_storage_object(key, dest):
+            return True
     return False
 
 
@@ -246,9 +330,7 @@ def onboard(county: str, dry: bool) -> None:
     print(f"\n=== {county} ===", flush=True)
 
     if not roll.exists() and not dry:
-        download_storage_object(cfg["roll"], roll)
-        if not roll.exists():
-            download_storage_object(f"owners_2026_{county.title()}.csv", roll)
+        pull_roll_from_storage(county, roll)
     if not wells_zip.exists() and not dry:
         if not download_storage_object(f"well{cfg['fips']}.zip", wells_zip):
             download_rrc_well_zip(cfg["fips"], wells_zip)

@@ -1,0 +1,52 @@
+name: Onboard 2026 Howard / Glasscock / Reeves / Pecos
+
+# Pulls owner rolls + well zips from the private Raw-Data bucket (service
+# role), loads the new county tables, rematches tracts, and uploads map
+# GeoJSON to the public map-data bucket.
+#
+# Runs once when this workflow file lands on the feature branch, and on
+# manual dispatch after that.
+
+on:
+  workflow_dispatch:
+    inputs:
+      county:
+        description: 'County id or "all"'
+        required: false
+        default: 'all'
+  push:
+    branches:
+      - cursor/add-2026-howard-glasscock-reeves-pecos-634a
+    paths:
+      - '.github/workflows/onboard-2026-counties.yml'
+      - 'scripts/onboard_2026_counties.py'
+
+concurrency:
+  group: onboard-2026-counties
+  cancel-in-progress: false
+
+jobs:
+  onboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'supabase<2.15' pandas geopandas shapely pyogrio httpx pyshp
+
+      - name: Onboard counties
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          COUNTY="${{ github.event.inputs.county || 'all' }}"
+          python scripts/onboard_2026_counties.py --county "$COUNTY"
