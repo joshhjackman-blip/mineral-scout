@@ -10,6 +10,7 @@ import {
   sortOwnersByAcreage,
   type TractOwnerRow,
 } from '@/lib/tract-owners'
+import { blockVariants, parseGridKey } from '@/lib/section-pair'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,8 @@ function isMissingColumnError(msg: string): boolean {
 async function loadOwnersFromDb(
   countyId: CountyKey,
   abstract: string,
+  block?: string,
+  section?: string,
 ): Promise<{ owners: TractOwnerRow[]; error: string | null }> {
   const cfg = COUNTIES[countyId]
   if (!cfg) return { owners: [], error: 'Unknown county' }
@@ -77,6 +80,35 @@ async function loadOwnersFromDb(
     const batch = (page.data ?? []) as unknown as TractOwnerRow[]
     rows.push(...batch)
     if (batch.length < PAGE_SIZE) break
+  }
+
+  // Grid-key tracts (B37-T3S-S36) have no CAD abstract number. Owners
+  // for that cell are stored under block + section when the roll parsed.
+  if (rows.length === 0) {
+    const grid = parseGridKey(abstract)
+    const blockRaw = block || (grid ? `${grid.block} ${grid.township}` : '')
+    const sectionRaw = section || grid?.section || ''
+    const blocks = blockVariants(blockRaw)
+    const sec = String(sectionRaw).trim()
+    if (blocks.length > 0 && sec) {
+      for (let from = 0; from < MAX_OWNERS; from += PAGE_SIZE) {
+        const page = await admin
+          .from(cfg.ownershipTable)
+          .select(cols)
+          .in('block', blocks)
+          .eq('section', sec)
+          .order('acreage', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: true })
+          .range(from, from + PAGE_SIZE - 1)
+        if (page.error) {
+          if (isMissingColumnError(page.error.message)) break
+          return { owners: rows, error: page.error.message }
+        }
+        const batch = (page.data ?? []) as unknown as TractOwnerRow[]
+        rows.push(...batch)
+        if (batch.length < PAGE_SIZE) break
+      }
+    }
   }
 
   return { owners: sortOwnersByAcreage(rows), error: null }
@@ -137,6 +169,8 @@ export async function GET(req: NextRequest) {
     .trim()
     .toLowerCase() as CountyKey
   const abstract = String(req.nextUrl.searchParams.get('abstract') ?? '').trim()
+  const block = String(req.nextUrl.searchParams.get('block') ?? '').trim()
+  const section = String(req.nextUrl.searchParams.get('section') ?? '').trim()
 
   if (!county || !COUNTIES[county]) {
     return NextResponse.json(
@@ -157,7 +191,7 @@ export async function GET(req: NextRequest) {
   let dbError: string | null = null
 
   try {
-    const db = await loadOwnersFromDb(county, abstract)
+    const db = await loadOwnersFromDb(county, abstract, block, section)
     dbError = db.error
     if (db.owners.length > 0) {
       owners = db.owners
