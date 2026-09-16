@@ -79,7 +79,7 @@ def _kind(status: str | None, is_permit: bool, is_line: bool) -> str:
 def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
               lease: str = "") -> str:
     """Per-well designation from the RRC signals we have:
-      injection  — well status / lease is disposal/injection
+      injection  — well status / lease is disposal/injection (dropped later)
       shut_in    — well status SHUT IN
       producing  — has a completion (PDP) or status PRODUCING/ACTIVE
       duc        — a drilled lateral with no completion/production on file
@@ -303,6 +303,10 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                     "status": w.get("status"), "operator": operator,
                 },
             })
+
+    # Injection / disposal wells look like PDP on the map and are not
+    # prospecting targets. Drop them from the overlay file entirely.
+    features = [f for f in features if f["properties"]["kind"] != "injection"]
 
     # Operator coloring: rank the county's operators by well count and stamp an
     # `op_idx` (0..N-1 for the top operators, -1 for the long tail) so the map
