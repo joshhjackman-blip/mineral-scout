@@ -772,7 +772,7 @@ export default function CRM() {
   )
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 font-sans">
+    <div className="crm-sheet h-screen flex flex-col bg-gray-50">
       <ProductTour
         steps={CRM_TOUR_STEPS}
         storageKey="mineral_crm_tour_v1"
@@ -873,7 +873,7 @@ export default function CRM() {
                 { label: 'Follow up', val: deals.filter((d) => d.follow_up_date && isOverdue(d.follow_up_date)).length, color: 'text-amber-600' },
               ].map((s) => (
                 <div key={s.label} className="text-center py-1">
-                  <div className={`text-base font-bold font-serif ${s.color ?? 'text-gray-900'}`}>{s.val}</div>
+                  <div className={`text-base font-semibold tabular-nums ${s.color ?? 'text-gray-900'}`}>{s.val}</div>
                   <div className="text-xs text-gray-400">{s.label}</div>
                 </div>
               ))}

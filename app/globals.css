@@ -149,6 +149,28 @@ body {
   font-feature-settings: 'ss01', 'ss02', 'cv01';
 }
 
+/* CRM / lead workspace: one spreadsheet face. Geist + Georgia serif +
+   Geist Mono made names look italic and percents look decorative.
+   Segoe UI / system-ui + lining tabular nums reads like Excel. */
+.crm-sheet {
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-style: normal;
+  font-feature-settings: normal;
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
+}
+.crm-sheet em,
+.crm-sheet i,
+.crm-sheet .italic {
+  font-style: normal;
+}
+.crm-sheet .font-serif,
+.crm-sheet .font-mono {
+  font-family: inherit;
+  font-style: normal;
+}
+
 /* Soft dark pass for Tailwind gray shells (account / CRM / admin / owner). */
 .dark .bg-gray-50 {
   background-color: #0b1220 !important;

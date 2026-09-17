@@ -924,7 +924,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     // map). Borders + shadows are owned by the parent so this
     // component stays layout-agnostic.
     <div
-      className="flex flex-1 flex-col bg-white h-full"
+      className={`flex flex-1 flex-col bg-white h-full ${crmMode ? 'crm-sheet' : ''}`}
       role="dialog"
       aria-label={`Details for ${owner.owner_name}`}
       style={{ minHeight: 0 }}
@@ -932,7 +932,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       <header className="shrink-0 flex items-start gap-4 px-6 py-4 border-b border-gray-100 bg-white">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <div className={`font-serif font-bold text-gray-900 truncate ${crmMode ? 'text-3xl' : 'text-2xl'}`}>
+            <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-2xl' : 'text-xl'}`}>
               {displayName}
             </div>
             {ownerIsHidden && (
@@ -943,12 +943,12 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           </div>
           {clean(owner.display_name) && clean(owner.display_name) !== owner.owner_name && (
             <div className="mt-1 text-xs text-gray-500">
-              CAD name: <span className="font-mono">{owner.owner_name}</span>
+              CAD name: <span>{owner.owner_name}</span>
             </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
             {tractLabel && (
-              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-slate-700">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
                 {tractLegalDescription || tractLabel}
               </span>
             )}
@@ -1469,7 +1469,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <h3 className="mb-3 border-b border-gray-100 pb-1 text-xs font-bold uppercase tracking-widest text-gray-400">
+    <h3 className="mb-3 border-b border-gray-100 pb-1 text-xs font-semibold text-gray-500">
       {children}
     </h3>
   )
@@ -1487,7 +1487,7 @@ function StatusPicker({
 }) {
   return (
     <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-3">
-      <div className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">
+      <div className="mb-2 text-xs font-semibold text-gray-500">
         Lead status
       </div>
       <div className="flex flex-wrap gap-1.5">
@@ -1548,8 +1548,8 @@ function ContactPill({
 function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{label}</div>
-      <div className="mt-1 font-serif text-2xl font-bold text-gray-900">{value}</div>
+      <div className="text-[11px] font-semibold text-gray-500">{label}</div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{value}</div>
       {hint && <div className="mt-1 text-[11px] text-gray-500">{hint}</div>}
     </div>
   )
@@ -1559,7 +1559,7 @@ function SectionCard({ title, action, children }: { title: string; action?: Reac
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{title}</div>
+        <div className="text-[11px] font-semibold text-gray-500">{title}</div>
         {action}
       </div>
       <div className="flex flex-col gap-2 text-sm text-gray-800">{children}</div>
@@ -1578,7 +1578,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
     <div className="grid grid-cols-[160px_1fr] items-baseline gap-3">
       <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
       <div
-        className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'font-mono' : ''}`}
+        className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'tabular-nums' : ''}`}
         title={typeof v === 'string' ? v : undefined}
       >
         {v}
@@ -2061,7 +2061,7 @@ function WellActivityCard({
 
       <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-gray-500">
         {top.lease_name && <span>Lease: {top.lease_name}</span>}
-        {top.api_number && <span className="font-mono">API {top.api_number}</span>}
+        {top.api_number && <span className="tabular-nums">API {top.api_number}</span>}
         <span>Week of {top.week_start}</span>
         {top.propensity_bump > 0 && (
           <span className="font-semibold text-emerald-700">
@@ -2181,7 +2181,7 @@ function HoldingsPanel({
         <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
           Leases
         </div>
-        <div className="font-mono text-xs text-gray-700">
+        <div className="text-xs tabular-nums text-gray-700">
           <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
           {' · '}
           <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
@@ -2324,17 +2324,17 @@ function HoldingsPanel({
                     {unitLabel}
                   </td>
                   <td
-                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 font-mono leading-snug"
+                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 leading-snug"
                     title={composedLegal && abstractLabel && composedLegal !== abstractLabel
                       ? `${composedLegal} · ${abstractLabel}`
                       : composedLegal || abstractLabel || undefined}
                   >
                     {composedLegal || abstractLabel || '—'}
                   </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.section || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.township || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.block || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 font-mono">{parts.range || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.section || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.township || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.block || '—'}</td>
+                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.range || '—'}</td>
                   <td
                     className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
                       opHit ? 'font-semibold text-amber-900' : ''
@@ -2360,13 +2360,13 @@ function HoldingsPanel({
                     </span>
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
                     title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
                   >
                     {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
                     title={
                       acres != null
                         ? acreageEstimate.estimated
@@ -2381,13 +2381,13 @@ function HoldingsPanel({
                     )}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right font-mono text-gray-600"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums text-gray-600"
                     title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
                   >
                     {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
                   </td>
                   <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right font-mono text-gray-600"
+                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right tabular-nums text-gray-600"
                     title={
                       nriPct != null
                         ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
@@ -2501,7 +2501,7 @@ function WellsPanel({
                           </span>
                         )}
                         {clean(well.api_number) && (
-                          <span className="ml-2 font-mono text-gray-400">API {clean(well.api_number)}</span>
+                          <span className="ml-2 tabular-nums text-gray-400">API {clean(well.api_number)}</span>
                         )}
                       </div>
                     </div>
@@ -2693,8 +2693,8 @@ function DevStatusCard({ status }: { status: TractDevStatus }) {
 function DevMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-center">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">{label}</div>
-      <div className="mt-0.5 font-serif text-lg font-bold text-gray-900">{value}</div>
+      <div className="text-[11px] font-semibold text-gray-500">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">{value}</div>
     </div>
   )
 }
