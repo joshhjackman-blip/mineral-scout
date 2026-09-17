@@ -83,9 +83,30 @@ export const CLOSED_OUT_TAGS = new Set([
 
 const KNOWN_COUNTY_IDS = new Set<CountyKey>(Object.keys(COUNTIES) as CountyKey[])
 
+/** Accept "glasscock", "Glasscock County", or "Glasscock County, TX". */
+export const parseCountyField = (raw: string | null | undefined): CountyKey | null => {
+  const stored = (raw ?? '').toLowerCase().trim()
+  if (!stored) return null
+  if (KNOWN_COUNTY_IDS.has(stored as CountyKey)) return stored as CountyKey
+  const bare = stored
+    .replace(/,/g, ' ')
+    .replace(/\btx\b/g, '')
+    .replace(/\bcounty\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (bare && KNOWN_COUNTY_IDS.has(bare as CountyKey)) return bare as CountyKey
+  for (const [countyId, county] of Object.entries(COUNTIES) as Array<[CountyKey, County]>) {
+    if (county.displayName.toLowerCase() === stored) return countyId
+    if (county.name.toLowerCase() === stored || county.name.toLowerCase() === bare) {
+      return countyId
+    }
+  }
+  return null
+}
+
 export const getDealCounty = (deal: Deal): DealCounty => {
-  const stored = (deal.county ?? '').toLowerCase().trim() as CountyKey
-  if (stored && KNOWN_COUNTY_IDS.has(stored)) return stored
+  const fromField = parseCountyField(deal.county)
+  if (fromField) return fromField
   const op = (deal.operator_name ?? '').toLowerCase()
   if (op) {
     for (const [countyId, county] of Object.entries(COUNTIES) as Array<[CountyKey, County]>) {
