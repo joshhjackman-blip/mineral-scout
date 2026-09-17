@@ -71,7 +71,7 @@ export default function CrmCalendar({ deals, onOpenLead, onSetFollowUp }: CrmCal
       <div className="h-full max-w-6xl mx-auto px-5 py-5 flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-lg font-serif font-semibold text-gray-900">Calendar</h1>
+            <h1 className="text-lg font-semibold text-gray-900">Calendar</h1>
             <p className="text-sm text-gray-500 mt-0.5">
               Follow-ups by day. Click a date to review or schedule a call-back.
             </p>

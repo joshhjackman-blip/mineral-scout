@@ -38,7 +38,7 @@ export default function CrmDashboard({ deals, onOpenLead, onOpenFilter, onOpenCa
     <div className="flex-1 overflow-y-auto bg-gray-50">
       <div className="max-w-6xl mx-auto px-5 py-5 space-y-5">
         <div>
-          <h1 className="text-lg font-serif font-semibold text-gray-900">Pipeline home</h1>
+          <h1 className="text-lg font-semibold text-gray-900">Pipeline home</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Snapshot of your mineral leads. Open a card or row to jump into the workspace.
           </p>
@@ -230,7 +230,7 @@ function Kpi({
       onClick={onClick}
       className="bg-white border border-gray-200 rounded-xl shadow-sm px-3 py-3 text-left hover:border-amber-300 hover:shadow transition-all"
     >
-      <div className={`text-2xl font-serif font-bold leading-none ${tone ?? 'text-gray-900'}`}>{value}</div>
+      <div className={`text-2xl font-semibold tabular-nums leading-none ${tone ?? 'text-gray-900'}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-1.5">{label}</div>
       {hint ? <div className="text-[11px] text-gray-400 mt-0.5">{hint}</div> : null}
     </button>
