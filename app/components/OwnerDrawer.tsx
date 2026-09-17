@@ -9,6 +9,7 @@ import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
 import { getWorkspaceContext } from '@/lib/workspace'
+import { leaseLookupVariants } from '@/lib/rrc-ids'
 import {
   DEFAULT_LEASE_ROYALTY,
   estimateGrossAcres,
@@ -330,6 +331,10 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     // safe last-resort fallback for odd casing drift.
     const nameForMatch = String(owner.owner_name ?? '').trim()
     const nameUpper = nameForMatch.toUpperCase()
+    const namesToTry = Array.from(new Set([nameForMatch, nameUpper].filter(Boolean)))
+    const leaseVariants = leaseLookupVariants(owner.rrc_lease_id)
+    const activeCountyId = county.id as CountyKey
+    const isTimeoutError = (msg: string): boolean => msg.toLowerCase().includes('timeout')
 
     // Column set with a tiered fallback. County schemas drifted apart
     // over time:
@@ -360,30 +365,53 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
 
     const countyEntries = Object.entries(COUNTIES) as Array<[CountyKey, County]>
     const perCountyPromises = countyEntries.map(async ([countyKey, cfg]) => {
-      const runEq = (cols: string, name: string) =>
-        supabase
+      const runEq = (cols: string, name: string, leaseId?: string) => {
+        let q = supabase
           .from(cfg.ownershipTable)
           .select(cols)
           .eq('owner_name', name)
-          .order('acreage', { ascending: false })
-          .limit(500)
+        if (leaseId) q = q.eq('rrc_lease_id', leaseId)
+        return q.order('acreage', { ascending: false }).limit(500)
+      }
 
       const runQuery = async (cols: string) => {
-        let result = await runEq(cols, nameForMatch)
-        if (result.error) return result
-        if ((result.data?.length ?? 0) > 0) return result
+        // Name-only first: one owner can hold several leases. Needs the
+        // owner_name index. CRM leads also carry rrc_lease_id, so a
+        // timeout here falls through to name+lease (uses the lease
+        // index) instead of looking empty.
+        let lastTimeout: Awaited<ReturnType<typeof runEq>> | null = null
+        let lastEmpty: Awaited<ReturnType<typeof runEq>> | null = null
 
-        if (nameUpper !== nameForMatch) {
-          result = await runEq(cols, nameUpper)
-          if (result.error) return result
+        for (const name of namesToTry) {
+          const result = await runEq(cols, name)
+          if (result.error) {
+            if (isTimeoutError(result.error.message)) {
+              lastTimeout = result
+              break
+            }
+            return result
+          }
+          if ((result.data?.length ?? 0) > 0) return result
+          lastEmpty = result
         }
 
-        // Deliberately no `.ilike` fallback: on martin_mineral_ownership
-        // that was a sequential scan → statement timeout. CAD names are
-        // UPPERCASE; eq + upper covers the real cases. After
-        // 20260806200000_index_howard_martin_owner_name.sql is applied,
-        // a trigram-backed ilike can be restored if needed.
-        return result
+        const leasesToTry = countyKey === activeCountyId ? leaseVariants : []
+        for (const name of namesToTry) {
+          for (const leaseId of leasesToTry) {
+            const result = await runEq(cols, name, leaseId)
+            if (result.error) {
+              if (isTimeoutError(result.error.message)) {
+                lastTimeout = result
+                continue
+              }
+              return result
+            }
+            if ((result.data?.length ?? 0) > 0) return result
+            lastEmpty = result
+          }
+        }
+
+        return lastTimeout ?? lastEmpty ?? { data: [], error: null }
       }
 
       // Prefer the shape that carries block/section/survey when we can,
@@ -401,8 +429,8 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
         // Cross-county timeouts shouldn't hard-fail the whole Leases tab
         // (e.g. viewing a Howard owner while Martin seq-scans). Surface
         // the error only for the drawer's active county.
-        const isTimeout = msg.toLowerCase().includes('timeout')
-        if (isTimeout && countyKey !== (county.id as CountyKey)) {
+        const isTimeout = isTimeoutError(msg)
+        if (isTimeout && countyKey !== activeCountyId) {
           console.warn(
             `[OwnerDrawer] ${countyKey}_mineral_ownership timed out (skipped); run owner_name index migration.`,
           )
@@ -464,16 +492,15 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     return () => {
       cancelled = true
     }
-    // Depend on owner_name (the query key) instead of the whole owner
+    // Depend on owner_name + rrc_lease_id instead of the whole owner
     // object. Passing the full `owner` here made this effect re-fire
     // on every parent re-render when a caller passed an unstable
     // reference (e.g. `owner={dealToOwner(selected)}` without a
     // useMemo), which cancelled the in-flight query before it could
     // set state — Leases tab stuck at "0 leases" until the parent
-    // stopped re-rendering. Owner identity from this hook's
-    // perspective is fully captured by (county.id, owner_name).
+    // stopped re-rendering.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, owner?.owner_name, county.id])
+  }, [open, owner?.owner_name, owner?.rrc_lease_id, county.id])
 
   return { holdings, loading, errorMessages }
 }
@@ -838,10 +865,33 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   const phone = phoneList[0] ?? null
   const email = emailList[0] ?? null
   const badges = ownerBadges(owner)
+  const holdingForStats =
+    holdings.find((h) => h.county_id === county.id && (h.ownership_pct != null || h.decimal_interest != null))
+    ?? holdings.find((h) => h.ownership_pct != null || h.decimal_interest != null)
+    ?? holdings.find((h) => h.county_id === county.id)
+    ?? holdings[0]
+    ?? null
   const ownershipPct = ownershipPctValue(
-    owner.ownership_pct ?? owner.decimal_interest,
+    owner.ownership_pct
+      ?? owner.decimal_interest
+      ?? holdingForStats?.ownership_pct
+      ?? holdingForStats?.decimal_interest,
     county.ownershipPctIsDecimal,
   )
+  const holdingLegal = (() => {
+    const h =
+      holdings.find((row) => row.county_id === county.id && (row.abstract || row.block || row.survey || row.section))
+      ?? holdings.find((row) => row.abstract || row.block || row.survey || row.section)
+    if (!h) return null
+    const abs = clean(h.abstract)
+    const parts = [
+      clean(h.survey),
+      clean(h.block) ? `BLK ${clean(h.block)}` : '',
+      clean(h.section) ? `SEC ${clean(h.section)}` : '',
+      abs ? (/^A-/i.test(abs) ? abs : `A-${abs}`) : '',
+    ].filter(Boolean)
+    return parts.join(' ') || null
+  })()
   // Royalty / override lines (RI, OR) often carry 0 gross acres on the
   // CAD roll. Fall back to section math: a regular square T&P / PSL
   // tract is 640 acres, aliquot calls are fractions of that.
@@ -1343,7 +1393,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             royaltyEstimate={royaltyEstimate}
             cumOil={cumOil}
             tractLabel={tractLabel ?? null}
-            tractLegalDescription={tractLegalDescription ?? null}
+            tractLegalDescription={tractLegalDescription || holdingLegal || null}
             rrcLease={rrcLease}
             county={county}
             tractDevStatus={tractDevStatus ?? null}
@@ -2030,6 +2080,49 @@ function WellActivityCard({
   )
 }
 
+function HoldingsErrorBanner({
+  errorMessages,
+}: {
+  errorMessages: Array<{ county: CountyKey; message: string }>
+}) {
+  if (errorMessages.length === 0) return null
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
+      <div className="font-semibold">
+        Couldn&apos;t load leases from: {errorMessages.map((e) => e.county).join(', ')}
+      </div>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[10.5px] leading-snug">
+        {errorMessages.map((e) => (
+          <li key={e.county}>
+            <span className="uppercase">{e.county}</span>: {e.message}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-1.5 text-[10.5px] font-normal text-red-700">
+        {errorMessages.some((e) => e.message.toLowerCase().includes('timeout')) ? (
+          <>
+            Statement timeout - usually a missing <code className="rounded bg-red-100 px-1">owner_name</code> or{' '}
+            <code className="rounded bg-red-100 px-1">rrc_lease_id</code> index on the ownership table
+            (Glasscock / Reeves / Pecos are large). Run{' '}
+            <code className="rounded bg-red-100 px-1">
+              supabase/migrations/20260917120000_index_glasscock_reeves_pecos_owner_lease.sql
+            </code>{' '}
+            in the Supabase SQL editor, then retry.
+          </>
+        ) : (
+          <>
+            Often an RLS policy (browser uses the anon key). Check that
+            <code className="mx-1 rounded bg-red-100 px-1">public.&lt;county&gt;_mineral_ownership</code>
+            has a <code className="rounded bg-red-100 px-1">FOR SELECT USING (true)</code> policy for anon;
+            see <code className="rounded bg-red-100 px-1">supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql</code>.
+          </>
+        )}{' '}
+        Full error is in the browser console.
+      </div>
+    </div>
+  )
+}
+
 function HoldingsPanel({
   holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators, crmMode = false,
 }: {
@@ -2046,8 +2139,15 @@ function HoldingsPanel({
   }
   if (holdings.length === 0) {
     return (
-      <div className="text-sm text-gray-500">
-        No matching rows found in any county&apos;s mineral ownership table.
+      <div className="flex flex-col gap-2">
+        <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
+        <div className="text-sm text-gray-500">
+          {errorMessages && errorMessages.length > 0 ? (
+            <>Could not load this owner&apos;s leases. The error above is from the ownership table.</>
+          ) : (
+            <>No matching rows found in any county&apos;s mineral ownership table.</>
+          )}
+        </div>
       </div>
     )
   }
@@ -2088,38 +2188,7 @@ function HoldingsPanel({
         </div>
       </div>
 
-      {errorMessages && errorMessages.length > 0 && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800">
-          <div className="font-semibold">
-            Couldn&apos;t load leases from: {errorMessages.map((e) => e.county).join(', ')}
-          </div>
-          <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[10.5px] leading-snug">
-            {errorMessages.map((e) => (
-              <li key={e.county}>
-                <span className="uppercase">{e.county}</span>: {e.message}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-1.5 text-[10.5px] font-normal text-red-700">
-            {errorMessages.some((e) => e.message.toLowerCase().includes('timeout')) ? (
-              <>
-                Statement timeout — usually a missing <code className="rounded bg-red-100 px-1">owner_name</code> index
-                on the ownership table (Martin/Howard are large). Run{' '}
-                <code className="rounded bg-red-100 px-1">supabase/migrations/20260806200000_index_howard_martin_owner_name.sql</code>
-                in the Supabase SQL editor, then retry.
-              </>
-            ) : (
-              <>
-                Often an RLS policy (browser uses the anon key). Check that
-                <code className="mx-1 rounded bg-red-100 px-1">public.&lt;county&gt;_mineral_ownership</code>
-                has a <code className="rounded bg-red-100 px-1">FOR SELECT USING (true)</code> policy for anon;
-                see <code className="rounded bg-red-100 px-1">supabase/migrations/20260716260000_allow_anon_read_mineral_ownership.sql</code>.
-              </>
-            )}{' '}
-            Full error is in the browser console.
-          </div>
-        </div>
-      )}
+      <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
 
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table className="w-max min-w-full border-collapse text-[11px]">
