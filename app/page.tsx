@@ -3535,23 +3535,58 @@ export default function Home() {
                 {backToAllLabel}
               </button>
             )}
-            {mapLevel === 'tract' && (
-              <button
-                onClick={openBasinView}
+            {(mapLevel === 'tract' || mapLevel === 'basin') && (
+              <div
                 style={{
+                  display: 'flex',
                   height: 26,
                   border: '1px solid var(--mm-chrome-border)',
                   borderRadius: 6,
+                  overflow: 'hidden',
                   background: 'var(--mm-chrome-panel)',
-                  color: 'var(--mm-chrome-muted)',
-                  fontSize: 11,
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  padding: '0 8px',
-                  cursor: 'pointer',
                 }}
               >
-                Basin map
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (mapLevel === 'tract') return
+                    setSelected(null)
+                    setMapLevel('tract')
+                    flyToCountyView(selectedCounty)
+                  }}
+                  style={{
+                    height: 26,
+                    border: 'none',
+                    borderRight: '1px solid var(--mm-chrome-border)',
+                    background: mapLevel === 'tract' ? 'var(--mm-chrome-fg)' : 'transparent',
+                    color: mapLevel === 'tract' ? 'var(--mm-chrome-panel)' : 'var(--mm-chrome-muted)',
+                    fontSize: 11,
+                    fontWeight: mapLevel === 'tract' ? 600 : 400,
+                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                    padding: '0 8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  County view
+                </button>
+                <button
+                  type="button"
+                  onClick={openBasinView}
+                  style={{
+                    height: 26,
+                    border: 'none',
+                    background: mapLevel === 'basin' ? 'var(--mm-chrome-fg)' : 'transparent',
+                    color: mapLevel === 'basin' ? 'var(--mm-chrome-panel)' : 'var(--mm-chrome-muted)',
+                    fontSize: 11,
+                    fontWeight: mapLevel === 'basin' ? 600 : 400,
+                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                    padding: '0 8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Basin view
+                </button>
+              </div>
             )}
             <select
               data-tour="county-select"
@@ -5041,7 +5076,7 @@ export default function Home() {
                     textAlign: 'left',
                   }}
                 >
-                  View all counties on one map
+                  Basin view
                 </button>
               )}
 
@@ -5081,7 +5116,7 @@ export default function Home() {
                       textAlign: 'left',
                     }}
                   >
-                    Show all counties on one map
+                    Basin view
                   </button>
                     </>
                   )}
