@@ -583,6 +583,7 @@ export default function Map({
     }
   }, [wellsByOperator])
   const wellsCacheRef = useRef<Partial<Record<CountyKey, GeoJSON.FeatureCollection>>>({})
+  const wellsLoadGenRef = useRef(0)
   const wellsHandlersRef = useRef<{
     clickHandler?: (e: mapboxgl.MapLayerMouseEvent) => void
     mouseEnterHandler?: () => void
@@ -1602,130 +1603,143 @@ export default function Map({
     if (!mapInstance) return
     const countyKey = selectedCountyRef.current
     const cfg = COUNTIES[countyKey]
-    if (!cfg) return
+    if (!cfg && !basinViewRef.current) return
     if (opts?.force) {
-      delete wellsCacheRef.current[countyKey]
+      if (basinViewRef.current) wellsCacheRef.current = {}
+      else delete wellsCacheRef.current[countyKey]
     }
-    // Basin zoom cannot hold ~150k well laterals. County view loads
-    // that one county's wells after the parcels paint.
-    if (basinViewRef.current) {
-      if (mapInstance.getSource('wells')) {
-        const src = mapInstance.getSource('wells') as mapboxgl.GeoJSONSource
-        src.setData({ type: 'FeatureCollection', features: [] })
-      }
-      return
-    }
-    let wellsGeoJSON: GeoJSON.FeatureCollection | null = null
-    wellsGeoJSON = await fetchCountyWells(countyKey)
-    if (!wellsGeoJSON) return
-    if (!basinViewRef.current && countyKey !== selectedCountyRef.current) return
-    if (!map.current) return
-    if (basinViewRef.current && wellsGeoJSON.features.length === 0) return
+    const loadGen = ++wellsLoadGenRef.current
 
-    const colorExpr = wellColorExpr(wellsByOperatorRef.current)
-    const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
-
-    if (!mapInstance.getSource('wells')) {
-      mapInstance.addSource('wells', { type: 'geojson', data: wellsGeoJSON })
-      mapInstance.addLayer({
-        id: 'wells-laterals-layer',
-        type: 'line',
-        source: 'wells',
-        filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
-        layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': colorExpr,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 12, 1.4, 15, 2.4],
-          // Fade laterals in as you zoom so the county view stays clean and
-          // detail reveals progressively.
-          'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.35, 11, 0.7, 13, 0.92],
-        },
-      })
-      mapInstance.addLayer({
-        id: 'wells-points-layer',
-        type: 'circle',
-        source: 'wells',
-        filter: ['all', ['==', ['get', 'geom'], 'point'], ['!=', ['get', 'kind'], 'injection']],
-        layout: { visibility: vis },
-        paint: {
-          // Deliberately small dots (the old vertical markers were oversized).
-          'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 1.4, 12, 2.4, 15, 3.8],
-          'circle-color': colorExpr,
-          // Vertical/permit dots fade in with zoom too.
-          'circle-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.25, 12, 0.7, 14, 0.85],
-          'circle-stroke-width': 0.5,
-          'circle-stroke-color': '#ffffff',
-        },
-      })
+    const paintWells = (wellsGeoJSON: GeoJSON.FeatureCollection) => {
+      const instance = map.current
+      if (!instance || loadGen !== wellsLoadGenRef.current) return
+      const colorExpr = wellColorExpr(wellsByOperatorRef.current)
+      const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
+      if (!instance.getSource('wells')) {
+        instance.addSource('wells', {
+          type: 'geojson',
+          data: wellsGeoJSON,
+          maxzoom: basinViewRef.current ? 11 : 14,
+          buffer: 64,
+          tolerance: basinViewRef.current ? 0.4 : 0.1,
+        })
+        instance.addLayer({
+          id: 'wells-laterals-layer',
+          type: 'line',
+          source: 'wells',
+          filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
+          layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': colorExpr,
+            'line-width': ['interpolate', ['linear'], ['zoom'], 6.5, 0.7, 8, 0.9, 12, 1.4, 15, 2.4],
+            'line-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, 0.45, 9, 0.6, 12, 0.88],
+          },
+        })
+        instance.addLayer({
+          id: 'wells-points-layer',
+          type: 'circle',
+          source: 'wells',
+          filter: ['all', ['==', ['get', 'geom'], 'point'], ['!=', ['get', 'kind'], 'injection']],
+          layout: { visibility: vis },
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 6.5, 2.1, 8, 2.5, 12, 3.0, 15, 3.8],
+            'circle-color': colorExpr,
+            'circle-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, 0.55, 9, 0.7, 12, 0.85],
+            'circle-stroke-width': 0.5,
+            'circle-stroke-color': '#ffffff',
+          },
+        })
       // Heel→toe direction arrows along each lateral. Only appear once zoomed
       // in (z>=12) so they never clutter the county overview.
-      mapInstance.addLayer({
-        id: 'wells-arrows-layer',
-        type: 'symbol',
-        source: 'wells',
-        filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
-        layout: {
-          visibility: vis,
-          'symbol-placement': 'line',
-          'symbol-spacing': 90,
-          'text-field': '▶',
-          'text-keep-upright': false,
-          'text-rotation-alignment': 'map',
-          'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 15, 12],
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-        },
-        paint: {
-          'text-color': colorExpr,
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1,
-          'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, 0, 12.5, 0.9],
-        },
-      })
+        instance.addLayer({
+          id: 'wells-arrows-layer',
+          type: 'symbol',
+          source: 'wells',
+          filter: ['all', ['==', ['get', 'geom'], 'line'], ['!=', ['get', 'kind'], 'injection']],
+          layout: {
+            visibility: vis,
+            'symbol-placement': 'line',
+            'symbol-spacing': 90,
+            'text-field': '▶',
+            'text-keep-upright': false,
+            'text-rotation-alignment': 'map',
+            'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 15, 12],
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': colorExpr,
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1,
+            'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, 0, 12.5, 0.9],
+          },
+        })
 
-      const kindLabel = WELL_KIND_LABEL
-      const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
-        const feature = event.features?.[0]
-        const props = feature?.properties
-        if (!props || !map.current) return
-        const geom = feature!.geometry as GeoJSON.Geometry
-        let lngLat: [number, number]
-        if (geom.type === 'Point') {
-          lngLat = geom.coordinates as [number, number]
-        } else if (geom.type === 'LineString') {
-          const cs = geom.coordinates as number[][]
-          lngLat = cs[Math.floor(cs.length / 2)] as [number, number]
-        } else {
-          lngLat = [event.lngLat.lng, event.lngLat.lat]
+        const kindLabel = WELL_KIND_LABEL
+        const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
+          const feature = event.features?.[0]
+          const props = feature?.properties
+          if (!props || !map.current) return
+          const geom = feature!.geometry as GeoJSON.Geometry
+          let lngLat: [number, number]
+          if (geom.type === 'Point') {
+            lngLat = geom.coordinates as [number, number]
+          } else if (geom.type === 'LineString') {
+            const cs = geom.coordinates as number[][]
+            lngLat = cs[Math.floor(cs.length / 2)] as [number, number]
+          } else {
+            lngLat = [event.lngLat.lng, event.lngLat.lat]
+          }
+          const kind = String(props.kind ?? '')
+          const title = kindLabel[kind] ?? 'Well'
+          new mapboxgl.Popup({ closeButton: false, offset: 8 })
+            .setLngLat(lngLat)
+            .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
+              <div style="font-weight:600;color:#0f172a">${title}${props.well_type === 'HORIZONTAL' ? ' (lateral)' : ''}</div>
+              <div style="color:#6b7280;margin-top:2px">${props.operator ?? ''}</div>
+              <div style="color:#6b7280;font-size:11px">API ${props.api ?? ''}${props.status ? ` · ${props.status}` : ''}</div>
+            </div>`)
+            .addTo(map.current)
         }
-        const kind = String(props.kind ?? '')
-        const title = kindLabel[kind] ?? 'Well'
-        new mapboxgl.Popup({ closeButton: false, offset: 8 })
-          .setLngLat(lngLat)
-          .setHTML(`<div style="font-family:Inter,sans-serif;font-size:12px;padding:6px">
-            <div style="font-weight:600;color:#0f172a">${title}${props.well_type === 'HORIZONTAL' ? ' (lateral)' : ''}</div>
-            <div style="color:#6b7280;margin-top:2px">${props.operator ?? ''}</div>
-            <div style="color:#6b7280;font-size:11px">API ${props.api ?? ''}${props.status ? ` · ${props.status}` : ''}</div>
-          </div>`)
-          .addTo(map.current)
+        const mouseEnterHandler = () => { map.current?.getCanvas().style.setProperty('cursor', 'pointer') }
+        const mouseLeaveHandler = () => { if (map.current) map.current.getCanvas().style.cursor = '' }
+        wellsHandlersRef.current = { clickHandler, mouseEnterHandler, mouseLeaveHandler }
+        for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
+          instance.on('click', id, clickHandler)
+          instance.on('mouseenter', id, mouseEnterHandler)
+          instance.on('mouseleave', id, mouseLeaveHandler)
+        }
+      } else {
+        ;(instance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
+        for (const id of ['wells-laterals-layer', 'wells-points-layer', 'wells-arrows-layer']) {
+          if (instance.getLayer(id)) instance.setLayoutProperty(id, 'visibility', vis)
+        }
       }
-      const mouseEnterHandler = () => { map.current?.getCanvas().style.setProperty('cursor', 'pointer') }
-      const mouseLeaveHandler = () => { if (map.current) map.current.getCanvas().style.cursor = '' }
-      wellsHandlersRef.current = { clickHandler, mouseEnterHandler, mouseLeaveHandler }
-      for (const id of ['wells-laterals-layer', 'wells-points-layer']) {
-        mapInstance.on('click', id, clickHandler)
-        mapInstance.on('mouseenter', id, mouseEnterHandler)
-        mapInstance.on('mouseleave', id, mouseLeaveHandler)
-      }
-    } else {
-      ;(mapInstance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
-      for (const id of ['wells-laterals-layer', 'wells-points-layer', 'wells-arrows-layer']) {
-        if (mapInstance.getLayer(id)) mapInstance.setLayoutProperty(id, 'visibility', vis)
-      }
+      if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
     }
 
-    // Rig dots always render above the wells overlay.
-    if (mapInstance.getLayer('permits-rigs-layer')) mapInstance.moveLayer('permits-rigs-layer')
+    if (basinViewRef.current) {
+      const queue = [...countyEntries]
+      const run = async () => {
+        while (queue.length > 0) {
+          const item = queue.shift()
+          if (!item) return
+          if (loadGen !== wellsLoadGenRef.current || !basinViewRef.current) return
+          await fetchCountyWells(item[0])
+          if (loadGen !== wellsLoadGenRef.current || !map.current) return
+          const features = countyEntries.flatMap(([key]) => wellsCacheRef.current[key]?.features ?? [])
+          paintWells({ type: 'FeatureCollection', features })
+        }
+      }
+      await Promise.all([run(), run()])
+      return
+    }
+
+    const wellsGeoJSON = await fetchCountyWells(countyKey)
+    if (!wellsGeoJSON) return
+    if (loadGen !== wellsLoadGenRef.current || !map.current) return
+    if (countyKey !== selectedCountyRef.current) return
+    paintWells(wellsGeoJSON)
   }, [countyEntries, fetchCountyWells])
 
   // Fetch + memoize the Texas county polygons (from plotly's public
@@ -2351,11 +2365,16 @@ export default function Map({
     }
 
     const selectedKey = selectedCountyRef.current
+    let startedBasinWells = false
     const mountLoaded = (countyKey: CountyKey, geojson: GeoJSON.FeatureCollection) => {
       if (!basinViewRef.current) stampMapLegal(geojson)
       injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
       mountCountyParcels(countyKey, geojson)
+      if (basinViewRef.current && !startedBasinWells) {
+        startedBasinWells = true
+        void loadSelectedCountyWells()
+      }
     }
 
     const alreadyMounted = new Set(
@@ -2856,7 +2875,7 @@ export default function Map({
 
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
-    void loadSelectedCountyWells()
+    if (!startedBasinWells) void loadSelectedCountyWells()
     applyTractCountyStyles()
     if (basinViewRef.current && map.current) {
       const bounds = new mapboxgl.LngLatBounds()
