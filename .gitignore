@@ -59,4 +59,5 @@ data/winkler_parcels_enriched.geojson
 data/glasscock_parcels_enriched.geojson
 data/reeves_parcels_enriched.geojson
 data/pecos_parcels_enriched.geojson
+data/crane_parcels_enriched.geojson
 data/well*.zip

@@ -580,9 +580,7 @@ export default function Map({
   // ones in scripts/scrape_rrc_permits_realtime.py; mapCenter
   // coordinates are the county centroids (used for the "COMING
   // SOON" label anchor).
-  const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = [
-    { name: 'CRANE',     fips: '48103', mapCenter: [-102.55, 31.40] },
-  ]
+  const UPCOMING_COUNTIES: Array<{ name: string; fips: string; mapCenter: [number, number] }> = []
 
   const countyEntries = useMemo(
     () => Object.entries(COUNTIES) as Array<[CountyKey, County]>,

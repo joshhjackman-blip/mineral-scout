@@ -1,4 +1,4 @@
-name: Onboard 2026 Howard / Glasscock / Reeves / Pecos
+name: Onboard 2026 Howard / Glasscock / Reeves / Pecos / Crane
 
 # Pulls owner rolls + well zips from the private Raw-Data bucket (service
 # role), loads the new county tables, rematches tracts, and uploads map
@@ -13,14 +13,15 @@ on:
       county:
         description: 'County id or "all"'
         required: false
-        default: 'all'
+        default: 'crane'
       mode:
         description: 'tables-only or full'
         required: false
-        default: 'tables-only'
+        default: 'full'
   push:
     branches:
       - cursor/add-2026-howard-glasscock-reeves-pecos-634a
+      - cursor/add-crane-county-634a
     paths:
       - '.github/workflows/onboard-2026-counties.yml'
       - 'scripts/onboard_2026_counties.py'
@@ -55,10 +56,16 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
-          COUNTY="${{ github.event.inputs.county || 'all' }}"
-          MODE="${{ github.event.inputs.mode || 'tables-only' }}"
+          if [ "${{ github.event_name }}" = "push" ]; then
+            COUNTY="crane"
+            MODE="full"
+          else
+            COUNTY="${{ github.event.inputs.county || 'crane' }}"
+            MODE="${{ github.event.inputs.mode || 'full' }}"
+          fi
           EXTRA=""
           if [ "$MODE" = "tables-only" ]; then
             EXTRA="--tables-only"
           fi
+          echo "onboard county=$COUNTY mode=$MODE"
           python scripts/onboard_2026_counties.py --county "$COUNTY" $EXTRA

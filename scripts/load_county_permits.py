@@ -99,6 +99,7 @@ COUNTY_FIPS = {
     "winkler":  "495",
     "reeves":   "389",
     "pecos":    "371",
+    "crane":    "103",
 }
 
 # RRC SYMNUM codes we treat as "permit / not producing" when materializing

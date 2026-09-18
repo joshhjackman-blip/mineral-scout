@@ -60,7 +60,7 @@ BUCKET_NAME = "Raw-Data"
 COUNTY_FIPS = {
     "howard": "227", "martin": "317", "midland": "329", "glasscock": "173",
     "loving": "301", "reagan": "383", "upton": "461", "ward": "475",
-    "winkler": "495", "reeves": "389", "pecos": "371",
+    "winkler": "495", "reeves": "389", "pecos": "371", "crane": "103",
 }
 FIPS_TO_COUNTY = {v: k for k, v in COUNTY_FIPS.items()}
 

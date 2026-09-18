@@ -12,9 +12,7 @@ const NAVY = '#0B2A5C'
 const AMBER = '#EF9F27'
 
 /** Same Permian roadmap counties as the in-app county overview. */
-const UPCOMING_COUNTIES: Array<{ fips: string }> = [
-  { fips: '48103' }, // Crane
-]
+const UPCOMING_COUNTIES: Array<{ fips: string }> = []
 
 const TX_BOUNDS: [[number, number], [number, number]] = [
   [-106.75, 25.7],

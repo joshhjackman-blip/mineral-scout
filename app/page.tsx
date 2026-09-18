@@ -120,9 +120,7 @@ const TOUR_STEPS: TourStep[] = [
 // the "All Counties" sidebar under a COMING SOON section so
 // prospective users see the full basin roadmap. Names match the
 // UPCOMING_COUNTIES list in app/components/Map.tsx.
-const UPCOMING_PERMIAN_COUNTIES = [
-  'Crane County, TX',
-]
+const UPCOMING_PERMIAN_COUNTIES: string[] = []
 
 type TractOwner = {
   id?: string
@@ -5041,6 +5039,8 @@ export default function Home() {
                     })}
                   </div>
 
+                  {UPCOMING_PERMIAN_COUNTIES.length > 0 && (
+                  <>
                   <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     Coming Soon
                   </div>
@@ -5083,6 +5083,8 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                  </>
+                  )}
                 </>
               )}
 

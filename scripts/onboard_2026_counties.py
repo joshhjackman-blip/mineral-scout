@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load + enrich Howard 2026, Glasscock, Reeves, and Pecos.
+"""Load + enrich Howard 2026, Glasscock, Reeves, Pecos, and Crane.
 
 Expected inputs (gitignored), from the Raw-Data bucket or dropped in data/:
 
@@ -7,6 +7,7 @@ Expected inputs (gitignored), from the Raw-Data bucket or dropped in data/:
   data/owners_2026_Glasscock.csv
   data/owners_2026_Reeves.csv
   data/owners_2026_Pecos.csv
+  data/owners_2026_Crane.csv
 
 Well layers and StratMap parcels are public and fetched automatically when
 missing:
@@ -59,6 +60,12 @@ COUNTIES = {
         "fips": "371",
         "state_fips": "48371",
         "roll": "owners_2026_Pecos.csv",
+        "load_wells_table": True,
+    },
+    "crane": {
+        "fips": "103",
+        "state_fips": "48103",
+        "roll": "owners_2026_Crane.csv",
         "load_wells_table": True,
     },
 }
@@ -418,7 +425,7 @@ def onboard(county: str, dry: bool, tables_only: bool = False) -> None:
     print(f"wells={wells_zip} exists={wells_zip.exists()}", flush=True)
     print(f"src={src}", flush=True)
 
-    if county in {"pecos", "reeves"} and not abstracts.exists():
+    if county in {"pecos", "reeves", "crane"} and not abstracts.exists():
         run([sys.executable, "scripts/download_rrc_surveys.py", "--county", county], dry)
     elif not abstracts.exists() and src is not None:
         cmd = [
@@ -530,6 +537,8 @@ def print_table_counts() -> None:
         "reeves_wells",
         "pecos_mineral_ownership",
         "pecos_wells",
+        "crane_mineral_ownership",
+        "crane_wells",
     ]
     print("\n=== table counts ===", flush=True)
     with httpx.Client(timeout=60) as client:

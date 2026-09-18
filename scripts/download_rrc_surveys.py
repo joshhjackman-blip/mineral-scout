@@ -48,6 +48,7 @@ COUNTY_FIPS = {
     "upton": "461",
     "ward": "475",
     "winkler": "495",
+    "crane": "103",
 }
 
 

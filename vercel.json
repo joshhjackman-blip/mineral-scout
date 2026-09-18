@@ -45,6 +45,10 @@
       "schedule": "50 21 1 * *"
     },
     {
+      "path": "/api/cron/scrape-wells?county=crane",
+      "schedule": "55 21 1 * *"
+    },
+    {
       "path": "/api/cron/scrape-permits",
       "schedule": "0 22 * * *"
     }

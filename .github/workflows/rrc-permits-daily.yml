@@ -107,7 +107,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/backfill_ownership_legal.py \
-            --county reeves,pecos,glasscock
+            --county reeves,pecos,glasscock,crane
 
       - name: Enrich permits with well-shapefile coordinates + EWA spud/completion dates
         # The Vercel HTML scrape (step 1) upserts fresh approved/pending
@@ -128,7 +128,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/scrape_rrc_permits.py \
-            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos,crane
 
       - name: Refresh spud dates from the RRC daily drilling-permit master
         # The step above sources spud dates from a static OG_WELLBORE EWA
@@ -148,7 +148,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/scrape_rrc_drilling_permits.py \
-            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos,crane
 
       - name: Recompute tract_development_status
         # Reclassifies every abstract now that fresh permits landed
@@ -163,6 +163,6 @@ jobs:
           # backfill each well's abstract from the owner roll (rrc_lease_id ->
           # dominant abstract) so producing wells place onto tracts (PDP).
           python scripts/backfill_well_abstracts.py \
-            midland loving reagan upton ward winkler glasscock reeves pecos
+            midland loving reagan upton ward winkler glasscock reeves pecos crane
           python scripts/compute_development_status.py \
-            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos,crane
