@@ -2609,7 +2609,7 @@ export default function Map({
     // blocks with just the county name — same visual as the county
     // overview. Skip it in basin view so every county's tracts stay
     // painted on one map.
-    const texasFeatures = await loadTexasCountiesGeoJSON()
+    const texasFeatures = basinViewRef.current ? null : await loadTexasCountiesGeoJSON()
     if (renderToken !== renderTokenRef.current || !map.current) return
     if (texasFeatures) {
       const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
