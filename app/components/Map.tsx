@@ -4,7 +4,7 @@ import { useTheme } from 'next-themes'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
-import { COUNTIES } from '@/lib/counties'
+import { BASIN_OVERVIEW_CENTER, BASIN_OVERVIEW_ZOOM, COUNTIES, type MapLevel } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
 import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
 import TractSearch from './TractSearch'
@@ -396,7 +396,7 @@ export default function Map({
   focusTarget?: Record<string, unknown> | null
   selectedCounty: CountyKey
   mapFlyToRef?: React.MutableRefObject<((center: [number, number], zoom: number) => void) | null>
-  mapLevel: 'county' | 'tract'
+  mapLevel: MapLevel
   onCountySelect?: (countyKey: CountyKey) => void
   onCountySwitch: (countyId: string) => void
   devStatusByAbstract?: Record<string, DevStatusMapEntry>
@@ -532,6 +532,7 @@ export default function Map({
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
   const selectedCountyRef = useRef<CountyKey>(selectedCounty)
+  const basinViewRef = useRef(mapLevel === 'basin')
   const lastClickTimeRef = useRef(0)
   const renderForCurrentLevelRef = useRef<() => Promise<void>>(async () => {})
   const renderTokenRef = useRef(0)
@@ -569,8 +570,8 @@ export default function Map({
   // Renamed from TEXAS_OVERVIEW_* to reflect the archive of Gonzales
   // (2026-07-17). Old constant name kept as an alias so external
   // callers that referenced it don't need to change.
-  const PERMIAN_OVERVIEW_CENTER: [number, number] = [-102.3, 31.7]
-  const PERMIAN_OVERVIEW_ZOOM = 7.0
+  const PERMIAN_OVERVIEW_CENTER = BASIN_OVERVIEW_CENTER
+  const PERMIAN_OVERVIEW_ZOOM = BASIN_OVERVIEW_ZOOM
   const TEXAS_OVERVIEW_CENTER = PERMIAN_OVERVIEW_CENTER
   const TEXAS_OVERVIEW_ZOOM = PERMIAN_OVERVIEW_ZOOM
 
@@ -602,6 +603,10 @@ export default function Map({
   useEffect(() => {
     selectedCountyRef.current = selectedCounty
   }, [selectedCounty])
+
+  useEffect(() => {
+    basinViewRef.current = mapLevel === 'basin'
+  }, [mapLevel])
 
   const removeLayerIfExists = (mapInstance: mapboxgl.Map, layerId: string) => {
     if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId)
@@ -748,6 +753,8 @@ export default function Map({
     // layer id, so we don't need to explicitly `off()` the
     // tract-inactive-fill click / hover handlers registered in
     // setupTractLevel — they die with the layer.
+    removeLayerIfExists(mapInstance, 'basin-county-labels')
+    removeSourceIfExists(mapInstance, 'basin-county-labels')
     removeLayerIfExists(mapInstance, 'tract-overlay-sub-labels')
     removeLayerIfExists(mapInstance, 'tract-overlay-labels')
     removeLayerIfExists(mapInstance, 'tract-upcoming-outline')
@@ -1038,6 +1045,23 @@ export default function Map({
         }
       }
       return true
+    }
+
+    if (basinViewRef.current) {
+      countyEntries.forEach(([countyKey]) => {
+        stylePair(countyKey, 'active')
+      })
+      for (const overlayLayerId of [
+        'tract-inactive-fill', 'tract-inactive-outline',
+        'tract-upcoming-fill', 'tract-upcoming-outline',
+        'tract-overlay-labels', 'tract-overlay-sub-labels',
+      ]) {
+        if (mapInstance.getLayer(overlayLayerId)) {
+          mapInstance.setLayoutProperty(overlayLayerId, 'visibility', 'none')
+        }
+      }
+      lastStyledSelectedCountyRef.current = newSelected
+      return
     }
 
     if (previouslySelected === null) {
@@ -1428,33 +1452,52 @@ export default function Map({
   // (small dots), colored by status. Served from the static
   // /<county>_wells.geojson (scripts/build_wells_geojson.py). Rig dots stay on
   // top of this overlay.
+  const fetchCountyWells = useCallback(async (countyKey: CountyKey) => {
+    const cached = wellsCacheRef.current[countyKey]
+    if (cached) return cached
+    const cfg = COUNTIES[countyKey]
+    if (!cfg) return null
+    const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026pdp-1')
+    for (const url of urls) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) continue
+        const raw = omitInjectionWellFeatures(await res.json() as GeoJSON.FeatureCollection)
+        wellsCacheRef.current[countyKey] = raw
+        return raw
+      } catch {
+        // try next source
+      }
+    }
+    return null
+  }, [])
+
   const loadSelectedCountyWells = useCallback(async (opts?: { force?: boolean }) => {
     const mapInstance = map.current
     if (!mapInstance) return
     const countyKey = selectedCountyRef.current
     const cfg = COUNTIES[countyKey]
     if (!cfg) return
-    if (opts?.force) delete wellsCacheRef.current[countyKey]
-    let wellsGeoJSON = wellsCacheRef.current[countyKey] ?? null
-    if (!wellsGeoJSON) {
-      // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
-      // committed /public baseline so the overlay still works if Storage misses.
-      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026pdp-1')
-      for (const url of urls) {
-        try {
-          const res = await fetch(url)
-          if (!res.ok) continue
-          wellsGeoJSON = (await res.json()) as GeoJSON.FeatureCollection
-          break
-        } catch {
-          // try next source
-        }
-      }
-      if (!wellsGeoJSON) return
-      wellsGeoJSON = omitInjectionWellFeatures(wellsGeoJSON)
-      wellsCacheRef.current[countyKey] = wellsGeoJSON
-      if (countyKey !== selectedCountyRef.current || !map.current) return
+    if (opts?.force) {
+      if (basinViewRef.current) wellsCacheRef.current = {}
+      else delete wellsCacheRef.current[countyKey]
     }
+    let wellsGeoJSON: GeoJSON.FeatureCollection | null = null
+    if (basinViewRef.current) {
+      const loaded = await Promise.all(
+        countyEntries.map(([key]) => fetchCountyWells(key)),
+      )
+      wellsGeoJSON = {
+        type: 'FeatureCollection',
+        features: loaded.flatMap((fc) => fc?.features ?? []),
+      }
+    } else {
+      wellsGeoJSON = await fetchCountyWells(countyKey)
+    }
+    if (!wellsGeoJSON) return
+    if (!basinViewRef.current && countyKey !== selectedCountyRef.current) return
+    if (!map.current) return
+    if (basinViewRef.current && wellsGeoJSON.features.length === 0) return
 
     const colorExpr = wellColorExpr(wellsByOperatorRef.current)
     const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
@@ -1560,7 +1603,7 @@ export default function Map({
 
     // Rig dots always render above the wells overlay.
     if (mapInstance.getLayer('permits-rigs-layer')) mapInstance.moveLayer('permits-rigs-layer')
-  }, [])
+  }, [countyEntries, fetchCountyWells])
 
   // Fetch + memoize the Texas county polygons (from plotly's public
   // FIPS dataset). Returns Texas-only features tagged with a __fips
@@ -2215,9 +2258,12 @@ export default function Map({
       const props = topFeature.properties as Record<string, unknown> | undefined
       // County switches must never be debounced — swapping counties is a
       // deliberate navigation and always fires the swoop to the new county.
+      // Basin view stays on the combined map: update the selected county
+      // so owners load, then keep going so the clicked tract opens.
       if (countyKey !== selectedCountyRef.current) {
         onCountySwitchRef.current(countyKey)
-        return
+        if (!basinViewRef.current) return
+        selectedCountyRef.current = countyKey
       }
 
       // Debounce only same-county tract selection so a jittery double-click
@@ -2262,12 +2308,9 @@ export default function Map({
     // Inactive-county overlay: when zoomed into one county's tract
     // view, paint the OTHER 11 active counties as clean orange
     // blocks with just the county name — same visual as the county
-    // overview. Without this, Howard's tract data (labels, permit
-    // halos, muted parcel outlines) bleeds through when the user is
-    // looking at Martin next door and the map is clearly cluttered.
-    // Upcoming counties render as grey COMING SOON squares in this
-    // mode too so the Permian footprint is always intact.
-    const texasFeatures = await loadTexasCountiesGeoJSON()
+    // overview. Skip it in basin view so every county's tracts stay
+    // painted on one map.
+    const texasFeatures = basinViewRef.current ? null : await loadTexasCountiesGeoJSON()
     if (renderToken !== renderTokenRef.current || !map.current) return
     if (texasFeatures) {
       const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
@@ -2487,10 +2530,52 @@ export default function Map({
       }
     }
 
+    if (basinViewRef.current && map.current) {
+      const labelFeatures: GeoJSON.Feature[] = countyEntries.map(([, cfg]) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: cfg.mapCenter },
+        properties: { name: cfg.name.toUpperCase() },
+      }))
+      if (!map.current.getSource('basin-county-labels')) {
+        map.current.addSource('basin-county-labels', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: labelFeatures },
+        })
+      }
+      if (!map.current.getLayer('basin-county-labels')) {
+        map.current.addLayer({
+          id: 'basin-county-labels',
+          type: 'symbol',
+          source: 'basin-county-labels',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
+            'text-size': ['interpolate', ['linear'], ['zoom'], 6, 10, 8, 14, 10, 0],
+            'text-letter-spacing': 0.06,
+            'text-allow-overlap': true,
+            'text-ignore-placement': true,
+          },
+          paint: {
+            'text-color': isDarkRef.current ? '#FFFFFF' : '#0F172A',
+            'text-halo-color': isDarkRef.current ? '#0F172A' : '#FFFFFF',
+            'text-halo-width': 2,
+            'text-opacity': ['interpolate', ['linear'], ['zoom'], 8.5, 0.95, 9.5, 0],
+          },
+        })
+      }
+    }
+
     await loadSelectedCountyPermits()
     if (renderToken !== renderTokenRef.current || !map.current) return
     void loadSelectedCountyWells()
     applyTractCountyStyles()
+    if (basinViewRef.current && map.current) {
+      map.current.easeTo({
+        center: PERMIAN_OVERVIEW_CENTER,
+        zoom: PERMIAN_OVERVIEW_ZOOM,
+        ...easedMove(CAMERA_OVERVIEW_MS),
+      })
+    }
   }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadSelectedCountyWells, loadTexasCountiesGeoJSON])
 
   const renderForCurrentLevel = useCallback(async () => {
@@ -2621,9 +2706,15 @@ export default function Map({
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
-    if (mapLevel !== 'tract') return
+    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
     // Re-color active/muted counties immediately (cheap paint-property swaps).
     applyTractCountyStyles()
+    if (mapLevel === 'basin') {
+      // All county parcels and wells are already on the map. Only the
+      // selected county's permit/rig dots need to follow a tract click.
+      void loadSelectedCountyPermits()
+      return
+    }
     // Defer the rig/permit reload (network + new point geometry) until just
     // after the county swoop settles. Loading it mid-flight made fresh rig
     // dots pop in while the camera was still moving, which read as a stutter.
@@ -2642,7 +2733,7 @@ export default function Map({
   useEffect(() => {
     if (!activityRefreshTick) return
     if (!map.current?.isStyleLoaded()) return
-    if (mapLevel !== 'tract') return
+    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
     permitsCacheRef.current = {}
     void loadSelectedCountyPermits({ force: true })
   }, [activityRefreshTick, loadSelectedCountyPermits, mapLevel])
@@ -2650,7 +2741,7 @@ export default function Map({
   // Amber ring around tracts whose CAD ownership matches the operator filter.
   useEffect(() => {
     const mapInstance = map.current
-    if (!mapInstance?.isStyleLoaded() || mapLevel !== 'tract') return
+    if (!mapInstance?.isStyleLoaded() || (mapLevel !== 'tract' && mapLevel !== 'basin')) return
 
     const countyId = COUNTIES[selectedCounty]?.id
     if (!countyId) return
@@ -2729,7 +2820,7 @@ export default function Map({
   // which applyTractCountyStyles' same-county short-circuit would skip — so
   // force a full re-style when it flips.
   useEffect(() => {
-    if (!map.current?.isStyleLoaded() || mapLevel !== 'tract') return
+    if (!map.current?.isStyleLoaded() || (mapLevel !== 'tract' && mapLevel !== 'basin')) return
     lastStyledSelectedCountyRef.current = null
     applyTractCountyStyles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2739,7 +2830,7 @@ export default function Map({
     if (!map.current?.isStyleLoaded()) return
     if (!map.current) return
     const mapInstance = map.current
-    const tractLevel = mapLevel === 'tract'
+    const tractLevel = mapLevel === 'tract' || mapLevel === 'basin'
     // Rigs overlay + permit glow layers are the two toggle-driven
     // overlays. Both stay hidden when mapLevel is 'county' (no
     // parcel-level layers to sit on top of).
@@ -2787,7 +2878,7 @@ export default function Map({
   }, [mapLevel, showRigs, showWells, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
-    if (mapLevel !== 'tract') return
+    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
     if (!focusTarget || !map.current?.isStyleLoaded()) return
 
     const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
@@ -2874,7 +2965,7 @@ export default function Map({
           geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
         />
       )}
-      {mapReady && mapLevel === 'tract' && (
+      {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && (
         <LayerTogglePanel
           statusVisible={statusVisible}
           onStatus={setStatus}

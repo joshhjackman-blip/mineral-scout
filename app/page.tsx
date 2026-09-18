@@ -20,7 +20,7 @@ import {
   permitMatchesTractLegal,
   permitMatchesTractWells,
 } from '@/lib/permit-match'
-import { COUNTIES } from '@/lib/counties'
+import { COUNTIES, type MapLevel } from '@/lib/counties'
 import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
 import {
   abstractsMatchingOperators,
@@ -860,7 +860,7 @@ export default function Home() {
   const [windowWidth, setWindowWidth] = useState(
     typeof window !== 'undefined' ? window.innerWidth : 1200
   )
-  const [mapLevel, setMapLevel] = useState<'county' | 'tract'>('county')
+  const [mapLevel, setMapLevel] = useState<MapLevel>('county')
   const [tracts, setTracts] = useState<TractRecord[]>([])
   // Pending focus target: when the URL carries an `abstract` param,
   // stash it here. Once the county's tracts finish loading below,
@@ -1073,7 +1073,8 @@ export default function Home() {
   // loadCountyWellsGeo / the tract-wells effect below.
   const wellsGeoCacheRef = useRef<Record<string, GeoJSON.FeatureCollection | null>>({})
   const ownershipTable = county.ownershipTable
-  const countyLabel = mapLevel === 'county' ? 'All Counties' : county.displayName
+  const countyLabel =
+    mapLevel === 'county' ? 'All Counties' : mapLevel === 'basin' ? 'Permian Basin' : county.displayName
   const countyBreakdown = county.breakdown
   // Live per-county stat counts fetched from Supabase. Replaces the
   // static county.stats values baked in lib/counties.ts, which
@@ -1203,7 +1204,7 @@ export default function Home() {
       { val: fmt(live?.abstracts),   lbl: 'Survey abstracts' },
     ]
   }, [liveCountyStats, selectedCounty])
-  const navCountyLabel = mapLevel === 'county' ? 'All Counties' : countyLabel
+  const navCountyLabel = countyLabel
   const showCountyArrows = mapLevel === 'tract'
   const desktopPanelWidth = Math.min(420, Math.max(300, windowWidth * 0.3))
   const rightArrowOffset = selected && !isMobile ? desktopPanelWidth + 8 : 8
@@ -1232,6 +1233,21 @@ export default function Home() {
     setSelectedCounty(nextKey)
     flyToCountyView(nextKey)
   }, [selectedCounty, flyToCountyView])
+
+  const openBasinView = useCallback(() => {
+    setSelected(null)
+    setExpandedOwner(null)
+    setSearchQuery('')
+    setSearchResults([])
+    setSearchOpen(false)
+    setOwnerTracts([])
+    setOwnerTractsName('')
+    setOwnerWells({})
+    setTractWells([])
+    setTractWellsLoaded(false)
+    setWellsExpanded(false)
+    setMapLevel('basin')
+  }, [])
 
   useEffect(() => {
     countyRef.current = county
@@ -1395,6 +1411,8 @@ export default function Home() {
       clearTimeout(countySwitchClearTimeoutRef.current)
     }
 
+    if (mapLevel === 'basin') return
+
     setCountySwitchLabel(county.displayName)
     setCountySwitchLabelVisible(true)
 
@@ -1405,10 +1423,15 @@ export default function Home() {
     countySwitchClearTimeoutRef.current = setTimeout(() => {
       setCountySwitchLabel(null)
     }, 2000)
-  }, [county.displayName, selectedCounty])
+  }, [county.displayName, selectedCounty, mapLevel])
 
   useEffect(() => {
-    setSelected(null)
+    // In basin view a tract click in another county updates selectedCounty
+    // and then selects that tract in the same tick. Keep the incoming
+    // selection so the owner panel can open.
+    if (mapLevel !== 'basin') {
+      setSelected(null)
+    }
     setExpandedOwner(null)
     setSearchQuery('')
     setSearchResults([])
@@ -1426,6 +1449,10 @@ export default function Home() {
     setDrawerOwner(null)
     setDrawerTractLabel(null)
     setDevStatusByAbstract({})
+    // mapLevel is read only so a basin tract-click can keep the new
+    // selection. Do not add it to deps or opening the basin map would
+    // wipe per-county development status.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCounty])
 
   // Only permits filed / approved in the last 90 days qualify as
@@ -2064,7 +2091,7 @@ export default function Home() {
         return
       }
 
-      const searchCounties = mapLevel === 'county'
+      const searchCounties = mapLevel === 'county' || mapLevel === 'basin'
         ? COUNTY_ORDER
         : [selectedCounty]
 
@@ -2587,7 +2614,7 @@ export default function Home() {
     }
 
     const resultCounty = result.countyId ?? selectedCounty
-    if (mapLevel === 'county') {
+    if (mapLevel === 'county' || mapLevel === 'basin') {
       if (resultCounty !== selectedCounty) {
         setSelectedCounty(resultCounty)
       }
@@ -3474,7 +3501,7 @@ export default function Home() {
                 {navCountyLabel}
               </span>
             )}
-            {mapLevel === 'tract' && (
+            {(mapLevel === 'tract' || mapLevel === 'basin') && (
               <button
                 onClick={() => {
                   setMapLevel('county')
@@ -3501,6 +3528,24 @@ export default function Home() {
                 {backToAllLabel}
               </button>
             )}
+            {mapLevel === 'tract' && (
+              <button
+                onClick={openBasinView}
+                style={{
+                  height: 26,
+                  border: '1px solid var(--mm-chrome-border)',
+                  borderRadius: 6,
+                  background: 'var(--mm-chrome-panel)',
+                  color: 'var(--mm-chrome-muted)',
+                  fontSize: 11,
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  padding: '0 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                Basin map
+              </button>
+            )}
             <select
               data-tour="county-select"
               value={selectedCounty}
@@ -3508,6 +3553,11 @@ export default function Home() {
                 const next = event.target.value as CountyKey
                 setSelected(null)
                 setSelectedCounty(next)
+                if (mapLevel === 'basin') {
+                  setMapLevel('tract')
+                  flyToCountyView(next)
+                  return
+                }
                 if (mapLevel === 'tract') flyToCountyView(next)
               }}
               style={{
@@ -4913,12 +4963,17 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
-                {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
+              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: mapLevel === 'county' || mapLevel === 'basin' ? 4 : 16 }}>
+                {mapLevel === 'county' ? 'All Counties' : mapLevel === 'basin' ? 'Permian Basin' : 'County Overview'}
               </div>
               {mapLevel === 'county' && (
                 <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   Click any highlighted county to explore
+                </div>
+              )}
+              {mapLevel === 'basin' && (
+                <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                  Every live county on one map. Click a tract to see owners, or pick a county to zoom in.
                 </div>
               )}
 
@@ -4963,8 +5018,30 @@ export default function Home() {
                 </div>
               )}
 
-              {mapLevel === 'county' && (
+              {mapLevel === 'tract' && (
+                <button
+                  type="button"
+                  onClick={openBasinView}
+                  style={{
+                    marginTop: 12,
+                    padding: 0,
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--mm-chrome-muted)',
+                    fontSize: 12,
+                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  View all counties on one map
+                </button>
+              )}
+
+              {(mapLevel === 'county' || mapLevel === 'basin') && (
                 <>
+                  {mapLevel === 'county' && (
+                    <>
                   {/* Real-time commodity prices — WTI Crude + Henry Hub
                      Natural Gas. Polled from /api/market/prices every
                      60s. Sits at the top of the sidebar so brokers
@@ -4979,8 +5056,31 @@ export default function Home() {
                      show per-county contributions. */}
                   <BasinActivityWidget />
 
+                  <button
+                    type="button"
+                    onClick={openBasinView}
+                    style={{
+                      width: '100%',
+                      marginBottom: 16,
+                      padding: '12px 14px',
+                      border: '1px solid var(--mm-chrome-border)',
+                      borderRadius: 8,
+                      background: 'var(--mm-chrome-panel)',
+                      color: 'var(--mm-chrome-fg)',
+                      fontSize: 13,
+                      fontWeight: 600,
+                      fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    Show all counties on one map
+                  </button>
+                    </>
+                  )}
+
                   <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                    ACTIVE COUNTIES
+                    {mapLevel === 'basin' ? 'ZOOM TO A COUNTY' : 'ACTIVE COUNTIES'}
                   </div>
                   <div>
                     {Object.values(COUNTIES).map((c) => {
@@ -5280,6 +5380,19 @@ export default function Home() {
               operatorMatchTractCount={operatorMatchTractCount}
               onCountySwitch={(countyId) => {
                 const key = countyId as CountyKey
+                if (mapLevel === 'basin') {
+                  setSelectedCounty(key)
+                  setExpandedOwner(null)
+                  setSearchQuery('')
+                  setSearchResults([])
+                  setSearchOpen(false)
+                  setOwnerWells({})
+                  setTractWells([])
+                  setTractWellsLoaded(false)
+                  setWellsExpanded(false)
+                  setSelectedOperatorKeys([])
+                  return
+                }
                 setSelected(null)
                 setSelectedCounty(key)
                 setMapLevel('tract')
