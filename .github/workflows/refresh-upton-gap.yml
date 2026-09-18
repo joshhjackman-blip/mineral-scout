@@ -1,0 +1,45 @@
+name: Fill Upton GIS gap
+
+# Rebuild Upton from the RRC survey grid, rematch the 2026 roll, retag
+# production_status, and upload map-data.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/fix-upton-gis-gap-634a
+    paths:
+      - '.github/workflows/refresh-upton-gap.yml'
+      - 'scripts/refresh_upton_gap.py'
+      - 'scripts/download_rrc_surveys.py'
+      - 'scripts/rematch_taxroll_to_map.py'
+      - 'data/upton/Abstracts.shp'
+      - 'public/upton_parcels_map.geojson'
+
+concurrency:
+  group: refresh-upton-gap
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas geopandas shapely pyogrio httpx pyshp
+
+      - name: Rematch, retag, upload
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: python scripts/refresh_upton_gap.py

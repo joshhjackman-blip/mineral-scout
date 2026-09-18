@@ -236,7 +236,7 @@ export const COUNTIES: Record<string, County> = {
     ownershipTable: 'upton_mineral_ownership',
     wellsTable: 'upton_wells',
     geoJsonPath: '/upton_parcels_enriched.geojson',
-    mapGeoJsonPath: '/upton_parcels_map.geojson?v=2026pdp-1',
+    mapGeoJsonPath: '/upton_parcels_map.geojson?v=2026survey-gap-1',
     ownershipPctIsDecimal: true,
     abstractField: 'ABSTRACT_L',
     nriCode: '',
