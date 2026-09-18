@@ -79,6 +79,7 @@ COUNTY_FIPS = {
     "winkler":  "495",
     "reeves":   "389",
     "pecos":    "371",
+    "crane":    "103",
 }
 
 
@@ -104,6 +105,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--data-dir", default="data",
         help="Where to cache the downloaded wells zip.",
+    )
+    parser.add_argument(
+        "--from-shapefile",
+        action="store_true",
+        help="Tag tracts from the wells zip surface points only (no Supabase).",
     )
     return parser.parse_args()
 
@@ -164,6 +170,42 @@ def resolve_wells_zip(county: str, fips: str, wells_zip_arg: str | None,
     out = data_dir / key
     out.write_bytes(blob)
     return out
+
+
+def read_bundle_surface_rows(zip_path: Path) -> list[dict[str, Any]]:
+    """Surface well points from wellNNNs.shp for --from-shapefile tagging."""
+    import shapefile  # pyshp
+
+    rows: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        extract = Path(tmp)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extract)
+        for shp in extract.rglob("*.shp"):
+            if not shp.stem.lower().endswith("s"):
+                continue
+            reader = shapefile.Reader(str(shp.with_suffix("")))
+            field_names = [f[0] for f in reader.fields if f[0] != "DeletionFlag"]
+            api_field = next((f for f in ("API", "APINUM", "API10", "API14") if f in field_names), None)
+            if api_field is None:
+                continue
+            api_idx = field_names.index(api_field)
+            lon_field = next((f for f in ("LONG83", "LONG27") if f in field_names), None)
+            lat_field = next((f for f in ("LAT83", "LAT27") if f in field_names), None)
+            if lon_field is None or lat_field is None:
+                continue
+            lon_idx = field_names.index(lon_field)
+            lat_idx = field_names.index(lat_field)
+            for record in reader.iterRecords():
+                api = normalize_api(record[api_idx])
+                try:
+                    lon = float(record[lon_idx])
+                    lat = float(record[lat_idx])
+                except (TypeError, ValueError):
+                    continue
+                if api:
+                    rows.append({"api_number": api, "longitude": lon, "latitude": lat})
+    return rows
 
 
 def read_bundle_api_sets(zip_path: Path) -> tuple[set[str], set[str]]:
@@ -350,24 +392,36 @@ def main() -> None:
     if not input_path.exists():
         raise FileNotFoundError(f"Enriched GeoJSON missing: {input_path}")
 
-    supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
-    supabase_key = require_env(
-        "SUPABASE_KEY",
-        ("SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    )
-    base = rest_base(supabase_url)
-    headers = rest_headers(supabase_key)
-
     data_dir = Path(args.data_dir)
-    zip_path = resolve_wells_zip(county, fips, args.wells_zip, data_dir, base, headers)
+    if args.from_shapefile:
+        if not args.wells_zip:
+            raise ValueError("--from-shapefile requires --wells-zip")
+        zip_path = Path(args.wells_zip)
+        if not zip_path.exists():
+            raise FileNotFoundError(f"--wells-zip not found: {zip_path}")
+        base = ""
+        headers: dict[str, str] = {}
+    else:
+        supabase_url = require_env("SUPABASE_URL", ("NEXT_PUBLIC_SUPABASE_URL",))
+        supabase_key = require_env(
+            "SUPABASE_KEY",
+            ("SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+        )
+        base = rest_base(supabase_url)
+        headers = rest_headers(supabase_key)
+        zip_path = resolve_wells_zip(county, fips, args.wells_zip, data_dir, base, headers)
     print(f"wells bundle: {zip_path}")
     surface_apis, bottom_apis = read_bundle_api_sets(zip_path)
     print(f"  surface APIs: {len(surface_apis):,}")
     print(f"  bottom-hole APIs: {len(bottom_apis):,}")
 
     wells_table = f"{county}_wells"
-    wells_rows = paginate_wells(base, headers, wells_table)
-    print(f"wells rows in {wells_table} with lat/lon: {len(wells_rows):,}")
+    if args.from_shapefile:
+        wells_rows = read_bundle_surface_rows(zip_path)
+        print(f"wells rows from shapefile: {len(wells_rows):,}")
+    else:
+        wells_rows = paginate_wells(base, headers, wells_table)
+        print(f"wells rows in {wells_table} with lat/lon: {len(wells_rows):,}")
 
     with input_path.open() as f:
         collection = json.load(f)
@@ -432,7 +486,7 @@ def main() -> None:
     print(f"  abstracts with PUD:     {len(pud_per_abstract):,}")
 
     permits_table = f"{county}_permits"
-    permits = paginate_permits(base, headers, permits_table)
+    permits = None if args.from_shapefile else paginate_permits(base, headers, permits_table)
     if permits is None:
         print(f"permits table {permits_table} not present; skipping permit join.")
         permit_by_abstract: dict[str, dict[str, int]] = {}

@@ -120,9 +120,7 @@ const TOUR_STEPS: TourStep[] = [
 // the "All Counties" sidebar under a COMING SOON section so
 // prospective users see the full basin roadmap. Names match the
 // UPCOMING_COUNTIES list in app/components/Map.tsx.
-const UPCOMING_PERMIAN_COUNTIES = [
-  'Crane County, TX',
-]
+const UPCOMING_PERMIAN_COUNTIES: string[] = []
 
 type TractOwner = {
   id?: string
@@ -1841,7 +1839,7 @@ export default function Home() {
     async (countyId: string): Promise<GeoJSON.FeatureCollection | null> => {
       const cached = wellsGeoCacheRef.current[countyId]
       if (cached !== undefined) return cached
-      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026survey-1')
+      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026pdp-1')
       for (const url of urls) {
         try {
           const r = await fetch(url, { cache: 'force-cache' })
@@ -2352,7 +2350,7 @@ export default function Home() {
         // Tract owners still load from /api/tract-owners.
         const response = await fetchCountyAsset(
           `${county.id}_parcels_map.geojson`,
-          '2026survey-1',
+          '2026pdp-1',
         )
         let parcelsData: unknown
 
@@ -5041,6 +5039,8 @@ export default function Home() {
                     })}
                   </div>
 
+                  {UPCOMING_PERMIAN_COUNTIES.length > 0 && (
+                  <>
                   <div style={{ marginTop: 18, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     Coming Soon
                   </div>
@@ -5083,6 +5083,8 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                  </>
+                  )}
                 </>
               )}
 

@@ -42,6 +42,7 @@ COUNTY_ROLLS = {
     "winkler": ROOT / "data" / "owners_2026_Winkler.csv",
     "reeves": ROOT / "data" / "owners_2026_Reeves.csv",
     "pecos": ROOT / "data" / "owners_2026_Pecos.csv",
+    "crane": ROOT / "data" / "owners_2026_Crane.csv",
 }
 COUNTY_ROLL_FALLBACKS = {
     "howard": ROOT / "data" / "howard_mineral_roll.csv",
@@ -58,6 +59,7 @@ COUNTY_ABSTRACTS = {
     "winkler": ROOT / "data" / "winkler" / "Abstracts.shp",
     "reeves": ROOT / "data" / "reeves" / "Abstracts.shp",
     "pecos": ROOT / "data" / "pecos" / "Abstracts.shp",
+    "crane": ROOT / "data" / "crane" / "Abstracts.shp",
 }
 
 

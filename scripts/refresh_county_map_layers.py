@@ -30,8 +30,8 @@ from onboard_2026_counties import (  # noqa: E402
     upload_map_asset,
 )
 
-REFRESH = ("howard", "glasscock", "reeves", "pecos")
-REBUILD_TRACTS = ("pecos", "reeves")
+REFRESH = ("howard", "glasscock", "reeves", "pecos", "crane")
+REBUILD_TRACTS = ("pecos", "reeves", "crane")
 
 
 def run(cmd: list[str]) -> None:

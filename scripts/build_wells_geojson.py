@@ -44,11 +44,42 @@ ROOT = Path(__file__).resolve().parent.parent
 COUNTY_FIPS = {
     "howard": "227", "martin": "317", "midland": "329", "glasscock": "173",
     "loving": "301", "reagan": "383", "upton": "461", "ward": "475",
-    "winkler": "495", "reeves": "389", "pecos": "371",
+    "winkler": "495", "reeves": "389", "pecos": "371", "crane": "103",
 }
 
-# RRC SYMNUM codes for a permitted / located-but-not-completed well.
+# RRC SYMNUM codes used to draw a planned surface->bottom line (existing
+# loader set). Color classification uses SYMNUM_KIND from the Digital Map
+# Information well-symbol table — 11/21 there are injection, not permits.
 PERMIT_SYMNUMS = {1, 11, 21, 87, 116}
+
+# Official RRC Digital Map Information SYMNUM → map kind. Used when the
+# wells table still has the shapefile-loader stub (ACTIVE / empty) so a
+# newly onboarded county is not painted all-producing-green. Scrape
+# statuses (PRODUCING / SHUT IN / INJECTION) still win when present.
+# https://www.rrc.texas.gov/media/kmld3uzj/digital-map-information-user-guide.pdf
+SYMNUM_KIND: dict[int, str] = {
+    1: "permitted",
+    2: "permitted",
+    3: "plugged",          # dry hole
+    4: "producing",        # oil
+    5: "producing",        # gas
+    6: "producing",        # oil/gas
+    7: "plugged",          # plugged oil
+    8: "plugged",          # plugged gas
+    9: "plugged",          # canceled location
+    10: "plugged",         # plugged oil/gas
+    11: "injection",
+    19: "shut_in",
+    20: "shut_in",
+    21: "injection",
+    22: "injection",
+    23: "injection",
+    86: "producing",       # horizontal surface location
+    104: "injection",
+    105: "injection",
+    106: "injection",
+    107: "injection",
+}
 # How many distinct operators get their own color in the per-operator palette.
 OPERATOR_PALETTE_SIZE = 12
 _OP_SUFFIX = __import__("re").compile(
@@ -78,18 +109,19 @@ def _kind(status: str | None, is_permit: bool, is_line: bool) -> str:
 
 
 def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
-              lease: str = "", has_bottom: bool = False) -> str:
+              lease: str = "", has_bottom: bool = False,
+              symnum: int | None = None) -> str:
     """Per-well designation from the RRC signals we have:
-      injection  — well status / lease is disposal/injection (dropped later)
-      shut_in    — well status SHUT IN
-      producing  — completion, bottom-hole, or PRODUCING/OIL/GAS status
+      injection  — well status / lease / SYMNUM is disposal/injection
+      shut_in    — well status SHUT IN or SYMNUM 19/20
+      producing  — completion, PRODUCING/OIL/GAS status, or oil/gas SYMNUM
       duc        — a drilled lateral with no completion/production on file
-      permitted  — a permitted location (SYMNUM permit code), not yet spudded
+      permitted  — a permitted location, not yet spudded
+      plugged    — plugged / dry / canceled (dropped later)
       vertical   — a point well with no other signal
 
-    Bare ``ACTIVE`` from the shapefile loader is not a production signal —
-    those rows used to paint every lateral purple (no status) or green
-    (ACTIVE treated as PDP). Infer from geometry instead.
+    Bare ``ACTIVE`` from the shapefile loader is not a production signal.
+    Prefer a scrape status, then the shapefile SYMNUM, then geometry.
     """
     s = (winfo.get("status") or "").upper()
     lu = (lease or "").upper()
@@ -100,6 +132,10 @@ def _classify(winfo: dict, pinfo: dict, is_permit: bool, is_line: bool,
     completed = bool(winfo.get("completion")) or bool(pinfo.get("completion"))
     if completed or "PROD" in s or s in ("OIL", "GAS"):
         return "producing"
+    # Loader stub or unscored county: use the RRC map symbol instead of
+    # treating every bottom-hole as producing (that painted Crane green).
+    if s in ("", "ACTIVE") and symnum in SYMNUM_KIND:
+        return SYMNUM_KIND[symnum]
     # Planned permit laterals carry a bottom-hole target; that is not a
     # completion. Check permit before inferring PDP from geometry.
     if is_permit:
@@ -259,12 +295,14 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
     # 1) Drilled horizontal laterals (as-drilled lines).
     for api, coords in laterals.items():
         w, p, operator = info_for(api)
+        symnum = (surface.get(api) or {}).get("symnum")
         features.append({
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": coords},
             "properties": {
                 "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                "kind": _classify(w, p, False, True, has_bottom=api in bottom),
+                "kind": _classify(w, p, False, True, has_bottom=api in bottom,
+                                 symnum=symnum),
                 "status": w.get("status"), "operator": operator,
             },
         })
@@ -289,7 +327,8 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                 ]},
                 "properties": {
                     "geom": "line", "well_type": "HORIZONTAL", "api": api,
-                    "kind": _classify(w, p, True, True, has_bottom=True),
+                    "kind": _classify(w, p, True, True, has_bottom=True,
+                                     symnum=s["symnum"]),
                     "status": w.get("status"), "operator": operator,
                 },
             })
@@ -302,14 +341,16 @@ def build_county(county: str, fips: str, base: str, headers: dict) -> dict:
                     "geom": "point",
                     "well_type": "VERTICAL" if not is_permit else "PERMIT",
                     "api": api,
-                    "kind": _classify(w, p, is_permit, False, has_bottom=bool(bh)),
+                    "kind": _classify(w, p, is_permit, False, has_bottom=bool(bh),
+                                     symnum=s["symnum"]),
                     "status": w.get("status"), "operator": operator,
                 },
             })
 
-    # Injection / disposal wells look like PDP on the map and are not
-    # prospecting targets. Drop them from the overlay file entirely.
-    features = [f for f in features if f["properties"]["kind"] != "injection"]
+    # Injection / disposal / plugged / dry holes look like PDP on the map
+    # and are not prospecting targets. Drop them from the overlay.
+    features = [f for f in features if f["properties"]["kind"] not in
+                ("injection", "plugged")]
 
     # Operator coloring: rank the county's operators by well count and stamp an
     # `op_idx` (0..N-1 for the top operators, -1 for the long tail) so the map

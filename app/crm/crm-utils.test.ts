@@ -5,6 +5,7 @@ assert.equal(parseCountyField('glasscock'), 'glasscock')
 assert.equal(parseCountyField('Glasscock County'), 'glasscock')
 assert.equal(parseCountyField('Glasscock County, TX'), 'glasscock')
 assert.equal(parseCountyField('  Pecos County, TX  '), 'pecos')
+assert.equal(parseCountyField('Crane County, TX'), 'crane')
 assert.equal(parseCountyField(null), null)
 assert.equal(parseCountyField('not-a-county'), null)
 

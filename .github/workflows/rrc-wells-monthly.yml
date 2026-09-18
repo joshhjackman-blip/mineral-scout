@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        county: [howard, martin, midland, glasscock, loving, reagan, upton, ward, winkler, reeves, pecos]
+        county: [howard, martin, midland, glasscock, loving, reagan, upton, ward, winkler, reeves, pecos, crane]
     steps:
       - uses: actions/checkout@v6
 
@@ -80,4 +80,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           python scripts/build_wells_geojson.py \
-            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos --upload
+            --county howard,martin,midland,glasscock,loving,reagan,upton,ward,winkler,reeves,pecos,crane --upload

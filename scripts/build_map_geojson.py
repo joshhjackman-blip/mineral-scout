@@ -146,6 +146,7 @@ INPUT_OUTPUT_PAIRS = [
     ('public/glasscock_parcels_enriched.geojson', 'public/glasscock_parcels_map.geojson'),
     ('public/reeves_parcels_enriched.geojson',   'public/reeves_parcels_map.geojson'),
     ('public/pecos_parcels_enriched.geojson',    'public/pecos_parcels_map.geojson'),
+    ('public/crane_parcels_enriched.geojson',    'public/crane_parcels_map.geojson'),
 ]
 
 

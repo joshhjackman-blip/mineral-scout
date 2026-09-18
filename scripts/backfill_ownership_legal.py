@@ -36,7 +36,7 @@ from supabase_rest import (  # noqa: E402
     rest_headers,
 )
 
-DEFAULT_COUNTIES = ("reeves", "pecos", "glasscock")
+DEFAULT_COUNTIES = ("reeves", "pecos", "glasscock", "crane")
 
 
 def parse_args() -> argparse.Namespace:
