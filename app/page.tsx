@@ -3508,6 +3508,26 @@ export default function Home() {
                 {navCountyLabel}
               </span>
             )}
+            {mapLevel === 'county' && (
+              <button
+                type="button"
+                onClick={openBasinView}
+                style={{
+                  height: 26,
+                  border: '1px solid var(--mm-chrome-border)',
+                  borderRadius: 6,
+                  background: 'var(--mm-chrome-fg)',
+                  color: 'var(--mm-chrome-panel)',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
+                  padding: '0 8px',
+                  cursor: 'pointer',
+                }}
+              >
+                Basin view
+              </button>
+            )}
             {(mapLevel === 'tract' || mapLevel === 'basin') && (
               <button
                 onClick={() => {

@@ -6,7 +6,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
 import { BASIN_OVERVIEW_CENTER, BASIN_OVERVIEW_ZOOM, COUNTIES, type MapLevel } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
-import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
+import { countyAssetUrls } from '@/lib/county-assets'
 import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
 import { omitInjectionWellFeatures } from '@/lib/well-kind'
@@ -1277,18 +1277,19 @@ export default function Map({
     const mapInstance = map.current
     if (!mapInstance) return
 
-    const countyKey = selectedCountyRef.current
-    const countyConfig = COUNTIES[countyKey]
-    const permitsTable = `${countyConfig.id}_permits`
-
-    // Use cached GeoJSON if we already loaded permits for this county
-    // once — unless the parent asked for a live refresh.
+    const fetchCountyPermits = async (countyKey: CountyKey): Promise<GeoJSON.FeatureCollection | null> => {
+    if (!opts?.force && permitsCacheRef.current[countyKey]) {
+      return permitsCacheRef.current[countyKey] ?? null
+    }
     if (opts?.force) {
       delete permitsCacheRef.current[countyKey]
     }
-    let permitsGeoJSON = permitsCacheRef.current[countyKey] ?? null
+    const countyConfig = COUNTIES[countyKey]
+    if (!countyConfig) return null
+    const permitsTable = `${countyConfig.id}_permits`
 
-    if (!permitsGeoJSON) {
+    let permitsGeoJSON: GeoJSON.FeatureCollection | null = null
+    {
       let permitRows: Array<Record<string, unknown>> = []
       // Try the full column set first (Ticket 1.3 schema with
       // spud_date/completion_date). Fall back to the pre-1.3 minimal
@@ -1449,11 +1450,23 @@ export default function Map({
         })),
       }
       permitsCacheRef.current[countyKey] = permitsGeoJSON
-
-      // Bail out if the user switched away from this county while the
-      // network round-trip was in flight.
-      if (countyKey !== selectedCountyRef.current || !map.current) return
     }
+    return permitsGeoJSON
+    }
+
+    let permitsGeoJSON: GeoJSON.FeatureCollection | null = null
+    if (basinViewRef.current) {
+      const loaded = await Promise.all(
+        countyEntries.map(([key]) => fetchCountyPermits(key)),
+      )
+      permitsGeoJSON = {
+        type: 'FeatureCollection',
+        features: loaded.flatMap((fc) => fc?.features ?? []),
+      }
+    } else {
+      permitsGeoJSON = await fetchCountyPermits(selectedCountyRef.current)
+    }
+    if (!permitsGeoJSON || !map.current) return
 
     // Three sub-layers, each filtered on `category`. Adds up to a single
     // toggleable set of activity dots without duplicating the source.
@@ -1558,7 +1571,7 @@ export default function Map({
         mapInstance.moveLayer(layer.id)
       }
     }
-  }, [showRigs])
+  }, [countyEntries, showRigs])
 
   // Well-geometry overlay: horizontal laterals (lines) + vertical/permit wells
   // (small dots), colored by status. Served from the static
@@ -1992,16 +2005,22 @@ export default function Map({
       countyConfig: (typeof COUNTIES)[CountyKey],
     ): Promise<GeoJSON.FeatureCollection | null> => {
       const file = `${countyConfig.id}_parcels_map.geojson`
-      const response = await fetchCountyAsset(file, '2026pdp-1')
-      if (!response) {
-        const fallback = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
-        if (!fallback.ok) {
-          console.warn(`Parcels source missing for ${countyConfig.id}`)
-          return null
+      const urls = [
+        ...countyAssetUrls(file, '2026pdp-1'),
+        countyConfig.mapGeoJsonPath,
+        countyConfig.geoJsonPath,
+      ].filter((url, idx, all): url is string => Boolean(url) && all.indexOf(url) === idx)
+      for (const url of urls) {
+        try {
+          const response = await fetch(url)
+          if (!response.ok) continue
+          return await response.json() as GeoJSON.FeatureCollection
+        } catch (err) {
+          console.warn(`Parcels fetch failed for ${countyConfig.id} (${url})`, err)
         }
-        return await fallback.json() as GeoJSON.FeatureCollection
       }
-      return await response.json() as GeoJSON.FeatureCollection
+      console.warn(`Parcels source missing for ${countyConfig.id}`)
+      return null
     }
 
     currentParcelsByCountyRef.current = {}
@@ -2335,8 +2354,13 @@ export default function Map({
     if (basinViewRef.current) {
       const loaded = await Promise.all(
         countyEntries.map(async ([countyKey, countyConfig]) => {
-          const geojson = await loadCountyParcels(countyKey, countyConfig)
-          return geojson ? ([countyKey, geojson] as const) : null
+          try {
+            const geojson = await loadCountyParcels(countyKey, countyConfig)
+            return geojson ? ([countyKey, geojson] as const) : null
+          } catch (err) {
+            console.warn(`Parcels load failed for ${countyKey}`, err)
+            return null
+          }
         }),
       )
       if (renderToken !== renderTokenRef.current || !map.current) return
@@ -2359,8 +2383,13 @@ export default function Map({
         countyEntries
           .filter(([countyKey]) => countyKey !== selectedKey)
           .map(async ([countyKey, countyConfig]) => {
-            const geojson = await loadCountyParcels(countyKey, countyConfig)
-            return geojson ? ([countyKey, geojson] as const) : null
+            try {
+              const geojson = await loadCountyParcels(countyKey, countyConfig)
+              return geojson ? ([countyKey, geojson] as const) : null
+            } catch (err) {
+              console.warn(`Parcels load failed for ${countyKey}`, err)
+              return null
+            }
           }),
       )
       if (renderToken !== renderTokenRef.current || !map.current) return
@@ -2891,10 +2920,13 @@ export default function Map({
       await setupCountyOverview()
       return
     }
-    const hasParcels = countyEntries.some(([, cfg]) => (
-      !!map.current?.getLayer(`parcels-fill-${cfg.id}`)
+    const missingParcels = countyEntries.some(([, cfg]) => (
+      !map.current?.getLayer(`parcels-fill-${cfg.id}`)
     ))
-    if (hasParcels) {
+    // Soft-switch only when every live county is already mounted.
+    // Otherwise Midland (or any county that failed the first pass)
+    // stays a blank hole when flipping into basin view.
+    if (!missingParcels) {
       lastStyledSelectedCountyRef.current = null
       applyTractCountyStyles()
       if (mapLevel === 'basin') {
@@ -3034,9 +3066,8 @@ export default function Map({
     // Re-color active/muted counties immediately (cheap paint-property swaps).
     applyTractCountyStyles()
     if (mapLevel === 'basin') {
-      // All county parcels and wells are already on the map. Only the
-      // selected county's permit/rig dots need to follow a tract click.
-      void loadSelectedCountyPermits()
+      // Keep every county's rigs on the basin map. Reloading from the
+      // clicked tract's county would wipe the other red dots.
       return
     }
     // Defer the rig/permit reload (network + new point geometry) until just
