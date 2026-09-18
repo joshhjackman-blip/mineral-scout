@@ -1173,6 +1173,14 @@ export default function Map({
           mapInstance.setLayoutProperty(overlayLayerId, 'visibility', 'none')
         }
       }
+      for (const layerId of [
+        'wells-laterals-layer',
+        'wells-points-layer',
+        'wells-arrows-layer',
+        'permits-rigs-layer',
+      ]) {
+        if (mapInstance.getLayer(layerId)) mapInstance.moveLayer(layerId)
+      }
       lastStyledSelectedCountyRef.current = newSelected
       return
     }
