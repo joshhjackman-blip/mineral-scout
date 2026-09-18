@@ -452,17 +452,6 @@ function legalFromMapProps(props: Record<string, unknown>): { line: string; sub?
   return { line: cleanMapProp(props.legal_desc) }
 }
 
-function stampMapLegal(geojson: GeoJSON.FeatureCollection) {
-  for (const feature of geojson.features) {
-    const props = (feature.properties ?? {}) as Record<string, unknown>
-    const legal = legalFromMapProps(props)
-    if (legal.line) props.legal_desc = legal.line
-    if (legal.sub) props.legal_sub = legal.sub
-    else delete props.legal_sub
-    feature.properties = props
-  }
-}
-
 function smallestFillHit(
   features: mapboxgl.MapboxGeoJSONFeature[],
 ): mapboxgl.MapboxGeoJSONFeature | undefined {
@@ -485,16 +474,6 @@ function countyLabelFromLayerId(layerId: string): string {
   const cfg = COUNTIES[countyId]
   return cfg ? `${cfg.name} County` : countyId
 }
-
-const hoverTextSize = (
-  base: number | mapboxgl.Expression,
-  bump: number,
-): mapboxgl.Expression => ([
-  'case',
-  ['boolean', ['feature-state', 'hover'], false],
-  typeof base === 'number' ? base + bump : ['+', base, bump],
-  base,
-])
 
 const hoverHaloWidth = (base: number, bump: number): mapboxgl.Expression => ([
   'case',
@@ -1281,14 +1260,21 @@ export default function Map({
           mapInstance.setLayoutProperty(overlayLayerId, 'visibility', 'none')
         }
       }
-      for (const layerId of [
+      const basinZOrder = [
         'wells-laterals-layer',
         'wells-points-layer',
         'wells-arrows-layer',
         'wells-clusters-layer',
         'wells-cluster-count-layer',
+        ...countyEntries.flatMap(([, cfg]) => [
+          `parcels-outline-${cfg.id}`,
+          `parcels-labels-${cfg.id}`,
+          `parcels-sections-${cfg.id}`,
+          `block-labels-${cfg.id}`,
+        ]),
         'permits-rigs-layer',
-      ]) {
+      ]
+      for (const layerId of basinZOrder) {
         if (mapInstance.getLayer(layerId)) mapInstance.moveLayer(layerId)
       }
       lastStyledSelectedCountyRef.current = newSelected
@@ -2569,14 +2555,14 @@ export default function Map({
               '',
             ],
           ],
-          'text-size': hoverTextSize([
+          'text-size': [
             'interpolate',
             ['linear'],
             ['zoom'],
             10, 9,
             12, 11,
             14, 13,
-          ], 5),
+          ],
           'text-anchor': 'center',
           'text-justify': 'center',
           'text-max-width': 10,
@@ -2588,12 +2574,6 @@ export default function Map({
           'text-color': '#ffffff',
           'text-halo-color': '#0f172a',
           'text-halo-width': hoverHaloWidth(1.4, 1.0),
-          'text-translate': [
-            'case',
-            ['boolean', ['feature-state', 'hover'], false],
-            ['literal', [0, -3]],
-            ['literal', [0, 0]],
-          ],
           'text-halo-blur': 0.6,
           'text-opacity': [
             'interpolate',
@@ -2626,7 +2606,7 @@ export default function Map({
             ['get', 'LEVEL3_SUR'],
             '',
           ],
-          'text-size': hoverTextSize(11, 6),
+          'text-size': 11,
           'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
           'text-anchor': 'center',
           'text-allow-overlap': true,
@@ -2637,12 +2617,6 @@ export default function Map({
           'text-color': '#ffffff',
           'text-halo-color': '#1a1a1a',
           'text-halo-width': hoverHaloWidth(1.5, 1.1),
-          'text-translate': [
-            'case',
-            ['boolean', ['feature-state', 'hover'], false],
-            ['literal', [0, -4]],
-            ['literal', [0, 0]],
-          ],
         },
       })
 
@@ -2676,7 +2650,7 @@ export default function Map({
           minzoom: 8,
           layout: {
             'text-field': ['concat', 'Block ', ['get', 'block']],
-            'text-size': hoverTextSize(13, 5),
+            'text-size': 13,
             'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
             'text-anchor': 'center',
             'text-allow-overlap': false,
@@ -2686,12 +2660,6 @@ export default function Map({
             'text-color': '#ffffff',
             'text-halo-color': '#000000',
             'text-halo-width': hoverHaloWidth(2, 1.2),
-            'text-translate': [
-              'case',
-              ['boolean', ['feature-state', 'hover'], false],
-              ['literal', [0, -3]],
-              ['literal', [0, 0]],
-            ],
           },
         })
       }
@@ -2717,7 +2685,6 @@ export default function Map({
     const selectedKey = selectedCountyRef.current
     let startedBasinWells = false
     const mountLoaded = (countyKey: CountyKey, geojson: GeoJSON.FeatureCollection) => {
-      if (!basinViewRef.current) stampMapLegal(geojson)
       injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
       mountCountyParcels(countyKey, geojson)

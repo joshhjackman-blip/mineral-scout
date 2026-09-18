@@ -128,12 +128,6 @@ def build_legal_desc(props: dict) -> str:
         parts.append(f'SEC {section}')
         return ' '.join(parts)
 
-    # Crane / Ward / Reeves / Pecos / Glasscock-style rows have a real
-    # section and block but no T&P township. Match the owner-panel line
-    # ("Section 18 · Block B27") instead of the short "PSL A-1143" label.
-    if block_number and section:
-        return f'Section {section} · Block {block_number}'
-
     # Fallback (Gonzales-style): survey name + abstract label.
     if survey and abstract_l:
         return f'{survey} {abstract_l}'
