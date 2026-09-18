@@ -324,27 +324,49 @@ const buildBlockLabelFeatureCollection = (
   return { type: 'FeatureCollection', features }
 }
 
-function legalFromMapProps(props: Record<string, unknown>): string {
-  const baked = String(props.legal_desc ?? '').trim()
-  if (baked) return baked
-  const block = String(props.Block ?? props.block ?? props.LEVEL2_BLO ?? '').trim()
-  const sectionRaw = String(
-    props.Surv_Sect ?? props.surv_sect ?? props.LEVEL3_SUR ?? props.level3_sur ?? '',
-  ).trim()
-  const abstract = String(props.ABSTRACT_L ?? props.abstract_label ?? props.CODE ?? '').trim()
-  const surveyName = String(
-    props.Surv_Name ?? props.surv_name ?? props.LEVEL1_SUR ?? props.level1_sur ?? props.DESC_ ?? props.desc_ ?? '',
-  ).trim()
+function cleanMapProp(value: unknown): string {
+  if (value == null) return ''
+  const text = String(value).trim()
+  if (!text || text === 'nan' || text === 'null' || text === 'undefined') return ''
+  return text
+}
+
+function legalFromMapProps(props: Record<string, unknown>): { line: string; sub?: string } {
+  const block = cleanMapProp(props.Block ?? props.block ?? props.LEVEL2_BLO ?? props.level2_blo)
+  const sectionRaw = cleanMapProp(
+    props.Surv_Sect ?? props.surv_sect ?? props.LEVEL3_SUR ?? props.level3_sur,
+  )
+  const abstract = cleanMapProp(props.ABSTRACT_L ?? props.abstract_label ?? props.CODE)
+  const surveyName = cleanMapProp(
+    props.LEVEL1_SUR ?? props.level1_sur ?? props.Surv_Name ?? props.surv_name ?? props.DESC_ ?? props.desc_,
+  )
   const section = sectionRaw && sectionRaw !== abstract ? sectionRaw : ''
-  const townshipMatch = block.match(/T\d+[NS]/i)
-  const township = townshipMatch ? townshipMatch[0].toUpperCase() : ''
-  const blockNum = township ? block.replace(townshipMatch![0], '').trim() : block
-  if (township && blockNum && section && abstract) {
-    return `${township} BLK ${blockNum} SEC ${section} ${abstract}`
+  const location = [
+    section ? `Section ${section}` : '',
+    block ? `Block ${block}` : '',
+  ].filter(Boolean).join(' · ')
+  const surveyAbs = [surveyName, abstract].filter(Boolean).join(' ')
+  if (location) return { line: location, sub: surveyAbs || undefined }
+  if (surveyAbs) return { line: surveyAbs }
+  const baked = cleanMapProp(props.legal_desc)
+  return { line: baked }
+}
+
+function smallestFillHit(
+  features: mapboxgl.MapboxGeoJSONFeature[],
+): mapboxgl.MapboxGeoJSONFeature | undefined {
+  if (features.length === 0) return undefined
+  let best = features[0]
+  let bestArea = Number.POSITIVE_INFINITY
+  for (const feature of features) {
+    const area = Number((feature.properties as Record<string, unknown> | null)?.SHAPE_AREA)
+    const scored = Number.isFinite(area) && area > 0 ? area : Number.POSITIVE_INFINITY
+    if (scored < bestArea) {
+      best = feature
+      bestArea = scored
+    }
   }
-  if (surveyName && abstract) return `${surveyName} ${abstract}`
-  if (block && !abstract) return `Block ${block}`
-  return abstract || surveyName || ''
+  return best
 }
 
 function countyLabelFromLayerId(layerId: string): string {
@@ -592,6 +614,7 @@ export default function Map({
   const [hoverCard, setHoverCard] = useState<{
     county: string
     legal: string
+    legalSub?: string
     x: number
     y: number
   } | null>(null)
@@ -2437,7 +2460,7 @@ export default function Map({
       const fills = fillLayerIds()
       const numbers = numberLayerIds()
       const fillHit = fills.length
-        ? mapInstance.queryRenderedFeatures(point, { layers: fills })[0]
+        ? smallestFillHit(mapInstance.queryRenderedFeatures(point, { layers: fills }))
         : undefined
       const numberHit = numbers.length
         ? mapInstance.queryRenderedFeatures(point, { layers: numbers })[0]
@@ -2453,10 +2476,11 @@ export default function Map({
         let x = point.x + 16
         let y = point.y + 16
         if (x > maxX - 220) x = point.x - 236
-        if (y > maxY - 64) y = point.y - 68
+        if (y > maxY - 80) y = point.y - 84
         setHoverCard({
           county,
-          legal: legal || county,
+          legal: legal.line || county,
+          legalSub: legal.sub,
           x: Math.max(8, x),
           y: Math.max(8, y),
         })
@@ -3259,6 +3283,18 @@ export default function Map({
           >
             {hoverCard.legal}
           </div>
+          {hoverCard.legalSub && (
+            <div
+              style={{
+                fontSize: 11,
+                color: 'var(--mm-chrome-muted)',
+                marginTop: 2,
+                fontFamily: 'Geist, Inter, system-ui, sans-serif',
+              }}
+            >
+              {hoverCard.legalSub}
+            </div>
+          )}
         </div>
       )}
       {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && (
