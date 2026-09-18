@@ -1,0 +1,45 @@
+name: Refresh Upton map colors
+
+# Tag Upton tracts PDP/empty and rebuild the wells overlay, then upload
+# to the public map-data bucket the live map reads first.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/fix-upton-colors-634a
+    paths:
+      - '.github/workflows/refresh-upton-colors.yml'
+      - 'scripts/refresh_upton_colors.py'
+      - 'scripts/add_production_status.py'
+      - 'scripts/build_wells_geojson.py'
+      - 'scripts/build_map_geojson.py'
+      - 'public/upton_parcels_map.geojson'
+
+concurrency:
+  group: refresh-upton-colors
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas geopandas shapely pyogrio httpx pyshp
+
+      - name: Tag tracts, rebuild wells, upload
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: python scripts/refresh_upton_colors.py
