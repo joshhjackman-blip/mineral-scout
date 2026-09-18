@@ -89,7 +89,7 @@ function wellColorExpr(byOperator: boolean): mapboxgl.Expression {
 // county is on screen, so viewport culling never drops data and Chrome
 // Aw-Snaps). Overview shows parcels and rigs only; wells load for
 // in-view counties after this zoom.
-const BASIN_WELL_MIN_ZOOM = 9.5
+const BASIN_WELL_MIN_ZOOM = 9.5 // wells stay off the basin overview until this zoom
 const EMPTY_WELLS: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 const WELL_OVERLAY_LAYER_IDS = [
   'wells-laterals-layer',
