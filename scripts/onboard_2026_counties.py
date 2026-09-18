@@ -490,6 +490,12 @@ def onboard(county: str, dry: bool, tables_only: bool = False) -> None:
         ]
         try:
             run(enrich, dry)
+            if wells_zip.exists() and has_db:
+                run([
+                    sys.executable, "scripts/add_production_status.py",
+                    "--county", county,
+                    "--wells-zip", str(wells_zip),
+                ], dry)
             run([sys.executable, "scripts/build_map_geojson.py", "--county", county], dry)
         except subprocess.CalledProcessError as exc:
             print(f"enrich failed ({exc.returncode}); continuing", flush=True)

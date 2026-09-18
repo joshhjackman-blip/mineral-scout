@@ -1839,7 +1839,7 @@ export default function Home() {
     async (countyId: string): Promise<GeoJSON.FeatureCollection | null> => {
       const cached = wellsGeoCacheRef.current[countyId]
       if (cached !== undefined) return cached
-      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026survey-1')
+      const urls = countyAssetUrls(`${countyId}_wells.geojson`, '2026pdp-1')
       for (const url of urls) {
         try {
           const r = await fetch(url, { cache: 'force-cache' })
@@ -2350,7 +2350,7 @@ export default function Home() {
         // Tract owners still load from /api/tract-owners.
         const response = await fetchCountyAsset(
           `${county.id}_parcels_map.geojson`,
-          '2026survey-1',
+          '2026pdp-1',
         )
         let parcelsData: unknown
 

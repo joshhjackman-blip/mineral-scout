@@ -1439,7 +1439,7 @@ export default function Map({
     if (!wellsGeoJSON) {
       // Prefer the nightly-refreshed copy in Supabase Storage; fall back to the
       // committed /public baseline so the overlay still works if Storage misses.
-      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026survey-1')
+      const urls = countyAssetUrls(`${cfg.id}_wells.geojson`, '2026pdp-1')
       for (const url of urls) {
         try {
           const res = await fetch(url)
@@ -1837,7 +1837,7 @@ export default function Map({
       countyConfig: (typeof COUNTIES)[CountyKey],
     ): Promise<GeoJSON.FeatureCollection | null> => {
       const file = `${countyConfig.id}_parcels_map.geojson`
-      const response = await fetchCountyAsset(file, '2026survey-1')
+      const response = await fetchCountyAsset(file, '2026pdp-1')
       if (!response) {
         const fallback = await fetch(countyConfig.mapGeoJsonPath ?? countyConfig.geoJsonPath)
         if (!fallback.ok) {
