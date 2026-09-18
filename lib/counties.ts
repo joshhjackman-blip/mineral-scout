@@ -34,6 +34,13 @@ export type County = {
 
 export type CountyKey = keyof typeof COUNTIES
 
+export type MapLevel = 'county' | 'tract' | 'basin'
+
+// All live counties at once. The 12-county footprint spans roughly
+// -103.5 to -101.0 lon and 30.7 to 32.5 lat.
+export const BASIN_OVERVIEW_CENTER: [number, number] = [-102.3, 31.7]
+export const BASIN_OVERVIEW_ZOOM = 7.0
+
 // Gonzales was archived 2026-07-17. All its Supabase tables
 // (gonzales_mineral_ownership, gonzales_wells, gonzales_permits,
 // tract_development_status rows), public geojson files, and load

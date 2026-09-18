@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom'
 // Context the host page feeds in so gated steps know when the required
 // action has already happened (e.g. the user is already inside a county).
 export type TourContext = {
-  mapLevel?: 'county' | 'tract'
+  mapLevel?: 'county' | 'tract' | 'basin'
   tractSelected?: boolean
 }
 
