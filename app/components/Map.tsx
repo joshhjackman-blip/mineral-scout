@@ -1909,12 +1909,11 @@ export default function Map({
         // Default tolerance is 0.375 px which aggressively simplifies small
         // polygons at low zoom — Howard's RRC abstract sections are tightly
         // clustered ~2 km wide and were collapsing out of low-zoom tiles, so
-        // the fill layer had nothing to paint until you zoomed past 10. The
-        // lower tolerance keeps every polygon present from the first tile
-        // load while still trimming redundant vertices. The buffer bump
-        // reduces edge clipping artifacts when panning at the tract level.
-        tolerance: 0.05,
-        buffer: 256,
+        // the fill layer had nothing to paint until you zoomed past 10. Basin
+        // view sits at zoom 7, so keep every vertex (tolerance 0) or whole
+        // counties vanish and only the largest Midland-style tracts remain.
+        tolerance: basinViewRef.current ? 0 : 0.05,
+        buffer: basinViewRef.current ? 512 : 256,
       })
       if (!map.current) return
       // Bake the classification-driven paint expressions directly
@@ -2192,34 +2191,49 @@ export default function Map({
     }
 
     const selectedKey = selectedCountyRef.current
-    const selectedCfg = COUNTIES[selectedKey]
-    if (selectedCfg) {
-      const selectedGeo = await loadCountyParcels(selectedKey, selectedCfg)
-      if (renderToken !== renderTokenRef.current || !map.current) return
-      if (selectedGeo) {
-        injectDevStatusIntoFeatures(selectedGeo, devStatusByAbstractRef.current)
-        currentParcelsByCountyRef.current[selectedKey] = selectedGeo
-        mountCountyParcels(selectedKey, selectedGeo)
-        setParcelsVersion((v) => v + 1)
-      }
-    }
-
-    const rest = await Promise.all(
-      countyEntries
-        .filter(([countyKey]) => countyKey !== selectedKey)
-        .map(async ([countyKey, countyConfig]) => {
-          const geojson = await loadCountyParcels(countyKey, countyConfig)
-          return geojson ? ([countyKey, geojson] as const) : null
-        }),
-    )
-    if (renderToken !== renderTokenRef.current || !map.current) return
-    rest.forEach((row) => {
-      if (!row) return
-      const [countyKey, geojson] = row
+    const mountLoaded = (countyKey: CountyKey, geojson: GeoJSON.FeatureCollection) => {
       injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
       mountCountyParcels(countyKey, geojson)
-    })
+    }
+
+    if (basinViewRef.current) {
+      const loaded = await Promise.all(
+        countyEntries.map(async ([countyKey, countyConfig]) => {
+          const geojson = await loadCountyParcels(countyKey, countyConfig)
+          return geojson ? ([countyKey, geojson] as const) : null
+        }),
+      )
+      if (renderToken !== renderTokenRef.current || !map.current) return
+      loaded.forEach((row) => {
+        if (!row) return
+        mountLoaded(row[0], row[1])
+      })
+    } else {
+      const selectedCfg = COUNTIES[selectedKey]
+      if (selectedCfg) {
+        const selectedGeo = await loadCountyParcels(selectedKey, selectedCfg)
+        if (renderToken !== renderTokenRef.current || !map.current) return
+        if (selectedGeo) {
+          mountLoaded(selectedKey, selectedGeo)
+          setParcelsVersion((v) => v + 1)
+        }
+      }
+
+      const rest = await Promise.all(
+        countyEntries
+          .filter(([countyKey]) => countyKey !== selectedKey)
+          .map(async ([countyKey, countyConfig]) => {
+            const geojson = await loadCountyParcels(countyKey, countyConfig)
+            return geojson ? ([countyKey, geojson] as const) : null
+          }),
+      )
+      if (renderToken !== renderTokenRef.current || !map.current) return
+      rest.forEach((row) => {
+        if (!row) return
+        mountLoaded(row[0], row[1])
+      })
+    }
     setParcelsVersion((v) => v + 1)
 
     if (tractClickHandlerRef.current) {
@@ -2570,11 +2584,25 @@ export default function Map({
     void loadSelectedCountyWells()
     applyTractCountyStyles()
     if (basinViewRef.current && map.current) {
-      map.current.easeTo({
-        center: PERMIAN_OVERVIEW_CENTER,
-        zoom: PERMIAN_OVERVIEW_ZOOM,
-        ...easedMove(CAMERA_OVERVIEW_MS),
+      const bounds = new mapboxgl.LngLatBounds()
+      countyEntries.forEach(([, cfg]) => {
+        const [lon, lat] = cfg.mapCenter
+        bounds.extend([lon - 0.5, lat - 0.4])
+        bounds.extend([lon + 0.5, lat + 0.4])
       })
+      try {
+        map.current.fitBounds(bounds, {
+          padding: 56,
+          maxZoom: 8,
+          ...easedMove(CAMERA_OVERVIEW_MS),
+        })
+      } catch {
+        map.current.easeTo({
+          center: PERMIAN_OVERVIEW_CENTER,
+          zoom: PERMIAN_OVERVIEW_ZOOM,
+          ...easedMove(CAMERA_OVERVIEW_MS),
+        })
+      }
     }
   }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadSelectedCountyWells, loadTexasCountiesGeoJSON])
 
