@@ -345,11 +345,27 @@ function legalFromMapProps(props: Record<string, unknown>): { line: string; sub?
     section ? `Section ${section}` : '',
     block ? `Block ${block}` : '',
   ].filter(Boolean).join(' · ')
-  const surveyAbs = [surveyName, abstract].filter(Boolean).join(' ')
-  if (location) return { line: location, sub: surveyAbs || undefined }
-  if (surveyAbs) return { line: surveyAbs }
-  const baked = cleanMapProp(props.legal_desc)
-  return { line: baked }
+  const surveyLine = surveyName
+    ? (/\bsurvey\b/i.test(surveyName) ? surveyName : `${surveyName} Survey`)
+    : ''
+  // Same Section / Block line the owner panel uses. Do not fall back to the
+  // baked legal_desc ("PSL A-1143") when we have a real grid location.
+  if (location) return { line: location, sub: surveyLine || abstract || undefined }
+  if (surveyLine && abstract) return { line: `${surveyName} ${abstract}` }
+  if (surveyLine) return { line: surveyLine }
+  if (abstract) return { line: abstract }
+  return { line: cleanMapProp(props.legal_desc) }
+}
+
+function stampMapLegal(geojson: GeoJSON.FeatureCollection) {
+  for (const feature of geojson.features) {
+    const props = (feature.properties ?? {}) as Record<string, unknown>
+    const legal = legalFromMapProps(props)
+    if (legal.line) props.legal_desc = legal.line
+    if (legal.sub) props.legal_sub = legal.sub
+    else delete props.legal_sub
+    feature.properties = props
+  }
 }
 
 function smallestFillHit(
@@ -611,6 +627,7 @@ export default function Map({
   const tractHoverLeaveRef = useRef<(() => void) | null>(null)
   const hoverRafRef = useRef(0)
   const hoveredSymbolRef = useRef<{ source: string; id: string | number } | null>(null)
+  const focusTargetRef = useRef(focusTarget)
   const [hoverCard, setHoverCard] = useState<{
     county: string
     legal: string
@@ -669,6 +686,10 @@ export default function Map({
   useEffect(() => {
     onOwnerClickRef.current = onOwnerClick
   }, [onOwnerClick])
+
+  useEffect(() => {
+    focusTargetRef.current = focusTarget
+  }, [focusTarget])
 
   useEffect(() => {
     onCountySwitchRef.current = onCountySwitch
@@ -2305,6 +2326,7 @@ export default function Map({
 
     const selectedKey = selectedCountyRef.current
     const mountLoaded = (countyKey: CountyKey, geojson: GeoJSON.FeatureCollection) => {
+      stampMapLegal(geojson)
       injectDevStatusIntoFeatures(geojson, devStatusByAbstractRef.current)
       currentParcelsByCountyRef.current[countyKey] = geojson
       mountCountyParcels(countyKey, geojson)
@@ -2366,7 +2388,11 @@ export default function Map({
       if (!features?.length) return
 
       const selectedLayerId = `parcels-fill-${COUNTIES[selectedCountyRef.current].id}`
-      const topFeature = features.find((feature) => feature.layer?.id === selectedLayerId) ?? features[0]
+      const inSelectedCounty = features.filter((feature) => feature.layer?.id === selectedLayerId)
+      const pool = (!basinViewRef.current && inSelectedCounty.length > 0)
+        ? inSelectedCounty
+        : features
+      const topFeature = smallestFillHit(pool) ?? pool[0]
       const topLayerId = topFeature.layer?.id
       if (!topLayerId) return
       const topCountyId = topLayerId.replace('parcels-fill-', '')
@@ -2459,9 +2485,21 @@ export default function Map({
       if (!mapInstance) return
       const fills = fillLayerIds()
       const numbers = numberLayerIds()
-      const fillHit = fills.length
-        ? smallestFillHit(mapInstance.queryRenderedFeatures(point, { layers: fills }))
+      const fillHits = fills.length
+        ? mapInstance.queryRenderedFeatures(point, { layers: fills })
+        : []
+      const selectedAbs = bareAbstract(
+        (focusTargetRef.current as Record<string, unknown> | null | undefined)?.ABSTRACT_L ??
+          (focusTargetRef.current as Record<string, unknown> | null | undefined)?.abstract_label ??
+          (focusTargetRef.current as Record<string, unknown> | null | undefined)?.CODE,
+      )
+      const selectedHit = selectedAbs
+        ? fillHits.find((feature) => {
+            const props = (feature.properties ?? {}) as Record<string, unknown>
+            return bareAbstract(props.ABSTRACT_L ?? props.CODE ?? props.abstract_label) === selectedAbs
+          })
         : undefined
+      const fillHit = selectedHit ?? smallestFillHit(fillHits)
       const numberHit = numbers.length
         ? mapInstance.queryRenderedFeatures(point, { layers: numbers })[0]
         : undefined
@@ -3247,6 +3285,7 @@ export default function Map({
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
       {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && hoverCard && (
         <div
+          data-testid="tract-hover-card"
           style={{
             position: 'absolute',
             left: hoverCard.x,

@@ -2461,7 +2461,7 @@ export default function Home() {
               SHAPE_AREA: toNumber(props.SHAPE_AREA ?? props.shape_area ?? props.STArea__),
               surv_name: String(props.Surv_Name ?? props.LEVEL1_SUR ?? props.DESC_ ?? ''),
               block: String(props.Block ?? props.BLOCK ?? props.LEVEL2_BLO ?? ''),
-              surv_sect: String(props.Surv_Sect ?? props.TEXTSTRING ?? ''),
+              surv_sect: String(props.Surv_Sect ?? props.LEVEL3_SUR ?? props.TEXTSTRING ?? ''),
               desc_: String(props.DESC_ ?? ''),
               level3_sur: String(props.LEVEL3_SUR ?? ''),
             }
@@ -3295,7 +3295,14 @@ export default function Home() {
   const selectedSurvName = (selected?.surv_name ?? selected?.Surv_Name ?? '').trim()
   const selectedLevel1Sur = (selected?.level1_sur ?? selected?.LEVEL1_SUR ?? '').trim()
   const selectedBlock = (selected?.block ?? selected?.Block ?? '').trim()
-  const selectedSurvSectRaw = (selected?.surv_sect ?? selected?.Surv_Sect ?? selected?.TEXTSTRING ?? '').trim()
+  const selectedSurvSectRaw = (
+    selected?.surv_sect ??
+    selected?.Surv_Sect ??
+    selected?.level3_sur ??
+    selected?.LEVEL3_SUR ??
+    selected?.TEXTSTRING ??
+    ''
+  ).trim()
   // Gonzales TEXTSTRING is typically just the abstract label (e.g. "A-160"),
   // which isn't useful as a section descriptor — drop it in that case.
   const selectedSurvSect = selectedSurvSectRaw && selectedSurvSectRaw !== abstractLabel
