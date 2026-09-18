@@ -604,9 +604,9 @@ export default function Map({
     selectedCountyRef.current = selectedCounty
   }, [selectedCounty])
 
-  useEffect(() => {
-    basinViewRef.current = mapLevel === 'basin'
-  }, [mapLevel])
+  // Keep this in sync during render so setupTractLevel / style passes
+  // that run in the same mapLevel effect do not see a stale value.
+  basinViewRef.current = mapLevel === 'basin'
 
   const removeLayerIfExists = (mapInstance: mapboxgl.Map, layerId: string) => {
     if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId)
@@ -2324,7 +2324,7 @@ export default function Map({
     // blocks with just the county name — same visual as the county
     // overview. Skip it in basin view so every county's tracts stay
     // painted on one map.
-    const texasFeatures = basinViewRef.current ? null : await loadTexasCountiesGeoJSON()
+    const texasFeatures = await loadTexasCountiesGeoJSON()
     if (renderToken !== renderTokenRef.current || !map.current) return
     if (texasFeatures) {
       const upcomingFipsSet = new Set(UPCOMING_COUNTIES.map((c) => c.fips))
@@ -2606,14 +2606,50 @@ export default function Map({
     }
   }, [applyTractCountyStyles, clearCountyMarkers, clearCountyOverviewLayers, clearTractLayers, countyEntries, loadSelectedCountyPermits, loadSelectedCountyWells, loadTexasCountiesGeoJSON])
 
+  const fitBasinCamera = useCallback(() => {
+    if (!map.current) return
+    const bounds = new mapboxgl.LngLatBounds()
+    countyEntries.forEach(([, cfg]) => {
+      const [lon, lat] = cfg.mapCenter
+      bounds.extend([lon - 0.5, lat - 0.4])
+      bounds.extend([lon + 0.5, lat + 0.4])
+    })
+    try {
+      map.current.fitBounds(bounds, {
+        padding: 56,
+        maxZoom: 8,
+        ...easedMove(CAMERA_OVERVIEW_MS),
+      })
+    } catch {
+      map.current.easeTo({
+        center: PERMIAN_OVERVIEW_CENTER,
+        zoom: PERMIAN_OVERVIEW_ZOOM,
+        ...easedMove(CAMERA_OVERVIEW_MS),
+      })
+    }
+  }, [countyEntries])
+
   const renderForCurrentLevel = useCallback(async () => {
     if (!map.current) return
     if (mapLevel === 'county') {
       await setupCountyOverview()
       return
     }
+    const hasParcels = countyEntries.some(([, cfg]) => (
+      !!map.current?.getLayer(`parcels-fill-${cfg.id}`)
+    ))
+    if (hasParcels) {
+      lastStyledSelectedCountyRef.current = null
+      applyTractCountyStyles()
+      if (mapLevel === 'basin') {
+        fitBasinCamera()
+      }
+      void loadSelectedCountyPermits()
+      void loadSelectedCountyWells()
+      return
+    }
     await setupTractLevel()
-  }, [mapLevel, setupCountyOverview, setupTractLevel])
+  }, [applyTractCountyStyles, countyEntries, fitBasinCamera, loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, setupCountyOverview, setupTractLevel])
 
   useEffect(() => {
     renderForCurrentLevelRef.current = renderForCurrentLevel
