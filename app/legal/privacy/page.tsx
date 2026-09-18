@@ -27,7 +27,7 @@ export default function PrivacyPage() {
       title="Privacy Policy"
       subtitle={
         <>
-          How we handle account, usage, and platform data. Related:{' '}
+          Last updated August 12, 2026. Related:{' '}
           <Link href="/legal/terms">
             <span className="lp-legal-inline-link">Terms of Use</span>
           </Link>{' '}
