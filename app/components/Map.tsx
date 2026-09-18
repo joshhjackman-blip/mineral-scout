@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase'
 import { BASIN_OVERVIEW_CENTER, BASIN_OVERVIEW_ZOOM, COUNTIES, type MapLevel } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
 import { countyAssetUrls, fetchCountyAsset } from '@/lib/county-assets'
-import TractSearch from './TractSearch'
 import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
 import { omitInjectionWellFeatures } from '@/lib/well-kind'
@@ -325,6 +324,52 @@ const buildBlockLabelFeatureCollection = (
   return { type: 'FeatureCollection', features }
 }
 
+function legalFromMapProps(props: Record<string, unknown>): string {
+  const baked = String(props.legal_desc ?? '').trim()
+  if (baked) return baked
+  const block = String(props.Block ?? props.block ?? props.LEVEL2_BLO ?? '').trim()
+  const sectionRaw = String(
+    props.Surv_Sect ?? props.surv_sect ?? props.LEVEL3_SUR ?? props.level3_sur ?? '',
+  ).trim()
+  const abstract = String(props.ABSTRACT_L ?? props.abstract_label ?? props.CODE ?? '').trim()
+  const surveyName = String(
+    props.Surv_Name ?? props.surv_name ?? props.LEVEL1_SUR ?? props.level1_sur ?? props.DESC_ ?? props.desc_ ?? '',
+  ).trim()
+  const section = sectionRaw && sectionRaw !== abstract ? sectionRaw : ''
+  const townshipMatch = block.match(/T\d+[NS]/i)
+  const township = townshipMatch ? townshipMatch[0].toUpperCase() : ''
+  const blockNum = township ? block.replace(townshipMatch![0], '').trim() : block
+  if (township && blockNum && section && abstract) {
+    return `${township} BLK ${blockNum} SEC ${section} ${abstract}`
+  }
+  if (surveyName && abstract) return `${surveyName} ${abstract}`
+  if (block && !abstract) return `Block ${block}`
+  return abstract || surveyName || ''
+}
+
+function countyLabelFromLayerId(layerId: string): string {
+  const countyId = layerId.replace(/^parcels-fill-/, '')
+  const cfg = COUNTIES[countyId]
+  return cfg ? `${cfg.name} County` : countyId
+}
+
+const hoverTextSize = (
+  base: number | mapboxgl.Expression,
+  bump: number,
+): mapboxgl.Expression => ([
+  'case',
+  ['boolean', ['feature-state', 'hover'], false],
+  typeof base === 'number' ? base + bump : ['+', base, bump],
+  base,
+])
+
+const hoverHaloWidth = (base: number, bump: number): mapboxgl.Expression => ([
+  'case',
+  ['boolean', ['feature-state', 'hover'], false],
+  base + bump,
+  base,
+])
+
 export type OwnerRecord = {
   id?: number
   owner_name: string
@@ -540,6 +585,16 @@ export default function Map({
   const countyMarkersRef = useRef<mapboxgl.Marker[]>([])
   const tractHandlersRef = useRef<TractLayerHandlers[]>([])
   const tractClickHandlerRef = useRef<((event: mapboxgl.MapMouseEvent) => void) | null>(null)
+  const tractHoverMoveRef = useRef<((event: mapboxgl.MapMouseEvent) => void) | null>(null)
+  const tractHoverLeaveRef = useRef<(() => void) | null>(null)
+  const hoverRafRef = useRef(0)
+  const hoveredSymbolRef = useRef<{ source: string; id: string | number } | null>(null)
+  const [hoverCard, setHoverCard] = useState<{
+    county: string
+    legal: string
+    x: number
+    y: number
+  } | null>(null)
   const permitHandlersRef = useRef<PermitLayerHandlers>({})
   const countyOverviewHandlersRef = useRef<CountyOverviewHandlers>({ hoveredFips: null })
   const activeCountyByFipsRef = useRef<Record<string, CountyKey>>({})
@@ -710,6 +765,19 @@ export default function Map({
       map.current?.off('click', tractClickHandlerRef.current)
       tractClickHandlerRef.current = null
     }
+    if (tractHoverMoveRef.current) {
+      map.current?.off('mousemove', tractHoverMoveRef.current)
+      tractHoverMoveRef.current = null
+    }
+    if (tractHoverLeaveRef.current) {
+      map.current?.off('mouseleave', tractHoverLeaveRef.current)
+      tractHoverLeaveRef.current = null
+    }
+    if (hoverRafRef.current) {
+      cancelAnimationFrame(hoverRafRef.current)
+      hoverRafRef.current = 0
+    }
+    hoveredSymbolRef.current = null
 
     // Detach the click/hover listeners attached to any of the three
     // per-category permit sub-layers. permitHandlersRef only preserves the
@@ -2067,14 +2135,14 @@ export default function Map({
               '',
             ],
           ],
-          'text-size': [
+          'text-size': hoverTextSize([
             'interpolate',
             ['linear'],
             ['zoom'],
             10, 9,
             12, 11,
             14, 13,
-          ],
+          ], 5),
           'text-anchor': 'center',
           'text-justify': 'center',
           'text-max-width': 10,
@@ -2085,7 +2153,13 @@ export default function Map({
         paint: {
           'text-color': '#ffffff',
           'text-halo-color': '#0f172a',
-          'text-halo-width': 1.4,
+          'text-halo-width': hoverHaloWidth(1.4, 1.0),
+          'text-translate': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            ['literal', [0, -3]],
+            ['literal', [0, 0]],
+          ],
           'text-halo-blur': 0.6,
           'text-opacity': [
             'interpolate',
@@ -2118,17 +2192,23 @@ export default function Map({
             ['get', 'LEVEL3_SUR'],
             '',
           ],
-          'text-size': 11,
+          'text-size': hoverTextSize(11, 6),
           'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
           'text-anchor': 'center',
-          'text-allow-overlap': false,
-          'text-ignore-placement': false,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
           'symbol-placement': 'point',
         },
         paint: {
           'text-color': '#ffffff',
           'text-halo-color': '#1a1a1a',
-          'text-halo-width': 1.5,
+          'text-halo-width': hoverHaloWidth(1.5, 1.1),
+          'text-translate': [
+            'case',
+            ['boolean', ['feature-state', 'hover'], false],
+            ['literal', [0, -4]],
+            ['literal', [0, 0]],
+          ],
         },
       })
 
@@ -2149,7 +2229,11 @@ export default function Map({
       const blockLayerId = `block-labels-${countyConfig.id}`
       const blockFeatureCollection = buildBlockLabelFeatureCollection(geojson)
       if (blockFeatureCollection.features.length > 0) {
-        map.current.addSource(blockSourceId, { type: 'geojson', data: blockFeatureCollection })
+        map.current.addSource(blockSourceId, {
+          type: 'geojson',
+          data: blockFeatureCollection,
+          generateId: true,
+        })
         if (!map.current) return
         map.current.addLayer({
           id: blockLayerId,
@@ -2158,7 +2242,7 @@ export default function Map({
           minzoom: 8,
           layout: {
             'text-field': ['concat', 'Block ', ['get', 'block']],
-            'text-size': 13,
+            'text-size': hoverTextSize(13, 5),
             'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
             'text-anchor': 'center',
             'text-allow-overlap': false,
@@ -2167,7 +2251,13 @@ export default function Map({
           paint: {
             'text-color': '#ffffff',
             'text-halo-color': '#000000',
-            'text-halo-width': 2,
+            'text-halo-width': hoverHaloWidth(2, 1.2),
+            'text-translate': [
+              'case',
+              ['boolean', ['feature-state', 'hover'], false],
+              ['literal', [0, -3]],
+              ['literal', [0, 0]],
+            ],
           },
         })
       }
@@ -2318,6 +2408,110 @@ export default function Map({
     tractClickHandlerRef.current = handler
     if (!map.current) return
     map.current.on('click', handler)
+
+    const fillLayerIds = () =>
+      countyEntries
+        .map(([, cfg]) => `parcels-fill-${cfg.id}`)
+        .filter((id) => !!map.current?.getLayer(id))
+    const numberLayerIds = () =>
+      countyEntries.flatMap(([, cfg]) => [
+        `parcels-sections-${cfg.id}`,
+        `parcels-labels-${cfg.id}`,
+        `block-labels-${cfg.id}`,
+      ]).filter((id) => !!map.current?.getLayer(id))
+
+    const clearHoveredSymbol = () => {
+      const prev = hoveredSymbolRef.current
+      if (!prev || !map.current) return
+      try {
+        map.current.setFeatureState(prev, { hover: false })
+      } catch {
+        // source may have been removed mid-hover
+      }
+      hoveredSymbolRef.current = null
+    }
+
+    const applyHover = (point: mapboxgl.Point) => {
+      const mapInstance = map.current
+      if (!mapInstance) return
+      const fills = fillLayerIds()
+      const numbers = numberLayerIds()
+      const fillHit = fills.length
+        ? mapInstance.queryRenderedFeatures(point, { layers: fills })[0]
+        : undefined
+      const numberHit = numbers.length
+        ? mapInstance.queryRenderedFeatures(point, { layers: numbers })[0]
+        : undefined
+
+      if (fillHit) {
+        const props = (fillHit.properties ?? {}) as Record<string, unknown>
+        const county = countyLabelFromLayerId(String(fillHit.layer?.id ?? ''))
+        const legal = legalFromMapProps(props)
+        const canvas = mapInstance.getCanvas()
+        const maxX = canvas.clientWidth - 16
+        const maxY = canvas.clientHeight - 16
+        let x = point.x + 16
+        let y = point.y + 16
+        if (x > maxX - 220) x = point.x - 236
+        if (y > maxY - 64) y = point.y - 68
+        setHoverCard({
+          county,
+          legal: legal || county,
+          x: Math.max(8, x),
+          y: Math.max(8, y),
+        })
+        mapInstance.getCanvas().style.setProperty('cursor', 'pointer')
+      } else {
+        setHoverCard(null)
+        if (!numberHit) mapInstance.getCanvas().style.cursor = ''
+      }
+
+      const next = numberHit && numberHit.id != null
+        ? { source: String(numberHit.source), id: numberHit.id }
+        : null
+      const prev = hoveredSymbolRef.current
+      if (prev && (!next || prev.source !== next.source || prev.id !== next.id)) {
+        try {
+          mapInstance.setFeatureState(prev, { hover: false })
+        } catch {
+          // ignore
+        }
+        hoveredSymbolRef.current = null
+      }
+      if (next && (!prev || prev.source !== next.source || prev.id !== next.id)) {
+        try {
+          mapInstance.setFeatureState(next, { hover: true })
+          hoveredSymbolRef.current = next
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const hoverMove = (event: mapboxgl.MapMouseEvent) => {
+      const point = event.point
+      if (hoverRafRef.current) cancelAnimationFrame(hoverRafRef.current)
+      hoverRafRef.current = requestAnimationFrame(() => {
+        hoverRafRef.current = 0
+        applyHover(point)
+      })
+    }
+    const hoverLeave = () => {
+      if (hoverRafRef.current) {
+        cancelAnimationFrame(hoverRafRef.current)
+        hoverRafRef.current = 0
+      }
+      clearHoveredSymbol()
+      setHoverCard(null)
+      if (map.current) map.current.getCanvas().style.cursor = ''
+    }
+
+    if (tractHoverMoveRef.current) map.current.off('mousemove', tractHoverMoveRef.current)
+    if (tractHoverLeaveRef.current) map.current.off('mouseleave', tractHoverLeaveRef.current)
+    map.current.on('mousemove', hoverMove)
+    map.current.on('mouseleave', hoverLeave)
+    tractHoverMoveRef.current = hoverMove
+    tractHoverLeaveRef.current = hoverLeave
 
     // Inactive-county overlay: when zoomed into one county's tract
     // view, paint the OTHER 11 active counties as clean orange
@@ -2719,6 +2913,10 @@ export default function Map({
   }, [resolvedTheme, clearCountyMarkers])
 
   useEffect(() => {
+    if (mapLevel === 'county') setHoverCard(null)
+  }, [mapLevel])
+
+  useEffect(() => {
     if (!map.current) return
     if (!map.current.isStyleLoaded()) {
       map.current.once('load', () => {
@@ -3023,11 +3221,45 @@ export default function Map({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-      {mapReady && (
-        <TractSearch
-          map={map.current}
-          geojsonUrl={COUNTIES[selectedCounty].mapGeoJsonPath ?? COUNTIES[selectedCounty].geoJsonPath}
-        />
+      {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && hoverCard && (
+        <div
+          style={{
+            position: 'absolute',
+            left: hoverCard.x,
+            top: hoverCard.y,
+            pointerEvents: 'none',
+            zIndex: 20,
+            minWidth: 148,
+            maxWidth: 280,
+            padding: '8px 10px',
+            borderRadius: 8,
+            background: 'var(--mm-chrome-panel)',
+            border: '1px solid var(--mm-chrome-border)',
+            boxShadow: '0 8px 22px rgba(15, 23, 42, 0.16)',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: 'var(--mm-chrome-fg)',
+              fontFamily: 'Geist, Inter, system-ui, sans-serif',
+            }}
+          >
+            {hoverCard.county}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: 'var(--mm-chrome-muted)',
+              marginTop: 2,
+              lineHeight: 1.35,
+              fontFamily: 'Geist, Inter, system-ui, sans-serif',
+            }}
+          >
+            {hoverCard.legal}
+          </div>
+        </div>
       )}
       {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && (
         <LayerTogglePanel
