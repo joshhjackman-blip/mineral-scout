@@ -85,18 +85,16 @@ function wellColorExpr(byOperator: boolean): mapboxgl.Expression {
   return m as unknown as mapboxgl.Expression
 }
 
-// Basin view cannot hold ~150k laterals + points in one GeoJSON source at
-// z7 (every county is on screen, so viewport culling never drops data and
-// Chrome Aw-Snaps). Overview paints clustered heel/surface points only;
-// laterals load for in-view counties after this zoom.
-const BASIN_LATERAL_MIN_ZOOM = 9.5
+// Basin view cannot hold ~150k wells in one GeoJSON source at z7 (every
+// county is on screen, so viewport culling never drops data and Chrome
+// Aw-Snaps). Overview shows parcels and rigs only; wells load for
+// in-view counties after this zoom.
+const BASIN_WELL_MIN_ZOOM = 9.5
 const EMPTY_WELLS: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] }
 const WELL_OVERLAY_LAYER_IDS = [
   'wells-laterals-layer',
   'wells-points-layer',
   'wells-arrows-layer',
-  'wells-clusters-layer',
-  'wells-cluster-count-layer',
 ] as const
 
 type CountyWellsCache = {
@@ -659,10 +657,9 @@ export default function Map({
   const wellsCacheRef = useRef<Partial<Record<CountyKey, CountyWellsCache>>>({})
   const wellsLoadGenRef = useRef(0)
   const wellsPaintModeRef = useRef<'basin' | 'tract' | null>(null)
-  const wellsClusterClickRef = useRef<((e: mapboxgl.MapLayerMouseEvent) => void) | null>(null)
   const basinLodHandlerRef = useRef<(() => void) | null>(null)
-  const syncBasinLateralsRef = useRef<() => void>(() => {})
-  const basinLateralsSyncGenRef = useRef(0)
+  const syncBasinWellsRef = useRef<() => void>(() => {})
+  const basinWellsSyncGenRef = useRef(0)
   const wellsHandlersRef = useRef<{
     clickHandler?: (e: mapboxgl.MapLayerMouseEvent) => void
     mouseEnterHandler?: () => void
@@ -928,16 +925,12 @@ export default function Map({
     removeLayerIfExists(mapInstance, 'permits-rigs-layer')
     removeSourceIfExists(mapInstance, 'permits')
 
-    // Well-geometry overlay (laterals + clustered/individual dots).
-    for (const layerId of ['wells-laterals-layer', 'wells-points-layer', 'wells-clusters-layer']) {
+    // Well-geometry overlay (laterals + dots).
+    for (const layerId of ['wells-laterals-layer', 'wells-points-layer']) {
       const h = wellsHandlersRef.current
       if (h.clickHandler) mapInstance.off('click', layerId, h.clickHandler)
       if (h.mouseEnterHandler) mapInstance.off('mouseenter', layerId, h.mouseEnterHandler)
       if (h.mouseLeaveHandler) mapInstance.off('mouseleave', layerId, h.mouseLeaveHandler)
-    }
-    if (wellsClusterClickRef.current) {
-      mapInstance.off('click', 'wells-clusters-layer', wellsClusterClickRef.current)
-      wellsClusterClickRef.current = null
     }
     wellsHandlersRef.current = {}
     removeLayerIfExists(mapInstance, 'wells-arrows-layer')
@@ -1264,8 +1257,6 @@ export default function Map({
         'wells-laterals-layer',
         'wells-points-layer',
         'wells-arrows-layer',
-        'wells-clusters-layer',
-        'wells-cluster-count-layer',
         ...countyEntries.flatMap(([, cfg]) => [
           `parcels-outline-${cfg.id}`,
           `parcels-labels-${cfg.id}`,
@@ -1724,28 +1715,6 @@ export default function Map({
     const desiredMode: 'basin' | 'tract' = basinViewRef.current ? 'basin' : 'tract'
     const vis: 'visible' | 'none' = showWellsRef.current ? 'visible' : 'none'
 
-    const teardownWellOverlay = (instance: mapboxgl.Map) => {
-      for (const layerId of ['wells-laterals-layer', 'wells-points-layer', 'wells-clusters-layer']) {
-        const h = wellsHandlersRef.current
-        if (h.clickHandler) instance.off('click', layerId, h.clickHandler)
-        if (h.mouseEnterHandler) instance.off('mouseenter', layerId, h.mouseEnterHandler)
-        if (h.mouseLeaveHandler) instance.off('mouseleave', layerId, h.mouseLeaveHandler)
-      }
-      if (wellsClusterClickRef.current) {
-        instance.off('click', 'wells-clusters-layer', wellsClusterClickRef.current)
-        wellsClusterClickRef.current = null
-      }
-      wellsHandlersRef.current = {}
-      removeLayerIfExists(instance, 'wells-arrows-layer')
-      removeLayerIfExists(instance, 'wells-laterals-layer')
-      removeLayerIfExists(instance, 'wells-cluster-count-layer')
-      removeLayerIfExists(instance, 'wells-clusters-layer')
-      removeLayerIfExists(instance, 'wells-points-layer')
-      removeSourceIfExists(instance, 'wells-laterals')
-      removeSourceIfExists(instance, 'wells')
-      wellsPaintModeRef.current = null
-    }
-
     const bindWellPopups = (instance: mapboxgl.Map, layerIds: string[]) => {
       const kindLabel = WELL_KIND_LABEL
       const clickHandler = (event: mapboxgl.MapLayerMouseEvent) => {
@@ -1788,9 +1757,6 @@ export default function Map({
     const paintTractWells = (wellsGeoJSON: GeoJSON.FeatureCollection) => {
       const instance = map.current
       if (!instance || loadGen !== wellsLoadGenRef.current) return
-      if (wellsPaintModeRef.current && wellsPaintModeRef.current !== 'tract') {
-        teardownWellOverlay(instance)
-      }
       const colorExpr = wellColorExpr(wellsByOperatorRef.current)
       if (!instance.getSource('wells')) {
         instance.addSource('wells', {
@@ -1860,190 +1826,48 @@ export default function Map({
       if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
     }
 
-    const paintBasinPoints = (points: GeoJSON.FeatureCollection) => {
-      const instance = map.current
-      if (!instance || loadGen !== wellsLoadGenRef.current) return
-      if (wellsPaintModeRef.current && wellsPaintModeRef.current !== 'basin') {
-        teardownWellOverlay(instance)
-      }
-      const colorExpr = wellColorExpr(wellsByOperatorRef.current)
-      if (!instance.getSource('wells')) {
-        instance.addSource('wells', {
-          type: 'geojson',
-          data: points,
-          cluster: true,
-          clusterMaxZoom: 9,
-          clusterRadius: 46,
-          clusterMinPoints: 3,
-          maxzoom: 12,
-          buffer: 48,
-          tolerance: 0,
-        })
-        instance.addSource('wells-laterals', {
-          type: 'geojson',
-          data: EMPTY_WELLS,
-          maxzoom: 14,
-          buffer: 64,
-          tolerance: 0.15,
-        })
-        instance.addLayer({
-          id: 'wells-laterals-layer',
-          type: 'line',
-          source: 'wells-laterals',
-          minzoom: BASIN_LATERAL_MIN_ZOOM,
-          filter: ['!=', ['get', 'kind'], 'injection'],
-          layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            'line-color': colorExpr,
-            'line-width': ['interpolate', ['linear'], ['zoom'], 9.5, 0.8, 12, 1.4, 15, 2.4],
-            'line-opacity': ['interpolate', ['linear'], ['zoom'], 9.5, 0.55, 12, 0.88],
-          },
-        })
-        instance.addLayer({
-          id: 'wells-clusters-layer',
-          type: 'circle',
-          source: 'wells',
-          filter: ['has', 'point_count'],
-          layout: { visibility: vis },
-          paint: {
-            'circle-color': [
-              'step', ['get', 'point_count'],
-              '#93C5FD', 25,
-              '#3B82F6', 80,
-              '#1D4ED8', 250,
-              '#1E3A8A',
-            ],
-            'circle-radius': [
-              'step', ['get', 'point_count'],
-              12, 25,
-              16, 80,
-              22, 250,
-              28,
-            ],
-            'circle-opacity': 0.86,
-            'circle-stroke-width': 1.4,
-            'circle-stroke-color': '#ffffff',
-          },
-        })
-        instance.addLayer({
-          id: 'wells-cluster-count-layer',
-          type: 'symbol',
-          source: 'wells',
-          filter: ['has', 'point_count'],
-          layout: {
-            visibility: vis,
-            'text-field': ['get', 'point_count_abbreviated'],
-            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
-            'text-size': 11,
-            'text-allow-overlap': true,
-          },
-          paint: { 'text-color': '#ffffff' },
-        })
-        instance.addLayer({
-          id: 'wells-points-layer',
-          type: 'circle',
-          source: 'wells',
-          filter: ['all', ['!', ['has', 'point_count']], ['!=', ['get', 'kind'], 'injection']],
-          layout: { visibility: vis },
-          paint: {
-            'circle-radius': ['interpolate', ['linear'], ['zoom'], 6.5, 2.4, 9, 2.8, 12, 3.2, 15, 3.8],
-            'circle-color': colorExpr,
-            'circle-opacity': ['interpolate', ['linear'], ['zoom'], 6.5, 0.6, 9, 0.75, 12, 0.88],
-            'circle-stroke-width': 0.5,
-            'circle-stroke-color': '#ffffff',
-          },
-        })
-        instance.addLayer({
-          id: 'wells-arrows-layer',
-          type: 'symbol',
-          source: 'wells-laterals',
-          minzoom: 11.5,
-          filter: ['!=', ['get', 'kind'], 'injection'],
-          layout: {
-            visibility: vis,
-            'symbol-placement': 'line',
-            'symbol-spacing': 90,
-            'text-field': '▶',
-            'text-keep-upright': false,
-            'text-rotation-alignment': 'map',
-            'text-size': ['interpolate', ['linear'], ['zoom'], 12, 8, 15, 12],
-            'text-allow-overlap': true,
-            'text-ignore-placement': true,
-          },
-          paint: {
-            'text-color': colorExpr,
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 1,
-            'text-opacity': ['interpolate', ['linear'], ['zoom'], 11.5, 0, 12.5, 0.9],
-          },
-        })
-        bindWellPopups(instance, ['wells-laterals-layer', 'wells-points-layer'])
-        const clusterClick = (event: mapboxgl.MapLayerMouseEvent) => {
-          const feature = event.features?.[0]
-          const clusterId = feature?.properties?.cluster_id
-          if (clusterId == null || !map.current) return
-          const source = map.current.getSource('wells') as mapboxgl.GeoJSONSource
-          source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-            if (err || zoom == null || !map.current || !feature) return
-            const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number]
-            map.current.easeTo({ center: coords, zoom })
-          })
-        }
-        wellsClusterClickRef.current = clusterClick
-        instance.on('click', 'wells-clusters-layer', clusterClick)
-        instance.on('mouseenter', 'wells-clusters-layer', () => {
-          map.current?.getCanvas().style.setProperty('cursor', 'pointer')
-        })
-        instance.on('mouseleave', 'wells-clusters-layer', () => {
-          if (map.current) map.current.getCanvas().style.cursor = ''
-        })
-        wellsPaintModeRef.current = 'basin'
-      } else {
-        ;(instance.getSource('wells') as mapboxgl.GeoJSONSource).setData(points)
-        for (const id of WELL_OVERLAY_LAYER_IDS) {
-          if (instance.getLayer(id)) instance.setLayoutProperty(id, 'visibility', vis)
-        }
-      }
-      if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
-    }
-
-    const syncBasinLaterals = async () => {
+    const syncBasinWells = async () => {
       const instance = map.current
       if (!instance || !basinViewRef.current) return
       if (loadGen !== wellsLoadGenRef.current) return
-      const syncGen = ++basinLateralsSyncGenRef.current
-      const src = instance.getSource('wells-laterals') as mapboxgl.GeoJSONSource | undefined
-      if (!src) return
-      if (instance.getZoom() < BASIN_LATERAL_MIN_ZOOM) {
-        src.setData(EMPTY_WELLS)
+      const syncGen = ++basinWellsSyncGenRef.current
+      if (instance.getZoom() < BASIN_WELL_MIN_ZOOM) {
+        paintTractWells(EMPTY_WELLS)
+        wellsPaintModeRef.current = 'basin'
         for (const key of Object.keys(wellsCacheRef.current) as CountyKey[]) {
-          const entry = wellsCacheRef.current[key]
-          if (entry) entry.laterals = null
+          delete wellsCacheRef.current[key]
         }
         return
       }
       const visible = countyEntries.filter(([, countyCfg]) => countyIntersectsViewport(instance, countyCfg))
       for (const [key] of visible) {
         if (loadGen !== wellsLoadGenRef.current || !basinViewRef.current) return
-        if (syncGen !== basinLateralsSyncGenRef.current) return
+        if (syncGen !== basinWellsSyncGenRef.current) return
         await fetchCountyWells(key, { wantLaterals: true })
       }
       if (loadGen !== wellsLoadGenRef.current || !map.current) return
-      if (syncGen !== basinLateralsSyncGenRef.current) return
-      if (!basinViewRef.current || instance.getZoom() < BASIN_LATERAL_MIN_ZOOM) {
-        src.setData(EMPTY_WELLS)
+      if (syncGen !== basinWellsSyncGenRef.current) return
+      if (!basinViewRef.current || instance.getZoom() < BASIN_WELL_MIN_ZOOM) {
+        paintTractWells(EMPTY_WELLS)
+        wellsPaintModeRef.current = 'basin'
         return
       }
-      const features = visible.flatMap(([key]) => wellsCacheRef.current[key]?.laterals?.features ?? [])
-      src.setData({ type: 'FeatureCollection', features })
-      if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
+      const features = visible.flatMap(([key]) => {
+        const entry = wellsCacheRef.current[key]
+        return [
+          ...(entry?.laterals?.features ?? []),
+          ...(entry?.points.features ?? []),
+        ]
+      })
+      paintTractWells({ type: 'FeatureCollection', features })
+      wellsPaintModeRef.current = 'basin'
     }
 
-    syncBasinLateralsRef.current = () => { void syncBasinLaterals() }
+    syncBasinWellsRef.current = () => { void syncBasinWells() }
     if (!basinLodHandlerRef.current) {
       const onViewChange = () => {
         if (!basinViewRef.current) return
-        syncBasinLateralsRef.current()
+        syncBasinWellsRef.current()
       }
       basinLodHandlerRef.current = onViewChange
       mapInstance.on('zoomend', onViewChange)
@@ -2051,20 +1875,7 @@ export default function Map({
     }
 
     if (desiredMode === 'basin') {
-      const queue = [...countyEntries]
-      const run = async () => {
-        while (queue.length > 0) {
-          const item = queue.shift()
-          if (!item) return
-          if (loadGen !== wellsLoadGenRef.current || !basinViewRef.current) return
-          await fetchCountyWells(item[0], { wantLaterals: false })
-          if (loadGen !== wellsLoadGenRef.current || !map.current) return
-          const features = countyEntries.flatMap(([key]) => wellsCacheRef.current[key]?.points.features ?? [])
-          paintBasinPoints({ type: 'FeatureCollection', features })
-        }
-      }
-      await Promise.all([run(), run()])
-      if (loadGen === wellsLoadGenRef.current) await syncBasinLaterals()
+      if (loadGen === wellsLoadGenRef.current) await syncBasinWells()
       return
     }
 
@@ -2761,8 +2572,6 @@ export default function Map({
       const wellLayerIds = [
         'wells-laterals-layer',
         'wells-points-layer',
-        'wells-clusters-layer',
-        'wells-cluster-count-layer',
       ].filter((id) => !!map.current?.getLayer(id))
       const clickedWell = wellLayerIds.length > 0 &&
         map.current.queryRenderedFeatures(event.point, { layers: wellLayerIds }).length > 0
