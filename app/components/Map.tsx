@@ -683,6 +683,7 @@ export default function Map({
   const wellsClusterClickRef = useRef<((e: mapboxgl.MapLayerMouseEvent) => void) | null>(null)
   const basinLodHandlerRef = useRef<(() => void) | null>(null)
   const syncBasinLateralsRef = useRef<() => void>(() => {})
+  const basinLateralsSyncGenRef = useRef(0)
   const wellsHandlersRef = useRef<{
     clickHandler?: (e: mapboxgl.MapLayerMouseEvent) => void
     mouseEnterHandler?: () => void
@@ -1885,7 +1886,7 @@ export default function Map({
           type: 'geojson',
           data: points,
           cluster: true,
-          clusterMaxZoom: 11,
+          clusterMaxZoom: 9,
           clusterRadius: 46,
           clusterMinPoints: 3,
           maxzoom: 12,
@@ -1903,6 +1904,7 @@ export default function Map({
           id: 'wells-laterals-layer',
           type: 'line',
           source: 'wells-laterals',
+          minzoom: BASIN_LATERAL_MIN_ZOOM,
           filter: ['!=', ['get', 'kind'], 'injection'],
           layout: { visibility: vis, 'line-cap': 'round', 'line-join': 'round' },
           paint: {
@@ -1969,6 +1971,7 @@ export default function Map({
           id: 'wells-arrows-layer',
           type: 'symbol',
           source: 'wells-laterals',
+          minzoom: 11.5,
           filter: ['!=', ['get', 'kind'], 'injection'],
           layout: {
             visibility: vis,
@@ -2022,6 +2025,7 @@ export default function Map({
       const instance = map.current
       if (!instance || !basinViewRef.current) return
       if (loadGen !== wellsLoadGenRef.current) return
+      const syncGen = ++basinLateralsSyncGenRef.current
       const src = instance.getSource('wells-laterals') as mapboxgl.GeoJSONSource | undefined
       if (!src) return
       if (instance.getZoom() < BASIN_LATERAL_MIN_ZOOM) {
@@ -2035,9 +2039,15 @@ export default function Map({
       const visible = countyEntries.filter(([, countyCfg]) => countyIntersectsViewport(instance, countyCfg))
       for (const [key] of visible) {
         if (loadGen !== wellsLoadGenRef.current || !basinViewRef.current) return
+        if (syncGen !== basinLateralsSyncGenRef.current) return
         await fetchCountyWells(key, { wantLaterals: true })
       }
       if (loadGen !== wellsLoadGenRef.current || !map.current) return
+      if (syncGen !== basinLateralsSyncGenRef.current) return
+      if (!basinViewRef.current || instance.getZoom() < BASIN_LATERAL_MIN_ZOOM) {
+        src.setData(EMPTY_WELLS)
+        return
+      }
       const features = visible.flatMap(([key]) => wellsCacheRef.current[key]?.laterals?.features ?? [])
       src.setData({ type: 'FeatureCollection', features })
       if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
