@@ -66,7 +66,7 @@ COUNTIES = {
         "fips": "103",
         "state_fips": "48103",
         "roll": "owners_2026_Crane.csv",
-        "load_wells_table": True,
+        "load_wells_table": True,  # crane_mineral_ownership + crane_wells now exist
     },
 }
 
