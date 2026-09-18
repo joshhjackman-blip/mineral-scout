@@ -2975,7 +2975,7 @@ export default function Map({
   }, [resolvedTheme, clearCountyMarkers])
 
   useEffect(() => {
-    if (mapLevel === 'county') setHoverCard(null)
+    setHoverCard(null)
   }, [mapLevel])
 
   useEffect(() => {
