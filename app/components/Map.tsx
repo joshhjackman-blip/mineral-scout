@@ -1295,18 +1295,20 @@ export default function Map({
       return
     }
 
+    let styledSelected = true
     if (previouslySelected === null) {
       // First pass after layers were just (re)created — set every county to
       // its correct mode in one go.
       countyEntries.forEach(([countyKey]) => {
         stylePair(countyKey, countyKey === newSelected ? 'active' : 'muted')
       })
+      styledSelected = stylePair(newSelected, 'active')
     } else if (previouslySelected !== newSelected) {
       // Incremental update: only the two counties whose styling actually
       // changed need new paint properties. Skipping the others avoids
       // redundant style events on every click.
       stylePair(previouslySelected, 'muted')
-      stylePair(newSelected, 'active')
+      styledSelected = stylePair(newSelected, 'active')
     } else {
       // Same county — nothing to repaint.
       return
@@ -1339,8 +1341,10 @@ export default function Map({
       `block-labels-${cid}`,
       'permits-rigs-layer',
     ]
-    for (const id of zOrderBottomToTop) {
-      if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+    if (styledSelected) {
+      for (const id of zOrderBottomToTop) {
+        if (mapInstance.getLayer(id)) mapInstance.moveLayer(id)
+      }
     }
 
     // Refresh the tract-mode inactive-county overlay so the newly
@@ -1381,7 +1385,11 @@ export default function Map({
     // that still nicks across a concave county line.
     restackInactiveCountyOverlay(mapInstance)
 
-    lastStyledSelectedCountyRef.current = newSelected
+    // Only lock lastStyled once the destination county's parcel layers
+    // exist. Otherwise a county switch restyles overlay/wells first and
+    // the later parcel-mount style pass no-ops ("same county"), leaving
+    // tracts never marked visible.
+    if (styledSelected) lastStyledSelectedCountyRef.current = newSelected
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
 
   const loadSelectedCountyPermits = useCallback(async (opts?: { force?: boolean }) => {
@@ -2183,10 +2191,14 @@ export default function Map({
     const renderToken = ++renderTokenRef.current
     clearCountyOverviewLayers(mapInstance)
     clearCountyMarkers()
-    const keepExistingBasinParcels = basinViewRef.current && countyEntries.some(([, cfg]) => (
+    // Keep parcels that are already on the map: basin view adding
+    // remaining counties, or tract view switching into a county whose
+    // shapefile has not been mounted yet. Clearing here is what made
+    // county-to-county clicks show wells on an empty basemap.
+    const keepExistingParcels = countyEntries.some(([, cfg]) => (
       !!mapInstance.getLayer(`parcels-fill-${cfg.id}`)
     ))
-    if (!keepExistingBasinParcels) {
+    if (!keepExistingParcels) {
       clearTractLayers(mapInstance)
     }
 
@@ -2218,7 +2230,7 @@ export default function Map({
       return null
     }
 
-    if (!keepExistingBasinParcels) {
+    if (!keepExistingParcels) {
       currentParcelsByCountyRef.current = {}
     }
 
@@ -2540,7 +2552,9 @@ export default function Map({
     )
     const toLoad = basinViewRef.current
       ? countyEntries.filter(([key]) => !alreadyMounted.has(key))
-      : countyEntries.filter(([key]) => key === selectedKey)
+      : alreadyMounted.has(selectedKey)
+        ? []
+        : countyEntries.filter(([key]) => key === selectedKey)
 
     // Two at a time, mount as each file arrives. Waiting on all 12
     // (and their wells) is what crashed Chrome with Aw Snap.
@@ -3235,6 +3249,14 @@ export default function Map({
       // clicked tract's county would wipe the other red dots.
       return
     }
+    const selectedFillId = `parcels-fill-${COUNTIES[selectedCounty].id}`
+    if (!map.current.getLayer(selectedFillId)) {
+      // Tract view only mounts the active county (loading all 12 at once
+      // crashed the tab). Switching counties has to fetch that county's
+      // parcels; wells already reload below, which is why a click showed
+      // laterals on a blank map.
+      void setupTractLevel()
+    }
     // Defer the rig/permit reload (network + new point geometry) until just
     // after the county swoop settles. Loading it mid-flight made fresh rig
     // dots pop in while the camera was still moving, which read as a stutter.
@@ -3244,7 +3266,7 @@ export default function Map({
       void loadSelectedCountyWells()
     }, CAMERA_SWOOP_MS + 80)
     return () => clearTimeout(permitTimer)
-  }, [applyTractCountyStyles, loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, selectedCounty])
+  }, [applyTractCountyStyles, loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, selectedCounty, setupTractLevel])
 
   // Live refresh — same cadence as PermitsNavLink / useActivityRefreshTick.
   // Drop the whole session cache so a county revisit after an ingest
