@@ -4,7 +4,7 @@ import { useTheme } from 'next-themes'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { supabase } from '@/lib/supabase'
-import { BASIN_OVERVIEW_CENTER, BASIN_OVERVIEW_ZOOM, COUNTIES, type MapLevel } from '@/lib/counties'
+import { BASIN_OVERVIEW_CENTER, BASIN_OVERVIEW_ZOOM, COUNTIES, TX_COUNTIES_GEOJSON_PATH, type MapLevel } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
 import { countyAssetUrls } from '@/lib/county-assets'
 import OperatorMultiSelect from './OperatorMultiSelect'
@@ -1925,29 +1925,39 @@ export default function Map({
     })
   }, [countyEntries, fetchCountyWells])
 
-  // Fetch + memoize the Texas county polygons (from plotly's public
-  // FIPS dataset). Returns Texas-only features tagged with a __fips
-  // string property. Cached in a ref so we don't re-fetch when
-  // toggling between county overview and tract mode.
+  // Census + CAD county polygons (public/tx_counties.geojson). Cached so
+  // toggling county overview / tract mode does not re-fetch.
   const loadTexasCountiesGeoJSON = useCallback(async (): Promise<GeoJSON.Feature[] | null> => {
     if (txCountiesCacheRef.current) return txCountiesCacheRef.current
-    const response = await fetch('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json')
-    if (!response.ok) return null
-    const geojson = await response.json() as GeoJSON.FeatureCollection
-    const texasFeatures = (geojson.features ?? [])
-      .map((feature) => {
-        const properties = (feature.properties ?? {}) as Record<string, unknown>
-        const fips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? '').trim()
-        if (!fips.startsWith('48')) return null
-        return {
-          ...feature,
-          id: fips,
-          properties: { ...properties, __fips: fips },
-        } as GeoJSON.Feature
-      })
-      .filter(Boolean) as GeoJSON.Feature[]
-    txCountiesCacheRef.current = texasFeatures
-    return texasFeatures
+    const urls = [
+      TX_COUNTIES_GEOJSON_PATH,
+      'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json',
+    ]
+    for (const url of urls) {
+      try {
+        const response = await fetch(url)
+        if (!response.ok) continue
+        const geojson = await response.json() as GeoJSON.FeatureCollection
+        const texasFeatures = (geojson.features ?? [])
+          .map((feature) => {
+            const properties = (feature.properties ?? {}) as Record<string, unknown>
+            const fips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? properties.__fips ?? '').trim()
+            if (!fips.startsWith('48')) return null
+            return {
+              ...feature,
+              id: fips,
+              properties: { ...properties, __fips: fips },
+            } as GeoJSON.Feature
+          })
+          .filter(Boolean) as GeoJSON.Feature[]
+        if (texasFeatures.length === 0) continue
+        txCountiesCacheRef.current = texasFeatures
+        return texasFeatures
+      } catch {
+        // try next source
+      }
+    }
+    return null
   }, [])
 
   const setupCountyOverview = useCallback(async () => {

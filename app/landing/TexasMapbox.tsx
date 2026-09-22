@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { COUNTIES } from '@/lib/counties'
+import { COUNTIES, TX_COUNTIES_GEOJSON_PATH } from '@/lib/counties'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
@@ -20,8 +20,8 @@ const TX_BOUNDS: [[number, number], [number, number]] = [
 ]
 
 /**
- * Accurate Mapbox Texas map using TIGER/FIPS county polygons
- * (same Plotly counties GeoJSON as the product map).
+ * Accurate Mapbox Texas map using Census county polygons snapped to
+ * each live county's CAD parcel shell (same file as the product map).
  * Navy fill + county outlines — amber outlines on Permian counties.
  */
 export default function TexasMapbox() {
@@ -59,16 +59,14 @@ export default function TexasMapbox() {
 
     const onLoad = async () => {
       try {
-        const response = await fetch(
-          'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json',
-        )
+        const response = await fetch(TX_COUNTIES_GEOJSON_PATH)
         if (!response.ok || !mapRef.current) return
         const geojson = (await response.json()) as GeoJSON.FeatureCollection
 
         const texasFeatures = (geojson.features ?? [])
           .map((feature) => {
             const properties = (feature.properties ?? {}) as Record<string, unknown>
-            const fips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? '').trim()
+            const fips = String(feature.id ?? properties.GEOID ?? properties.FIPS ?? properties.__fips ?? '').trim()
             if (!fips.startsWith('48')) return null
             return {
               ...feature,
