@@ -10,6 +10,7 @@ import { countyAssetUrls } from '@/lib/county-assets'
 import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
 import { omitInjectionWellFeatures } from '@/lib/well-kind'
+import { clipWellFeaturesToCounty, countyPolygonFromFeatures } from '@/lib/geo-clip'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -96,6 +97,28 @@ const WELL_OVERLAY_LAYER_IDS = [
   'wells-points-layer',
   'wells-arrows-layer',
 ] as const
+
+// Orange (inactive) / grey (upcoming) county mask in tract view. Wells
+// paint after this overlay is first added, so laterals would otherwise
+// sit on top of the neighbor mask along river borders. Restack these
+// above the well layers (and under rigs) after every well paint.
+const TRACT_INACTIVE_OVERLAY_LAYER_IDS = [
+  'tract-inactive-fill',
+  'tract-inactive-outline',
+  'tract-upcoming-fill',
+  'tract-upcoming-outline',
+  'tract-overlay-labels',
+  'tract-overlay-sub-labels',
+] as const
+
+function restackInactiveCountyOverlay(mapInstance: mapboxgl.Map) {
+  for (const overlayLayerId of TRACT_INACTIVE_OVERLAY_LAYER_IDS) {
+    if (mapInstance.getLayer(overlayLayerId)) mapInstance.moveLayer(overlayLayerId)
+  }
+  if (mapInstance.getLayer('permits-rigs-layer')) {
+    mapInstance.moveLayer('permits-rigs-layer')
+  }
+}
 
 type CountyWellsCache = {
   points: GeoJSON.FeatureCollection
@@ -1353,18 +1376,10 @@ export default function Map({
     if (mapInstance.getLayer('tract-overlay-labels')) {
       mapInstance.setFilter('tract-overlay-labels', ['!=', ['get', 'fips'], currentFips])
     }
-    // Push overlay layers below the rig dots but above the base
-    // parcel layers, so labels and orange blocks stay visible.
-    for (const overlayLayerId of [
-      'tract-inactive-fill', 'tract-inactive-outline',
-      'tract-upcoming-fill', 'tract-upcoming-outline',
-      'tract-overlay-labels', 'tract-overlay-sub-labels',
-    ]) {
-      if (mapInstance.getLayer(overlayLayerId)) mapInstance.moveLayer(overlayLayerId)
-    }
-    if (mapInstance.getLayer('permits-rigs-layer')) {
-      mapInstance.moveLayer('permits-rigs-layer')
-    }
+    // Push overlay layers below the rig dots but above wells and the
+    // base parcel layers, so orange neighbor blocks cover any lateral
+    // that still nicks across a concave county line.
+    restackInactiveCountyOverlay(mapInstance)
 
     lastStyledSelectedCountyRef.current = newSelected
   }, [countyEntries, selectedFillColorExpr, selectedFillOpacityExpr, selectedOutlineColorExpr, selectedOutlineWidthExpr])
@@ -1757,11 +1772,20 @@ export default function Map({
     const paintTractWells = (wellsGeoJSON: GeoJSON.FeatureCollection) => {
       const instance = map.current
       if (!instance || loadGen !== wellsLoadGenRef.current) return
+      // Tract view: cut laterals/points at the selected county polygon so a
+      // well that snakes across a river meander does not draw in the neighbor.
+      // Basin view keeps the full as-drilled line across county lines.
+      let data = wellsGeoJSON
+      if (!basinViewRef.current) {
+        const fips = COUNTIES[selectedCountyRef.current]?.fips ?? ''
+        const countyGeom = countyPolygonFromFeatures(txCountiesCacheRef.current, fips)
+        if (countyGeom) data = clipWellFeaturesToCounty(wellsGeoJSON, countyGeom)
+      }
       const colorExpr = wellColorExpr(wellsByOperatorRef.current)
       if (!instance.getSource('wells')) {
         instance.addSource('wells', {
           type: 'geojson',
-          data: wellsGeoJSON,
+          data,
           maxzoom: 14,
           buffer: 64,
           tolerance: 0.1,
@@ -1818,12 +1842,16 @@ export default function Map({
         bindWellPopups(instance, ['wells-laterals-layer', 'wells-points-layer'])
         wellsPaintModeRef.current = 'tract'
       } else {
-        ;(instance.getSource('wells') as mapboxgl.GeoJSONSource).setData(wellsGeoJSON)
+        ;(instance.getSource('wells') as mapboxgl.GeoJSONSource).setData(data)
         for (const id of ['wells-laterals-layer', 'wells-points-layer', 'wells-arrows-layer']) {
           if (instance.getLayer(id)) instance.setLayoutProperty(id, 'visibility', vis)
         }
       }
-      if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
+      // Wells are added after the orange neighbor mask, so move that mask
+      // back on top. Anything that still nicks a neighbor is covered.
+      // Leave basin laterals unclipped and unmasked.
+      if (!basinViewRef.current) restackInactiveCountyOverlay(instance)
+      else if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
     }
 
     const syncBasinWells = async () => {
