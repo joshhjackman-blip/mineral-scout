@@ -113,13 +113,164 @@ const ENTITY_RE = new RegExp(
   'i',
 )
 
-/** Label only — both entities and people now try idiCORE first, then BatchData. */
+/** Label only — Accurate Append runs first, then idiCORE / BatchData / Tracerfy. */
 function classifyOwner(ownerName?: string, firstName?: string, lastName?: string): 'entity' | 'person' {
   const s = `${ownerName ?? ''} ${firstName ?? ''} ${lastName ?? ''}`.toUpperCase()
   return ENTITY_RE.test(s) ? 'entity' : 'person'
 }
 
-/** BatchData property skip-trace — backup after idiCORE for every owner. */
+const ACCURATE_APPEND_BASE = 'https://api.accurateappend.com/Services/V2'
+
+function accurateAppendLicenseKey(): string {
+  return (
+    process.env.ACCURATE_APPEND_API_KEY?.trim() ||
+    process.env.ACCURATE_APPEND_LICENSE_KEY?.trim() ||
+    ''
+  )
+}
+
+function pushAccurateAppendPhones(payload: unknown, phones: string[]) {
+  if (!payload || typeof payload !== 'object') return
+  const root = payload as Record<string, unknown>
+  const items = Array.isArray(root.Phones)
+    ? root.Phones
+    : Array.isArray(root.phones)
+      ? root.phones
+      : []
+  for (const item of items) {
+    if (typeof item === 'string') {
+      pushUniquePhone(phones, item)
+      continue
+    }
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    const area = String(obj.AreaCode ?? obj.areaCode ?? '').replace(/\D/g, '')
+    const rest = String(
+      obj.PhoneNumber ?? obj.phoneNumber ?? obj.number ?? obj.phone ?? '',
+    ).replace(/\D/g, '')
+    const combined = area && rest.length === 7 ? `${area}${rest}` : rest
+    if (combined.length >= 10) pushUniquePhone(phones, combined)
+  }
+}
+
+function pushAccurateAppendEmails(payload: unknown, emails: string[]) {
+  if (!payload || typeof payload !== 'object') return
+  const root = payload as Record<string, unknown>
+  const items = Array.isArray(root.Emails)
+    ? root.Emails
+    : Array.isArray(root.emails)
+      ? root.emails
+      : []
+  for (const item of items) {
+    if (typeof item === 'string') {
+      pushUniqueEmail(emails, item)
+      continue
+    }
+    if (!item || typeof item !== 'object') continue
+    const obj = item as Record<string, unknown>
+    pushUniqueEmail(emails, obj.Email ?? obj.email ?? obj.address)
+  }
+}
+
+async function accurateAppendGet(
+  path: string,
+  params: URLSearchParams,
+): Promise<Record<string, unknown> | null> {
+  const url = `${ACCURATE_APPEND_BASE}${path}?${params.toString()}`
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    console.error('Accurate Append', path, 'failed:', res.status, text.slice(0, 300))
+    return null
+  }
+  try {
+    return JSON.parse(text) as Record<string, unknown>
+  } catch {
+    console.error('Accurate Append', path, 'parse failed')
+    return null
+  }
+}
+
+/** Accurate Append phone + email append — first provider when ACCURATE_APPEND_API_KEY is set.
+ * People: ADS consumer phone (mobile + landline) + MaxConnect email.
+ * Entities: business phone append + email (owner name as lastname).
+ * Empty result falls through to idiCORE. */
+async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
+  const firstName = (a.firstName || '').trim()
+  const lastName = (a.lastName || '').trim()
+  const ownerName = (a.ownerName || '').trim()
+  const lastNameOrFull = lastName || ownerName
+  if (!lastNameOrFull && !firstName) return { phones, emails }
+
+  const common = new URLSearchParams()
+  if (firstName) common.set('firstname', firstName)
+  if (lastNameOrFull) common.set('lastname', lastNameOrFull)
+  if (a.address?.trim()) common.set('address', a.address.trim())
+  if (a.city?.trim()) common.set('city', a.city.trim())
+  if (a.state?.trim()) common.set('state', a.state.trim())
+  if (a.zip?.trim()) common.set('postalcode', a.zip.trim())
+
+  const ownerType = classifyOwner(a.ownerName, a.firstName, a.lastName)
+  const jobs: Promise<void>[] = []
+
+  if (ownerType === 'entity' && ownerName) {
+    const biz = new URLSearchParams()
+    biz.set('businessname', ownerName)
+    if (a.address?.trim()) biz.set('address', a.address.trim())
+    if (a.city?.trim()) biz.set('city', a.city.trim())
+    if (a.state?.trim()) biz.set('state', a.state.trim())
+    if (a.zip?.trim()) biz.set('postalcode', a.zip.trim())
+    jobs.push(
+      accurateAppendGet(`/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`, biz).then(
+        (data) => {
+          if (!data) return
+          pushAccurateAppendPhones(data, phones)
+          extractContactsFromPayload(data, phones, emails)
+        },
+      ),
+    )
+  } else {
+    const phoneParams = new URLSearchParams(common)
+    phoneParams.set('lineType', 'C;S')
+    jobs.push(
+      accurateAppendGet(`/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`, phoneParams).then(
+        (data) => {
+          if (!data) return
+          pushAccurateAppendPhones(data, phones)
+          extractContactsFromPayload(data, phones, emails)
+        },
+      ),
+    )
+  }
+
+  if (lastNameOrFull) {
+    const emailParams = new URLSearchParams(common)
+    emailParams.set('maxResults', '5')
+    jobs.push(
+      accurateAppendGet(`/AppendEmail/${encodeURIComponent(licenseKey)}/`, emailParams).then(
+        (data) => {
+          if (!data) return
+          pushAccurateAppendEmails(data, emails)
+          extractContactsFromPayload(data, phones, emails)
+        },
+      ),
+    )
+  }
+
+  await Promise.all(jobs)
+  console.log(
+    'Accurate Append result:',
+    JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
+  )
+  return { phones, emails }
+}
+
+/** BatchData property skip-trace — backup after Accurate Append / idiCORE. */
 async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
@@ -224,7 +375,7 @@ async function idicoreAuthenticate(): Promise<string | null> {
   return token
 }
 
-/** idiCORE (IDI) skip-trace — first provider for every owner.
+/** idiCORE (IDI) skip-trace — second provider, after Accurate Append.
  *
  * Two-step: authenticate (idicoreAuthenticate) then POST the search to
  * IDICORE_SEARCH_URL (the tailored "/search/MineralMap" template). Falls back
@@ -513,7 +664,8 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Provider chain (same for LLC / trust / estate / person):
-  //      idiCORE first, BatchData backup, Tracerfy last-resort.
+  //      Accurate Append first, then idiCORE, BatchData backup, Tracerfy last-resort.
+  const accurateAppendKey = accurateAppendLicenseKey()
   const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
   const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
   // idiCORE is enabled once a search endpoint is configured (two-step auth via
@@ -521,12 +673,12 @@ export async function POST(req: NextRequest) {
   const idicoreEnabled = Boolean(
     process.env.IDICORE_SEARCH_URL?.trim() || process.env.IDICORE_API_URL?.trim(),
   )
-  if (!tracerfyKey && !batchKey && !idicoreEnabled) {
+  if (!accurateAppendKey && !tracerfyKey && !batchKey && !idicoreEnabled) {
     return NextResponse.json(
       {
         error:
           'Skip trace providers are not configured ' +
-          '(BATCHSKIPTRACING_API_KEY / IDICORE_SEARCH_URL / TRACERFY_API_KEY)',
+          '(ACCURATE_APPEND_API_KEY / IDICORE_SEARCH_URL / BATCHSKIPTRACING_API_KEY / TRACERFY_API_KEY)',
       },
       { status: 500 },
     )
@@ -536,11 +688,14 @@ export async function POST(req: NextRequest) {
   const traceArgs: TraceArgs = { firstName, lastName, ownerName, address, city, state, zip }
 
   const runners: Record<string, (() => Promise<TraceResult>) | null> = {
+    accurateappend: accurateAppendKey
+      ? () => traceAccurateAppend(accurateAppendKey, traceArgs)
+      : null,
     batchdata: batchKey ? () => traceBatchData(batchKey, traceArgs) : null,
     idicore: idicoreEnabled ? () => traceIdicore(traceArgs) : null,
     tracerfy: tracerfyKey ? () => traceTracerfy(tracerfyKey, traceArgs) : null,
   }
-  const order = ['idicore', 'batchdata', 'tracerfy']
+  const order = ['accurateappend', 'idicore', 'batchdata', 'tracerfy']
 
   try {
     let phones: string[] = []
@@ -551,6 +706,7 @@ export async function POST(req: NextRequest) {
       const run = runners[name]
       if (!run) continue
       try {
+        console.log(`Skip trace trying provider: ${name}`)
         const result = await run()
         if (result.phones.length > 0 || result.emails.length > 0) {
           phones = result.phones
