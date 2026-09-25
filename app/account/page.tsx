@@ -12,11 +12,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import {
-  inviteSeatCapacity,
-  resolveTeamRole,
-  type TeamRole,
-} from '@/lib/team'
+import { inviteSeatCapacity, resolveTeamRole, type TeamRole } from '@/lib/team'
 import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost, formatSkipTracePrice } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
@@ -56,6 +52,7 @@ export default function Account() {
   const [inviting, setInviting] = useState(false)
   const [inviteMessage, setInviteMessage] = useState('')
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
+  const [skipTraceWaived, setSkipTraceWaived] = useState(false)
 
   const teamRole: TeamRole = useMemo(
     () =>
@@ -138,17 +135,24 @@ export default function Account() {
       if (teamOwnerId) {
         // Member view — do not load invite management.
         setTeamMembers([])
-        // Best-effort owner email for display (may be blocked by RLS).
-        const { data: ownerRows } = await supabase
-          .from('team_members')
-          .select('owner_id, invite_email')
-          .eq('owner_id', teamOwnerId)
-          .eq('invite_email', (session.user.email ?? '').toLowerCase())
-          .maybeSingle()
-        void ownerRows
-        setOwnerEmail(null)
       } else {
         await fetchTeamMembers(session.user.id)
+      }
+
+      try {
+        const billingRes = await fetch('/api/account/billing', { cache: 'no-store' })
+        if (billingRes.ok) {
+          const billing = (await billingRes.json()) as {
+            data?: {
+              skip_trace_waived?: boolean
+              workspace_owner_email?: string | null
+            }
+          }
+          setSkipTraceWaived(billing.data?.skip_trace_waived === true)
+          setOwnerEmail(billing.data?.workspace_owner_email ?? null)
+        }
+      } catch {
+        setSkipTraceWaived(false)
       }
 
       setLoading(false)
@@ -343,108 +347,35 @@ export default function Account() {
           </div>
         )}
 
-        {/* ── Billing ($100/seat + $1 skip-trace phone hits) ── */}
+        {/* ── Billing (free access + $1 skip-trace phone hits) ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
           </div>
-          {user?.user_metadata?.billing_exempt === true ? (
-            <>
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div>
-                  <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                    Complimentary access
-                  </div>
-                  <div className="text-sm text-gray-500 leading-relaxed">
-                    Your account was on Mineral Map before paid billing launched —
-                    seat fees and skip-trace charges are waived. Seat capacity:{' '}
-                    <strong className="text-gray-700">
-                      {seatCount > 0
-                        ? `${seatCount} seat${seatCount === 1 ? '' : 's'}`
-                        : '1 seat'}
-                    </strong>
-                  </div>
-                </div>
-                <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
-                  Complimentary
-                </span>
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <div className="font-serif text-base font-bold text-gray-900 mb-1">
+                Free to use · {formatSkipTracePrice()}
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href="/legal/agreement/sign"
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
-                >
-                  <FileText size={13} />
-                  Agreement
-                </Link>
+              <div className="text-sm text-gray-500 leading-relaxed">
+                {skipTraceWaived
+                  ? 'Your workspace (Mineral Map / Great Plains) is not billed for skip-trace. Phone hits still show in usage for tracking.'
+                  : `Skip-trace is $${SKIP_TRACE_PRICE_USD.toFixed(2)} only when a phone number comes back, accumulated on your team and invoiced through Stripe at month end. Cache hits, misses, and email-only results are free.`}
               </div>
-            </>
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div>
-                  <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                    $100/mo per seat · {formatSkipTracePrice()}
-                  </div>
-                  <div className="text-sm text-gray-500 leading-relaxed">
-                    Platform access is billed per seat. Skip-trace is ${SKIP_TRACE_PRICE_USD.toFixed(2)} only when a phone number comes back, accumulated on your team and invoiced through Stripe at month end. Cache hits, misses, and email-only results are free. Seat capacity:{' '}
-                    <strong className="text-gray-700">
-                      {seatCount > 0 ? `${seatCount} seat${seatCount === 1 ? '' : 's'}` : 'not provisioned'}
-                    </strong>
-                    {subscription?.status ? (
-                      <>
-                        {' '}
-                        · status{' '}
-                        <strong className="text-gray-700">{subscription.status}</strong>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-                <span
-                  className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full border ${
-                    subscription?.status === 'active' || subscription?.status === 'trialing'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}
-                >
-                  {subscription?.status === 'active' || subscription?.status === 'trialing'
-                    ? 'Active'
-                    : seatCount > 0
-                      ? 'Provisioned'
-                      : 'No plan'}
-                </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <Link
-                  href="/pricing"
-                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
-                >
-                  {seatCount > 0 ? 'Add seats / change plan' : 'Start subscription'}
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void (async () => {
-                      const res = await fetch('/api/billing/portal', { method: 'POST' })
-                      const data = (await res.json()) as { url?: string; error?: string }
-                      if (data.url) window.location.href = data.url
-                      else alert(data.error || 'Billing portal unavailable')
-                    })()
-                  }}
-                  className="inline-flex items-center justify-center px-4 py-2 text-sm font-semibold text-amber-800 border border-amber-300 rounded-lg hover:bg-amber-50"
-                >
-                  Manage billing
-                </button>
-                <Link
-                  href="/legal/agreement/sign"
-                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
-                >
-                  <FileText size={13} />
-                  Agreement
-                </Link>
-              </div>
-            </>
-          )}
+            </div>
+            <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+              {skipTraceWaived ? 'Skip-trace waived' : 'Free access'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/legal/agreement/sign"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
+            >
+              <FileText size={13} />
+              Agreement
+            </Link>
+          </div>
         </div>
 
         {/* ── Usage (billable skip-traces this month) ── */}
@@ -455,12 +386,14 @@ export default function Account() {
           <div className="flex items-baseline justify-between">
             <div>
               <div className="text-sm text-gray-500">
-                {user?.user_metadata?.billing_exempt === true
+                {skipTraceWaived
                   ? 'Skip-traces this month (waived)'
                   : 'Billable skip-traces this month (phone hits)'}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                ${estimateMonthlySkipTraceCost(skipTraceBillable ?? 0).toFixed(2)} running total · billed to your team at month end · cache hits / misses / email-only not counted
+                {skipTraceWaived
+                  ? 'Owner-team skip-trace is complimentary'
+                  : `$${estimateMonthlySkipTraceCost(skipTraceBillable ?? 0).toFixed(2)} running total · billed to your team at month end · cache hits / misses / email-only not counted`}
               </div>
             </div>
             <div className="font-serif text-2xl font-bold text-gray-900 tabular-nums">

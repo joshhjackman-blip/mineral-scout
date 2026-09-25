@@ -958,10 +958,10 @@ export default function AdminDashboard() {
                 Grandfather existing users
               </h2>
               <p className="text-sm text-gray-500 mb-3">
-                Current accounts stay free when the paywall turns on — no $100
-                seat fee and no $1 skip-trace charges. New signups after this
-                still pay both. After running, users may need to sign out/in (or
-                wait for token refresh) before complimentary status appears.
+                Access is free for everyone. Skip-trace ($1 per phone hit) is
+                billed to customer teams at month end — except Mineral Map and
+                Jordan's Great Plains workspace, which are waived. Grandfather
+                is no longer needed for access.
               </p>
               {grandfatherStats && (
                 <p className="text-sm text-gray-600 mb-4">

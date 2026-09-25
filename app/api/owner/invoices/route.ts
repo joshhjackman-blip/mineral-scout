@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { isPlatformOwner } from '@/lib/team'
-import { isBillingExempt } from '@/lib/access'
+import { isPlatformOwner, isSkipTraceCompedTeam } from '@/lib/team'
 import { billingMonthKey, estimateMonthlySkipTraceCost } from '@/lib/billing'
 import { createTeamSkipTraceInvoice } from '@/lib/stripe-invoices'
 
@@ -115,13 +114,12 @@ export async function POST(req: NextRequest) {
   const adminClient = adminDb()
   const { data: ownerUser } = await adminClient.auth.admin.getUserById(teamOwnerId)
   const ownerEmail = ownerUser?.user?.email ?? null
-  const ownerMeta = (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>
-  if (isBillingExempt(ownerMeta)) {
+  if (isSkipTraceCompedTeam(ownerEmail)) {
     return NextResponse.json(
       {
         success: false,
         data: null,
-        error: 'This team is billing-exempt — skip-trace charges are waived.',
+        error: 'Skip-trace is waived for this owner team (Mineral Map / Great Plains).',
       },
       { status: 400 },
     )
@@ -141,7 +139,7 @@ export async function POST(req: NextRequest) {
         success: false,
         data: null,
         error:
-          'No Stripe customer on this team. They need a seat subscription (or a customer attached in Stripe) before we can invoice skip-traces.',
+          'No Stripe customer on this team. Attach a Stripe Customer before invoicing skip-traces.',
       },
       { status: 400 },
     )

@@ -82,11 +82,10 @@ and omissions of its Users under this Agreement.
 > ⚠️ Fee schedule updated 2026-09-25. Have counsel re-review before
 > relying on this section in production.
 
-### 4.1 Seat Subscription
-Customer shall pay a recurring subscription fee of **one hundred
-U.S. dollars (US $100) per User seat per month** for access to the
-Platform. Seats are licensed; Customer may not share a single seat
-among concurrent Users. Unused seats do not roll over.
+### 4.1 Access
+Access to the Platform is provided at **no subscription or seat
+charge**. Customer may invite Users under Customer's team as
+permitted by Mineral Map.
 
 ### 4.2 Skip-Trace Usage
 Customer shall pay **one U.S. dollar (US $1.00)** for each
@@ -100,7 +99,6 @@ billable. Skip-trace charges accrue per Customer team during the
 calendar month.
 
 ### 4.3 Invoicing
-Seat fees are billed in advance for each subscription period.
 Skip-trace usage is invoiced in arrears at month end through Stripe
 Invoicing (typically net fourteen (14) days). Payment is due
 according to the Stripe invoice terms Customer receives.
@@ -116,7 +114,7 @@ use after the effective date constitutes acceptance of the new fees.
 ## 5. Reporting
 
 ### 5.1 Monthly Report
-Seat fees are collected through Stripe Checkout. Skip-trace phone
+Seat access is complimentary. Skip-trace phone
 hits are invoiced separately through Stripe Invoicing at month end.
 If Mineral Map reasonably requests usage clarification, Customer
 shall cooperate in good faith.

@@ -7,7 +7,7 @@ ALTER TABLE public.skip_trace_usage
 COMMENT ON COLUMN public.skip_trace_usage.count IS
   'Provider calls this month (cache misses). Includes misses and email-only.';
 COMMENT ON COLUMN public.skip_trace_usage.billable_count IS
-  'Phone-hit lookups billed at $1 each on the team month-end Stripe invoice. Cache hits, misses, email-only, and billing_exempt workspaces stay 0.';
+  'Phone-hit lookups billed at $1 each on the team month-end Stripe invoice. Cache hits, misses, email-only, and Mineral Map / Great Plains owner teams stay 0.';
 
 CREATE TABLE IF NOT EXISTS public.skip_trace_invoices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -43,6 +43,7 @@ type TeamUsage = {
     skip_traces: number
     billable_skip_traces?: number
     skip_trace_amount_usd?: number
+    skip_trace_waived?: boolean
     emails_sent: number
     closed_deal_count: number
     closed_deal_volume: number
@@ -209,10 +210,20 @@ export default function TeamAdminDashboard() {
             value={
               loading
                 ? '—'
-                : `$${(totals?.skip_trace_amount_usd ?? 0).toLocaleString()}`
+                : totals?.skip_trace_waived
+                  ? 'Waived'
+                  : `$${(totals?.skip_trace_amount_usd ?? 0).toLocaleString()}`
             }
-            hint={`${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`}
-            sub={`${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · invoice at month end`}
+            hint={
+              totals?.skip_trace_waived
+                ? `${currentMonth} · owner team complimentary`
+                : `${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`
+            }
+            sub={
+              totals?.skip_trace_waived
+                ? 'Mineral Map / Great Plains skip-trace is not billed'
+                : `${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · invoice at month end`
+            }
           />
           <StatCard
             label="Est. team $"

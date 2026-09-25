@@ -37,6 +37,7 @@ type TeamSpendRow = {
   skip_trace_amount_usd?: number
   stripe_customer_id?: string | null
   billing_exempt?: boolean
+  skip_trace_waived?: boolean
   invoice_status?: string | null
   hosted_invoice_url?: string | null
   call_clicks: number
@@ -449,13 +450,13 @@ export default function OwnerPortfolioPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3 text-sm font-semibold text-gray-900">
-                        {team.billing_exempt
+                        {team.skip_trace_waived
                           ? 'Waived'
                           : `$${(team.skip_trace_amount_usd ?? 0).toLocaleString()}`}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
-                        {team.billing_exempt ? (
-                          <span className="text-xs text-gray-400">Exempt</span>
+                        {team.skip_trace_waived ? (
+                          <span className="text-xs text-gray-400">Owner team</span>
                         ) : team.hosted_invoice_url ? (
                           <a
                             href={team.hosted_invoice_url}

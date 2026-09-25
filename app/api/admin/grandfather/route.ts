@@ -7,10 +7,9 @@ export const dynamic = 'force-dynamic'
 
 /**
  * POST — one-shot: mark every existing auth user as billing-exempt
- * (complimentary platform access + waived skip-trace charges). Safe to re-run.
- *
- * Skip-trace API skips Stripe meter events when billing_exempt is set
- * (caller or workspace owner).
+ * (legacy seat-paywall flag). Access is now free for everyone; this
+ * flag does not waive skip-trace. Skip-trace is waived only for
+ * Mineral Map and Jordan's Great Plains workspaces.
  */
 
 type AuthUser = {

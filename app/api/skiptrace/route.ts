@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
 import { SKIP_TRACE_PRICE_USD, isSkipTraceBillable } from '@/lib/billing'
-import { isBillingExempt } from '@/lib/access'
+import { isSkipTraceWaivedFor } from '@/lib/access'
 import {
   hasSignedCurrentAgreement,
   isAgreementGateEnabled,
@@ -559,15 +559,17 @@ export async function POST(req: NextRequest) {
       (subRow as { team_owner_id?: string | null } | null)?.team_owner_id,
     ) || userId
 
-  // Grandfathered / complimentary accounts: no $1 skip-trace invoice line.
-  // Also waive when the workspace owner is exempt (invited members inherit).
-  let skipTraceWaived = isBillingExempt(metadata)
-  if (!skipTraceWaived && workspaceId !== userId) {
+  // Skip-trace is complimentary only for Mineral Map + Jordan's Great
+  // Plains workspaces (members inherit from the team admin).
+  let workspaceOwnerEmail = user.email ?? null
+  if (workspaceId !== userId) {
     const { data: ownerUser } = await adminClient.auth.admin.getUserById(workspaceId)
-    skipTraceWaived = isBillingExempt(
-      (ownerUser?.user?.user_metadata ?? {}) as Record<string, unknown>,
-    )
+    workspaceOwnerEmail = ownerUser?.user?.email ?? workspaceOwnerEmail
   }
+  const skipTraceWaived = isSkipTraceWaivedFor({
+    userEmail: user.email,
+    workspaceOwnerEmail,
+  })
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
@@ -703,7 +705,7 @@ export async function POST(req: NextRequest) {
     }
 
     // $1 only when a phone number comes back. Misses, email-only, cache
-    // hits, and billing_exempt workspaces are not billed. Running total
+    // hits, and owner-team workspaces (Mineral Map / Great Plains) are not billed. Running total
     // lives on skip_trace_usage.billable_count (team invoice at month end).
     const billable = isSkipTraceBillable({
       cached: false,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { isPlatformAdmin, isPlatformOwner } from '@/lib/team'
+import { isPlatformAdmin, isPlatformOwner, isSkipTraceCompedTeam } from '@/lib/team'
 import { estimateMonthlySkipTraceCost, SKIP_TRACE_PRICE_USD } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
@@ -34,6 +34,7 @@ type TeamSpend = {
   skip_trace_amount_usd: number
   stripe_customer_id: string | null
   billing_exempt: boolean
+  skip_trace_waived: boolean
   invoice_status: string | null
   hosted_invoice_url: string | null
   call_clicks: number
@@ -278,7 +279,8 @@ export async function GET(req: NextRequest) {
     billable_skip_traces: 0,
     skip_trace_amount_usd: 0,
     stripe_customer_id: subsByUser.get(ownerId)?.stripe_customer_id ?? null,
-    billing_exempt: Boolean(metaById.get(ownerId)?.billing_exempt),
+    billing_exempt: false,
+    skip_trace_waived: isSkipTraceCompedTeam(email),
     invoice_status: null,
     hosted_invoice_url: null,
     call_clicks: 0,
@@ -372,21 +374,30 @@ export async function GET(req: NextRequest) {
     team.hosted_invoice_url = row.hosted_invoice_url ?? null
   }
 
+  for (const team of Array.from(teamMap.values())) {
+    if (isSkipTraceCompedTeam(team.owner_email)) {
+      team.skip_trace_waived = true
+      team.billable_skip_traces = 0
+      team.skip_trace_amount_usd = 0
+    }
+  }
+
   const teams = Array.from(teamMap.values()).sort(
     (a, b) => b.skip_trace_amount_usd - a.skip_trace_amount_usd || b.estimated_success_fee - a.estimated_success_fee,
   )
+  const billableDue = teams.reduce((sum, t) => sum + t.billable_skip_traces, 0)
 
   return NextResponse.json({
     month: monthKey,
     callVolume: {
       callClicks: callClicksThisMonth,
       skipTraces: skipTracesThisMonth,
-      billableSkipTraces: billableSkipTracesThisMonth,
+      billableSkipTraces: billableDue,
       primary: callClicksThisMonth,
     },
     skipTraceBilling: {
-      billableCount: billableSkipTracesThisMonth,
-      amountUsd: estimateMonthlySkipTraceCost(billableSkipTracesThisMonth),
+      billableCount: billableDue,
+      amountUsd: estimateMonthlySkipTraceCost(billableDue),
       unitPriceUsd: SKIP_TRACE_PRICE_USD,
     },
     monthlyDollars: {

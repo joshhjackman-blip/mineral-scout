@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createClient } from '@supabase/supabase-js'
-import { seatPriceId, skipTracePriceId } from '@/lib/billing'
+import { seatPriceId } from '@/lib/billing'
 import { requireApiUser } from '@/lib/api-auth'
 
 function seatQuantityFromSubscription(sub: Stripe.Subscription, fallback: number): number {
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   const sessionId = searchParams.get('session_id')
 
   if (!sessionId) {
-    return NextResponse.redirect(new URL('/pricing', req.url))
+    return NextResponse.redirect(new URL('/account', req.url))
   }
 
   const stripeKey = process.env.STRIPE_SECRET_KEY
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
   const userId = stripeSession.metadata?.user_id
   if (!userId || userId !== gate.user.id) {
-    return NextResponse.redirect(new URL('/pricing', req.url))
+    return NextResponse.redirect(new URL('/account', req.url))
   }
 
   const metaSeats = Math.max(1, Number(stripeSession.metadata?.seat_count) || 1)
@@ -64,8 +64,6 @@ export async function GET(req: NextRequest) {
   )
 
   const seatPrice = seatPriceId()
-  const skipPrice =
-    stripeSession.metadata?.stripe_skiptrace_price_id || skipTracePriceId() || null
 
   await supabase.from('subscriptions').upsert(
     {
@@ -76,7 +74,7 @@ export async function GET(req: NextRequest) {
       seat_count: seatCount,
       team_owner_id: null,
       stripe_seat_price_id: seatPrice,
-      stripe_skiptrace_price_id: skipPrice,
+      stripe_skiptrace_price_id: null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' },

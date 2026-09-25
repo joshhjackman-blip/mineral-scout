@@ -1,24 +1,13 @@
 /**
  * Commercial model:
- *   • $100 / seat / month  — platform access (Stripe Checkout subscription)
- *   • $1.00 / skip-trace   — only when a phone number comes back
- *                            (cache hits, misses, and email-only are free)
+ *   • Access is free (no seat subscription)
+ *   • $1.00 / skip-trace when a phone number comes back
+ *     (cache hits, misses, and email-only are free)
+ *   • Waived for Mineral Map's team and Jordan's Great Plains team
  *
- * Skip-trace is billed **per team**, not per user. Hits accumulate as a
- * running total during the calendar month. At month end we create a Stripe
- * Invoice (`collection_method: send_invoice`) for that team's Stripe
- * Customer — not a Billing Meter event on every lookup.
- *
- * Do not use the old $0.50 metered price / STRIPE_SKIPTRACE_METER_EVENT_NAME
- * for this. Meters auto-charge the card on the subscription cycle; the
- * product requirement is a running total + month-end invoice.
- *
- * Stripe catalog (create once in Dashboard, then set env):
- *   1. Product "Mineral Map Seat" → recurring Price $100/mo (licensed)
- *      → STRIPE_SEAT_PRICE_ID / NEXT_PUBLIC_STRIPE_SEAT_PRICE_ID
- *   2. Each team needs a Stripe Customer (created at seat checkout, or
- *      attached later). Month-end skip-trace invoices are Invoice Items
- *      at $1.00 × billable phone hits — no metered Price required.
+ * Skip-trace is billed **per customer team**. Hits accumulate as a
+ * running total during the calendar month. At month end we create a
+ * Stripe Invoice (`collection_method: send_invoice`) for that team.
  */
 
 export const SEAT_PRICE_USD = 100

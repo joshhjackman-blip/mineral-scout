@@ -100,10 +100,11 @@ processing, except as required by law or the PSA.
 
 ## 9. Fees
 
-Paid platform access and skip-trace metering are described in the PSA
-and on our pricing / checkout flows. Complimentary or grandfathered
-accounts remain subject to these Terms and the PSA (except where the
-PSA expressly waives specific fees).
+Access to the Services is free of charge. Skip-trace phone hits are
+billed as described in the PSA (US $1.00 per returned phone number,
+invoiced at month end). Complimentary skip-trace for Mineral Map and
+designated partner teams remains subject to these Terms and the PSA
+(except where the PSA expressly waives those fees).
 
 ## 10. Disclaimers
 

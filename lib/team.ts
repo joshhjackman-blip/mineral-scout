@@ -53,6 +53,15 @@ export function isPlatformInternalEmail(email: string | null | undefined): boole
   return (PLATFORM_INTERNAL_EMAILS as readonly string[]).includes(normalized)
 }
 
+/**
+ * Skip-trace is complimentary only for Mineral Map (management@) and
+ * Jordan's Great Plains workspace — including members invited under those
+ * team admins. Everyone else is billed $1 per phone hit.
+ */
+export function isSkipTraceCompedTeam(email: string | null | undefined): boolean {
+  return isPlatformOwner(email)
+}
+
 export function isAllowlistedPlatformAdmin(email: string | null | undefined): boolean {
   const normalized = normalizeEmail(email)
   return (PLATFORM_ADMIN_EMAILS as readonly string[]).includes(normalized)

@@ -39,7 +39,6 @@ need the remaining keys documented in `.env.local.example` — `SUPABASE_SERVICE
 
 ```bash
 AGREEMENT_GATE_ENABLED=false   # skip the Platform Services Agreement gate
-BILLING_PAYWALL_ENABLED=false  # skip the /pricing paywall redirect
 ```
 
 ### 3. Run the development server

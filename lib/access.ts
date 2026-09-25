@@ -1,30 +1,31 @@
-import { isPlatformAdmin } from '@/lib/team'
-import { isBillableSubscriptionStatus } from '@/lib/billing'
+import { isSkipTraceCompedTeam } from '@/lib/team'
 
 /**
- * Whether a logged-in user may use the product (map / CRM / etc.).
- *
- * Allowed when:
- *   • platform owner/admin, or
- *   • billing_exempt (grandfathered — no seat fee; skip-trace also waived), or
- *   • subscription_status is active/trialing (Stripe checkout OR
- *     admin-provisioned seats — both set this in user_metadata)
+ * Platform access is free. Skip-trace is $1 per phone hit except for
+ * Mineral Map's team and Jordan's Great Plains team.
  */
+
+/** @deprecated Seat grandfather flag — does not waive skip-trace. */
 export function isBillingExempt(
   metadata: Record<string, unknown> | null | undefined,
 ): boolean {
   return metadata?.billing_exempt === true
 }
 
+/** Logged-in users may use the map/CRM — no seat paywall. */
 export function hasPaidAccess(
-  metadata: Record<string, unknown> | null | undefined,
-  email?: string | null,
+  _metadata?: Record<string, unknown> | null,
+  _email?: string | null,
 ): boolean {
-  if (isPlatformAdmin(metadata, email)) return true
-  if (isBillingExempt(metadata)) return true
-  return isBillableSubscriptionStatus(
-    typeof metadata?.subscription_status === 'string'
-      ? metadata.subscription_status
-      : null,
+  return true
+}
+
+export function isSkipTraceWaivedFor(input: {
+  userEmail?: string | null
+  workspaceOwnerEmail?: string | null
+}): boolean {
+  return (
+    isSkipTraceCompedTeam(input.userEmail) ||
+    isSkipTraceCompedTeam(input.workspaceOwnerEmail)
   )
 }

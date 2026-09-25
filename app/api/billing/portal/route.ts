@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     ?.stripe_customer_id
   if (!customerId) {
     return NextResponse.json(
-      { error: 'No Stripe customer on file — start a plan from /pricing first.' },
+      { error: 'No Stripe customer on file for this team.' },
       { status: 400 },
     )
   }

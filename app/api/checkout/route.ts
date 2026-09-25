@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
         },
       },
       success_url: `${appUrl}/api/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/pricing`,
+      cancel_url: `${appUrl}/account`,
     })
 
     return NextResponse.json({ url: checkoutSession.url })

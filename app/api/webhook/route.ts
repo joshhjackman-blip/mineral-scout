@@ -84,9 +84,6 @@ export async function POST(req: NextRequest) {
     const sub = event.data.object as Stripe.Subscription
     const seatCount = seatQuantityFromSubscription(sub)
     const seatPrice = seatPriceId()
-    const skipItem = sub.items.data.find(
-      (item) => item.price?.recurring?.usage_type === 'metered',
-    )
 
     await supabase
       .from('subscriptions')
@@ -94,7 +91,7 @@ export async function POST(req: NextRequest) {
         status: sub.status,
         seat_count: seatCount,
         stripe_seat_price_id: seatPrice,
-        stripe_skiptrace_price_id: skipItem?.price?.id ?? null,
+        stripe_skiptrace_price_id: null,
         updated_at: new Date().toISOString(),
       })
       .eq('stripe_subscription_id', sub.id)
@@ -112,7 +109,7 @@ export async function POST(req: NextRequest) {
       await supabase.auth.admin.updateUserById(subRow.user_id, {
         user_metadata: {
           ...existingMeta,
-          // Exempt users stay active for paywall even if Stripe lapses.
+          // Legacy seat-paywall flag — access is free; keep status in sync.
           subscription_status:
             existingMeta.billing_exempt === true || active
               ? 'active'
@@ -138,7 +135,7 @@ export async function POST(req: NextRequest) {
           seat_count: seats,
           team_owner_id: null,
           stripe_seat_price_id: session.metadata.stripe_seat_price_id || seatPriceId(),
-          stripe_skiptrace_price_id: session.metadata.stripe_skiptrace_price_id || null,
+          stripe_skiptrace_price_id: null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' },

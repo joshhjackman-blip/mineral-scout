@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { getTeamOwnerId, resolveTeamRole } from '@/lib/team'
+import { getTeamOwnerId, isSkipTraceCompedTeam, resolveTeamRole } from '@/lib/team'
 import { estimateMonthlySkipTraceCost } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
@@ -205,6 +205,8 @@ export async function GET(_req: NextRequest) {
     dealsByUser.set(uid, prev)
   }
 
+  const skipTraceWaived = isSkipTraceCompedTeam(session.user.email)
+
   const memberBreakdown = [
     {
       user_id: ownerId,
@@ -212,7 +214,7 @@ export async function GET(_req: NextRequest) {
       role: 'admin' as const,
       status: 'active',
       skip_traces: skipByUser.get(ownerId) ?? 0,
-      billable_skip_traces: billableByUser.get(ownerId) ?? 0,
+      billable_skip_traces: skipTraceWaived ? 0 : billableByUser.get(ownerId) ?? 0,
       call_clicks: callsByUser.get(ownerId) ?? 0,
       emails_sent: emailsByUser.get(ownerId) ?? 0,
       closed_deal_count: dealsByUser.get(ownerId)?.count ?? 0,
@@ -226,7 +228,7 @@ export async function GET(_req: NextRequest) {
         role: 'member' as const,
         status: m.status,
         skip_traces: uid ? skipByUser.get(uid) ?? 0 : 0,
-        billable_skip_traces: uid ? billableByUser.get(uid) ?? 0 : 0,
+        billable_skip_traces: skipTraceWaived || !uid ? 0 : billableByUser.get(uid) ?? 0,
         call_clicks: uid ? callsByUser.get(uid) ?? 0 : 0,
         emails_sent: uid ? emailsByUser.get(uid) ?? 0 : 0,
         closed_deal_count: uid ? dealsByUser.get(uid)?.count ?? 0 : 0,
@@ -236,7 +238,9 @@ export async function GET(_req: NextRequest) {
   ]
 
   const skipTraces = Array.from(skipByUser.values()).reduce((a, b) => a + b, 0)
-  const billableSkipTraces = Array.from(billableByUser.values()).reduce((a, b) => a + b, 0)
+  const billableSkipTraces = skipTraceWaived
+    ? 0
+    : Array.from(billableByUser.values()).reduce((a, b) => a + b, 0)
   const callClicks = Array.from(callsByUser.values()).reduce((a, b) => a + b, 0)
   const emailsSent = Array.from(emailsByUser.values()).reduce((a, b) => a + b, 0)
   const closedDealVolume = dealRows.reduce(
@@ -258,6 +262,7 @@ export async function GET(_req: NextRequest) {
       skip_traces: skipTraces,
       billable_skip_traces: billableSkipTraces,
       skip_trace_amount_usd: estimateMonthlySkipTraceCost(billableSkipTraces),
+      skip_trace_waived: skipTraceWaived,
       emails_sent: emailsSent,
       closed_deal_count: dealRows.length,
       closed_deal_volume: closedDealVolume,

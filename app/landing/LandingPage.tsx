@@ -28,14 +28,14 @@ export default function LandingPage() {
           <AppLogo width={168} />
         </Link>
         <div className="cs-nav-actions">
-          <Link href="/pricing" className="cs-nav-demo">
-            Pricing
+          <Link href="/auth" className="cs-nav-demo">
+            Log in
           </Link>
           <Link href="/book-demo" className="cs-nav-demo">
             Book a demo
           </Link>
           <Link href="/auth" className="cs-login">
-            Log in
+            Get started
           </Link>
         </div>
       </nav>
@@ -54,8 +54,8 @@ export default function LandingPage() {
             </span>
           </p>
           <div className="cs-hero-actions">
-            <Link href="/pricing" className="cs-btn-primary">
-              $100/seat · Start
+            <Link href="/auth" className="cs-btn-primary">
+              Get started free
             </Link>
             <Link href="/book-demo" className="cs-btn-email">
               Book a demo

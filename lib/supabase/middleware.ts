@@ -1,7 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isPlatformAdmin } from '@/lib/team'
-import { hasPaidAccess } from '@/lib/access'
 import {
   hasSignedCurrentAgreement,
   isAgreementGateEnabled,
@@ -99,8 +98,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/crm') &&
     request.nextUrl.searchParams.get('preview') === '1'
 
-  // Logged-in users may always reach billing / legal / account so they
-  // can subscribe, manage seats, or sign the agreement.
+  // Logged-in users may always reach account / legal so they can
+  // manage the team or sign the agreement.
   const isBillingOrAccountPath =
     path.startsWith('/pricing') ||
     path.startsWith('/account') ||
@@ -125,20 +124,6 @@ export async function updateSession(request: NextRequest) {
     if (!isAdmin) {
       return redirectLoggedIn(new URL('/', request.url))
     }
-  }
-
-  // Paywall: active/trialing subscription, billing_exempt (grandfathered),
-  // or platform admin. Opt-in via BILLING_PAYWALL_ENABLED=true.
-  // Run POST /api/admin/grandfather once so existing users stay free.
-  if (
-    process.env.BILLING_PAYWALL_ENABLED === 'true' &&
-    isLoggedIn &&
-    !isPublicPage &&
-    !isBillingOrAccountPath &&
-    !isAdminPath &&
-    !hasPaidAccess(metadata, email)
-  ) {
-    return redirectLoggedIn(new URL('/pricing', request.url))
   }
 
   // Agreement gate: must have signed the current PSA version before
