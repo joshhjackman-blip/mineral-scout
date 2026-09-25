@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { logEmailSend } from '@/lib/usage-log'
 import { getTeamOwnerId, inviteSeatCapacity, resolveTeamRole } from '@/lib/team'
+import { inviteAuthUser } from '@/lib/auth-invite'
 
 export const dynamic = 'force-dynamic'
 
@@ -124,55 +124,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: inviteError.message }, { status: 500 })
   }
 
-  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth?invite=${session.user.id}&email=${encodeURIComponent(normalizedEmail)}`
-  const resendApiKey = process.env.RESEND_API_KEY
-  if (resendApiKey) {
-    const emailRes = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from: 'Mineral Map <noreply@getmineralmap.com>',
-        to: normalizedEmail,
-        subject: "You've been invited to Mineral Map",
-        html: `
-        <div style="font-family: Georgia, serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
-          <h1 style="font-size: 24px; color: #111827; margin-bottom: 16px;">You've been invited to Mineral Map</h1>
-          <p style="font-size: 15px; color: #4B5563; line-height: 1.7; margin-bottom: 24px;">
-            A teammate has invited you to join their Mineral Map account —
-            the Permian Basin mineral rights prospecting platform.
-          </p>
-          <a href="${inviteUrl}" style="display: inline-block; background: #EF9F27; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-family: Inter, sans-serif; font-weight: 600; font-size: 14px;">
-            Accept Invitation
-          </a>
-          <p style="font-size: 12px; color: #9CA3AF; margin-top: 32px;">
-            If you weren't expecting this invite, you can ignore this email.
-          </p>
-        </div>
-      `,
-      }),
-    })
+  const invitePath = `/auth?invite=${session.user.id}&email=${encodeURIComponent(normalizedEmail)}`
 
-    if (!emailRes.ok) {
-      console.error('Resend error:', await emailRes.text())
-      // Keep success because invite persistence succeeded.
-    } else {
-      await logEmailSend(adminClient, {
-        kind: 'team_invite',
-        toEmail: normalizedEmail,
-        userId: session.user.id,
-        meta: { invite_url: inviteUrl },
-      })
-    }
-  } else {
-    console.warn('RESEND_API_KEY missing; invite email not sent')
+  let emailed = false
+  let emailError: string | undefined
+  let actionUrl: string | undefined
+  try {
+    const result = await inviteAuthUser(adminClient, {
+      email: normalizedEmail,
+      kind: 'team_member',
+      metadata: {
+        subscription_status: 'active',
+        team_owner_id: session.user.id,
+        team_role: 'member',
+        is_admin: false,
+      },
+      redirectTo: invitePath,
+      inviterUserId: session.user.id,
+      inviterEmail: session.user.email,
+    })
+    emailed = result.emailed
+    emailError = result.emailError
+    actionUrl = result.actionUrl
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      { error: message || 'Failed to send invite' },
+      { status: 500 },
+    )
   }
 
   return NextResponse.json({
     success: true,
     email: normalizedEmail,
+    emailed,
+    email_error: emailError ?? null,
+    action_url: actionUrl ?? null,
     seats: {
       total: seatLimit,
       used: 1 + (existingMembers?.length ?? 0) + 1,

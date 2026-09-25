@@ -176,9 +176,20 @@ export default function Account() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inviteEmail }),
       })
-      const data = (await res.json()) as { success?: boolean; error?: string }
+      const data = (await res.json()) as {
+        success?: boolean
+        error?: string
+        emailed?: boolean
+        action_url?: string | null
+      }
       if (data.success) {
-        setInviteMessage(`Invite sent to ${inviteEmail}`)
+        setInviteMessage(
+          data.emailed
+            ? `Invite emailed to ${inviteEmail}. They set their own password.`
+            : data.action_url
+              ? `Invite saved, but email did not send. Copy this link: ${data.action_url}`
+              : `Invite sent to ${inviteEmail}`,
+        )
         setInviteEmail('')
         await fetchTeamMembers(user.id)
       } else {
@@ -487,8 +498,9 @@ export default function Account() {
             <>
               <div className="flex items-center justify-between gap-3 mb-4">
                 <p className="text-sm text-gray-500">
-                  Invite teammates to your workspace. They get map + CRM access
-                  but cannot see the Admin page.
+                  Invite teammates by email. They get a join link and set their
+                  own password — you do not create accounts for them. They get
+                  map + CRM, not Admin.
                 </p>
                 <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
                   {seatsUsed}/{seatCount || '—'} seats

@@ -8,6 +8,7 @@ import {
   resolveTeamRole,
   roleLabel,
 } from '@/lib/team'
+import { inviteAuthUser } from '@/lib/auth-invite'
 
 export const dynamic = 'force-dynamic'
 
@@ -207,34 +208,38 @@ export async function POST(req: NextRequest) {
 
   let user = await findUserByEmail(adminClient, email)
   let invited = false
+  let emailed = false
+  let actionUrl: string | undefined
+  let emailError: string | undefined
 
-  if (!user) {
-    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: {
+  try {
+    const result = await inviteAuthUser(adminClient, {
+      email,
+      kind: 'platform_admin',
+      metadata: {
         is_admin: true,
         team_role: 'platform_admin',
-      },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/admin`,
-    })
-    if (error || !data.user) {
-      return NextResponse.json(
-        { error: error?.message || 'Failed to invite admin' },
-        { status: 500 },
-      )
-    }
-    user = data.user as AuthUser
-    invited = true
-  } else {
-    const existingMeta = (user.user_metadata ?? {}) as Record<string, unknown>
-    await adminClient.auth.admin.updateUserById(user.id, {
-      user_metadata: {
-        ...existingMeta,
-        is_admin: true,
-        team_role: 'platform_admin',
-        // Staff admins are not customer team members.
         team_owner_id: null,
       },
+      redirectTo: `/auth?welcome=ops&email=${encodeURIComponent(email)}`,
+      inviterUserId: session.user.id,
+      inviterEmail: session.user.email,
     })
+    user = result.user
+    invited = result.created || !result.user.last_sign_in_at
+    emailed = result.emailed
+    actionUrl = result.actionUrl
+    emailError = result.emailError
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      { error: message || 'Failed to invite admin' },
+      { status: 500 },
+    )
+  }
+
+  if (!user) {
+    return NextResponse.json({ error: 'Failed to invite admin' }, { status: 500 })
   }
 
   // Ensure they have an active subscription row (no customer seat package required).
@@ -251,6 +256,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     invited,
+    emailed,
+    email_error: emailError ?? null,
+    action_url: actionUrl ?? null,
     admin: {
       id: user.id,
       email,

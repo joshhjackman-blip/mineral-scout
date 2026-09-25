@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isPlatformAdmin } from '@/lib/team'
+import { findUserByEmail } from '@/lib/auth-users'
+import { inviteAuthUser } from '@/lib/auth-invite'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,15 +72,6 @@ async function listAllUsers(adminClient: SupabaseClient): Promise<AuthUser[]> {
     page += 1
   }
   return users
-}
-
-async function findUserByEmail(
-  adminClient: SupabaseClient,
-  email: string,
-): Promise<AuthUser | null> {
-  const users = await listAllUsers(adminClient)
-  const needle = email.toLowerCase()
-  return users.find((u) => (u.email ?? '').toLowerCase() === needle) ?? null
 }
 
 /** GET — list provisioned team workspaces (owners with seats). */
@@ -153,11 +146,11 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST — provision a team admin seat.
+ * POST — provision a team admin by email invite.
  * Body: { email: string, seatCount: number }
  *
- * Creates/invites the user if needed, marks them as team admin
- * (NOT platform is_admin), and sets seat_count on their subscription.
+ * Emails a join link (Resend). The admin sets their own password —
+ * you do not create the account in Supabase first.
  */
 export async function POST(req: NextRequest) {
   const gate = await requirePlatformAdmin(req)
@@ -182,41 +175,39 @@ export async function POST(req: NextRequest) {
 
   let user = await findUserByEmail(adminClient, email)
   let invited = false
+  let emailed = false
+  let actionUrl: string | undefined
+  let emailError: string | undefined
 
-  if (!user) {
-    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-      data: {
-        team_role: 'admin',
-        // Never grant platform admin via team provisioning.
-        is_admin: false,
-        subscription_status: 'active',
-        seat_count: seatCount,
-      },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/account`,
-    })
-    if (error || !data.user) {
-      return NextResponse.json(
-        { error: error?.message || 'Failed to invite team admin' },
-        { status: 500 },
-      )
-    }
-    user = data.user as AuthUser
-    invited = true
-  } else {
-    // Ensure existing user is not accidentally a platform admin unless
-    // they already are (staff). Clear team_owner_id so they own a workspace.
-    const existingMeta = (user.user_metadata ?? {}) as Record<string, unknown>
-    await adminClient.auth.admin.updateUserById(user.id, {
-      user_metadata: {
-        ...existingMeta,
+  try {
+    const result = await inviteAuthUser(adminClient, {
+      email,
+      kind: 'team_admin',
+      metadata: {
         team_role: 'admin',
         team_owner_id: null,
         subscription_status: 'active',
         seat_count: seatCount,
-        // Preserve existing is_admin for staff accounts only.
-        is_admin: Boolean(existingMeta.is_admin),
+        is_admin: Boolean(user?.user_metadata?.is_admin),
       },
+      redirectTo: `/auth?welcome=admin&email=${encodeURIComponent(email)}`,
+      inviterUserId: session.user.id,
     })
+    user = result.user
+    invited = result.created || !result.user.last_sign_in_at
+    emailed = result.emailed
+    actionUrl = result.actionUrl
+    emailError = result.emailError
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    return NextResponse.json(
+      { error: message || 'Failed to invite team admin' },
+      { status: 500 },
+    )
+  }
+
+  if (!user) {
+    return NextResponse.json({ error: 'Failed to invite team admin' }, { status: 500 })
   }
 
   const { error: subError } = await adminClient.from('subscriptions').upsert(
@@ -237,6 +228,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     invited,
+    emailed,
+    email_error: emailError ?? null,
+    action_url: actionUrl ?? null,
     team: {
       owner_id: user.id,
       owner_email: email,
