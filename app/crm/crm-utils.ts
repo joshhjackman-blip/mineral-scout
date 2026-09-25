@@ -1,5 +1,6 @@
 import { COUNTIES } from '@/lib/counties'
 import type { County, CountyKey } from '@/lib/counties'
+import { nameMatchesQuery, tokenizeName } from '@/lib/name-search'
 import {
   hasPhone,
   parsePhoneActivity,
@@ -173,9 +174,17 @@ const searchableText = (deal: Deal): string => {
 }
 
 export const dealMatchesQuery = (deal: Deal, query: string): boolean => {
-  const needle = query.trim().toLowerCase()
+  const needle = query.trim()
   if (!needle) return true
-  return searchableText(deal).includes(needle)
+  if (nameMatchesQuery(deal.owner_name, needle)) return true
+  const blob = searchableText(deal)
+  if (blob.includes(needle.toLowerCase())) return true
+  const tokens = tokenizeName(needle)
+  if (tokens.length <= 1) return false
+  const blobTokens = tokenizeName(blob)
+  return tokens.every((token) =>
+    blobTokens.some((hay) => hay.includes(token)) || blob.includes(token.toLowerCase()),
+  )
 }
 
 export type CrmListFilter = {

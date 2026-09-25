@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import type { Deal } from './crm-utils'
 import { countyLabel, dealMatchesQuery, dealTag, TAG_LABELS } from './crm-utils'
+import { compareNameMatches } from '@/lib/name-search'
 
 type CrmGlobalSearchProps = {
   deals: Deal[]
@@ -19,7 +20,10 @@ export default function CrmGlobalSearch({ deals, onSelect }: CrmGlobalSearchProp
 
   const results = useMemo(() => {
     if (!query.trim()) return []
-    return deals.filter((d) => dealMatchesQuery(d, query)).slice(0, 8)
+    return deals
+      .filter((d) => dealMatchesQuery(d, query))
+      .sort((a, b) => compareNameMatches(a.owner_name, b.owner_name, query))
+      .slice(0, 8)
   }, [deals, query])
 
   useEffect(() => {

@@ -51,6 +51,12 @@ import { waitingOnNumber, waitingOnNumberCopy } from '@/lib/phone-activity'
 import { isInjectionWell, omitInjectionWellFeatures } from '@/lib/well-kind'
 import { normalizeApi } from '@/lib/rrc-ids'
 import {
+  compareNameMatches,
+  escapeIlike,
+  nameMatchesQuery,
+  tokenizeName,
+} from '@/lib/name-search'
+import {
   pairedSectionsFromLeases,
   parseGridKey,
   sameBlockTownship,
@@ -2083,7 +2089,7 @@ export default function Home() {
     setSearching(true)
     // Debounce — wait 400ms after user stops typing.
     searchTimeoutRef.current = setTimeout(async () => {
-      const words = trimmed.toUpperCase().split(/\s+/).filter((word) => word.length > 1)
+      const words = tokenizeName(trimmed)
       if (words.length === 0) {
         setSearchResults([])
         setSearching(false)
@@ -2095,19 +2101,21 @@ export default function Home() {
         ? COUNTY_ORDER
         : [selectedCounty]
 
-      // Run parallel searches for each word as primary.
-      // This handles both "Kent Plaster" and "Plaster Kent".
-      const searchPromises = searchCounties.flatMap((countyKey) =>
-        words.map((word) =>
-          supabase
-            .from(COUNTIES[countyKey].ownershipTable)
-            .select('id, owner_name, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
-            .ilike('owner_name', `%${word}%`)
-            .order('owner_name', { ascending: true })
-            .limit(100)
-            .then((result) => ({ ...result, countyId: countyKey }))
-        )
-      )
+      // One AND query per county so "Josephine Adams" matches tax-roll
+      // "ADAMS JOSEPHINE LUCILLE" without each word racing a 100-row cap.
+      const perCountyLimit = searchCounties.length > 1 ? 50 : 150
+      const searchPromises = searchCounties.map((countyKey) => {
+        let req = supabase
+          .from(COUNTIES[countyKey].ownershipTable)
+          .select('id, owner_name, mailing_city, mailing_state, mailing_zip, rrc_lease_id, operator_name, acreage, ownership_pct')
+        for (const word of words) {
+          req = req.ilike('owner_name', `%${escapeIlike(word)}%`)
+        }
+        return req
+          .order('owner_name', { ascending: true })
+          .limit(perCountyLimit)
+          .then((result) => ({ ...result, countyId: countyKey }))
+      })
 
       const queryResults = await Promise.all(searchPromises)
       const firstError = queryResults.find((result) => result.error)?.error
@@ -2126,14 +2134,10 @@ export default function Home() {
         }))
       )
 
-      // Filter to rows that contain ALL words (in any order).
       const filtered = allData.filter((owner) =>
-        words.every((word) => String(owner.owner_name ?? '').toUpperCase().includes(word))
+        nameMatchesQuery(String(owner.owner_name ?? ''), trimmed)
       )
 
-      // Deduplicate by owner name (per county). First occurrence wins;
-      // Supabase already returned rows ordered by owner_name so this
-      // gives us a stable A–Z result set.
       const seen = new Map<string, OwnerSearchResult>()
       for (const owner of filtered) {
         const keyCounty = String(owner.countyId ?? selectedCounty)
@@ -2145,7 +2149,7 @@ export default function Home() {
 
       const topResults = Array.from(seen.values())
         .sort((a, b) =>
-          String(a.owner_name ?? '').localeCompare(String(b.owner_name ?? '')),
+          compareNameMatches(String(a.owner_name ?? ''), String(b.owner_name ?? ''), trimmed),
         )
         .slice(0, 10)
       setSearchResults(topResults)
@@ -2986,7 +2990,7 @@ export default function Home() {
 
   // In-tract search: filter the owner list by name / city / state / operator.
   const displayedOwners = useMemo(() => {
-    const q = ownerNameQuery.trim().toUpperCase()
+    const q = ownerNameQuery.trim()
     if (!q) return cleanOwnersList
     return cleanOwnersList.filter((o) => {
       const hay = [
@@ -2997,9 +3001,9 @@ export default function Home() {
         o.address_1,
         o.mailing_address,
       ]
-        .map((v) => String(v ?? '').toUpperCase())
+        .map((v) => String(v ?? ''))
         .join(' ')
-      return hay.includes(q)
+      return nameMatchesQuery(hay, q)
     })
   }, [cleanOwnersList, ownerNameQuery])
 
