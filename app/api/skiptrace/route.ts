@@ -3,14 +3,17 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
-import { SKIP_TRACE_PRICE_USD } from '@/lib/billing'
+import { SKIP_TRACE_PRICE_USD, isSkipTraceBillable } from '@/lib/billing'
 import { isBillingExempt } from '@/lib/access'
 import {
   hasSignedCurrentAgreement,
   isAgreementGateEnabled,
 } from '@/lib/agreement'
-import { reportSkipTraceMeterEvent } from '@/lib/stripe-meter'
 import { queueSkipTraceReview } from '@/lib/skip-trace-review'
+import {
+  incrementSkipTraceUsage,
+  readSkipTraceUsage,
+} from '@/lib/skip-trace-usage'
 
 // Skip trace usage is still tracked in the skip_trace_usage table
 // for internal accounting / abuse detection, but there is no monthly
@@ -547,7 +550,7 @@ export async function POST(req: NextRequest) {
   // if Team A already paid to skip-trace this owner, Team B gets a hit.
   const { data: subRow } = await adminClient
     .from('subscriptions')
-    .select('team_owner_id, stripe_customer_id, status')
+    .select('team_owner_id, status')
     .eq('user_id', userId)
     .maybeSingle()
   const workspaceId =
@@ -556,23 +559,7 @@ export async function POST(req: NextRequest) {
       (subRow as { team_owner_id?: string | null } | null)?.team_owner_id,
     ) || userId
 
-  // Stripe customer lives on the workspace owner's subscription row
-  // (invited members don't have their own customer id).
-  let stripeCustomerId =
-    (subRow as { stripe_customer_id?: string | null } | null)?.stripe_customer_id ??
-    null
-  if (!stripeCustomerId || workspaceId !== userId) {
-    const { data: ownerSub } = await adminClient
-      .from('subscriptions')
-      .select('stripe_customer_id')
-      .eq('user_id', workspaceId)
-      .maybeSingle()
-    stripeCustomerId =
-      (ownerSub as { stripe_customer_id?: string | null } | null)
-        ?.stripe_customer_id ?? stripeCustomerId
-  }
-
-  // Grandfathered / complimentary accounts: no $0.50 charge (no Stripe meter).
+  // Grandfathered / complimentary accounts: no $1 skip-trace invoice line.
   // Also waive when the workspace owner is exempt (invited members inherit).
   let skipTraceWaived = isBillingExempt(metadata)
   if (!skipTraceWaived && workspaceId !== userId) {
@@ -584,10 +571,11 @@ export async function POST(req: NextRequest) {
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
+  let currentBillable = 0
   const cacheKey = skipTraceOwnerKey(ownerName)
 
   // 1) Shared cache first — any prior team's result counts. Cache hits
-  // are FREE ($0) — no usage increment, no Stripe meter event.
+  // are FREE ($0) — no usage increment, no invoice line.
   if (cacheKey) {
     const { data: cached, error: cacheError } = await adminClient
       .from('skip_trace_cache')
@@ -636,19 +624,14 @@ export async function POST(req: NextRequest) {
 
   // 2) Check monthly usage limit (cache misses / paid calls only)
   {
-    const { data: usage, error: usageError } = await adminClient
-      .from('skip_trace_usage')
-      .select('count')
-      .eq('user_id', userId)
-      .eq('month', currentMonth)
-      .maybeSingle()
-
-    if (usageError) {
+    try {
+      const usage = await readSkipTraceUsage(adminClient, userId, currentMonth)
+      currentCount = usage.count
+      currentBillable = usage.billableCount
+    } catch (usageError) {
       console.error('Skip trace usage lookup error:', usageError)
       return NextResponse.json({ error: 'Failed to read skip trace usage' }, { status: 500 })
     }
-
-    currentCount = Number((usage as { count?: number } | null)?.count ?? 0)
 
     if (currentCount >= MONTHLY_LIMIT) {
       return NextResponse.json(
@@ -719,37 +702,34 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Provider call on cache miss. Complimentary (billing_exempt) workspaces
-    // are not charged — still bump local usage for internal accounting.
-    const nextCount = currentCount + 1
-    const { error: usageUpdateError } = await adminClient
-      .from('skip_trace_usage')
-      .upsert(
-        {
-          user_id: userId,
-          team_owner_id: workspaceId,
-          month: currentMonth,
-          count: nextCount,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,month' },
-      )
-
-    if (usageUpdateError) {
+    // $1 only when a phone number comes back. Misses, email-only, cache
+    // hits, and billing_exempt workspaces are not billed. Running total
+    // lives on skip_trace_usage.billable_count (team invoice at month end).
+    const billable = isSkipTraceBillable({
+      cached: false,
+      waived: skipTraceWaived,
+      phoneCount: phones.length,
+    })
+    let nextCount = currentCount + 1
+    let nextBillable = currentBillable
+    try {
+      const usage = await incrementSkipTraceUsage(adminClient, {
+        userId,
+        workspaceId,
+        month: currentMonth,
+        currentCount,
+        currentBillable,
+        billable,
+      })
+      nextCount = usage.nextCount
+      nextBillable = usage.nextBillable
+    } catch (usageUpdateError) {
       console.error('Skip trace usage update error:', usageUpdateError)
       return NextResponse.json({ error: 'Failed to update skip trace usage' }, { status: 500 })
     }
 
-    if (!skipTraceWaived && stripeCustomerId) {
-      const meterKey = `skiptrace:${workspaceId}:${cacheKey || userId}:${currentMonth}:${nextCount}`
-      await reportSkipTraceMeterEvent({
-        stripeCustomerId,
-        idempotencyKey: meterKey,
-      })
-    }
-
     // Save to SHARED cache — next team that skip-traces this owner
-    // gets a free cache hit (no $0.50 charge).
+    // gets a free cache hit (no $1 charge).
     //
     // Delete-then-insert instead of upsert(onConflict:'owner_name'): the live
     // DB is missing the UNIQUE(owner_name) constraint, so onConflict upserts
@@ -795,14 +775,15 @@ export async function POST(req: NextRequest) {
       phones,
       emails,
       cached: false,
-      billable: !skipTraceWaived,
-      unit_price_usd: skipTraceWaived ? 0 : SKIP_TRACE_PRICE_USD,
+      billable,
+      unit_price_usd: billable ? SKIP_TRACE_PRICE_USD : 0,
       waived: skipTraceWaived,
       source: cacheSource,
       owner_type: ownerType,
       hit: phones.length > 0 || emails.length > 0,
       credits_deducted: 0,
       count: nextCount,
+      billable_count: nextBillable,
       limit: MONTHLY_LIMIT,
       needs_review: needsReview,
     })

@@ -17,6 +17,7 @@ import {
   resolveTeamRole,
   type TeamRole,
 } from '@/lib/team'
+import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost, formatSkipTracePrice } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,7 @@ export default function Account() {
   } | null>(null)
   const [subscription, setSubscription] = useState<SubRow | null>(null)
   const [skipTraceCount, setSkipTraceCount] = useState<number | null>(null)
+  const [skipTraceBillable, setSkipTraceBillable] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [passwordForm, setPasswordForm] = useState({ new: '', confirm: '' })
   const [passwordMsg, setPasswordMsg] = useState<string | null>(null)
@@ -94,6 +96,7 @@ export default function Account() {
       } = await supabase.auth.getSession()
       if (!session) {
         setSkipTraceCount(0)
+        setSkipTraceBillable(0)
         setTeamMembers([])
         setLoading(false)
         return
@@ -101,13 +104,25 @@ export default function Account() {
       setUser(session.user)
 
       const currentMonth = new Date().toISOString().slice(0, 7)
-      const { data: usage } = await supabase
+      const usageRes = await supabase
         .from('skip_trace_usage')
-        .select('count')
+        .select('count, billable_count')
         .eq('user_id', session.user.id)
         .eq('month', currentMonth)
         .maybeSingle()
+      const usage =
+        usageRes.error
+          ? (
+              await supabase
+                .from('skip_trace_usage')
+                .select('count')
+                .eq('user_id', session.user.id)
+                .eq('month', currentMonth)
+                .maybeSingle()
+            ).data
+          : usageRes.data
       setSkipTraceCount((usage as { count?: number } | null)?.count ?? 0)
+      setSkipTraceBillable((usage as { billable_count?: number } | null)?.billable_count ?? 0)
 
       const { data: sub } = await supabase
         .from('subscriptions')
@@ -228,7 +243,7 @@ export default function Account() {
           <Link href="/help" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
             <LifeBuoy size={13} />Help
           </Link>
-          {isTeamAdminOnly && (
+          {(isTeamAdminOnly || isOwner) && (
             <Link href="/team" className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-amber-400 hover:text-amber-300 hover:bg-gray-800 rounded-md transition-colors">
               <BarChart2 size={13} />Team
             </Link>
@@ -306,8 +321,8 @@ export default function Account() {
                   Owner portfolio
                 </h2>
                 <p className="text-sm text-gray-600 mt-1 max-w-md">
-                  Cross-team activity, estimated success-fee spend, and every
-                  customer account — reserved for management@mineralmapllc.com.
+                  Cross-team activity, skip-trace running totals, and every
+                  customer account.
                 </p>
               </div>
               <div className="flex flex-col gap-2 shrink-0">
@@ -328,7 +343,7 @@ export default function Account() {
           </div>
         )}
 
-        {/* ── Billing ($100/seat + $0.50 skip-trace) ── */}
+        {/* ── Billing ($100/seat + $1 skip-trace phone hits) ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
@@ -369,12 +384,10 @@ export default function Account() {
               <div className="flex items-start justify-between gap-4 mb-4">
                 <div>
                   <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                    $100/mo per seat · $0.50 per skip-trace
+                    $100/mo per seat · {formatSkipTracePrice()}
                   </div>
                   <div className="text-sm text-gray-500 leading-relaxed">
-                    Platform access is billed per seat. Skip-trace is metered at
-                    $0.50 only when we call the provider — shared cache hits across
-                    teams are free. Seat capacity:{' '}
+                    Platform access is billed per seat. Skip-trace is ${SKIP_TRACE_PRICE_USD.toFixed(2)} only when a phone number comes back, accumulated on your team and invoiced through Stripe at month end. Cache hits, misses, and email-only results are free. Seat capacity:{' '}
                     <strong className="text-gray-700">
                       {seatCount > 0 ? `${seatCount} seat${seatCount === 1 ? '' : 's'}` : 'not provisioned'}
                     </strong>
@@ -444,14 +457,14 @@ export default function Account() {
               <div className="text-sm text-gray-500">
                 {user?.user_metadata?.billing_exempt === true
                   ? 'Skip-traces this month (waived)'
-                  : 'Billable skip-traces this month'}
+                  : 'Billable skip-traces this month (phone hits)'}
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                ${(0.5 * (skipTraceCount ?? 0)).toFixed(2)} estimated · cache hits not counted · resets on the 1st
+                ${estimateMonthlySkipTraceCost(skipTraceBillable ?? 0).toFixed(2)} running total · billed to your team at month end · cache hits / misses / email-only not counted
               </div>
             </div>
             <div className="font-serif text-2xl font-bold text-gray-900 tabular-nums">
-              {loading ? '—' : (skipTraceCount ?? 0).toLocaleString()}
+              {loading ? '—' : (skipTraceBillable ?? skipTraceCount ?? 0).toLocaleString()}
             </div>
           </div>
         </div>

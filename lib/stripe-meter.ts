@@ -2,15 +2,13 @@ import Stripe from 'stripe'
 import { skipTraceMeterEventName } from '@/lib/billing'
 
 /**
- * Report one billable skip-trace to Stripe Billing Meters.
- * Call ONLY on provider cache misses — shared cache hits are free.
+ * @deprecated Skip-trace is billed as a month-end Stripe Invoice per team
+ * ($1 only when a phone number is returned). Do not report meter events —
+ * that would auto-charge the card on the subscription cycle and double-bill
+ * against the invoice ledger.
  *
- * Requires:
- *   STRIPE_SECRET_KEY
- *   STRIPE_SKIPTRACE_METER_EVENT_NAME  (must match the Dashboard meter)
- *
- * Payload uses stripe_customer_id so Stripe attributes usage to the
- * correct subscription's metered price.
+ * Kept so existing Dashboard meters can be removed later without breaking
+ * imports. See lib/stripe-invoices.ts.
  */
 export async function reportSkipTraceMeterEvent(input: {
   stripeCustomerId: string

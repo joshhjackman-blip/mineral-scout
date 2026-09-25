@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { resolveTeamRole } from '@/lib/team'
+import { getTeamOwnerId, resolveTeamRole } from '@/lib/team'
+import { estimateMonthlySkipTraceCost } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -61,8 +62,14 @@ export async function GET(_req: NextRequest) {
     subscription: sub,
   })
 
-  // Team admins only. Platform owner uses /admin for the portfolio view.
-  if (role !== 'team_admin') {
+  // Team admins see their workspace. Platform owners who also run a
+  // customer team (e.g. a partner) can open the same dashboard.
+  const isOwnWorkspaceOwner =
+    !getTeamOwnerId(
+      session.user.user_metadata as Record<string, unknown>,
+      sub?.team_owner_id,
+    ) && Number(sub?.seat_count ?? 0) >= 1
+  if (role !== 'team_admin' && !(role === 'platform_owner' && isOwnWorkspaceOwner)) {
     return NextResponse.json(
       { error: 'Only team admins can view this dashboard.' },
       { status: 403 },
@@ -98,7 +105,7 @@ export async function GET(_req: NextRequest) {
   ] = await Promise.all([
     adminClient
       .from('skip_trace_usage')
-      .select('user_id, count')
+      .select('user_id, count, billable_count')
       .eq('month', monthKey)
       .in('user_id', teamUserIds),
     adminClient
@@ -126,7 +133,26 @@ export async function GET(_req: NextRequest) {
   ])
 
   const warnings: string[] = []
-  if (skipTraceRes.error) warnings.push(`skip_trace_usage: ${skipTraceRes.error.message}`)
+  let skipData: Array<{
+    user_id?: string | null
+    count?: number | null
+    billable_count?: number | null
+  }> = (skipTraceRes.data ?? []) as Array<{
+    user_id?: string | null
+    count?: number | null
+    billable_count?: number | null
+  }>
+  if (skipTraceRes.error) {
+    warnings.push(`skip_trace_usage: ${skipTraceRes.error.message}`)
+    const fallback = await adminClient
+      .from('skip_trace_usage')
+      .select('user_id, count')
+      .eq('month', monthKey)
+      .in('user_id', teamUserIds)
+    if (!fallback.error) {
+      skipData = (fallback.data ?? []) as typeof skipData
+    }
+  }
   if (callsRes.error) warnings.push(`usage_events: ${callsRes.error.message}`)
   if (emailsRes.error) warnings.push(`email_send_log: ${emailsRes.error.message}`)
 
@@ -140,13 +166,19 @@ export async function GET(_req: NextRequest) {
   }
 
   const skipByUser = new Map<string, number>()
-  for (const row of (skipTraceRes.data ?? []) as Array<{
+  const billableByUser = new Map<string, number>()
+  for (const row of (skipData ?? []) as Array<{
     user_id?: string | null
     count?: number | null
+    billable_count?: number | null
   }>) {
     const uid = String(row.user_id ?? '')
     if (!uid) continue
     skipByUser.set(uid, (skipByUser.get(uid) ?? 0) + Number(row.count ?? 0))
+    billableByUser.set(
+      uid,
+      (billableByUser.get(uid) ?? 0) + Number(row.billable_count ?? 0),
+    )
   }
 
   const callsByUser = new Map<string, number>()
@@ -180,6 +212,7 @@ export async function GET(_req: NextRequest) {
       role: 'admin' as const,
       status: 'active',
       skip_traces: skipByUser.get(ownerId) ?? 0,
+      billable_skip_traces: billableByUser.get(ownerId) ?? 0,
       call_clicks: callsByUser.get(ownerId) ?? 0,
       emails_sent: emailsByUser.get(ownerId) ?? 0,
       closed_deal_count: dealsByUser.get(ownerId)?.count ?? 0,
@@ -193,6 +226,7 @@ export async function GET(_req: NextRequest) {
         role: 'member' as const,
         status: m.status,
         skip_traces: uid ? skipByUser.get(uid) ?? 0 : 0,
+        billable_skip_traces: uid ? billableByUser.get(uid) ?? 0 : 0,
         call_clicks: uid ? callsByUser.get(uid) ?? 0 : 0,
         emails_sent: uid ? emailsByUser.get(uid) ?? 0 : 0,
         closed_deal_count: uid ? dealsByUser.get(uid)?.count ?? 0 : 0,
@@ -202,6 +236,7 @@ export async function GET(_req: NextRequest) {
   ]
 
   const skipTraces = Array.from(skipByUser.values()).reduce((a, b) => a + b, 0)
+  const billableSkipTraces = Array.from(billableByUser.values()).reduce((a, b) => a + b, 0)
   const callClicks = Array.from(callsByUser.values()).reduce((a, b) => a + b, 0)
   const emailsSent = Array.from(emailsByUser.values()).reduce((a, b) => a + b, 0)
   const closedDealVolume = dealRows.reduce(
@@ -221,6 +256,8 @@ export async function GET(_req: NextRequest) {
     totals: {
       call_clicks: callClicks,
       skip_traces: skipTraces,
+      billable_skip_traces: billableSkipTraces,
+      skip_trace_amount_usd: estimateMonthlySkipTraceCost(billableSkipTraces),
       emails_sent: emailsSent,
       closed_deal_count: dealRows.length,
       closed_deal_volume: closedDealVolume,

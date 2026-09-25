@@ -14,7 +14,7 @@ import {
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { isPlatformAdmin, isPlatformOwner } from '@/lib/team'
+import { isPlatformAdmin, isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
 
 export const dynamic = 'force-dynamic'
 
@@ -413,7 +413,7 @@ export default function AdminDashboard() {
   const emailsSent = usage?.email.sent ?? 0
   const isOwnerView = viewerIsOwner || isPlatformOwner(sessionEmail)
   const teamRows = (usage?.teams ?? []).filter(
-    (t) => !isPlatformOwner(t.owner_email),
+    (t) => !isPlatformInternalEmail(t.owner_email),
   )
   const activeTeams = teamRows.length
 
@@ -831,7 +831,7 @@ export default function AdminDashboard() {
               </h2>
               <p className="text-sm text-gray-500 mb-4">
                 <strong className="text-gray-700">Owner</strong>{' '}
-                (management@mineralmapllc.com) sits above every other admin.
+                (management@mineralmapllc.com and Jordan) sit above every other admin.
                 Platform admins can open this console. Team admins run customer
                 workspaces and cannot see Owner/Admin pages.
               </p>
@@ -959,7 +959,7 @@ export default function AdminDashboard() {
               </h2>
               <p className="text-sm text-gray-500 mb-3">
                 Current accounts stay free when the paywall turns on — no $100
-                seat fee and no $0.50 skip-trace charges. New signups after this
+                seat fee and no $1 skip-trace charges. New signups after this
                 still pay both. After running, users may need to sign out/in (or
                 wait for token refresh) before complimentary status appears.
               </p>

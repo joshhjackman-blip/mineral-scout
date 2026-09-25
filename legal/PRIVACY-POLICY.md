@@ -86,8 +86,8 @@ the shared store.
 ### 3.6 Payment data
 Payments are processed by **Stripe**. Stripe collects and processes
 payment method details under its own privacy policy. We receive
-limited billing metadata (status, seat quantity, metered usage
-references).
+limited billing metadata (status, seat quantity, monthly skip-trace
+invoice totals).
 
 ## 4. How we use information
 
@@ -95,7 +95,7 @@ We use information to:
 
 - provide, secure, and improve the Platform;
 - authenticate users and enforce seats, billing, and agreement gates;
-- process subscriptions and metered usage;
+- process subscriptions and monthly skip-trace invoices;
 - prevent abuse, fraud, and unauthorized access;
 - respond to support and demo requests;
 - comply with law and enforce our agreements; and

@@ -1,7 +1,7 @@
 /**
  * Access roles (highest → lowest):
  *
- * - platform_owner  → Mineral Map software owner (management@…).
+ * - platform_owner  → Mineral Map software owner (management@ + partners).
  *                     /owner = portfolio of EVERY team’s activity/$.
  *                     /admin = ops (provision, admins, flagged deeds).
  * - platform_admin  → Staff with /admin access (granted by owner via is_admin).
@@ -20,8 +20,17 @@ export type TeamRole =
 /**
  * Owner account(s) — admin of admins.
  * Always treated as platform owner + platform admin.
+ * Partners share the /owner portfolio; customer teams they also run
+ * still appear in team billing tables (see PLATFORM_INTERNAL_EMAILS).
  */
 export const PLATFORM_OWNER_EMAILS = [
+  'management@mineralmapllc.com',
+  'jordan@greatplainsinterestsllc.com',
+  'jordan@greatplainsinterests.com',
+] as const
+
+/** Mineral Map operator account — hide from customer team / billing tables. */
+export const PLATFORM_INTERNAL_EMAILS = [
   'management@mineralmapllc.com',
 ] as const
 
@@ -37,6 +46,11 @@ export function normalizeEmail(email: string | null | undefined): string {
 export function isPlatformOwner(email: string | null | undefined): boolean {
   const normalized = normalizeEmail(email)
   return (PLATFORM_OWNER_EMAILS as readonly string[]).includes(normalized)
+}
+
+export function isPlatformInternalEmail(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email)
+  return (PLATFORM_INTERNAL_EMAILS as readonly string[]).includes(normalized)
 }
 
 export function isAllowlistedPlatformAdmin(email: string | null | undefined): boolean {

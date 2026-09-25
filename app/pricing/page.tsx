@@ -92,8 +92,9 @@ export default function PricingPage() {
           Low seat cost. Pay for skip-trace only when you use it.
         </h1>
         <p style={{ color: '#94A3B8', fontSize: 16, lineHeight: 1.55, marginBottom: 36 }}>
-          {formatSeatPrice()}. {formatSkipTracePrice()} — shared cache hits across
-          teams are free, so you never pay twice for the same owner.
+          {formatSeatPrice()}. {formatSkipTracePrice()} — accumulated on your team
+          and invoiced through Stripe at month end. Shared cache hits, misses, and
+          email-only results are free.
         </p>
 
         <div
@@ -114,9 +115,9 @@ export default function PricingPage() {
             </div>
             <div style={{ flex: '1 1 200px' }}>
               <div style={{ fontSize: 12, color: '#94A3B8', marginBottom: 6 }}>Skip-trace</div>
-              <div style={{ fontSize: 28, fontWeight: 600 }}>${SKIP_TRACE_PRICE_USD.toFixed(2)}<span style={{ fontSize: 14, color: '#94A3B8' }}>/call</span></div>
+              <div style={{ fontSize: 28, fontWeight: 600 }}>${SKIP_TRACE_PRICE_USD.toFixed(2)}<span style={{ fontSize: 14, color: '#94A3B8' }}>/phone hit</span></div>
               <div style={{ fontSize: 13, color: '#CBD5E1', marginTop: 6 }}>
-                Only billed on live lookups — cache hits $0
+                Only billed when a phone number comes back — cache hits $0
               </div>
             </div>
           </div>
@@ -183,8 +184,9 @@ export default function PricingPage() {
             {loading ? 'Redirecting to Stripe…' : 'Start subscription'}
           </button>
           <p style={{ fontSize: 12, color: '#64748B', marginTop: 14, lineHeight: 1.5 }}>
-            You must be signed in. Skip-trace usage is metered at period end.
-            Manage seats and billing anytime from Account.
+            Skip-trace phone hits accrue on your team at ${SKIP_TRACE_PRICE_USD.toFixed(2)} each
+            and are invoiced through Stripe at month end. Manage seats and billing
+            anytime from Account.
           </p>
         </div>
       </main>

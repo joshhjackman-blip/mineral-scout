@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isPlatformAdmin, isPlatformOwner } from '@/lib/team'
+import { estimateMonthlySkipTraceCost, SKIP_TRACE_PRICE_USD } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,7 @@ function monthBounds(d = new Date()) {
 type AuthUser = {
   id: string
   email?: string | null
+  user_metadata?: Record<string, unknown>
 }
 
 type TeamSpend = {
@@ -28,6 +30,12 @@ type TeamSpend = {
   seat_count: number
   member_count: number
   skip_traces: number
+  billable_skip_traces: number
+  skip_trace_amount_usd: number
+  stripe_customer_id: string | null
+  billing_exempt: boolean
+  invoice_status: string | null
+  hosted_invoice_url: string | null
   call_clicks: number
   emails_sent: number
   closed_deal_count: number
@@ -132,7 +140,7 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     adminClient
       .from('skip_trace_usage')
-      .select('user_id, count')
+      .select('user_id, count, billable_count, team_owner_id')
       .eq('month', monthKey),
     adminClient
       .from('usage_events')
@@ -160,16 +168,31 @@ export async function GET(req: NextRequest) {
       .lt('signed_at', endIso),
     adminClient
       .from('subscriptions')
-      .select('user_id, team_owner_id, seat_count, status'),
+      .select('user_id, team_owner_id, seat_count, status, stripe_customer_id'),
     adminClient
       .from('subscriptions')
-      .select('user_id, seat_count, status')
+      .select('user_id, seat_count, status, stripe_customer_id')
       .is('team_owner_id', null)
       .gte('seat_count', 1),
   ])
 
   const warnings: string[] = []
-  if (skipTraceRes.error) warnings.push(`skip_trace_usage: ${skipTraceRes.error.message}`)
+  let skipRows = (skipTraceRes.data ?? []) as Array<{
+    user_id?: string | null
+    count?: number | null
+    billable_count?: number | null
+    team_owner_id?: string | null
+  }>
+  if (skipTraceRes.error) {
+    warnings.push(`skip_trace_usage: ${skipTraceRes.error.message}`)
+    const fallback = await adminClient
+      .from('skip_trace_usage')
+      .select('user_id, count, team_owner_id')
+      .eq('month', monthKey)
+    if (!fallback.error) {
+      skipRows = (fallback.data ?? []) as typeof skipRows
+    }
+  }
   if (callsRes.error) warnings.push(`usage_events: ${callsRes.error.message}`)
   if (emailsRes.error) warnings.push(`email_send_log: ${emailsRes.error.message}`)
   if (agreementsRes.error) {
@@ -198,8 +221,12 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const skipTracesThisMonth = (skipTraceRes.data ?? []).reduce(
-    (sum, row) => sum + Number((row as { count?: number | null }).count ?? 0),
+  const skipTracesThisMonth = skipRows.reduce(
+    (sum, row) => sum + Number(row.count ?? 0),
+    0,
+  )
+  const billableSkipTracesThisMonth = skipRows.reduce(
+    (sum, row) => sum + Number(row.billable_count ?? 0),
     0,
   )
   const callRows = (callsRes.data ?? []) as Array<{ user_id?: string | null }>
@@ -223,33 +250,58 @@ export async function GET(req: NextRequest) {
   // ── Per-team spending breakdown ──────────────────────────────────────────
   const users = await listAllUsers(adminClient)
   const emailById = new Map(users.map((u) => [u.id, u.email ?? '']))
+  const metaById = new Map(
+    users.map((u) => [u.id, (u as { user_metadata?: Record<string, unknown> }).user_metadata ?? {}]),
+  )
 
-  const subsByUser = new Map<string, { team_owner_id: string | null }>()
+  const subsByUser = new Map<
+    string,
+    { team_owner_id: string | null; stripe_customer_id: string | null }
+  >()
   for (const row of (subsRes.data ?? []) as Array<{
     user_id: string
     team_owner_id: string | null
+    stripe_customer_id?: string | null
   }>) {
-    subsByUser.set(row.user_id, { team_owner_id: row.team_owner_id })
+    subsByUser.set(row.user_id, {
+      team_owner_id: row.team_owner_id,
+      stripe_customer_id: row.stripe_customer_id ?? null,
+    })
   }
+
+  const emptyTeam = (ownerId: string, email: string, seatCount: number): TeamSpend => ({
+    owner_id: ownerId,
+    owner_email: email,
+    seat_count: seatCount,
+    member_count: 0,
+    skip_traces: 0,
+    billable_skip_traces: 0,
+    skip_trace_amount_usd: 0,
+    stripe_customer_id: subsByUser.get(ownerId)?.stripe_customer_id ?? null,
+    billing_exempt: Boolean(metaById.get(ownerId)?.billing_exempt),
+    invoice_status: null,
+    hosted_invoice_url: null,
+    call_clicks: 0,
+    emails_sent: 0,
+    closed_deal_count: 0,
+    closed_deal_volume: 0,
+    estimated_success_fee: 0,
+  })
 
   const teamMap = new Map<string, TeamSpend>()
 
   for (const row of (ownerSubsRes.data ?? []) as Array<{
     user_id: string
     seat_count: number | null
+    stripe_customer_id?: string | null
   }>) {
-    teamMap.set(row.user_id, {
-      owner_id: row.user_id,
-      owner_email: emailById.get(row.user_id) || '(unknown)',
-      seat_count: Number(row.seat_count ?? 1),
-      member_count: 0,
-      skip_traces: 0,
-      call_clicks: 0,
-      emails_sent: 0,
-      closed_deal_count: 0,
-      closed_deal_volume: 0,
-      estimated_success_fee: 0,
-    })
+    const team = emptyTeam(
+      row.user_id,
+      emailById.get(row.user_id) || '(unknown)',
+      Number(row.seat_count ?? 1),
+    )
+    team.stripe_customer_id = row.stripe_customer_id ?? team.stripe_customer_id
+    teamMap.set(row.user_id, team)
   }
 
   Array.from(subsByUser.entries()).forEach(([userId, sub]) => {
@@ -262,30 +314,20 @@ export async function GET(req: NextRequest) {
   const ensureTeam = (ownerId: string) => {
     let team = teamMap.get(ownerId)
     if (!team) {
-      team = {
-        owner_id: ownerId,
-        owner_email: emailById.get(ownerId) || '(unprovisioned)',
-        seat_count: 1,
-        member_count: 0,
-        skip_traces: 0,
-        call_clicks: 0,
-        emails_sent: 0,
-        closed_deal_count: 0,
-        closed_deal_volume: 0,
-        estimated_success_fee: 0,
-      }
+      team = emptyTeam(ownerId, emailById.get(ownerId) || '(unprovisioned)', 1)
       teamMap.set(ownerId, team)
     }
     return team
   }
 
-  for (const row of (skipTraceRes.data ?? []) as Array<{
-    user_id?: string | null
-    count?: number | null
-  }>) {
+  for (const row of skipRows) {
     const uid = String(row.user_id ?? '').trim()
     if (!uid) continue
-    ensureTeam(teamKeyForUser(uid, subsByUser)).skip_traces += Number(row.count ?? 0)
+    const ownerId = String(row.team_owner_id ?? '').trim() || teamKeyForUser(uid, subsByUser)
+    const team = ensureTeam(ownerId)
+    team.skip_traces += Number(row.count ?? 0)
+    team.billable_skip_traces += Number(row.billable_count ?? 0)
+    team.skip_trace_amount_usd = estimateMonthlySkipTraceCost(team.billable_skip_traces)
   }
 
   for (const row of callRows) {
@@ -310,8 +352,28 @@ export async function GET(req: NextRequest) {
     team.estimated_success_fee = Math.round(team.closed_deal_volume * SUCCESS_FEE_RATE)
   }
 
+  const { data: invoiceRows, error: invoiceError } = await adminClient
+    .from('skip_trace_invoices')
+    .select('team_owner_id, status, hosted_invoice_url')
+    .eq('month', monthKey)
+  if (invoiceError && !String(invoiceError.message).includes('does not exist')) {
+    warnings.push(`skip_trace_invoices: ${invoiceError.message}`)
+  }
+  for (const row of (invoiceRows ?? []) as Array<{
+    team_owner_id?: string | null
+    status?: string | null
+    hosted_invoice_url?: string | null
+  }>) {
+    const ownerId = String(row.team_owner_id ?? '').trim()
+    if (!ownerId) continue
+    const team = teamMap.get(ownerId)
+    if (!team) continue
+    team.invoice_status = row.status ?? null
+    team.hosted_invoice_url = row.hosted_invoice_url ?? null
+  }
+
   const teams = Array.from(teamMap.values()).sort(
-    (a, b) => b.estimated_success_fee - a.estimated_success_fee,
+    (a, b) => b.skip_trace_amount_usd - a.skip_trace_amount_usd || b.estimated_success_fee - a.estimated_success_fee,
   )
 
   return NextResponse.json({
@@ -319,7 +381,13 @@ export async function GET(req: NextRequest) {
     callVolume: {
       callClicks: callClicksThisMonth,
       skipTraces: skipTracesThisMonth,
+      billableSkipTraces: billableSkipTracesThisMonth,
       primary: callClicksThisMonth,
+    },
+    skipTraceBilling: {
+      billableCount: billableSkipTracesThisMonth,
+      amountUsd: estimateMonthlySkipTraceCost(billableSkipTracesThisMonth),
+      unitPriceUsd: SKIP_TRACE_PRICE_USD,
     },
     monthlyDollars: {
       closedDealCount,

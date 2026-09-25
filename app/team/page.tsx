@@ -12,7 +12,8 @@ import {
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { resolveTeamRole } from '@/lib/team'
+import { getTeamOwnerId, resolveTeamRole } from '@/lib/team'
+import { SKIP_TRACE_PRICE_USD } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,7 @@ type MemberRow = {
   role: 'admin' | 'member'
   status: string
   skip_traces: number
+  billable_skip_traces?: number
   call_clicks: number
   emails_sent: number
   closed_deal_count: number
@@ -39,6 +41,8 @@ type TeamUsage = {
   totals: {
     call_clicks: number
     skip_traces: number
+    billable_skip_traces?: number
+    skip_trace_amount_usd?: number
     emails_sent: number
     closed_deal_count: number
     closed_deal_volume: number
@@ -109,9 +113,14 @@ export default function TeamAdminDashboard() {
         email: session.user.email,
         subscription: sub,
       })
-      if (role !== 'team_admin') {
+      const isOwnWorkspaceOwner =
+        !getTeamOwnerId(
+          session.user.user_metadata as Record<string, unknown>,
+          sub?.team_owner_id,
+        ) && Number(sub?.seat_count ?? 0) >= 1
+      if (role !== 'team_admin' && !(role === 'platform_owner' && isOwnWorkspaceOwner)) {
         window.location.href = role === 'platform_owner' || role === 'platform_admin'
-          ? '/admin'
+          ? '/owner'
           : '/account'
         return
       }
@@ -155,7 +164,7 @@ export default function TeamAdminDashboard() {
               Your team dashboard
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Monitor activity and estimated spend for your workspace only.
+              Monitor activity and your skip-trace running total for this workspace.
               {team ? ` · ${team.seats_used}/${team.seat_count} seats` : ''}
             </p>
           </div>
@@ -186,13 +195,24 @@ export default function TeamAdminDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <StatCard
             label="Call volume"
             icon={<Phone size={18} className="text-amber-500" />}
             value={loading ? '—' : (totals?.call_clicks ?? 0).toLocaleString()}
             hint={`${currentMonth} · phone clicks`}
-            sub={`Skip traces: ${loading ? '—' : (totals?.skip_traces ?? 0).toLocaleString()}`}
+            sub={`Lookups: ${loading ? '—' : (totals?.skip_traces ?? 0).toLocaleString()}`}
+          />
+          <StatCard
+            label="Skip-trace $"
+            icon={<DollarSign size={18} className="text-emerald-500" />}
+            value={
+              loading
+                ? '—'
+                : `$${(totals?.skip_trace_amount_usd ?? 0).toLocaleString()}`
+            }
+            hint={`${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`}
+            sub={`${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · invoice at month end`}
           />
           <StatCard
             label="Est. team $"
@@ -238,7 +258,7 @@ export default function TeamAdminDashboard() {
               <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    {['Person', 'Role', 'Calls', 'Skip traces', 'Emails', 'Closed $', 'Est. fee'].map(
+                    {['Person', 'Role', 'Calls', 'Skip traces', 'Phone hits', 'Emails', 'Closed $', 'Est. fee'].map(
                       (h) => (
                         <th
                           key={h}
@@ -269,6 +289,9 @@ export default function TeamAdminDashboard() {
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {m.skip_traces.toLocaleString()}
+                      </td>
+                      <td className="px-5 py-3 text-sm text-gray-600">
+                        {(m.billable_skip_traces ?? 0).toLocaleString()}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {m.emails_sent.toLocaleString()}

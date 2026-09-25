@@ -79,7 +79,7 @@ and omissions of its Users under this Agreement.
 
 ## 4. Fees
 
-> ⚠️ Fee schedule updated 2026-08-11. Have counsel re-review before
+> ⚠️ Fee schedule updated 2026-09-25. Have counsel re-review before
 > relying on this section in production.
 
 ### 4.1 Seat Subscription
@@ -89,19 +89,21 @@ Platform. Seats are licensed; Customer may not share a single seat
 among concurrent Users. Unused seats do not roll over.
 
 ### 4.2 Skip-Trace Usage
-Customer shall pay **fifty U.S. cents (US $0.50)** for each
+Customer shall pay **one U.S. dollar (US $1.00)** for each
 billable skip-trace lookup performed through the Platform. A lookup
-is billable only when Mineral Map queries a third-party skip-trace
-provider on Customer's behalf. Lookups satisfied from Mineral Map's
-shared skip-trace cache (including results originally obtained for
-another customer) are **not** billable.
+is billable only when Mineral Map returns at least one phone number
+from a third-party skip-trace provider on Customer's behalf. Lookups
+that return no phone number, email-only results, and lookups
+satisfied from Mineral Map's shared skip-trace cache (including
+results originally obtained for another customer) are **not**
+billable. Skip-trace charges accrue per Customer team during the
+calendar month.
 
 ### 4.3 Invoicing
 Seat fees are billed in advance for each subscription period.
-Skip-trace usage is metered and invoiced in arrears (typically with
-the same Stripe subscription invoice). Payment is due according to
-the Stripe Checkout / Customer Portal terms Customer accepted at
-signup.
+Skip-trace usage is invoiced in arrears at month end through Stripe
+Invoicing (typically net fourteen (14) days). Payment is due
+according to the Stripe invoice terms Customer receives.
 
 ### 4.4 Taxes
 Fees are exclusive of applicable taxes, which Customer is
@@ -114,9 +116,10 @@ use after the effective date constitutes acceptance of the new fees.
 ## 5. Reporting
 
 ### 5.1 Monthly Report
-Seat and skip-trace fees are collected through Stripe; no separate
-invoice is required for those amounts. If Mineral Map reasonably
-requests usage clarification, Customer shall cooperate in good faith.
+Seat fees are collected through Stripe Checkout. Skip-trace phone
+hits are invoiced separately through Stripe Invoicing at month end.
+If Mineral Map reasonably requests usage clarification, Customer
+shall cooperate in good faith.
 Customer shall also provide Mineral Map, on or before the fifteenth
 (15th) day of each calendar month upon request, a written report
 identifying:

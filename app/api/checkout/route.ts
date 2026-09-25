@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { createServerClient } from '@supabase/ssr'
-import { seatPriceId, skipTracePriceId } from '@/lib/billing'
+import { seatPriceId } from '@/lib/billing'
 
 /**
- * Start Checkout for:
- *   • N × $100/mo seat price
- *   • metered $0.50 skip-trace price (usage reported on cache-miss only)
+ * Start Checkout for N × $100/mo seat price.
+ * Skip-trace is NOT on this subscription — $1 phone hits accrue per team
+ * and are invoiced through Stripe Invoicing at month end.
  *
  * Body: { seats?: number }  — defaults to 1, max 100.
  */
@@ -14,7 +14,6 @@ export async function POST(req: NextRequest) {
   try {
     const stripeKey = process.env.STRIPE_SECRET_KEY
     const seatPrice = seatPriceId()
-    const skipPrice = skipTracePriceId()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
     if (!stripeKey) {
@@ -67,10 +66,6 @@ export async function POST(req: NextRequest) {
     const lineItems: Array<{ price: string; quantity?: number }> = [
       { price: seatPrice, quantity: seats },
     ]
-    // Metered price: no quantity — Stripe bills from meter events.
-    if (skipPrice) {
-      lineItems.push({ price: skipPrice })
-    }
 
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -82,14 +77,12 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         seat_count: String(seats),
         stripe_seat_price_id: seatPrice,
-        stripe_skiptrace_price_id: skipPrice ?? '',
       },
       subscription_data: {
         metadata: {
           user_id: user.id,
           seat_count: String(seats),
           stripe_seat_price_id: seatPrice,
-          stripe_skiptrace_price_id: skipPrice ?? '',
         },
       },
       success_url: `${appUrl}/api/checkout/success?session_id={CHECKOUT_SESSION_ID}`,

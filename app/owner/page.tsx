@@ -1,8 +1,9 @@
 'use client'
 
 /**
- * Platform Owner portfolio dashboard — management@mineralmapllc.com only.
- * Cross-team activity + estimated spend. Ops tools stay under /admin.
+ * Platform Owner portfolio dashboard — partners listed in
+ * PLATFORM_OWNER_EMAILS (management@ + Jordan).
+ * Cross-team activity + skip-trace running totals. Ops tools stay under /admin.
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -18,7 +19,8 @@ import {
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { isPlatformOwner } from '@/lib/team'
+import { isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
+import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost } from '@/lib/billing'
 import SkipTraceReviewQueue from './SkipTraceReviewQueue'
 import type { SkipTraceReview } from '@/lib/skip-trace-review'
 import { PREVIEW_REVIEWS, shouldLoadPreviewReviews } from './preview-reviews'
@@ -31,6 +33,12 @@ type TeamSpendRow = {
   seat_count: number
   member_count: number
   skip_traces: number
+  billable_skip_traces?: number
+  skip_trace_amount_usd?: number
+  stripe_customer_id?: string | null
+  billing_exempt?: boolean
+  invoice_status?: string | null
+  hosted_invoice_url?: string | null
   call_clicks: number
   emails_sent: number
   closed_deal_count: number
@@ -40,7 +48,8 @@ type TeamSpendRow = {
 
 type UsagePayload = {
   month: string
-  callVolume: { callClicks: number; skipTraces: number }
+  callVolume: { callClicks: number; skipTraces: number; billableSkipTraces?: number }
+  skipTraceBilling?: { billableCount: number; amountUsd: number; unitPriceUsd: number }
   monthlyDollars: {
     closedDealCount: number
     closedDealVolume: number
@@ -74,6 +83,8 @@ export default function OwnerPortfolioPage() {
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [reviews, setReviews] = useState<SkipTraceReview[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(true)
+  const [invoicingId, setInvoicingId] = useState<string | null>(null)
+  const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null)
 
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
@@ -90,7 +101,7 @@ export default function OwnerPortfolioPage() {
         fetch('/api/owner/skip-trace-reviews?status=open', { cache: 'no-store' }),
       ])
       if (usageRes.status === 401 || usersRes.status === 401) {
-        setError('Not authorized as platform owner. Sign in as management@mineralmapllc.com.')
+        setError('Not authorized as platform owner.')
         return
       }
       if (usageRes.ok) {
@@ -187,11 +198,49 @@ export default function OwnerPortfolioPage() {
     void gate()
   }, [refresh, supabase])
 
-  const teamRows = (usage?.teams ?? []).filter((t) => !isPlatformOwner(t.owner_email))
+  const createInvoice = async (team: TeamSpendRow, send: boolean) => {
+    setInvoicingId(team.owner_id)
+    setInvoiceMessage(null)
+    try {
+      const res = await fetch('/api/owner/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_owner_id: team.owner_id,
+          month: usage?.month,
+          send,
+        }),
+      })
+      const data = (await res.json()) as {
+        error?: string
+        data?: { hostedInvoiceUrl?: string | null; status?: string; amountUsd?: number }
+      }
+      if (!res.ok) {
+        setInvoiceMessage(data.error || 'Could not create Stripe invoice')
+        return
+      }
+      setInvoiceMessage(
+        send
+          ? `Sent ${team.owner_email} a Stripe invoice ($${data.data?.amountUsd ?? team.skip_trace_amount_usd}).`
+          : `Stripe draft ready for ${team.owner_email} ($${data.data?.amountUsd ?? team.skip_trace_amount_usd}). Open it in Stripe to review before sending.`,
+      )
+      await refresh()
+    } catch {
+      setInvoiceMessage('Could not create Stripe invoice')
+    } finally {
+      setInvoicingId(null)
+    }
+  }
+
+  const teamRows = (usage?.teams ?? []).filter((t) => !isPlatformInternalEmail(t.owner_email))
   const fee = usage?.monthlyDollars.estimatedSuccessFee ?? 0
   const volume = usage?.monthlyDollars.closedDealVolume ?? 0
   const calls = usage?.callVolume.callClicks ?? 0
   const skips = usage?.callVolume.skipTraces ?? 0
+  const billableSkips =
+    usage?.skipTraceBilling?.billableCount ?? usage?.callVolume.billableSkipTraces ?? 0
+  const skipTraceDue =
+    usage?.skipTraceBilling?.amountUsd ?? estimateMonthlySkipTraceCost(billableSkips)
   const emails = usage?.email.sent ?? 0
   const customerUsers = users.filter((u) => !u.is_admin && !isPlatformOwner(u.email))
 
@@ -235,8 +284,9 @@ export default function OwnerPortfolioPage() {
             <p className="text-sm text-gray-500 mt-1 max-w-xl">
               You are signed in as{' '}
               <strong className="text-gray-800">{email ?? '…'}</strong>.
-              This view monitors every customer team&apos;s activity and estimated
-              success-fee spend across Mineral Map.
+              This view monitors every customer team&apos;s activity and the
+              skip-trace running total (${SKIP_TRACE_PRICE_USD.toFixed(2)} per
+              phone hit) billed on a Stripe invoice at month end.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -271,13 +321,26 @@ export default function OwnerPortfolioPage() {
           onDismiss={dismissReview}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        {invoiceMessage && (
+          <div className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+            {invoiceMessage}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
           <Card
             label="Teams"
             icon={<Users size={18} className="text-gray-400" />}
             value={loading ? '—' : String(teamRows.length)}
             hint="Provisioned customer workspaces"
             sub={`${customerUsers.length} non-admin accounts`}
+          />
+          <Card
+            label="Skip-trace $"
+            icon={<DollarSign size={18} className="text-emerald-500" />}
+            value={loading ? '—' : `$${skipTraceDue.toLocaleString()}`}
+            hint={`${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`}
+            sub={`${billableSkips.toLocaleString()} billable · ${skips.toLocaleString()} lookups`}
           />
           <Card
             label="Platform $"
@@ -309,7 +372,9 @@ export default function OwnerPortfolioPage() {
                 Every team — {currentMonth}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Activity and estimated spend by team admin workspace
+                Running skip-trace total is ${SKIP_TRACE_PRICE_USD.toFixed(2)} per
+                returned phone number. Create a Stripe draft at month end, then
+                send the invoice from Stripe (or here).
               </p>
             </div>
             <Link
@@ -347,7 +412,8 @@ export default function OwnerPortfolioPage() {
                       'Seats',
                       'Calls',
                       'Skip traces',
-                      'Emails',
+                      'Phone hits $',
+                      'Invoice',
                       'Closed deals',
                       'Est. fee',
                     ].map((h) => (
@@ -378,9 +444,41 @@ export default function OwnerPortfolioPage() {
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.skip_traces.toLocaleString()}
+                        <div className="text-xs text-gray-400">
+                          {(team.billable_skip_traces ?? 0).toLocaleString()} billable
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-sm font-semibold text-gray-900">
+                        {team.billing_exempt
+                          ? 'Waived'
+                          : `$${(team.skip_trace_amount_usd ?? 0).toLocaleString()}`}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
-                        {team.emails_sent.toLocaleString()}
+                        {team.billing_exempt ? (
+                          <span className="text-xs text-gray-400">Exempt</span>
+                        ) : team.hosted_invoice_url ? (
+                          <a
+                            href={team.hosted_invoice_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-semibold text-amber-700 hover:text-amber-800"
+                          >
+                            {team.invoice_status || 'open'} →
+                          </a>
+                        ) : (team.billable_skip_traces ?? 0) > 0 ? (
+                          <button
+                            type="button"
+                            disabled={invoicingId === team.owner_id}
+                            onClick={() => {
+                              void createInvoice(team, false)
+                            }}
+                            className="text-xs font-semibold text-amber-700 hover:text-amber-800 disabled:text-gray-400"
+                          >
+                            {invoicingId === team.owner_id ? 'Creating…' : 'Stripe draft'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.closed_deal_count}{' '}
