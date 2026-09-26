@@ -42,6 +42,7 @@ type TeamSpend = {
   closed_deal_count: number
   closed_deal_volume: number
   estimated_success_fee: number
+  wrong_numbers: number
 }
 
 async function listAllUsers(adminClient: SupabaseClient): Promise<AuthUser[]> {
@@ -138,6 +139,8 @@ export async function GET(req: NextRequest) {
     agreementsRes,
     subsRes,
     ownerSubsRes,
+    reviewsRes,
+    wrongCallsRes,
   ] = await Promise.all([
     adminClient
       .from('skip_trace_usage')
@@ -175,6 +178,18 @@ export async function GET(req: NextRequest) {
       .select('user_id, seat_count, status, stripe_customer_id')
       .is('team_owner_id', null)
       .gte('seat_count', 1),
+    adminClient
+      .from('skip_trace_reviews')
+      .select('team_owner_id, reason, status')
+      .eq('status', 'open')
+      .limit(5000),
+    adminClient
+      .from('deal_phone_calls')
+      .select('team_owner_id')
+      .eq('outcome', 'wrong_number')
+      .gte('called_at', startIso)
+      .lt('called_at', endIso)
+      .limit(10000),
   ])
 
   const warnings: string[] = []
@@ -196,6 +211,8 @@ export async function GET(req: NextRequest) {
   }
   if (callsRes.error) warnings.push(`usage_events: ${callsRes.error.message}`)
   if (emailsRes.error) warnings.push(`email_send_log: ${emailsRes.error.message}`)
+  if (reviewsRes.error) warnings.push(`skip_trace_reviews: ${reviewsRes.error.message}`)
+  if (wrongCallsRes.error) warnings.push(`deal_phone_calls: ${wrongCallsRes.error.message}`)
   if (agreementsRes.error) {
     warnings.push(`platform_agreement_signatures: ${agreementsRes.error.message}`)
   }
@@ -288,6 +305,7 @@ export async function GET(req: NextRequest) {
     closed_deal_count: 0,
     closed_deal_volume: 0,
     estimated_success_fee: 0,
+    wrong_numbers: 0,
   })
 
   const teamMap = new Map<string, TeamSpend>()
@@ -382,10 +400,24 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  let openWrongNumbers = 0
+  for (const row of (reviewsRes.data ?? []) as Array<{
+    team_owner_id?: string | null
+    reason?: string | null
+    status?: string | null
+  }>) {
+    if (row.status && row.status !== 'open') continue
+    if (row.reason && row.reason !== 'wrong_number') continue
+    openWrongNumbers += 1
+    const ownerId = String(row.team_owner_id ?? '').trim()
+    if (ownerId) ensureTeam(ownerId).wrong_numbers += 1
+  }
+
   const teams = Array.from(teamMap.values()).sort(
-    (a, b) => b.skip_trace_amount_usd - a.skip_trace_amount_usd || b.estimated_success_fee - a.estimated_success_fee,
+    (a, b) => b.call_clicks - a.call_clicks || b.skip_traces - a.skip_traces,
   )
   const billableDue = teams.reduce((sum, t) => sum + t.billable_skip_traces, 0)
+  const wrongNumbersThisMonth = (wrongCallsRes.data ?? []).length
 
   return NextResponse.json({
     month: monthKey,
@@ -399,6 +431,10 @@ export async function GET(req: NextRequest) {
       billableCount: billableDue,
       amountUsd: estimateMonthlySkipTraceCost(billableDue),
       unitPriceUsd: SKIP_TRACE_PRICE_USD,
+    },
+    wrongNumbers: {
+      open: openWrongNumbers,
+      thisMonth: wrongNumbersThisMonth,
     },
     monthlyDollars: {
       closedDealCount,

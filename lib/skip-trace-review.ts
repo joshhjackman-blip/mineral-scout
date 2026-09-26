@@ -1,7 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { skipTraceOwnerKey } from '@/lib/workspace'
+import { phoneKey } from '@/lib/phone-activity'
+
+function skipTraceOwnerKey(ownerName: string | null | undefined): string {
+  return String(ownerName ?? '')
+    .trim()
+    .toUpperCase()
+}
 
 export type SkipTraceReviewStatus = 'open' | 'resolved' | 'dismissed'
+export type SkipTraceReviewReason = 'no_phone' | 'wrong_number'
 
 export type SkipTraceReview = {
   id: string
@@ -21,6 +28,7 @@ export type SkipTraceReview = {
   requested_by_email?: string | null
   emails: string[]
   phones: string[]
+  reason?: SkipTraceReviewReason | null
   status: SkipTraceReviewStatus
   notes?: string | null
   created_at: string
@@ -44,6 +52,9 @@ export type QueueSkipTraceReviewInput = {
   requestedBy?: string | null
   requestedByEmail?: string | null
   emails?: string[]
+  phones?: string[]
+  reason?: SkipTraceReviewReason
+  notes?: string | null
 }
 
 export function parseContactLines(raw: string): string[] {
@@ -60,6 +71,50 @@ export function parseContactLines(raw: string): string[] {
   return out
 }
 
+export function mergeContactLines(existing: string[] | null | undefined, incoming: string[] | null | undefined): string[] {
+  return parseContactLines([...(existing ?? []), ...(incoming ?? [])].join('\n'))
+}
+
+export function reviewReasonLabel(reason: string | null | undefined): string {
+  return reason === 'wrong_number' ? 'Wrong #' : 'No phone'
+}
+
+function uuidOrNull(value: string | null | undefined): string | null {
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : null
+}
+
+async function writeReview(
+  admin: SupabaseClient,
+  row: Record<string, unknown>,
+  existingId?: string | null,
+): Promise<boolean> {
+  const withReason = { ...row }
+  const withoutReason = { ...row }
+  delete withoutReason.reason
+
+  const attempt = async (payload: Record<string, unknown>) => {
+    if (existingId) {
+      return admin.from('skip_trace_reviews').update(payload).eq('id', existingId)
+    }
+    return admin.from('skip_trace_reviews').insert(payload)
+  }
+
+  const first = await attempt(withReason)
+  if (!first.error) return true
+  if (!String(first.error.message ?? '').includes('reason')) {
+    console.error('Skip-trace review write failed:', first.error)
+    return false
+  }
+  const fallback = await attempt(withoutReason)
+  if (fallback.error) {
+    console.error('Skip-trace review write failed:', fallback.error)
+    return false
+  }
+  return true
+}
+
 export async function queueSkipTraceReview(
   admin: SupabaseClient,
   input: QueueSkipTraceReviewInput,
@@ -69,10 +124,37 @@ export async function queueSkipTraceReview(
   if (!ownerNameKey) return false
 
   const now = new Date().toISOString()
-  const dealId =
-    input.dealId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.dealId)
-      ? input.dealId
-      : null
+  const reason: SkipTraceReviewReason = input.reason === 'wrong_number' ? 'wrong_number' : 'no_phone'
+  const incomingPhones = parseContactLines((input.phones ?? []).join('\n'))
+
+  const { data: existing, error: lookupError } = await admin
+    .from('skip_trace_reviews')
+    .select('id, phones, emails, reason, notes')
+    .eq('owner_name_key', ownerNameKey)
+    .eq('status', 'open')
+    .maybeSingle()
+
+  if (lookupError) {
+    console.error('Skip-trace review lookup failed:', lookupError)
+    return false
+  }
+
+  const existingRow = existing as {
+    id?: string
+    phones?: string[] | null
+    emails?: string[] | null
+    reason?: string | null
+    notes?: string | null
+  } | null
+
+  const mergedReason: SkipTraceReviewReason =
+    existingRow?.reason === 'wrong_number' || reason === 'wrong_number'
+      ? 'wrong_number'
+      : 'no_phone'
+  const phones = mergeContactLines(existingRow?.phones, incomingPhones)
+  const emails = mergeContactLines(existingRow?.emails, input.emails)
+  const notes = input.notes ?? existingRow?.notes ?? null
+
   const row = {
     owner_name: ownerName,
     owner_name_key: ownerNameKey,
@@ -84,44 +166,51 @@ export async function queueSkipTraceReview(
     mailing_zip: input.zip ?? null,
     county: input.county ?? null,
     tract_abstract: input.tractAbstract ?? null,
-    deal_id: dealId,
-    team_owner_id: input.teamOwnerId ?? null,
-    requested_by: input.requestedBy ?? null,
+    deal_id: uuidOrNull(input.dealId),
+    team_owner_id: uuidOrNull(input.teamOwnerId),
+    requested_by: uuidOrNull(input.requestedBy),
     requested_by_email: input.requestedByEmail ?? null,
-    emails: input.emails ?? [],
-    phones: [] as string[],
+    emails,
+    phones,
+    reason: mergedReason,
+    notes,
     status: 'open',
     updated_at: now,
   }
 
-  const { data: existing, error: lookupError } = await admin
-    .from('skip_trace_reviews')
-    .select('id')
-    .eq('owner_name_key', ownerNameKey)
-    .eq('status', 'open')
+  return writeReview(admin, row, existingRow?.id)
+}
+
+/** Drop a bad number from the shared skip-trace cache so other teams don't get it. */
+export async function stripPhoneFromSkipTraceCache(
+  admin: SupabaseClient,
+  ownerName: string,
+  phone: string,
+): Promise<void> {
+  const cacheKey = skipTraceOwnerKey(ownerName)
+  const bad = phoneKey(phone)
+  if (!cacheKey || !bad) return
+
+  const { data, error } = await admin
+    .from('skip_trace_cache')
+    .select('phones, emails, mailing_address, source')
+    .eq('owner_name', cacheKey)
     .maybeSingle()
+  if (error || !data) return
 
-  if (lookupError) {
-    console.error('Skip-trace review lookup failed:', lookupError)
-    return false
-  }
+  const remaining = ((data as { phones?: string[] }).phones ?? []).filter(
+    (value) => phoneKey(value) !== bad,
+  )
+  await admin.from('skip_trace_cache').delete().eq('owner_name', cacheKey)
+  if (remaining.length === 0) return
 
-  if (existing?.id) {
-    const { error } = await admin
-      .from('skip_trace_reviews')
-      .update(row)
-      .eq('id', existing.id)
-    if (error) {
-      console.error('Skip-trace review update failed:', error)
-      return false
-    }
-    return true
-  }
-
-  const { error } = await admin.from('skip_trace_reviews').insert(row)
-  if (error) {
-    console.error('Skip-trace review insert failed:', error)
-    return false
-  }
-  return true
+  const now = new Date().toISOString()
+  await admin.from('skip_trace_cache').insert({
+    owner_name: cacheKey,
+    mailing_address: (data as { mailing_address?: string }).mailing_address ?? '',
+    phones: remaining,
+    emails: (data as { emails?: string[] }).emails ?? [],
+    source: (data as { source?: string }).source ?? 'owner_manual',
+    updated_at: now,
+  })
 }

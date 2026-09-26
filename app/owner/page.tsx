@@ -13,9 +13,8 @@ import {
   ArrowLeft,
   Phone,
   DollarSign,
-  Mail,
-  Users,
   Shield,
+  PhoneOff,
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
@@ -45,12 +44,14 @@ type TeamSpendRow = {
   closed_deal_count: number
   closed_deal_volume: number
   estimated_success_fee: number
+  wrong_numbers?: number
 }
 
 type UsagePayload = {
   month: string
   callVolume: { callClicks: number; skipTraces: number; billableSkipTraces?: number }
   skipTraceBilling?: { billableCount: number; amountUsd: number; unitPriceUsd: number }
+  wrongNumbers?: { open: number; thisMonth: number }
   monthlyDollars: {
     closedDealCount: number
     closedDealVolume: number
@@ -59,14 +60,6 @@ type UsagePayload = {
   email: { sent: number }
   teams?: TeamSpendRow[]
   warnings?: string[]
-}
-
-type UserRow = {
-  id: string
-  email: string
-  subscription_status: string
-  is_admin: boolean
-  skip_traces?: number
 }
 
 export default function OwnerPortfolioPage() {
@@ -79,7 +72,6 @@ export default function OwnerPortfolioPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [usage, setUsage] = useState<UsagePayload | null>(null)
-  const [users, setUsers] = useState<UserRow[]>([])
   const [email, setEmail] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [reviews, setReviews] = useState<SkipTraceReview[]>([])
@@ -96,12 +88,11 @@ export default function OwnerPortfolioPage() {
     setRefreshing(true)
     setError(null)
     try {
-      const [usageRes, usersRes, reviewsRes] = await Promise.all([
+      const [usageRes, reviewsRes] = await Promise.all([
         fetch('/api/admin/usage', { cache: 'no-store' }),
-        fetch('/api/admin/users', { cache: 'no-store' }),
         fetch('/api/owner/skip-trace-reviews?status=open', { cache: 'no-store' }),
       ])
-      if (usageRes.status === 401 || usersRes.status === 401) {
+      if (usageRes.status === 401) {
         setError('Not authorized as platform owner.')
         return
       }
@@ -109,10 +100,6 @@ export default function OwnerPortfolioPage() {
         setUsage((await usageRes.json()) as UsagePayload)
       } else {
         setError('Failed to load platform usage.')
-      }
-      if (usersRes.ok) {
-        const data = (await usersRes.json()) as { users?: UserRow[] }
-        setUsers(data.users ?? [])
       }
       if (reviewsRes.ok) {
         const data = (await reviewsRes.json()) as { reviews?: SkipTraceReview[] }
@@ -234,16 +221,14 @@ export default function OwnerPortfolioPage() {
   }
 
   const teamRows = (usage?.teams ?? []).filter((t) => !isPlatformInternalEmail(t.owner_email))
-  const fee = usage?.monthlyDollars.estimatedSuccessFee ?? 0
-  const volume = usage?.monthlyDollars.closedDealVolume ?? 0
   const calls = usage?.callVolume.callClicks ?? 0
   const skips = usage?.callVolume.skipTraces ?? 0
   const billableSkips =
     usage?.skipTraceBilling?.billableCount ?? usage?.callVolume.billableSkipTraces ?? 0
   const skipTraceDue =
     usage?.skipTraceBilling?.amountUsd ?? estimateMonthlySkipTraceCost(billableSkips)
-  const emails = usage?.email.sent ?? 0
-  const customerUsers = users.filter((u) => !u.is_admin && !isPlatformOwner(u.email))
+  const wrongOpen = usage?.wrongNumbers?.open ?? 0
+  const wrongMonth = usage?.wrongNumbers?.thisMonth ?? 0
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
@@ -254,7 +239,7 @@ export default function OwnerPortfolioPage() {
           <span className="text-sm font-semibold text-amber-400">Owner portfolio</span>
           {reviews.filter((r) => r.status === 'open').length > 0 && (
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500 text-white">
-              {reviews.filter((r) => r.status === 'open').length} skip traces
+              {reviews.filter((r) => r.status === 'open').length} to fix
             </span>
           )}
         </div>
@@ -285,9 +270,9 @@ export default function OwnerPortfolioPage() {
             <p className="text-sm text-gray-500 mt-1 max-w-xl">
               You are signed in as{' '}
               <strong className="text-gray-800">{email ?? '…'}</strong>.
-              This view monitors every customer team&apos;s activity and the
-              skip-trace running total (${SKIP_TRACE_PRICE_USD.toFixed(2)} per
-              phone hit) billed on a Stripe invoice at month end.
+              This view tracks skip-traces and calls across every team.
+              Skip-trace is ${SKIP_TRACE_PRICE_USD.toFixed(2)} per returned
+              phone number, invoiced at month end.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -328,41 +313,34 @@ export default function OwnerPortfolioPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <Card
-            label="Teams"
-            icon={<Users size={18} className="text-gray-400" />}
-            value={loading ? '—' : String(teamRows.length)}
-            hint="Provisioned customer workspaces"
-            sub={`${customerUsers.length} non-admin accounts`}
+            label="Calls"
+            icon={<Phone size={18} className="text-amber-500" />}
+            value={loading ? '—' : calls.toLocaleString()}
+            hint={`${currentMonth} · all teams`}
+            sub="Phone clicks from map and CRM"
+          />
+          <Card
+            label="Skip traces"
+            icon={<Phone size={18} className="text-gray-500" />}
+            value={loading ? '—' : skips.toLocaleString()}
+            hint={`${currentMonth} · lookups`}
+            sub={`${billableSkips.toLocaleString()} phone hits billed`}
           />
           <Card
             label="Skip-trace $"
             icon={<DollarSign size={18} className="text-emerald-500" />}
             value={loading ? '—' : `$${skipTraceDue.toLocaleString()}`}
             hint={`${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`}
-            sub={`${billableSkips.toLocaleString()} billable · ${skips.toLocaleString()} lookups`}
+            sub="Customer teams · month-end invoice"
           />
           <Card
-            label="Platform $"
-            icon={<DollarSign size={18} className="text-emerald-500" />}
-            value={loading ? '—' : `$${fee.toLocaleString()}`}
-            hint={`Est. 10% success fee · ${currentMonth}`}
-            sub={`Closed volume $${volume.toLocaleString()}`}
-          />
-          <Card
-            label="Calls"
-            icon={<Phone size={18} className="text-amber-500" />}
-            value={loading ? '—' : calls.toLocaleString()}
-            hint={`${currentMonth} · all teams`}
-            sub={`Skip traces: ${skips.toLocaleString()}`}
-          />
-          <Card
-            label="Email"
-            icon={<Mail size={18} className="text-blue-500" />}
-            value={loading ? '—' : emails.toLocaleString()}
-            hint={`${currentMonth} · Resend sends`}
-            sub="Across every workspace"
+            label="Wrong numbers"
+            icon={<PhoneOff size={18} className="text-red-500" />}
+            value={loading ? '—' : wrongOpen.toLocaleString()}
+            hint="Open in the queue above"
+            sub={`${wrongMonth.toLocaleString()} marked this month`}
           />
         </div>
 
@@ -373,9 +351,8 @@ export default function OwnerPortfolioPage() {
                 Every team — {currentMonth}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Running skip-trace total is ${SKIP_TRACE_PRICE_USD.toFixed(2)} per
-                returned phone number. Create a Stripe draft at month end, then
-                send the invoice from Stripe (or here).
+                Calls and skip-traces this month. Phone hits $ is billed at month
+                end (${SKIP_TRACE_PRICE_USD.toFixed(2)} when a number comes back).
               </p>
             </div>
             <Link
@@ -410,13 +387,11 @@ export default function OwnerPortfolioPage() {
                   <tr className="bg-gray-50 border-b border-gray-200">
                     {[
                       'Team admin',
-                      'Seats',
                       'Calls',
                       'Skip traces',
                       'Phone hits $',
+                      'Wrong #',
                       'Invoice',
-                      'Closed deals',
-                      'Est. fee',
                     ].map((h) => (
                       <th
                         key={h}
@@ -438,9 +413,6 @@ export default function OwnerPortfolioPage() {
                         </div>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
-                        {1 + team.member_count}/{team.seat_count}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
                         {team.call_clicks.toLocaleString()}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
@@ -453,6 +425,9 @@ export default function OwnerPortfolioPage() {
                         {team.skip_trace_waived
                           ? 'Waived'
                           : `$${(team.skip_trace_amount_usd ?? 0).toLocaleString()}`}
+                      </td>
+                      <td className="px-5 py-3 text-sm text-gray-600">
+                        {(team.wrong_numbers ?? 0).toLocaleString()}
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.skip_trace_waived ? (
@@ -480,68 +455,6 @@ export default function OwnerPortfolioPage() {
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
                         )}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
-                        {team.closed_deal_count}{' '}
-                        <span className="text-gray-400">
-                          (${team.closed_deal_volume.toLocaleString()})
-                        </span>
-                      </td>
-                      <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
-                        ${team.estimated_success_fee.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <div>
-              <h2 className="font-serif text-lg font-bold text-gray-900">
-                All accounts
-              </h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Every signed-up user (admins excluded from this list)
-              </p>
-            </div>
-            <span className="text-xs text-gray-400">{customerUsers.length} accounts</span>
-          </div>
-          {loading ? (
-            <div className="p-8 text-center text-sm text-gray-400">Loading…</div>
-          ) : customerUsers.length === 0 ? (
-            <div className="p-8 text-center text-sm text-gray-400">
-              No customer accounts yet.
-            </div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full min-w-[560px]">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {['Email', 'Status', `Skip traces (${currentMonth})`].map((h) => (
-                      <th
-                        key={h}
-                        className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {customerUsers.map((u) => (
-                    <tr key={u.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 text-sm font-medium text-gray-900">
-                        {u.email}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
-                        {u.subscription_status || 'none'}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
-                        {u.skip_traces ?? 0}
                       </td>
                     </tr>
                   ))}

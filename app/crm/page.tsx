@@ -363,7 +363,27 @@ export default function CRM() {
     }
     setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
     setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } : prev))
-  }, [deals, selected])
+
+    if (outcome === 'wrong_number' && !deal.id.startsWith('preview-')) {
+      void fetch('/api/wrong-numbers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dealId: deal.id,
+          ownerName: deal.owner_name,
+          phone,
+          address: deal.mailing_address,
+          city: deal.mailing_city,
+          state: deal.mailing_state,
+          zip: deal.mailing_zip,
+          county: deal.county,
+          tractAbstract: deal.tract_abstract,
+        }),
+      }).catch((err: unknown) => {
+        console.error('Wrong-number queue failed:', err)
+      })
+    }
+  }, [deals, selected, supabase])
 
   const handleAddCallLog = useCallback(async (owner: OwnerLike, draft: CallLogDraft) => {
     const deal = deals.find((d) => d.id === owner.id) ?? selected

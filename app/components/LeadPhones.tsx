@@ -95,7 +95,9 @@ export default function LeadPhones({
                   ? 'border-amber-400 ring-1 ring-amber-300'
                   : isPicked
                     ? 'border-emerald-300'
-                    : 'border-gray-200'
+                    : entry?.lastOutcome === 'wrong_number'
+                      ? 'border-red-300'
+                      : 'border-gray-200'
               }`}
             >
               <a
@@ -126,7 +128,9 @@ export default function LeadPhones({
                         active
                           ? outcome.key === 'connected'
                             ? 'border-emerald-500 bg-emerald-500 text-white'
-                            : 'border-gray-800 bg-gray-800 text-white'
+                            : outcome.key === 'wrong_number'
+                              ? 'border-red-600 bg-red-600 text-white'
+                              : 'border-gray-800 bg-gray-800 text-white'
                           : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-800'
                       }`}
                     >

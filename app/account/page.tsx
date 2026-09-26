@@ -13,7 +13,7 @@ import { createClient } from '@/lib/supabase/client'
 import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import { inviteSeatCapacity, resolveTeamRole, type TeamRole } from '@/lib/team'
-import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost, formatSkipTracePrice } from '@/lib/billing'
+import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -347,7 +347,7 @@ export default function Account() {
           </div>
         )}
 
-        {/* ── Billing (free access + $1 skip-trace phone hits) ── */}
+        {/* ── Billing ── */}
         <div className="bg-white rounded-xl border border-gray-200 p-6 mb-5 shadow-sm">
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
@@ -355,18 +355,38 @@ export default function Account() {
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <div className="font-serif text-base font-bold text-gray-900 mb-1">
-                Free to use · {formatSkipTracePrice()}
+                Free to get in · $1 per skip-trace phone hit
               </div>
-              <div className="text-sm text-gray-500 leading-relaxed">
-                {skipTraceWaived
-                  ? 'Your workspace (Mineral Map / Great Plains) is not billed for skip-trace. Phone hits still show in usage for tracking.'
-                  : `Skip-trace is $${SKIP_TRACE_PRICE_USD.toFixed(2)} only when a phone number comes back, accumulated on your team and invoiced through Stripe at month end. Cache hits, misses, and email-only results are free.`}
-              </div>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                Mineral Map is free to use. You only pay for skip-trace when we
+                actually return a phone number. That total runs on your team
+                during the month; we send a Stripe invoice at month end (net 14).
+              </p>
             </div>
             <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
               {skipTraceWaived ? 'Skip-trace waived' : 'Free access'}
             </span>
           </div>
+          <ul className="text-sm text-gray-600 space-y-2 mb-4">
+            <li className="flex gap-2">
+              <span className="text-emerald-600 font-semibold">$1</span>
+              <span>Phone number comes back from skip-trace → $1 on this team’s month-to-date total.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="text-gray-400 font-semibold">$0</span>
+              <span>Cache hit, miss, or email-only result — not billed.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="text-gray-400 font-semibold">Invoice</span>
+              <span>Month-end Stripe draft (net 14). We do not auto-email invoices yet — Mineral Map reviews and sends.</span>
+            </li>
+            {skipTraceWaived ? (
+              <li className="flex gap-2">
+                <span className="text-emerald-600 font-semibold">Waived</span>
+                <span>Your workspace (Mineral Map / Great Plains) is complimentary. Phone hits still show in usage for tracking.</span>
+              </li>
+            ) : null}
+          </ul>
           <div className="flex flex-wrap items-center gap-3">
             <Link
               href="/legal/agreement/sign"

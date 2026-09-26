@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   Phone,
   DollarSign,
-  Mail,
   Users,
   Activity,
 } from 'lucide-react'
@@ -196,13 +195,13 @@ export default function TeamAdminDashboard() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <StatCard
-            label="Call volume"
+            label="Calls"
             icon={<Phone size={18} className="text-amber-500" />}
             value={loading ? '—' : (totals?.call_clicks ?? 0).toLocaleString()}
             hint={`${currentMonth} · phone clicks`}
-            sub={`Lookups: ${loading ? '—' : (totals?.skip_traces ?? 0).toLocaleString()}`}
+            sub={`Skip traces: ${loading ? '—' : (totals?.skip_traces ?? 0).toLocaleString()}`}
           />
           <StatCard
             label="Skip-trace $"
@@ -224,24 +223,6 @@ export default function TeamAdminDashboard() {
                 ? 'Mineral Map / Great Plains skip-trace is not billed'
                 : `${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · invoice at month end`
             }
-          />
-          <StatCard
-            label="Est. team $"
-            icon={<DollarSign size={18} className="text-emerald-500" />}
-            value={
-              loading
-                ? '—'
-                : `$${(totals?.estimated_success_fee ?? 0).toLocaleString()}`
-            }
-            hint={`Est. 10% success fee (${currentMonth})`}
-            sub={`Closed volume: $${loading ? '—' : (totals?.closed_deal_volume ?? 0).toLocaleString()}`}
-          />
-          <StatCard
-            label="Email"
-            icon={<Mail size={18} className="text-blue-500" />}
-            value={loading ? '—' : (totals?.emails_sent ?? 0).toLocaleString()}
-            hint={`${currentMonth} · platform sends`}
-            sub={`Seats: ${team ? `${team.seats_used}/${team.seat_count}` : '—'}`}
           />
         </div>
 
@@ -269,7 +250,7 @@ export default function TeamAdminDashboard() {
               <table className="w-full min-w-[720px]">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    {['Person', 'Role', 'Calls', 'Skip traces', 'Phone hits', 'Emails', 'Closed $', 'Est. fee'].map(
+                    {['Person', 'Role', 'Calls', 'Skip traces', 'Phone hits'].map(
                       (h) => (
                         <th
                           key={h}
@@ -303,16 +284,6 @@ export default function TeamAdminDashboard() {
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {(m.billable_skip_traces ?? 0).toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
-                        {m.emails_sent.toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3 text-sm text-gray-600">
-                        ${m.closed_deal_volume.toLocaleString()}
-                      </td>
-                      <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
-                        $
-                        {Math.round(m.closed_deal_volume * 0.1).toLocaleString()}
                       </td>
                     </tr>
                   ))}

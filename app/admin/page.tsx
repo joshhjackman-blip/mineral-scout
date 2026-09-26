@@ -9,8 +9,7 @@ import {
   TrendingUp,
   Phone,
   ArrowLeft,
-  Mail,
-  DollarSign,
+  PhoneOff,
   Activity,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
@@ -52,6 +51,7 @@ type TeamSpendRow = {
   closed_deal_count: number
   closed_deal_volume: number
   estimated_success_fee: number
+  wrong_numbers?: number
 }
 
 type UsagePayload = {
@@ -74,6 +74,7 @@ type UsagePayload = {
   }
   teams?: TeamSpendRow[]
   warnings?: string[]
+  wrongNumbers?: { open: number; thisMonth: number }
 }
 
 type TeamRow = {
@@ -406,11 +407,8 @@ export default function AdminDashboard() {
     return 'bg-gray-50 text-gray-500 border-gray-200'
   }
 
-  const fee = usage?.monthlyDollars.estimatedSuccessFee ?? 0
-  const volume = usage?.monthlyDollars.closedDealVolume ?? 0
   const callClicks = usage?.callVolume.callClicks ?? 0
   const skipTraces = usage?.callVolume.skipTraces ?? stats.totalSkipTraces
-  const emailsSent = usage?.email.sent ?? 0
   const isOwnerView = viewerIsOwner || isPlatformOwner(sessionEmail)
   const teamRows = (usage?.teams ?? []).filter(
     (t) => !isPlatformInternalEmail(t.owner_email),
@@ -526,32 +524,32 @@ export default function AdminDashboard() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <UsageCard
+                label="Calls"
+                icon={<Phone size={18} className="text-amber-500" />}
+                value={loading ? '—' : callClicks.toLocaleString()}
+                hint={`${currentMonth} · all teams`}
+                sub="Phone clicks from map and CRM"
+              />
+              <UsageCard
+                label="Skip traces"
+                icon={<Phone size={18} className="text-gray-500" />}
+                value={loading ? '—' : skipTraces.toLocaleString()}
+                hint={`${currentMonth} · lookups`}
+                sub="Every team, including cache misses"
+              />
+              <UsageCard
+                label="Wrong numbers"
+                icon={<PhoneOff size={18} className="text-red-500" />}
+                value={loading ? '—' : (usage?.wrongNumbers?.open ?? 0).toLocaleString()}
+                hint="Open on the owner queue"
+                sub={`${(usage?.wrongNumbers?.thisMonth ?? 0).toLocaleString()} marked this month`}
+              />
+              <UsageCard
                 label="Teams"
                 icon={<Users size={18} className="text-gray-400" />}
                 value={loading ? '—' : activeTeams.toLocaleString()}
                 hint="Provisioned customer workspaces"
                 sub={`${stats.totalUsers} total users on platform`}
-              />
-              <UsageCard
-                label="Platform $"
-                icon={<DollarSign size={18} className="text-emerald-500" />}
-                value={loading ? '—' : `$${fee.toLocaleString()}`}
-                hint={`Est. 10% success fee · ${currentMonth}`}
-                sub={`Closed volume $${loading ? '—' : volume.toLocaleString()}`}
-              />
-              <UsageCard
-                label="Calls"
-                icon={<Phone size={18} className="text-amber-500" />}
-                value={loading ? '—' : callClicks.toLocaleString()}
-                hint={`${currentMonth} · all teams`}
-                sub={`Skip traces: ${loading ? '—' : skipTraces.toLocaleString()}`}
-              />
-              <UsageCard
-                label="Email"
-                icon={<Mail size={18} className="text-blue-500" />}
-                value={loading ? '—' : emailsSent.toLocaleString()}
-                hint={`${currentMonth} · Resend sends`}
-                sub="Across every workspace"
               />
             </div>
 
@@ -562,7 +560,7 @@ export default function AdminDashboard() {
                     Every team — {currentMonth}
                   </h2>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Spending and activity rolled up by team admin workspace
+                    Calls and skip-traces this month
                   </p>
                 </div>
                 <span className="text-xs text-gray-400">{teamRows.length} teams</span>
@@ -580,12 +578,9 @@ export default function AdminDashboard() {
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {[
                           'Team admin',
-                          'Seats',
                           'Calls',
                           'Skip traces',
-                          'Emails',
-                          'Closed deals',
-                          'Est. fee (10%)',
+                          'Wrong #',
                         ].map((h) => (
                           <th
                             key={h}
@@ -607,25 +602,13 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
-                            {1 + team.member_count}/{team.seat_count}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-gray-600">
                             {team.call_clicks.toLocaleString()}
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
                             {team.skip_traces.toLocaleString()}
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
-                            {team.emails_sent.toLocaleString()}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-gray-600">
-                            {team.closed_deal_count}{' '}
-                            <span className="text-gray-400">
-                              (${team.closed_deal_volume.toLocaleString()})
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
-                            ${team.estimated_success_fee.toLocaleString()}
+                            {(team.wrong_numbers ?? 0).toLocaleString()}
                           </td>
                         </tr>
                       ))}
@@ -645,31 +628,25 @@ export default function AdminDashboard() {
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <UsageCard
-                label="Call volume"
+                label="Calls"
                 icon={<Phone size={18} className="text-amber-500" />}
                 value={loading ? '—' : callClicks.toLocaleString()}
-                hint={`${currentMonth} · phone clicks from OwnerDrawer`}
-                sub={`Skip traces: ${loading ? '—' : skipTraces.toLocaleString()}`}
+                hint={`${currentMonth} · phone clicks`}
+                sub="Map and CRM"
               />
               <UsageCard
-                label="Monthly $"
-                icon={<DollarSign size={18} className="text-emerald-500" />}
-                value={loading ? '—' : `$${fee.toLocaleString()}`}
-                hint={`Est. 10% success fee on closed CRM deals (${currentMonth})`}
-                sub={`Closed volume: $${loading ? '—' : volume.toLocaleString()} · ${usage?.monthlyDollars.closedDealCount ?? 0} deals`}
+                label="Skip traces"
+                icon={<Phone size={18} className="text-gray-500" />}
+                value={loading ? '—' : skipTraces.toLocaleString()}
+                hint={`${currentMonth} · lookups`}
+                sub="Every team"
               />
               <UsageCard
-                label="Email"
-                icon={<Mail size={18} className="text-blue-500" />}
-                value={loading ? '—' : emailsSent.toLocaleString()}
-                hint={`${currentMonth} · Resend platform sends logged`}
-                sub={
-                  usage?.email.byKind
-                    ? Object.entries(usage.email.byKind)
-                        .map(([k, v]) => `${k.replace('_', ' ')}: ${v}`)
-                        .join(' · ') || 'No sends yet'
-                    : 'No sends yet'
-                }
+                label="Wrong numbers"
+                icon={<PhoneOff size={18} className="text-red-500" />}
+                value={loading ? '—' : (usage?.wrongNumbers?.open ?? 0).toLocaleString()}
+                hint="Open on the owner queue"
+                sub={`${(usage?.wrongNumbers?.thisMonth ?? 0).toLocaleString()} marked this month`}
               />
             </div>
 
@@ -689,29 +666,22 @@ export default function AdminDashboard() {
                     <li>Phone clicks: <strong className="text-gray-900">{callClicks}</strong></li>
                     <li>Skip traces: <strong className="text-gray-900">{skipTraces}</strong></li>
                     <li>
-                      Agreements signed:{' '}
+                      Wrong numbers open:{' '}
                       <strong className="text-gray-900">
-                        {usage?.monthlyDollars.agreementsSigned ?? 0}
+                        {usage?.wrongNumbers?.open ?? 0}
                       </strong>
                     </li>
                   </ul>
                 </div>
                 <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
                   <div className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">
-                    Revenue estimate
+                    What we track
                   </div>
                   <ul className="space-y-1.5">
-                    <li>
-                      Closed deal volume:{' '}
-                      <strong className="text-gray-900">${volume.toLocaleString()}</strong>
-                    </li>
-                    <li>
-                      Est. success fee (10%):{' '}
-                      <strong className="text-gray-900">${fee.toLocaleString()}</strong>
-                    </li>
+                    <li>Calls and skip-traces by team</li>
+                    <li>Wrong numbers go to Owner → Numbers to fix</li>
                     <li className="text-xs text-gray-400 pt-1">
-                      Estimated from CRM deals tagged <code>closed</code> with an offer amount —
-                      not invoiced revenue.
+                      Success-fee and email volume are not used for ops tracking.
                     </li>
                   </ul>
                 </div>
@@ -724,33 +694,10 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <div className="bg-gray-900 rounded-xl p-5 flex items-center justify-between flex-wrap gap-4 mb-6">
-              <div>
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">
-                  Legacy Stripe MRR (footnote)
-                </div>
-                <div className="font-serif text-2xl font-bold text-white">
-                  ${loading ? '—' : (stats.activeSubscribers * 300).toLocaleString()}
-                </div>
-                <div className="text-sm text-gray-400 mt-1">
-                  {stats.activeSubscribers} active × $300/mo — archived paywall rows only
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">
-                  Primary monthly $
-                </div>
-                <div className="font-serif text-2xl font-bold text-amber-400">
-                  ${loading ? '—' : fee.toLocaleString()}
-                </div>
-                <div className="text-sm text-gray-400 mt-1">Est. success fee this month</div>
-              </div>
-            </div>
-
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h2 className="font-serif text-lg font-bold text-gray-900">
-                  Spending by team — {currentMonth}
+                  Activity by team — {currentMonth}
                 </h2>
                 <span className="text-xs text-gray-400">
                   {(usage?.teams ?? []).length} teams
@@ -769,12 +716,9 @@ export default function AdminDashboard() {
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {[
                           'Team admin',
-                          'Seats',
                           'Calls',
                           'Skip traces',
-                          'Emails',
-                          'Closed deals',
-                          'Est. fee (10%)',
+                          'Wrong #',
                         ].map((h) => (
                           <th
                             key={h}
@@ -795,25 +739,13 @@ export default function AdminDashboard() {
                             </div>
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
-                            {1 + team.member_count}/{team.seat_count}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-gray-600">
                             {team.call_clicks.toLocaleString()}
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
                             {team.skip_traces.toLocaleString()}
                           </td>
                           <td className="px-5 py-3 text-sm text-gray-600">
-                            {team.emails_sent.toLocaleString()}
-                          </td>
-                          <td className="px-5 py-3 text-sm text-gray-600">
-                            {team.closed_deal_count}{' '}
-                            <span className="text-gray-400">
-                              (${team.closed_deal_volume.toLocaleString()})
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-sm font-semibold text-emerald-700">
-                            ${team.estimated_success_fee.toLocaleString()}
+                            {(team.wrong_numbers ?? 0).toLocaleString()}
                           </td>
                         </tr>
                       ))}
