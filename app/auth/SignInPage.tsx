@@ -43,32 +43,84 @@ function InfoMessage({ message }: { message: string }) {
 function SignInForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [mode, setMode] = useState<'login' | 'signup' | 'set-password'>('login')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [inviteOwnerId, setInviteOwnerId] = useState<string | null>(null)
-  const [isInvite, setIsInvite] = useState(false)
   const [nextPath, setNextPath] = useState('/')
+
+  const acceptInvite = async (ownerId?: string | null) => {
+    const res = await fetch('/api/team/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ownerId ? { ownerId } : {}),
+    })
+    if (!res.ok) {
+      if (!ownerId && res.status === 404) return
+      const acceptData = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(acceptData.error ?? 'Failed to accept invite')
+    }
+  }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const inviteOwnerParam = params.get('invite')
     const inviteEmail = params.get('email')
+    const welcome = params.get('welcome')
     const nextParam = params.get('next')
     if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
       setNextPath(nextParam)
+    } else if (welcome === 'admin') {
+      setNextPath('/account')
+    } else if (welcome === 'ops') {
+      setNextPath('/admin')
     }
     if (inviteOwnerParam && inviteEmail) {
       setEmail(decodeURIComponent(inviteEmail))
       setInviteOwnerId(inviteOwnerParam)
-      setIsInvite(true)
       setMode('signup')
       setMessage(
-        'You were invited to join a team account. Sign in or create your account to accept.'
+        'You were invited to a team. Choose a password if this is your first time, or sign in to join.',
       )
+    } else if (welcome === 'admin') {
+      if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
+      setMessage('You were invited as the team admin. Choose a password to open your workspace.')
+    } else if (welcome === 'ops') {
+      if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
+      setMessage('You were invited as an operator. Choose a password to continue.')
     } else if (nextParam?.startsWith('/legal/agreement')) {
       setMessage('Sign in to review and accept the Platform Services Agreement.')
+    }
+
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const hashType = hashParams.get('type')
+    if (hashType === 'invite' || hashType === 'recovery') {
+      setMode('set-password')
+      setMessage('Choose a password to finish joining Mineral Map.')
+    }
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (
+        (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') &&
+        (hashType === 'invite' || hashType === 'recovery' || welcome)
+      ) {
+        setMode('set-password')
+        if (session?.user?.email) setEmail(session.user.email)
+      }
+    })
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) return
+      if (hashType === 'invite' || hashType === 'recovery' || welcome) {
+        setMode('set-password')
+        if (data.session.user.email) setEmail(data.session.user.email)
+      }
+    })
+
+    return () => {
+      listener.subscription.unsubscribe()
     }
   }, [])
 
@@ -76,6 +128,33 @@ function SignInForm() {
     e.preventDefault()
     setError(null)
     setMessage(null)
+
+    if (mode === 'set-password') {
+      if (!password || password.length < 8) {
+        setError('Password must be at least 8 characters.')
+        return
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.')
+        return
+      }
+      setLoading(true)
+      const { error: updateError } = await supabase.auth.updateUser({ password })
+      if (updateError) {
+        setError(updateError.message)
+        setLoading(false)
+        return
+      }
+      try {
+        await acceptInvite(inviteOwnerId)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to accept invite')
+        setLoading(false)
+        return
+      }
+      window.location.href = nextPath || '/'
+      return
+    }
 
     if (!email || !password) {
       setError('Please enter your email and password.')
@@ -98,17 +177,11 @@ function SignInForm() {
       return
     }
 
-    if (inviteOwnerId && data.session) {
-      const acceptRes = await fetch('/api/team/accept', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId: inviteOwnerId }),
-      })
-      if (!acceptRes.ok) {
-        const acceptData = (await acceptRes.json().catch(() => ({}))) as {
-          error?: string
-        }
-        setError(acceptData.error ?? 'Failed to accept invite')
+    if (data.session) {
+      try {
+        await acceptInvite(inviteOwnerId)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to accept invite')
         setLoading(false)
         return
       }
@@ -124,43 +197,45 @@ function SignInForm() {
   }
 
   const isLogin = mode === 'login'
+  const isSetPassword = mode === 'set-password'
 
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="si-form-title fade-up fade-up-1">
-        {isLogin ? 'Sign in' : 'Create account'}
+        {isSetPassword ? 'Choose a password' : isLogin ? 'Sign in' : 'Create account'}
       </div>
       <div className="si-form-subtitle fade-up fade-up-2">
-        {isLogin
-          ? 'Access your Mineral Map workspace.'
-          : 'Request access to Mineral Map.'}
+        {isSetPassword
+          ? 'This finishes your invite. You will land in your workspace after saving.'
+          : isLogin
+            ? 'Access your Mineral Map workspace.'
+            : 'Join with the email you were invited on.'}
       </div>
-
-      {isInvite && (
-        <InfoMessage
-          message={`Team invite detected for ${email}. Complete sign-in or sign-up to accept.`}
-        />
-      )}
 
       {error && <ErrorMessage message={error} />}
-      {message && !isInvite && <InfoMessage message={message} />}
+      {message && <InfoMessage message={message} />}
 
-      <div className="si-form-group fade-up fade-up-2">
-        <label className="si-form-label" htmlFor="email">Email</label>
-        <input
-          id="email"
-          type="email"
-          className="si-form-input"
-          placeholder="you@company.com"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          autoComplete="email"
-          autoFocus
-        />
-      </div>
+      {!isSetPassword && (
+        <div className="si-form-group fade-up fade-up-2">
+          <label className="si-form-label" htmlFor="email">Email</label>
+          <input
+            id="email"
+            type="email"
+            className="si-form-input"
+            placeholder="you@company.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            autoComplete="email"
+            autoFocus
+            readOnly={Boolean(inviteOwnerId)}
+          />
+        </div>
+      )}
 
       <div className="si-form-group fade-up fade-up-3">
-        <label className="si-form-label" htmlFor="password">Password</label>
+        <label className="si-form-label" htmlFor="password">
+          {isSetPassword ? 'New password' : 'Password'}
+        </label>
         <input
           id="password"
           type="password"
@@ -172,19 +247,36 @@ function SignInForm() {
         />
       </div>
 
-      <div className="si-form-row fade-up fade-up-3">
-        <button
-          type="button"
-          className="si-form-mode-toggle"
-          onClick={() => {
-            setMode(isLogin ? 'signup' : 'login')
-            setError(null)
-            setMessage(null)
-          }}
-        >
-          {isLogin ? 'Need an account? Sign up' : 'Have an account? Sign in'}
-        </button>
-      </div>
+      {isSetPassword && (
+        <div className="si-form-group fade-up fade-up-3">
+          <label className="si-form-label" htmlFor="confirm">Confirm password</label>
+          <input
+            id="confirm"
+            type="password"
+            className="si-form-input"
+            placeholder="••••••••"
+            value={confirmPassword}
+            onChange={e => setConfirmPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </div>
+      )}
+
+      {!isSetPassword && (
+        <div className="si-form-row fade-up fade-up-3">
+          <button
+            type="button"
+            className="si-form-mode-toggle"
+            onClick={() => {
+              setMode(isLogin ? 'signup' : 'login')
+              setError(null)
+              setMessage(null)
+            }}
+          >
+            {isLogin ? 'Need an account? Sign up' : 'Have an account? Sign in'}
+          </button>
+        </div>
+      )}
 
       <button
         type="submit"
@@ -193,48 +285,56 @@ function SignInForm() {
       >
         {loading ? (
           <>
-            <span className="si-spinner" /> {isLogin ? 'Signing in…' : 'Creating account…'}
+            <span className="si-spinner" />{' '}
+            {isSetPassword ? 'Saving…' : isLogin ? 'Signing in…' : 'Creating account…'}
           </>
+        ) : isSetPassword ? (
+          'Save password and join →'
+        ) : isLogin ? (
+          'Sign in →'
         ) : (
-          isLogin ? 'Sign in →' : 'Create account →'
+          'Join workspace →'
         )}
       </button>
 
-      <div className="si-form-divider fade-up fade-up-5" />
-
-      <div className="si-form-request fade-up fade-up-5">
-        {isLogin ? (
-          <>
-            New to Mineral Map?{' '}
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault()
-                setMode('signup')
-                setError(null)
-                setMessage(null)
-              }}
-            >
-              Request access →
-            </a>
-          </>
-        ) : (
-          <>
-            Already have an account?{' '}
-            <a
-              href="#"
-              onClick={(e) => {
-                e.preventDefault()
-                setMode('login')
-                setError(null)
-                setMessage(null)
-              }}
-            >
-              Sign in →
-            </a>
-          </>
-        )}
-      </div>
+      {!isSetPassword && (
+        <>
+          <div className="si-form-divider fade-up fade-up-5" />
+          <div className="si-form-request fade-up fade-up-5">
+            {isLogin ? (
+              <>
+                Invited to a team? Check your email for the join link, or{' '}
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setMode('signup')
+                    setError(null)
+                    setMessage(null)
+                  }}
+                >
+                  join here →
+                </a>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    setMode('login')
+                    setError(null)
+                    setMessage(null)
+                  }}
+                >
+                  Sign in →
+                </a>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </form>
   )
 }

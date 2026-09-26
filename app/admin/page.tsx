@@ -274,6 +274,9 @@ export default function AdminDashboard() {
       const data = (await res.json()) as {
         success?: boolean
         invited?: boolean
+        emailed?: boolean
+        action_url?: string | null
+        email_error?: string | null
         error?: string
         team?: { owner_email: string; seat_count: number }
       }
@@ -281,11 +284,19 @@ export default function AdminDashboard() {
         setProvisionMsg(data.error || 'Failed to provision team')
         return
       }
-      setProvisionMsg(
-        data.invited
-          ? `Invite sent to ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats).`
-          : `Provisioned ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats).`,
-      )
+      if (data.emailed) {
+        setProvisionMsg(
+          `Invite emailed to ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats). They set their own password — you do not create the account.`,
+        )
+      } else if (data.action_url) {
+        setProvisionMsg(
+          `User is ready, but the email did not send${data.email_error ? ` (${data.email_error})` : ''}. Copy this join link: ${data.action_url}`,
+        )
+      } else {
+        setProvisionMsg(
+          `Provisioned ${data.team?.owner_email} as team admin (${data.team?.seat_count} seats).`,
+        )
+      }
       setProvisionEmail('')
       await refresh()
     } catch {
@@ -322,6 +333,8 @@ export default function AdminDashboard() {
       const data = (await res.json()) as {
         success?: boolean
         invited?: boolean
+        emailed?: boolean
+        action_url?: string | null
         error?: string
         admin?: { email: string }
       }
@@ -330,9 +343,11 @@ export default function AdminDashboard() {
         return
       }
       setGrantAdminMsg(
-        data.invited
-          ? `Invite sent to ${data.admin?.email} as platform admin.`
-          : `Granted platform admin to ${data.admin?.email}.`,
+        data.emailed
+          ? `Invite emailed to ${data.admin?.email} as platform admin.`
+          : data.action_url
+            ? `Email did not send. Copy this join link: ${data.action_url}`
+            : `Granted platform admin to ${data.admin?.email}.`,
       )
       setGrantAdminEmail('')
       await refresh()
@@ -770,7 +785,7 @@ export default function AdminDashboard() {
               {viewerIsOwner ? (
                 <div className="flex flex-wrap gap-2 items-end">
                   <label className="flex flex-col gap-1 min-w-[220px] flex-1">
-                    <span className="text-xs text-gray-500">Grant platform admin</span>
+                    <span className="text-xs text-gray-500">Invite platform admin</span>
                     <input
                       type="email"
                       value={grantAdminEmail}
@@ -921,11 +936,12 @@ export default function AdminDashboard() {
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
               <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
-                Provision team admin
+                Invite team admin
               </h2>
               <p className="text-sm text-gray-500 mb-4">
-                Assign a customer team admin and seat count when onboarding.
-                That admin invites members from Account. Members cannot open this console.
+                Email a join link. They choose a password and become the team
+                admin — you never create the login in Supabase. That admin then
+                invites their own people from Account the same way.
               </p>
               <div className="flex flex-wrap gap-2 items-end">
                 <label className="flex flex-col gap-1 min-w-[220px] flex-1">
@@ -957,7 +973,7 @@ export default function AdminDashboard() {
                   }}
                   className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
                 >
-                  {provisioning ? 'Provisioning…' : 'Assign admin'}
+                  {provisioning ? 'Sending invite…' : 'Send admin invite'}
                 </button>
               </div>
               {provisionMsg && (

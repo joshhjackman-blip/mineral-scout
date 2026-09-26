@@ -111,11 +111,15 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (isLoggedIn && path.startsWith('/auth')) {
-    const nextRaw = request.nextUrl.searchParams.get('next') || '/'
-    // Only allow same-origin relative paths (no open redirects).
-    const nextPath =
-      nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : '/'
-    return redirectLoggedIn(new URL(nextPath, request.url))
+    const params = request.nextUrl.searchParams
+    const stayingOnInvite =
+      params.has('invite') || params.has('welcome') || params.has('type')
+    if (!stayingOnInvite) {
+      const nextRaw = params.get('next') || '/'
+      const nextPath =
+        nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : '/'
+      return redirectLoggedIn(new URL(nextPath, request.url))
+    }
   }
 
   const isAdminPath = path.startsWith('/admin') || path.startsWith('/owner')
