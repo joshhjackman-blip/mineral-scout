@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/scrape-permits",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/cron/research-skiptrace",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

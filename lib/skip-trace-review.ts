@@ -1,11 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { phoneKey } from '@/lib/phone-activity'
+import { skipTraceOwnerKey } from '@/lib/skip-trace-cache'
 
-function skipTraceOwnerKey(ownerName: string | null | undefined): string {
-  return String(ownerName ?? '')
-    .trim()
-    .toUpperCase()
-}
 
 export type SkipTraceReviewStatus = 'open' | 'resolved' | 'dismissed'
 export type SkipTraceReviewReason = 'no_phone' | 'wrong_number'
@@ -179,6 +175,83 @@ export async function queueSkipTraceReview(
   }
 
   return writeReview(admin, row, existingRow?.id)
+}
+
+export type ApplySkipTracePhonesInput = {
+  ownerName: string
+  mailingAddress?: string | null
+  phones: string[]
+  emails?: string[]
+  source: string
+  dealId?: string | null
+  reviewId?: string | null
+  notes?: string | null
+  resolvedBy?: string | null
+}
+
+/**
+ * Write phones onto the shared cache + every deal for this owner, and
+ * resolve the open review when `reviewId` is set. Used by the owner
+ * queue and the miss researcher.
+ */
+export async function applySkipTracePhones(
+  admin: SupabaseClient,
+  input: ApplySkipTracePhonesInput,
+): Promise<boolean> {
+  const phones = parseContactLines((input.phones ?? []).join('\n'))
+  const emails = parseContactLines((input.emails ?? []).join('\n'))
+  if (phones.length === 0) return false
+
+  const cacheKey = skipTraceOwnerKey(input.ownerName)
+  const now = new Date().toISOString()
+  if (cacheKey) {
+    await admin.from('skip_trace_cache').delete().eq('owner_name', cacheKey)
+    const { error: cacheError } = await admin.from('skip_trace_cache').insert({
+      owner_name: cacheKey,
+      mailing_address: input.mailingAddress ?? '',
+      phones,
+      emails,
+      source: input.source,
+      updated_at: now,
+    })
+    if (cacheError) {
+      console.error('Skip-trace cache write failed:', cacheError)
+    }
+  }
+
+  const dealPatch = {
+    phone: phones[0],
+    phones,
+    email: emails[0] ?? null,
+    emails,
+    tag: 'skip_traced',
+    needs_phone: false,
+    updated_at: now,
+  }
+  if (input.dealId) {
+    await admin.from('deals').update(dealPatch).eq('id', input.dealId)
+  }
+  await admin.from('deals').update(dealPatch).eq('owner_name', input.ownerName)
+
+  if (input.reviewId) {
+    const { error: updateError } = await admin
+      .from('skip_trace_reviews')
+      .update({
+        phones,
+        emails,
+        notes: input.notes ?? null,
+        status: 'resolved',
+        resolved_at: now,
+        resolved_by: input.resolvedBy ?? null,
+        updated_at: now,
+      })
+      .eq('id', input.reviewId)
+    if (updateError) {
+      console.error('Skip-trace review resolve failed:', updateError)
+      return false
+    }
+  }
+  return true
 }
 
 /** Drop a bad number from the shared skip-trace cache so other teams don't get it. */

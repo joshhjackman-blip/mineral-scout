@@ -38,6 +38,43 @@ export const PREVIEW_REVIEWS: SkipTraceReview[] = [
   },
 ]
 
+export const PREVIEW_RESEARCH = {
+  queued: 2,
+  hits: 2,
+  misses: 1,
+  hitsToday: 1,
+  byProvider: [
+    { name: 'idiCORE', count: 1 },
+    { name: 'Accurate Append', count: 1 },
+  ],
+  byMethod: [
+    { name: 'TX officer · PRESIDENT', count: 1 },
+    { name: 'Tax-roll full name', count: 1 },
+  ],
+  recentHits: [
+    {
+      id: 'preview-hit-1',
+      ownerName: 'BROWN ROYALTIES INC',
+      phones: ['3255550199'],
+      emails: [],
+      provider: 'idicore',
+      method: 'officer:PRESIDENT',
+      person: 'MARSHALL EVANS BROWN',
+      at: new Date().toISOString(),
+    },
+    {
+      id: 'preview-hit-2',
+      ownerName: 'FOSTER MICHAEL DAVID LVG TR',
+      phones: ['6265550144'],
+      emails: ['mfoster@example.com'],
+      provider: 'accurateappend',
+      method: 'tax-roll-full',
+      person: 'MICHAEL DAVID FOSTER',
+      at: new Date(Date.now() - 3_600_000).toISOString(),
+    },
+  ],
+}
+
 export const shouldLoadPreviewReviews = (): boolean => {
   if (process.env.NODE_ENV === 'production') return false
   if (typeof window === 'undefined') return false
