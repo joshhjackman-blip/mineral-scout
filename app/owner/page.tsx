@@ -26,7 +26,7 @@ import type { SkipTraceReview } from '@/lib/skip-trace-review'
 import {
   emptyResearchStats,
   type ResearchStats,
-} from '@/lib/skip-trace-research'
+} from '@/lib/skip-trace-research-stats'
 import { PREVIEW_REVIEWS, PREVIEW_RESEARCH, shouldLoadPreviewReviews } from './preview-reviews'
 
 export const dynamic = 'force-dynamic'
