@@ -6,7 +6,7 @@ import { parseContactLines, applySkipTracePhones, type SkipTraceReview } from '@
 import {
   emptyResearchStats,
   summarizeResearchReviews,
-} from '@/lib/skip-trace-research'
+} from '@/lib/skip-trace-research-stats'
 
 export const dynamic = 'force-dynamic'
 

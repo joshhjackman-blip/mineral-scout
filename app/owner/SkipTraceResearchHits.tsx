@@ -1,8 +1,8 @@
 'use client'
 
 import { Bot, Phone } from 'lucide-react'
-import type { ResearchStats } from '@/lib/skip-trace-research'
-import { methodLabel, providerLabel } from '@/lib/skip-trace-research'
+import type { ResearchStats } from '@/lib/skip-trace-research-stats'
+import { methodLabel, providerLabel } from '@/lib/skip-trace-research-stats'
 
 function formatWhen(iso: string): string {
   const ms = Date.parse(iso)

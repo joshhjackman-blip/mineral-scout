@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict'
 import {
-  parseLatestResearchLine,
   parseResearchAttempts,
   personTargetsFromReview,
   shouldSkipResearch,
-  summarizeResearchReviews,
+} from './skip-trace-research'
+import {
   formatResearchHitNote,
   methodLabel,
+  parseLatestResearchLine,
   providerLabel,
-} from './skip-trace-research'
+  summarizeResearchReviews,
+} from './skip-trace-research-stats'
 import type { SkipTraceReview } from './skip-trace-review'
 
 function review(partial: Partial<SkipTraceReview>): SkipTraceReview {
