@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict'
 import {
+  parseLatestResearchLine,
   parseResearchAttempts,
   personTargetsFromReview,
   shouldSkipResearch,
+  summarizeResearchReviews,
+  formatResearchHitNote,
+  methodLabel,
+  providerLabel,
 } from './skip-trace-research'
 import type { SkipTraceReview } from './skip-trace-review'
 
@@ -73,5 +78,46 @@ assert.equal(exhausted.skip, true)
 
 const ready = shouldSkipResearch(review({ notes: null }), Date.now())
 assert.equal(ready.skip, false)
+
+const hitNote = formatResearchHitNote({
+  attempt: 1,
+  provider: 'idicore',
+  method: 'officer:PRESIDENT',
+  person: 'MARSHALL EVANS BROWN',
+  phones: ['3255550199'],
+  tried: ['officer:PRESIDENT:MARSHALL EVANS BROWN'],
+})
+const hitParsed = parseLatestResearchLine(hitNote)
+assert.equal(hitParsed?.hit, true)
+assert.equal(hitParsed?.provider, 'idicore')
+assert.equal(hitParsed?.method, 'officer:PRESIDENT')
+assert.equal(hitParsed?.person, 'MARSHALL EVANS BROWN')
+assert.equal(methodLabel('officer:PRESIDENT'), 'TX officer · PRESIDENT')
+assert.equal(providerLabel('research-idicore'), 'idiCORE')
+
+const missNote =
+  '[research 2026-09-28T12:00:00.000Z attempt=1 hit=0] tried tax-roll-full:MONROE E ALENICK; no phone'
+const missParsed = parseLatestResearchLine(missNote)
+assert.equal(missParsed?.hit, false)
+
+const stats = summarizeResearchReviews(
+  [review({ notes: missNote })],
+  [
+    review({
+      id: 'hit-1',
+      owner_name: 'BROWN ROYALTIES INC',
+      phones: ['3255550199'],
+      status: 'resolved',
+      notes: hitNote,
+      resolved_at: '2026-09-28T21:00:00.000Z',
+    }),
+  ],
+  Date.parse('2026-09-28T22:00:00.000Z'),
+)
+assert.equal(stats.hits, 1)
+assert.equal(stats.hitsToday, 1)
+assert.equal(stats.recentHits[0].ownerName, 'BROWN ROYALTIES INC')
+assert.ok(stats.byProvider.some((row) => row.name === 'idiCORE' && row.count === 1))
+assert.ok(stats.byMethod.some((row) => row.name === 'TX officer · PRESIDENT' && row.count === 1))
 
 console.log('skip-trace-research tests passed')

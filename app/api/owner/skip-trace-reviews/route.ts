@@ -3,6 +3,10 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { isPlatformOwner } from '@/lib/team'
 import { parseContactLines, applySkipTracePhones, type SkipTraceReview } from '@/lib/skip-trace-review'
+import {
+  emptyResearchStats,
+  summarizeResearchReviews,
+} from '@/lib/skip-trace-research'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,10 +68,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: rowError.message }, { status: 500 })
   }
   const reviews = (data ?? []) as SkipTraceReview[]
+  const openCount = reviews.filter((r) => r.status === 'open').length
+
+  let research = emptyResearchStats()
+  if (status === 'open') {
+    const { data: resolved } = await db
+      .from('skip_trace_reviews')
+      .select('*')
+      .eq('status', 'resolved')
+      .order('updated_at', { ascending: false })
+      .limit(100)
+    research = summarizeResearchReviews(reviews, (resolved ?? []) as SkipTraceReview[])
+  } else {
+    research = summarizeResearchReviews(
+      reviews.filter((r) => r.status === 'open'),
+      reviews.filter((r) => r.status === 'resolved'),
+    )
+  }
+
   return NextResponse.json({
     success: true,
     reviews,
-    openCount: reviews.filter((r) => r.status === 'open').length,
+    openCount,
+    research,
   })
 }
 

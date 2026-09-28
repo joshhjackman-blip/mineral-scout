@@ -21,8 +21,13 @@ import AppLogo from '@/app/components/AppLogo'
 import { isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
 import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost } from '@/lib/billing'
 import SkipTraceReviewQueue from './SkipTraceReviewQueue'
+import SkipTraceResearchHits from './SkipTraceResearchHits'
 import type { SkipTraceReview } from '@/lib/skip-trace-review'
-import { PREVIEW_REVIEWS, shouldLoadPreviewReviews } from './preview-reviews'
+import {
+  emptyResearchStats,
+  type ResearchStats,
+} from '@/lib/skip-trace-research'
+import { PREVIEW_REVIEWS, PREVIEW_RESEARCH, shouldLoadPreviewReviews } from './preview-reviews'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +80,7 @@ export default function OwnerPortfolioPage() {
   const [email, setEmail] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState(new Date())
   const [reviews, setReviews] = useState<SkipTraceReview[]>([])
+  const [research, setResearch] = useState<ResearchStats>(() => emptyResearchStats())
   const [reviewsLoading, setReviewsLoading] = useState(true)
   const [invoicingId, setInvoicingId] = useState<string | null>(null)
   const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null)
@@ -84,31 +90,37 @@ export default function OwnerPortfolioPage() {
     [],
   )
 
-  const refresh = useCallback(async () => {
-    setRefreshing(true)
-    setError(null)
+  const refresh = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setRefreshing(true)
+      setError(null)
+    }
     try {
       const [usageRes, reviewsRes] = await Promise.all([
         fetch('/api/admin/usage', { cache: 'no-store' }),
         fetch('/api/owner/skip-trace-reviews?status=open', { cache: 'no-store' }),
       ])
       if (usageRes.status === 401) {
-        setError('Not authorized as platform owner.')
+        if (!opts?.silent) setError('Not authorized as platform owner.')
         return
       }
       if (usageRes.ok) {
         setUsage((await usageRes.json()) as UsagePayload)
-      } else {
+      } else if (!opts?.silent) {
         setError('Failed to load platform usage.')
       }
       if (reviewsRes.ok) {
-        const data = (await reviewsRes.json()) as { reviews?: SkipTraceReview[] }
+        const data = (await reviewsRes.json()) as {
+          reviews?: SkipTraceReview[]
+          research?: ResearchStats
+        }
         setReviews(data.reviews ?? [])
+        setResearch(data.research ?? emptyResearchStats())
       }
       setReviewsLoading(false)
       setLastUpdated(new Date())
     } catch {
-      setError('Failed to load owner dashboard.')
+      if (!opts?.silent) setError('Failed to load owner dashboard.')
     } finally {
       setRefreshing(false)
       setLoading(false)
@@ -161,6 +173,7 @@ export default function OwnerPortfolioPage() {
       if (!session?.user) {
         if (shouldLoadPreviewReviews()) {
           setReviews(PREVIEW_REVIEWS)
+          setResearch(PREVIEW_RESEARCH)
           setReviewsLoading(false)
           setLoading(false)
           return
@@ -173,6 +186,7 @@ export default function OwnerPortfolioPage() {
       if (!isPlatformOwner(userEmail)) {
         if (shouldLoadPreviewReviews()) {
           setReviews(PREVIEW_REVIEWS)
+          setResearch(PREVIEW_RESEARCH)
           setReviewsLoading(false)
           setLoading(false)
           return
@@ -185,6 +199,14 @@ export default function OwnerPortfolioPage() {
     }
     void gate()
   }, [refresh, supabase])
+
+  useEffect(() => {
+    if (!email || !isPlatformOwner(email)) return
+    const timer = window.setInterval(() => {
+      void refresh({ silent: true })
+    }, 45_000)
+    return () => window.clearInterval(timer)
+  }, [refresh, email])
 
   const createInvoice = async (team: TeamSpendRow, send: boolean) => {
     setInvoicingId(team.owner_id)
@@ -237,6 +259,11 @@ export default function OwnerPortfolioPage() {
           <AppLogo variant="light" width={120} />
           <span className="text-gray-600">·</span>
           <span className="text-sm font-semibold text-amber-400">Owner portfolio</span>
+          {research.hitsToday > 0 && (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500 text-white">
+              {research.hitsToday} found today
+            </span>
+          )}
           {reviews.filter((r) => r.status === 'open').length > 0 && (
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-500 text-white">
               {reviews.filter((r) => r.status === 'open').length} to fix
@@ -299,6 +326,8 @@ export default function OwnerPortfolioPage() {
             {error}
           </div>
         )}
+
+        <SkipTraceResearchHits stats={research} loading={reviewsLoading} />
 
         <SkipTraceReviewQueue
           reviews={reviews}
