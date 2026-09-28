@@ -67,8 +67,4 @@ export function clearWorkspaceCache(): void {
 }
 
 /** Normalize owner names for the shared skip_trace_cache primary key. */
-export function skipTraceOwnerKey(ownerName: string | null | undefined): string {
-  return String(ownerName ?? '')
-    .trim()
-    .toUpperCase()
-}
+export { skipTraceOwnerKey } from '@/lib/skip-trace-cache'

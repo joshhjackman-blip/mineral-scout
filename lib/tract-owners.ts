@@ -28,6 +28,10 @@ export type TractOwnerRow = {
   out_of_state?: boolean | null
   rrc_lease_id?: string | number | null
   sptb_code?: string | null
+  phone?: string | null
+  email?: string | null
+  phones?: string[]
+  emails?: string[]
 }
 
 export const bareAbstract = (raw: unknown): string =>

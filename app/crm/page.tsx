@@ -534,7 +534,15 @@ export default function CRM() {
       }
       if (!deal.county && derivedCounty) updatePayload.county = derivedCounty
 
-      await supabase.from('deals').update(updatePayload).eq('id', deal.id)
+      const workspace = await getWorkspaceContext()
+      let dealQuery = supabase
+        .from('deals')
+        .update(updatePayload)
+        .eq('owner_name', deal.owner_name)
+      dealQuery = workspace?.workspaceId
+        ? dealQuery.eq('team_owner_id', workspace.workspaceId)
+        : dealQuery.eq('id', deal.id)
+      await dealQuery
       const patch: Partial<Deal> = {
         phone,
         email,
@@ -544,8 +552,9 @@ export default function CRM() {
         needs_phone: !phone,
         county: deal.county ?? derivedCounty ?? null,
       }
-      setDeals((prev) => prev.map((d) => (d.id === deal.id ? { ...d, ...patch } : d)))
-      setSelected((prev) => (prev?.id === deal.id ? { ...prev, ...patch } as Deal : prev))
+      const sameOwner = (d: Deal) => d.owner_name === deal.owner_name
+      setDeals((prev) => prev.map((d) => (sameOwner(d) ? { ...d, ...patch } : d)))
+      setSelected((prev) => (prev && sameOwner(prev) ? { ...prev, ...patch } : prev))
       setCallNow(Boolean(phone))
     } catch (err) {
       console.error('Skip trace failed:', err)

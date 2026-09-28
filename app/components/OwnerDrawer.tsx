@@ -8,7 +8,7 @@ import { COUNTIES } from '@/lib/counties'
 import SentinelLatestChip from '@/app/components/SentinelLatestChip'
 import { logUsageEvent } from '@/lib/usage-log'
 import { operatorMatchesAny } from '@/lib/operator-filter'
-import { getWorkspaceContext } from '@/lib/workspace'
+import { getWorkspaceContext, skipTraceOwnerKey } from '@/lib/workspace'
 import { leaseLookupVariants } from '@/lib/rrc-ids'
 import {
   DEFAULT_LEASE_ROYALTY,
@@ -831,6 +831,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [statusBusy, setStatusBusy] = useState(false)
+  const [cachedContacts, setCachedContacts] = useState<{
+    phones: string[]
+    emails: string[]
+  } | null>(null)
 
   useEffect(() => {
     if (open) {
@@ -841,6 +845,38 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       setActionError(null)
     }
   }, [open, owner?.owner_name])
+
+  useEffect(() => {
+    setCachedContacts(null)
+    if (!open || !owner) return
+    const hasPhone = Boolean(
+      owner.phone || (owner.phones ?? []).some((p) => Boolean(p && String(p).trim())),
+    )
+    const hasEmail = Boolean(
+      owner.email || (owner.emails ?? []).some((e) => Boolean(e && String(e).trim())),
+    )
+    if (hasPhone || hasEmail) return
+    const key = skipTraceOwnerKey(owner.owner_name)
+    if (!key) return
+    let cancelled = false
+    void (async () => {
+      const { data } = await supabase
+        .from('skip_trace_cache')
+        .select('phones, emails')
+        .eq('owner_name', key)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      const row = data?.[0]
+      if (cancelled || !row) return
+      setCachedContacts({
+        phones: Array.isArray(row.phones) ? row.phones.map(String) : [],
+        emails: Array.isArray(row.emails) ? row.emails.map(String) : [],
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, owner?.owner_name, owner?.phone, owner?.email, owner?.phones, owner?.emails])
 
   useEffect(() => {
     if (!open) return
@@ -857,9 +893,17 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
   // Full contact lists. Prefer the arrays (multiple skip-trace hits); fall
   // back to the scalar phone/email. De-dupe by formatted display.
   const rawPhones =
-    owner.phones && owner.phones.length ? owner.phones : [owner.phone]
+    owner.phones && owner.phones.length
+      ? owner.phones
+      : cachedContacts?.phones?.length
+        ? cachedContacts.phones
+        : [owner.phone]
   const rawEmails =
-    owner.emails && owner.emails.length ? owner.emails : [owner.email]
+    owner.emails && owner.emails.length
+      ? owner.emails
+      : cachedContacts?.emails?.length
+        ? cachedContacts.emails
+        : [owner.email]
   const phoneList = dedupeContacts(rawPhones.map(formatPhone))
   const emailList = dedupeContacts(rawEmails.map(formatEmail))
   const phone = phoneList[0] ?? null

@@ -641,11 +641,13 @@ export async function POST(req: NextRequest) {
   // 1) Shared cache first — any prior team's result counts. Cache hits
   // are FREE ($0) — no usage increment, no invoice line.
   if (cacheKey) {
-    const { data: cached, error: cacheError } = await adminClient
+    const { data: cachedRows, error: cacheError } = await adminClient
       .from('skip_trace_cache')
       .select('phones, emails')
       .eq('owner_name', cacheKey)
-      .maybeSingle()
+      .order('updated_at', { ascending: false })
+      .limit(1)
+    const cached = cachedRows?.[0] ?? null
 
     if (cacheError) {
       console.error('Skip trace cache lookup error:', cacheError)
