@@ -161,7 +161,7 @@ export async function collectResearchTargets(
 ): Promise<ResearchTarget[]> {
   const parsed = parseTaxRollOwner(review.owner_name)
   const person = personTargetsFromReview(review)
-  const needEntity = parsed.kind === 'business' || parsed.kind === 'trust' || person.length === 0
+  const needEntity = parsed.kind === 'business' || person.length === 0
   if (!needEntity) return person.slice(0, MAX_TARGETS)
 
   const officers = await lookupTxEntityPeople(review.owner_name, {
