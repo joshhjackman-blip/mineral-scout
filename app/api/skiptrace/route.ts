@@ -15,6 +15,11 @@ import {
   readSkipTraceUsage,
 } from '@/lib/skip-trace-usage'
 
+// undici ProxyAgent only works on the Node runtime. Edge `fetch` also
+// strips `dispatcher`, so idiCORE would egress from a rotating Vercel IP
+// and never reach the allow-listed search endpoint.
+export const runtime = 'nodejs'
+
 // Skip trace usage is still tracked in the skip_trace_usage table
 // for internal accounting / abuse detection, but there is no monthly
 // cap enforced on end users. Setting the limit to Number.MAX_SAFE_INTEGER
@@ -316,18 +321,45 @@ async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult
   return { phones, emails }
 }
 
-/** Build a RequestInit that egresses through the static-IP proxy when
- * IDICORE_PROXY_URL / SKIPTRACE_PROXY_URL is set. idiCORE allow-lists a fixed
- * US IP; Vercel Pro egresses from rotating AWS ranges, so both the auth and
- * the search call must go through the registered-IP proxy. */
-async function idicoreProxyInit(base: RequestInit): Promise<RequestInit> {
-  const proxyUrl =
-    process.env.IDICORE_PROXY_URL?.trim() || process.env.SKIPTRACE_PROXY_URL?.trim()
-  if (!proxyUrl) return base
-  const { ProxyAgent } = await import('undici')
-  return { ...base, dispatcher: new ProxyAgent(proxyUrl) } as RequestInit & {
-    dispatcher: unknown
+function idicoreProxyUrl(): string {
+  return (
+    process.env.IDICORE_PROXY_URL?.trim() ||
+    process.env.SKIPTRACE_PROXY_URL?.trim() ||
+    ''
+  )
+}
+
+function idicoreHost(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'invalid-url'
   }
+}
+
+type IdicoreHttpResult = { ok: boolean; status: number; text: string }
+
+/**
+ * HTTP for idiCORE only. Must use undici's own `fetch` — Next.js patches
+ * global `fetch` and drops `dispatcher`, so `new ProxyAgent(proxyUrl)` on
+ * `fetch(url, { dispatcher })` never actually proxies. idiCORE allow-lists
+ * one static US IP; without the proxy, auth fails and `/search` is never
+ * billed (which is why the test dashboard can sit at 2 searches).
+ */
+async function idicoreHttp(
+  url: string,
+  init: { method: string; headers: Record<string, string>; body?: string },
+): Promise<IdicoreHttpResult> {
+  const proxyUrl = idicoreProxyUrl()
+  const { fetch: undiciFetch, ProxyAgent } = await import('undici')
+  const res = await undiciFetch(url, {
+    method: init.method,
+    headers: init.headers,
+    body: init.body,
+    ...(proxyUrl ? { dispatcher: new ProxyAgent(proxyUrl) } : {}),
+  })
+  const text = await res.text()
+  return { ok: res.ok, status: res.status, text }
 }
 
 // Cached idiCORE bearer token (survives across calls on a warm serverless
@@ -351,13 +383,22 @@ async function idicoreAuthenticate(): Promise<string | null> {
   const authUrl = process.env.IDICORE_AUTH_URL?.trim()
   const clientId = process.env.IDICORE_CLIENT_ID?.trim()
   const clientSecret = process.env.IDICORE_CLIENT_SECRET?.trim()
-  if (!authUrl || !clientId || !clientSecret) return null
+  if (!authUrl || !clientId || !clientSecret) {
+    console.error(
+      'idiCORE auth skipped: missing IDICORE_AUTH_URL / CLIENT_ID / CLIENT_SECRET',
+    )
+    return null
+  }
 
   const glba = process.env.IDICORE_GLBA?.trim() || 'otheruse'
   const dppa = process.env.IDICORE_DPPA?.trim() || 'none'
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
 
-  const init = await idicoreProxyInit({
+  console.log('idiCORE auth', {
+    host: idicoreHost(authUrl),
+    viaProxy: Boolean(idicoreProxyUrl()),
+  })
+  const res = await idicoreHttp(authUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -365,16 +406,19 @@ async function idicoreAuthenticate(): Promise<string | null> {
     },
     body: JSON.stringify({ glba, dppa }),
   })
-  const res = await fetch(authUrl, init as RequestInit)
   if (!res.ok) {
-    console.error('idiCORE auth failed:', res.status, (await res.text()).slice(0, 300))
+    console.error('idiCORE auth failed:', res.status, res.text.slice(0, 300))
     return null
   }
   // The response body is the token itself (a raw JWT string).
-  const token = (await res.text()).trim()
-  if (!token) return null
+  const token = res.text.trim()
+  if (!token) {
+    console.error('idiCORE auth returned an empty body')
+    return null
+  }
   // idiCORE tokens expire in ~15 min; cache for 12 to stay safely inside that.
   idicoreToken = { value: token, expiresAt: Date.now() + 12 * 60_000 }
+  console.log('idiCORE auth ok, token chars', token.length)
   return token
 }
 
@@ -393,11 +437,17 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
   const emails: string[] = []
   const searchUrl =
     process.env.IDICORE_SEARCH_URL?.trim() || process.env.IDICORE_API_URL?.trim()
-  if (!searchUrl) return { phones, emails }
+  if (!searchUrl) {
+    console.error('idiCORE search skipped: IDICORE_SEARCH_URL / IDICORE_API_URL unset')
+    return { phones, emails }
+  }
 
   // Token: two-step auth when IDICORE_AUTH_URL is set, else legacy static key.
   const token = (await idicoreAuthenticate()) || process.env.IDICORE_API_KEY?.trim()
-  if (!token) return { phones, emails }
+  if (!token) {
+    console.error('idiCORE search skipped: no token (auth failed and IDICORE_API_KEY unset)')
+    return { phones, emails }
+  }
 
   // idiCORE person-search inputs. First/last + address narrow the match; the
   // tailored MineralMap template returns only phone + email.
@@ -415,17 +465,23 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
     process.env.IDICORE_AUTH_SCHEME?.trim().toLowerCase() === 'bearer'
       ? `Bearer ${token}`
       : token
-  const init = await idicoreProxyInit({
+  console.log('idiCORE search POST', {
+    host: idicoreHost(searchUrl),
+    viaProxy: Boolean(idicoreProxyUrl()),
+    hasFirst: Boolean(body.firstName),
+    hasLast: Boolean(body.lastName),
+    hasAddress: Boolean(body.address && body.city && body.state),
+  })
+  const res = await idicoreHttp(searchUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: authHeader },
     body: JSON.stringify(body),
   })
-  const res = await fetch(searchUrl, init as RequestInit)
   if (!res.ok) {
-    console.error('idiCORE search failed:', res.status, (await res.text()).slice(0, 300))
+    console.error('idiCORE search failed:', res.status, res.text.slice(0, 300))
     return { phones, emails }
   }
-  const data = JSON.parse(await res.text()) as Record<string, unknown>
+  const data = JSON.parse(res.text) as Record<string, unknown>
   // idiCORE MineralMap response: { result: [ { phone: [{number,...}],
   // email: [{data,...}] }, ... ], error?, ... }. A too-broad query returns an
   // `error` (e.g. TooManyMatches) with result=[]; we just yield no contacts
@@ -448,6 +504,11 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
   }
   // Defensive fallback for any other shape.
   extractContactsFromPayload(data, phones, emails)
+  console.log('idiCORE search parsed', {
+    identities: results.length,
+    phones: phones.length,
+    emails: emails.length,
+  })
   return { phones, emails }
 }
 
@@ -686,12 +747,14 @@ export async function POST(req: NextRequest) {
     let phones: string[] = []
     let emails: string[] = []
     let cacheSource = 'none'
+    const tried: string[] = []
 
     for (const name of order) {
       const run = runners[name]
       if (!run) continue
       try {
         console.log(`Skip trace trying provider: ${name}`)
+        tried.push(name)
         const result = await run()
         if (result.phones.length > 0 || result.emails.length > 0) {
           phones = result.phones
@@ -781,6 +844,7 @@ export async function POST(req: NextRequest) {
       unit_price_usd: billable ? SKIP_TRACE_PRICE_USD : 0,
       waived: skipTraceWaived,
       source: cacheSource,
+      tried,
       owner_type: ownerType,
       hit: phones.length > 0 || emails.length > 0,
       credits_deducted: 0,
