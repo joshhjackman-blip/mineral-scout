@@ -16,6 +16,8 @@ import {
   leaseLookupVariants,
   normalizeApi,
 } from '@/lib/rrc-ids'
+import { skipTraceOwnerKey } from '@/lib/workspace'
+import { mergeSkipTraceCache } from '@/lib/skip-trace-cache'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -178,6 +180,47 @@ async function loadOwnersFromWellApis(
   return { owners: sortOwnersByAcreage(rows), error: null }
 }
 
+const CACHE_IN_CHUNK = 200
+
+/** Attach shared skip_trace_cache phones/emails so a paid skip-trace
+ * on one tract shows on the same owner on every other tract. */
+async function attachSkipTraceCache(
+  owners: TractOwnerRow[],
+): Promise<TractOwnerRow[]> {
+  if (owners.length === 0) return owners
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return owners
+
+  const names = Array.from(
+    new Set(owners.map((o) => skipTraceOwnerKey(o.owner_name)).filter(Boolean)),
+  )
+  if (names.length === 0) return owners
+
+  const admin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  const cacheRows: Array<{
+    owner_name: string
+    phones?: string[] | null
+    emails?: string[] | null
+  }> = []
+  for (let i = 0; i < names.length; i += CACHE_IN_CHUNK) {
+    const chunk = names.slice(i, i + CACHE_IN_CHUNK)
+    const { data, error } = await admin
+      .from('skip_trace_cache')
+      .select('owner_name, phones, emails')
+      .in('owner_name', chunk)
+    if (error) {
+      console.error('skip_trace_cache hydrate error:', error.message)
+      break
+    }
+    cacheRows.push(...((data ?? []) as typeof cacheRows))
+  }
+  if (cacheRows.length === 0) return owners
+  return mergeSkipTraceCache(owners, cacheRows)
+}
+
 /**
  * GET /api/tract-owners?county=martin&abstract=616
  *
@@ -303,14 +346,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  const withContacts = await attachSkipTraceCache(owners)
+
   return NextResponse.json({
     success: true,
     data: {
       county,
       abstract: bare,
       source,
-      owners,
-      count: owners.length,
+      owners: withContacts,
+      count: withContacts.length,
       db_error: dbError,
     },
     error: null,

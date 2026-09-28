@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase'
 import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { isPlatformOwner } from '@/lib/team'
-import { getWorkspaceContext } from '@/lib/workspace'
+import { getWorkspaceContext, skipTraceOwnerKey } from '@/lib/workspace'
 import ThemeToggle from '@/app/components/ThemeToggle'
 import {
   bareAbstract,
@@ -148,6 +148,8 @@ type TractOwner = {
   prod_cumulative_sum_oil?: number
   phone?: string
   email?: string
+  phones?: string[]
+  emails?: string[]
   rrc_lease_id?: string | number | null
   sptb_code?: string | null
 }
@@ -1766,6 +1768,11 @@ export default function Home() {
   const [dbTractOwners, setDbTractOwners] = useState<TractOwner[]>([])
   const [dbOwnersLoading, setDbOwnersLoading] = useState(false)
   const [ownerListSource, setOwnerListSource] = useState<string>('')
+  // Session overlay: a skip-trace on tract A should show on tract B
+  // immediately, even before /api/tract-owners re-hydrates from cache.
+  const [skipTraceContacts, setSkipTraceContacts] = useState<
+    Record<string, { phones: string[]; emails: string[] }>
+  >({})
   const tractWellApis = useMemo(() => {
     const apis = new Set<string>()
     for (const well of tractWells) {
@@ -1828,6 +1835,10 @@ export default function Home() {
             ownership_pct: r.ownership_pct == null ? 0 : Number(r.ownership_pct),
             rrc_lease_id: (r.rrc_lease_id as string | number | null) ?? null,
             sptb_code: (r.sptb_code as string | null) ?? null,
+            phones: Array.isArray(r.phones) ? (r.phones as unknown[]).map(String) : [],
+            emails: Array.isArray(r.emails) ? (r.emails as unknown[]).map(String) : [],
+            phone: typeof r.phone === 'string' ? r.phone : (Array.isArray(r.phones) ? String(r.phones[0] ?? '') : undefined),
+            email: typeof r.email === 'string' ? r.email : (Array.isArray(r.emails) ? String(r.emails[0] ?? '') : undefined),
           })),
         )
       } catch {
@@ -1845,15 +1856,41 @@ export default function Home() {
   // Merge the embedded preview with the complete DB list (deduped by owner +
   // lease), so nothing is lost and recovered/uncapped owners are included.
   const tractOwners = useMemo<TractOwner[]>(() => {
-    if (dbTractOwners.length === 0) return embeddedOwners
-    if (embeddedOwners.length === 0) return dbTractOwners
+    const applyContacts = (owners: TractOwner[]): TractOwner[] =>
+      owners.map((owner) => {
+        const hit = skipTraceContacts[skipTraceOwnerKey(owner.owner_name)]
+        if (!hit) return owner
+        return {
+          ...owner,
+          phones: hit.phones,
+          emails: hit.emails,
+          phone: hit.phones[0],
+          email: hit.emails[0],
+        }
+      })
+
+    if (dbTractOwners.length === 0) return applyContacts(embeddedOwners)
+    if (embeddedOwners.length === 0) return applyContacts(dbTractOwners)
     const keyOf = (o: TractOwner) =>
       `${String(o.owner_name ?? '').toUpperCase().trim()}|${normalizeLeaseId(o.rrc_lease_id)}`
+    const dbByKey = new Map(dbTractOwners.map((o) => [keyOf(o), o]))
     const seen = new Set<string>()
     const merged: TractOwner[] = []
     for (const o of embeddedOwners) {
-      seen.add(keyOf(o))
-      merged.push(o)
+      const k = keyOf(o)
+      seen.add(k)
+      const db = dbByKey.get(k)
+      merged.push(
+        db
+          ? {
+              ...o,
+              phones: db.phones ?? o.phones,
+              emails: db.emails ?? o.emails,
+              phone: db.phone ?? o.phone,
+              email: db.email ?? o.email,
+            }
+          : o,
+      )
     }
     for (const o of dbTractOwners) {
       const k = keyOf(o)
@@ -1862,8 +1899,8 @@ export default function Home() {
         merged.push(o)
       }
     }
-    return merged
-  }, [embeddedOwners, dbTractOwners])
+    return applyContacts(merged)
+  }, [embeddedOwners, dbTractOwners, skipTraceContacts])
 
   // Fetch + cache the county's wells GeoJSON (the exact file the map draws),
   // so tract-wells can be matched by geometry rather than a brittle abstract
@@ -2260,72 +2297,82 @@ export default function Home() {
         }
 
         const skipRecord = skipTracing as unknown as Record<string, unknown>
-        const dealData = {
-          user_id: workspace.userId,
-          team_owner_id: workspace.workspaceId,
-          owner_name: skipTracing.owner_name,
-          tract_abstract: (skipRecord.tract_abstract as string | undefined) ?? selected?.ABSTRACT_L ?? '',
-          tract_survey: (skipRecord.tract_survey as string | undefined) ?? selected?.LEVEL1_SUR ?? '',
-          operator_name: skipTracing.operator_name ?? '',
-          rrc_lease_id: skipTracing.rrc_lease_id ?? null,
-          mailing_address: skipTracing.mailing_address ?? skipTracing.address_1 ?? '',
-          mailing_city: skipTracing.mailing_city ?? '',
-          mailing_state: skipTracing.mailing_state ?? '',
-          mailing_zip: skipTracing.mailing_zip ?? '',
-          acreage: skipTracing.acreage ?? null,
-          tag: 'skip_traced',
-          phone,
-          email,
+        const contactKey = skipTraceOwnerKey(skipTracing.owner_name)
+        setSkipTraceContacts((prev) => ({
+          ...prev,
+          [contactKey]: { phones, emails },
+        }))
+        setDbTractOwners((prev) =>
+          prev.map((owner) =>
+            skipTraceOwnerKey(owner.owner_name) === contactKey
+              ? { ...owner, phones, emails, phone: phone ?? undefined, email: email ?? undefined }
+              : owner,
+          ),
+        )
+        setDrawerOwner((prev) =>
+          prev && skipTraceOwnerKey(prev.owner_name) === contactKey
+            ? { ...prev, phones, emails, phone: phone ?? undefined, email: email ?? undefined }
+            : prev,
+        )
+
+        const dealPatch = {
+          tag: 'skip_traced' as const,
+          phone: phone ?? null,
+          email: email ?? null,
           phones,
           emails,
           needs_phone: phones.length === 0,
-          source: 'skip_trace',
-          county: selectedCounty,
           updated_at: new Date().toISOString(),
-          notes:
-            `Skip traced ${new Date().toLocaleDateString()}\n` +
-            `Phone${phones.length > 1 ? `s (${phones.length})` : ''}: ${phones.join(', ') || 'not found'}\n` +
-            `Email${emails.length > 1 ? `s (${emails.length})` : ''}: ${emails.join(', ') || 'not found'}`,
         }
 
-        const { data: existing, error: existingError } = await supabase
+        const { data: existingRows, error: existingError } = await supabase
           .from('deals')
-          .select('id, phone, email')
+          .select('id')
           .eq('team_owner_id', workspace.workspaceId)
           .eq('owner_name', skipTracing.owner_name)
-          .maybeSingle()
         if (existingError) {
           console.error('Existing deal lookup error:', existingError)
           throw existingError
         }
 
         let savedDeal: { id?: string } | null = null
-        if (existing?.id) {
-          const { data, error } = await supabase
+        if (existingRows && existingRows.length > 0) {
+          const { error } = await supabase
             .from('deals')
-            .update({
-              tag: 'skip_traced',
-              phone: phone ?? null,
-              email: email ?? null,
-              phones,
-              emails,
-              needs_phone: phones.length === 0,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existing.id)
+            .update(dealPatch)
             .eq('team_owner_id', workspace.workspaceId)
-            .select()
-            .single()
+            .eq('owner_name', skipTracing.owner_name)
           if (error) {
             console.error('Failed to update CRM deal:', error)
             throw error
           }
-          savedDeal = (data ?? null) as { id?: string } | null
+          savedDeal = existingRows[0]
         } else {
+          const dealData = {
+            user_id: workspace.userId,
+            team_owner_id: workspace.workspaceId,
+            owner_name: skipTracing.owner_name,
+            tract_abstract: (skipRecord.tract_abstract as string | undefined) ?? selected?.ABSTRACT_L ?? '',
+            tract_survey: (skipRecord.tract_survey as string | undefined) ?? selected?.LEVEL1_SUR ?? '',
+            operator_name: skipTracing.operator_name ?? '',
+            rrc_lease_id: skipTracing.rrc_lease_id ?? null,
+            mailing_address: skipTracing.mailing_address ?? skipTracing.address_1 ?? '',
+            mailing_city: skipTracing.mailing_city ?? '',
+            mailing_state: skipTracing.mailing_state ?? '',
+            mailing_zip: skipTracing.mailing_zip ?? '',
+            acreage: skipTracing.acreage ?? null,
+            source: 'skip_trace',
+            county: selectedCounty,
+            notes:
+              `Skip traced ${new Date().toLocaleDateString()}\n` +
+              `Phone${phones.length > 1 ? `s (${phones.length})` : ''}: ${phones.join(', ') || 'not found'}\n` +
+              `Email${emails.length > 1 ? `s (${emails.length})` : ''}: ${emails.join(', ') || 'not found'}`,
+            ...dealPatch,
+          }
           const { data, error } = await supabase
             .from('deals')
             .insert(dealData)
-            .select()
+            .select('id')
             .single()
           if (error) {
             console.error('Failed to insert CRM deal:', error)
