@@ -121,7 +121,7 @@ const ENTITY_RE = new RegExp(
   'i',
 )
 
-/** Label only — Accurate Append runs first, then idiCORE / BatchData / Tracerfy. */
+/** Label only — used to pick Accurate Append's people vs business endpoint. */
 function classifyOwner(ownerName?: string, firstName?: string, lastName?: string): 'entity' | 'person' {
   const s = `${ownerName ?? ''} ${firstName ?? ''} ${lastName ?? ''}`.toUpperCase()
   return ENTITY_RE.test(s) ? 'entity' : 'person'
@@ -202,10 +202,11 @@ async function accurateAppendGet(
   }
 }
 
-/** Accurate Append phone + email append — first provider when ACCURATE_APPEND_API_KEY is set.
+/** Accurate Append phone + email append — backup after idiCORE when
+ * ACCURATE_APPEND_API_KEY is set.
  * People: ADS consumer phone (mobile + landline) + MaxConnect email.
  * Entities: business phone append + email (owner name as lastname).
- * Empty result falls through to idiCORE. */
+ * Empty result falls through to BatchData. */
 async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
@@ -278,7 +279,7 @@ async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<Tr
   return { phones, emails }
 }
 
-/** BatchData property skip-trace — backup after Accurate Append / idiCORE. */
+/** BatchData property skip-trace — backup after idiCORE / Accurate Append. */
 async function traceBatchData(apiKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
@@ -422,7 +423,7 @@ async function idicoreAuthenticate(): Promise<string | null> {
   return token
 }
 
-/** idiCORE (IDI) skip-trace — second provider, after Accurate Append.
+/** idiCORE (IDI) skip-trace — first provider.
  *
  * Two-step: authenticate (idicoreAuthenticate) then POST the search to
  * IDICORE_SEARCH_URL (the tailored "/search/MineralMap" template). Falls back
@@ -710,7 +711,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Provider chain (same for LLC / trust / estate / person):
-  //      Accurate Append first, then idiCORE, BatchData backup, Tracerfy last-resort.
+  //      idiCORE first, then Accurate Append, BatchData backup, Tracerfy last-resort.
   const accurateAppendKey = accurateAppendLicenseKey()
   const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
   const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
@@ -741,7 +742,7 @@ export async function POST(req: NextRequest) {
     idicore: idicoreEnabled ? () => traceIdicore(traceArgs) : null,
     tracerfy: tracerfyKey ? () => traceTracerfy(tracerfyKey, traceArgs) : null,
   }
-  const order = ['accurateappend', 'idicore', 'batchdata', 'tracerfy']
+  const order = ['idicore', 'accurateappend', 'batchdata', 'tracerfy']
 
   try {
     let phones: string[] = []
