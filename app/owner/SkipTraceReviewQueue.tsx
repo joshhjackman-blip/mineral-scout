@@ -83,7 +83,9 @@ export default function SkipTraceReviewQueue({
           </h2>
           <p className="text-xs text-gray-500 mt-0.5">
             Skip traces with no phone, and numbers callers marked wrong.
-            Enter the right number here — CRM and the shared cache update when you save.
+            A background researcher unwraps trusts/LLCs and retries skip-trace
+            automatically. Numbers it finds land on the CRM and shared cache;
+            you can still type one in here.
           </p>
         </div>
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">

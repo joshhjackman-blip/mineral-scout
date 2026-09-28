@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { isPlatformOwner } from '@/lib/team'
-import { skipTraceOwnerKey } from '@/lib/workspace'
-import { parseContactLines, type SkipTraceReview } from '@/lib/skip-trace-review'
+import { parseContactLines, applySkipTracePhones, type SkipTraceReview } from '@/lib/skip-trace-review'
 
 export const dynamic = 'force-dynamic'
 
@@ -127,47 +126,19 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Enter at least one phone number' }, { status: 400 })
   }
 
-  const cacheKey = skipTraceOwnerKey(existing.owner_name)
-  await db.from('skip_trace_cache').delete().eq('owner_name', cacheKey)
-  const { error: cacheError } = await db.from('skip_trace_cache').insert({
-    owner_name: cacheKey,
-    mailing_address: existing.mailing_address ?? '',
+  const applied = await applySkipTracePhones(db, {
+    ownerName: existing.owner_name,
+    mailingAddress: existing.mailing_address ?? '',
     phones,
     emails,
     source: 'owner_manual',
-    updated_at: now,
+    dealId: existing.deal_id,
+    reviewId: id,
+    notes: body.notes ?? existing.notes,
+    resolvedBy: user.id,
   })
-  if (cacheError) {
-    console.error('Manual skip-trace cache write failed:', cacheError)
-  }
-
-  const dealPatch = {
-    phone: phones[0],
-    phones,
-    email: emails[0] ?? null,
-    emails,
-    tag: 'skip_traced',
-    updated_at: now,
-  }
-  if (existing.deal_id) {
-    await db.from('deals').update(dealPatch).eq('id', existing.deal_id)
-  }
-  await db.from('deals').update(dealPatch).eq('owner_name', existing.owner_name)
-
-  const { error: updateError } = await db
-    .from('skip_trace_reviews')
-    .update({
-      phones,
-      emails,
-      notes: body.notes ?? existing.notes,
-      status: 'resolved',
-      resolved_at: now,
-      resolved_by: user.id,
-      updated_at: now,
-    })
-    .eq('id', id)
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 })
+  if (!applied) {
+    return NextResponse.json({ error: 'Failed to save phone numbers' }, { status: 500 })
   }
 
   return NextResponse.json({ success: true, phones, emails })
