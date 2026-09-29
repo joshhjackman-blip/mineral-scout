@@ -10,7 +10,12 @@ This file is a planar coverage:
   2. Union each live county with the outer shell of its CAD parcels so
      tracts that sit past the Census line still belong to that county.
   3. Subtract those parcel shells from every other county so the orange
-     mask can never cover a neighbor's tracts.
+     mask can never cover a neighbor's tracts. Keep the resulting holes —
+     filling them after the subtract was covering Midland Block 38 T1N
+     (and similar CAD overshoots) with Martin's overlay.
+
+Pass --patch to re-hug live CAD shells on the existing file without
+re-downloading Census boundaries.
 """
 
 from __future__ import annotations
@@ -62,13 +67,14 @@ def fill_holes(geom):
     return geom
 
 
-def clean(geom):
+def clean(geom, *, keep_holes: bool = False):
     if geom is None or geom.is_empty:
         return geom
     if not geom.is_valid:
         geom = geom.buffer(0)
-    geom = fill_holes(geom)
-    if geom.is_empty:
+    if not keep_holes:
+        geom = fill_holes(geom)
+    if geom is None or geom.is_empty:
         return geom
     simplified = geom.simplify(SIMPLIFY_DEG, preserve_topology=True)
     return simplified if not simplified.is_empty else geom
@@ -150,13 +156,7 @@ def geom_to_mapping(geom):
     return m
 
 
-def main() -> int:
-    census_shp = ensure_census_shapefile()
-
-    print("loading Census Texas counties…")
-    counties = load_census_texas(census_shp)
-    print(f"  {len(counties)} Texas counties")
-
+def load_live_cad_shells() -> dict[str, object]:
     extras: dict[str, object] = {}
     for county_id, fips in LIVE.items():
         parcel_path = PUBLIC / f"{county_id}_parcels_map.geojson"
@@ -169,11 +169,34 @@ def main() -> int:
             print(f"  skip {county_id}: empty dissolve")
             continue
         extras[fips] = shell
+        print(f"  {county_id}: {shell.geom_type} bounds={tuple(round(c, 5) for c in shell.bounds)}")
+    return extras
+
+
+def hug_live_cad(counties: dict[str, dict], extras: dict[str, object]) -> None:
+    for fips, shell in extras.items():
+        if fips not in counties:
+            continue
         base = counties[fips]["geom"]
-        counties[fips]["geom"] = base.union(shell)
+        merged = base.union(shell)
+        if not merged.is_valid:
+            merged = merged.buffer(0)
+        # Solid block for this county, including CAD tracts that sit past
+        # the Census line. Interior CAD gaps are filled; disconnected
+        # overshoot islands (Midland A-672 into Martin, etc.) stay.
+        counties[fips]["geom"] = fill_holes(merged)
         counties[fips]["source"] = "census+cad"
 
-    print("subtracting CAD shells from neighbors…")
+
+def subtract_cad_shells(counties: dict[str, dict], extras: dict[str, object]) -> None:
+    """Punch each live county's CAD tracts out of every other county.
+
+    Do not fill holes afterwards — those holes are the whole point. A
+    previous pass used fill_holes() on the subtracted polygons, which
+    restored a Census-rectangle overlay on top of Midland tracts that
+    cross into Martin.
+    """
+    print("subtracting CAD shells from neighbors (keeping punch-out holes)…")
     for fips, shell in extras.items():
         for other_fips, entry in counties.items():
             if other_fips == fips:
@@ -185,10 +208,12 @@ def main() -> int:
                 trimmed = trimmed.buffer(0)
             entry["geom"] = trimmed
 
-    print("simplifying…")
+
+def features_from_counties(counties: dict[str, dict]) -> list[dict]:
     features = []
     for fips, entry in sorted(counties.items()):
-        geom = clean(entry["geom"])
+        # Keep neighbor-CAD holes; only drop vertex noise.
+        geom = clean(entry["geom"], keep_holes=True)
         if geom is None or geom.is_empty:
             continue
         features.append({
@@ -202,12 +227,60 @@ def main() -> int:
             },
             "geometry": geom_to_mapping(geom),
         })
+    return features
 
+
+def write_counties(features: list[dict]) -> None:
     OUT.write_text(json.dumps(
         {"type": "FeatureCollection", "features": features},
         separators=(",", ":"),
     ))
     print(f"wrote {OUT} ({OUT.stat().st_size / 1024:.0f} KB, {len(features)} counties)")
+
+
+def patch_existing() -> int:
+    """Re-hug live CAD shells on the current tx_counties.geojson.
+
+    Skips the Census download so a Midland/Martin (or any live-county)
+    parcel update can punch the orange overlay without rebuilding 254
+    counties from the cartographic boundary file.
+    """
+    if not OUT.exists():
+        raise FileNotFoundError(OUT)
+    data = json.loads(OUT.read_text())
+    counties: dict[str, dict] = {}
+    for feat in data.get("features") or []:
+        fips = str(feat.get("id") or (feat.get("properties") or {}).get("GEOID") or "")
+        geom = shape(feat["geometry"])
+        if not geom.is_valid:
+            geom = geom.buffer(0)
+        props = feat.get("properties") or {}
+        counties[fips] = {
+            "name": props.get("NAME", ""),
+            "geom": geom,
+            "source": props.get("source", "census"),
+        }
+    extras = load_live_cad_shells()
+    hug_live_cad(counties, extras)
+    subtract_cad_shells(counties, extras)
+    write_counties(features_from_counties(counties))
+    return 0
+
+
+def main() -> int:
+    if "--patch" in sys.argv:
+        return patch_existing()
+
+    census_shp = ensure_census_shapefile()
+
+    print("loading Census Texas counties…")
+    counties = load_census_texas(census_shp)
+    print(f"  {len(counties)} Texas counties")
+
+    extras = load_live_cad_shells()
+    hug_live_cad(counties, extras)
+    subtract_cad_shells(counties, extras)
+    write_counties(features_from_counties(counties))
     return 0
 
 

@@ -44,7 +44,7 @@ export const BASIN_OVERVIEW_ZOOM = 7.0
 // Census 500k county lines, snapped to each live county's CAD parcel
 // shell so the orange tract-view mask hugs the tracts (Plotly's file
 // was ~20 vertices/county and left gaps on Ward/Pecos/Reeves).
-export const TX_COUNTIES_GEOJSON_PATH = '/tx_counties.geojson?v=cad-1'
+export const TX_COUNTIES_GEOJSON_PATH = '/tx_counties.geojson?v=cad-2'
 
 // Gonzales was archived 2026-07-17. All its Supabase tables
 // (gonzales_mineral_ownership, gonzales_wells, gonzales_permits,
