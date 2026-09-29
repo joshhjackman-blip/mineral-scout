@@ -13,7 +13,7 @@ const CATEGORIES = [
   { value: 'other', label: 'Other' },
 ] as const
 
-const HIDDEN_PREFIXES = ['/landing', '/auth', '/pricing', '/demo', '/book-demo', '/legal']
+const HIDDEN_PREFIXES = ['/landing', '/auth', '/pricing', '/demo', '/book-demo', '/get-started', '/onboard', '/legal']
 
 /**
  * Classic corner help-desk chat widget.

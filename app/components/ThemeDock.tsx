@@ -17,6 +17,8 @@ export default function ThemeDock() {
     pathname.startsWith('/pricing') ||
     pathname.startsWith('/demo') ||
     pathname.startsWith('/book-demo') ||
+    pathname.startsWith('/get-started') ||
+    pathname.startsWith('/onboard') ||
     pathname.startsWith('/legal')
 
   if (hide) return null

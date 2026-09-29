@@ -1,4 +1,8 @@
-export type InviteEmailKind = 'team_admin' | 'team_member' | 'platform_admin'
+export type InviteEmailKind =
+  | 'team_admin'
+  | 'team_member'
+  | 'platform_admin'
+  | 'approved_signup'
 
 export function inviteCopy(kind: InviteEmailKind, inviterEmail?: string | null): {
   subject: string
@@ -6,6 +10,14 @@ export function inviteCopy(kind: InviteEmailKind, inviterEmail?: string | null):
   body: string
   cta: string
 } {
+  if (kind === 'approved_signup') {
+    return {
+      subject: "You're approved for Mineral Map — finish signup",
+      headline: 'Your Mineral Map access was approved',
+      body: 'Click below to choose a password, sign the agreement, add a card for skip-trace, and say whether you will be the team admin. Access is free; $1 per skip-trace phone hit is charged to that card at month end.',
+      cta: 'Finish signup',
+    }
+  }
   if (kind === 'team_admin') {
     return {
       subject: "You're invited to run a Mineral Map workspace",

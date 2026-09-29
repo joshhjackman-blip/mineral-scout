@@ -17,4 +17,11 @@ const adminHtml = inviteEmailHtml({
 assert.equal(adminHtml.includes('team admin'), true)
 assert.equal(adminHtml.includes('Set password and join'), true)
 
+const approved = inviteEmailHtml({
+  kind: 'approved_signup',
+  actionUrl: 'https://example.com/auth?welcome=signup',
+})
+assert.equal(approved.includes('Finish signup'), true)
+assert.equal(approved.includes('card'), true)
+
 console.log('invite-email.test.ts ok')

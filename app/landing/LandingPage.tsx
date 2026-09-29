@@ -18,8 +18,6 @@ const display = Barlow_Condensed({
   variable: '--font-barlow-condensed',
 })
 
-const CONTACT_EMAIL = 'management@mineralmapllc.com'
-
 export default function LandingPage() {
   return (
     <div className={`cs-root ${display.variable}`}>
@@ -34,7 +32,7 @@ export default function LandingPage() {
           <Link href="/book-demo" className="cs-nav-demo">
             Book a demo
           </Link>
-          <Link href="/auth" className="cs-login">
+          <Link href="/get-started" className="cs-login">
             Get started
           </Link>
         </div>
@@ -54,7 +52,7 @@ export default function LandingPage() {
             </span>
           </p>
           <div className="cs-hero-actions">
-            <Link href="/auth" className="cs-btn-primary">
+            <Link href="/get-started" className="cs-btn-primary">
               Get started free
             </Link>
             <Link href="/book-demo" className="cs-btn-email">
