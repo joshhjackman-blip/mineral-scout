@@ -42,6 +42,8 @@ type TeamSpendRow = {
   stripe_customer_id?: string | null
   billing_exempt?: boolean
   skip_trace_waived?: boolean
+  has_card?: boolean
+  skip_trace_past_due?: boolean
   invoice_status?: string | null
   hosted_invoice_url?: string | null
   call_clicks: number
@@ -202,7 +204,7 @@ export default function OwnerPortfolioPage() {
     return () => window.clearInterval(timer)
   }, [refresh, email])
 
-  const createInvoice = async (team: TeamSpendRow, send: boolean) => {
+  const createInvoice = async (team: TeamSpendRow) => {
     setInvoicingId(team.owner_id)
     setInvoiceMessage(null)
     try {
@@ -212,25 +214,29 @@ export default function OwnerPortfolioPage() {
         body: JSON.stringify({
           team_owner_id: team.owner_id,
           month: usage?.month,
-          send,
         }),
       })
       const data = (await res.json()) as {
         error?: string
-        data?: { hostedInvoiceUrl?: string | null; status?: string; amountUsd?: number }
+        data?: {
+          hostedInvoiceUrl?: string | null
+          status?: string
+          amountUsd?: number
+          skipped?: boolean
+        }
       }
       if (!res.ok) {
-        setInvoiceMessage(data.error || 'Could not create Stripe invoice')
+        setInvoiceMessage(data.error || 'Could not charge skip-trace invoice')
         return
       }
       setInvoiceMessage(
-        send
-          ? `Sent ${team.owner_email} a Stripe invoice ($${data.data?.amountUsd ?? team.skip_trace_amount_usd}).`
-          : `Stripe draft ready for ${team.owner_email} ($${data.data?.amountUsd ?? team.skip_trace_amount_usd}). Open it in Stripe to review before sending.`,
+        data.data?.status === 'paid'
+          ? `Charged ${team.owner_email} $${data.data?.amountUsd ?? team.skip_trace_amount_usd} for skip-trace.`
+          : `Charge attempted for ${team.owner_email} ($${data.data?.amountUsd ?? team.skip_trace_amount_usd}). Status: ${data.data?.status ?? 'open'}.`,
       )
       await refresh()
     } catch {
-      setInvoiceMessage('Could not create Stripe invoice')
+      setInvoiceMessage('Could not charge skip-trace invoice')
     } finally {
       setInvoicingId(null)
     }
@@ -293,7 +299,7 @@ export default function OwnerPortfolioPage() {
               <strong className="text-gray-800">{email ?? '…'}</strong>.
               This view tracks skip-traces and calls across every team.
               Skip-trace is ${SKIP_TRACE_PRICE_USD.toFixed(2)} per returned
-              phone number, invoiced at month end.
+              phone number, charged to the team’s card at month end.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -356,7 +362,7 @@ export default function OwnerPortfolioPage() {
             icon={<DollarSign size={18} className="text-emerald-500" />}
             value={loading ? '—' : `$${skipTraceDue.toLocaleString()}`}
             hint={`${currentMonth} · $${SKIP_TRACE_PRICE_USD.toFixed(2)} per phone hit`}
-            sub="Customer teams · month-end invoice"
+            sub="Customer teams · charged at month end"
           />
           <Card
             label="Wrong numbers"
@@ -374,8 +380,8 @@ export default function OwnerPortfolioPage() {
                 Every team — {currentMonth}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Calls and skip-traces this month. Phone hits $ is billed at month
-                end (${SKIP_TRACE_PRICE_USD.toFixed(2)} when a number comes back).
+                Calls and skip-traces this month. Phone hits $ is charged to the
+                card on file at month end (${SKIP_TRACE_PRICE_USD.toFixed(2)} when a number comes back).
               </p>
             </div>
             <Link
@@ -455,6 +461,26 @@ export default function OwnerPortfolioPage() {
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.skip_trace_waived ? (
                           <span className="text-xs text-gray-400">Owner team</span>
+                        ) : team.skip_trace_past_due ? (
+                          <button
+                            type="button"
+                            disabled={invoicingId === team.owner_id}
+                            onClick={() => {
+                              void createInvoice(team)
+                            }}
+                            className="text-xs font-semibold text-red-700 hover:text-red-800 disabled:text-gray-400"
+                          >
+                            {invoicingId === team.owner_id ? 'Charging…' : 'Past due — retry'}
+                          </button>
+                        ) : team.invoice_status === 'paid' && team.hosted_invoice_url ? (
+                          <a
+                            href={team.hosted_invoice_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs font-semibold text-emerald-700 hover:text-emerald-800"
+                          >
+                            paid →
+                          </a>
                         ) : team.hosted_invoice_url ? (
                           <a
                             href={team.hosted_invoice_url}
@@ -467,16 +493,27 @@ export default function OwnerPortfolioPage() {
                         ) : (team.billable_skip_traces ?? 0) > 0 ? (
                           <button
                             type="button"
-                            disabled={invoicingId === team.owner_id}
+                            disabled={invoicingId === team.owner_id || team.has_card === false}
                             onClick={() => {
-                              void createInvoice(team, false)
+                              void createInvoice(team)
                             }}
                             className="text-xs font-semibold text-amber-700 hover:text-amber-800 disabled:text-gray-400"
+                            title={
+                              team.has_card === false
+                                ? 'Team has no card on file'
+                                : undefined
+                            }
                           >
-                            {invoicingId === team.owner_id ? 'Creating…' : 'Stripe draft'}
+                            {invoicingId === team.owner_id
+                              ? 'Charging…'
+                              : team.has_card === false
+                                ? 'No card'
+                                : 'Charge card'}
                           </button>
                         ) : (
-                          <span className="text-xs text-gray-400">—</span>
+                          <span className="text-xs text-gray-400">
+                            {team.has_card === false ? 'No card' : '—'}
+                          </span>
                         )}
                       </td>
                     </tr>

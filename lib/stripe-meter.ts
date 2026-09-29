@@ -3,9 +3,8 @@ import { skipTraceMeterEventName } from '@/lib/billing'
 
 /**
  * @deprecated Skip-trace is billed as a month-end Stripe Invoice per team
- * ($1 only when a phone number is returned). Do not report meter events —
- * that would auto-charge the card on the subscription cycle and double-bill
- * against the invoice ledger.
+ * ($1 only when a phone number is returned), charged to the card on file.
+ * Do not report meter events — that would double-bill against the invoice ledger.
  *
  * Kept so existing Dashboard meters can be removed later without breaking
  * imports. See lib/stripe-invoices.ts.

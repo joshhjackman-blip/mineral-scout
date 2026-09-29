@@ -906,7 +906,7 @@ export default function AdminDashboard() {
               </h2>
               <p className="text-sm text-gray-500 mb-3">
                 Access is free for everyone. Skip-trace ($1 per phone hit) is
-                billed to customer teams at month end — except Mineral Map and
+                billed to customer teams at month end (card on file) — except Mineral Map and
                 Jordan's Great Plains workspace, which are waived. Grandfather
                 is no longer needed for access.
               </p>

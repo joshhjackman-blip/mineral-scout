@@ -10,10 +10,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy } from 'lucide-react'
+import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy, CreditCard } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import { inviteSeatCapacity, resolveTeamRole, type TeamRole } from '@/lib/team'
-import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost } from '@/lib/billing'
+import { estimateMonthlySkipTraceCost } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +27,17 @@ type SubRow = {
   status?: string | null
   seat_count?: number | null
   team_owner_id?: string | null
+}
+
+type BillingInfo = {
+  skip_trace_waived?: boolean
+  workspace_owner_email?: string | null
+  stripe_configured?: boolean
+  can_manage_card?: boolean
+  has_card?: boolean
+  skip_trace_past_due?: boolean
+  payment_method_brand?: string | null
+  payment_method_last4?: string | null
 }
 
 export default function Account() {
@@ -53,6 +64,10 @@ export default function Account() {
   const [inviteMessage, setInviteMessage] = useState('')
   const [ownerEmail, setOwnerEmail] = useState<string | null>(null)
   const [skipTraceWaived, setSkipTraceWaived] = useState(false)
+  const [billing, setBilling] = useState<BillingInfo | null>(null)
+  const [cardSetupLoading, setCardSetupLoading] = useState(false)
+  const [cardSetupMessage, setCardSetupMessage] = useState<string | null>(null)
+  const [cardSaved, setCardSaved] = useState(false)
 
   const teamRole: TeamRole = useMemo(
     () =>
@@ -142,17 +157,20 @@ export default function Account() {
       try {
         const billingRes = await fetch('/api/account/billing', { cache: 'no-store' })
         if (billingRes.ok) {
-          const billing = (await billingRes.json()) as {
-            data?: {
-              skip_trace_waived?: boolean
-              workspace_owner_email?: string | null
-            }
+          const billingJson = (await billingRes.json()) as {
+            data?: BillingInfo
           }
-          setSkipTraceWaived(billing.data?.skip_trace_waived === true)
-          setOwnerEmail(billing.data?.workspace_owner_email ?? null)
+          setSkipTraceWaived(billingJson.data?.skip_trace_waived === true)
+          setOwnerEmail(billingJson.data?.workspace_owner_email ?? null)
+          setBilling(billingJson.data ?? null)
         }
       } catch {
         setSkipTraceWaived(false)
+      }
+
+      if (typeof window !== 'undefined') {
+        const q = new URLSearchParams(window.location.search)
+        if (q.get('card') === 'saved') setCardSaved(true)
       }
 
       setLoading(false)
@@ -183,6 +201,27 @@ export default function Account() {
     clearWorkspaceCache()
     await supabase.auth.signOut()
     window.location.href = '/landing'
+  }
+
+  const handleAddCard = async () => {
+    setCardSetupLoading(true)
+    setCardSetupMessage(null)
+    try {
+      const res = await fetch('/api/billing/setup', { method: 'POST' })
+      const data = (await res.json()) as {
+        error?: string
+        data?: { url?: string | null }
+      }
+      if (!res.ok || !data.data?.url) {
+        setCardSetupMessage(data.error || 'Could not start card setup')
+        return
+      }
+      window.location.href = data.data.url
+    } catch {
+      setCardSetupMessage('Could not start card setup')
+    } finally {
+      setCardSetupLoading(false)
+    }
   }
 
   const handleInvite = async () => {
@@ -363,6 +402,17 @@ export default function Account() {
           <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 pb-3 border-b border-gray-100">
             Billing
           </div>
+          {cardSaved && (
+            <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              Card saved. We will charge it at month end for skip-trace phone hits.
+            </div>
+          )}
+          {billing?.skip_trace_past_due && !skipTraceWaived && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              Last month&apos;s skip-trace charge failed. Update the card below to keep
+              skip-tracing.
+            </div>
+          )}
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <div className="font-serif text-base font-bold text-gray-900 mb-1">
@@ -370,8 +420,8 @@ export default function Account() {
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
                 Mineral Map is free to use. You only pay for skip-trace when we
-                actually return a phone number. That total runs on your team
-                during the month; we send a Stripe invoice at month end (net 14).
+                actually return a phone number. Put a card on file; we charge the
+                month&apos;s total automatically at month end.
               </p>
             </div>
             <span className="shrink-0 text-xs font-semibold px-3 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
@@ -388,8 +438,16 @@ export default function Account() {
               <span>Cache hit, miss, or email-only result — not billed.</span>
             </li>
             <li className="flex gap-2">
-              <span className="text-gray-400 font-semibold">Invoice</span>
-              <span>Month-end Stripe draft (net 14). We do not auto-email invoices yet — Mineral Map reviews and sends.</span>
+              <span className="text-gray-400 font-semibold">Card</span>
+              <span>
+                {skipTraceWaived
+                  ? 'Your workspace is complimentary — no card required.'
+                  : isMember
+                    ? 'Your team admin keeps the card on file. Members inherit it.'
+                    : billing?.has_card && billing.payment_method_last4
+                      ? `${(billing.payment_method_brand || 'Card').replace(/^./, (c) => c.toUpperCase())} •••• ${billing.payment_method_last4} — charged at month end.`
+                      : 'Add a card before the first live skip-trace. We charge it at month end for the total, not $1 at a time.'}
+              </span>
             </li>
             {skipTraceWaived ? (
               <li className="flex gap-2">
@@ -399,6 +457,23 @@ export default function Account() {
             ) : null}
           </ul>
           <div className="flex flex-wrap items-center gap-3">
+            {!skipTraceWaived && billing?.can_manage_card ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleAddCard()
+                }}
+                disabled={cardSetupLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
+              >
+                <CreditCard size={14} />
+                {cardSetupLoading
+                  ? 'Opening Stripe…'
+                  : billing.has_card
+                    ? 'Update card'
+                    : 'Add card for skip-trace'}
+              </button>
+            ) : null}
             <Link
               href="/legal/agreement/sign"
               className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
@@ -407,6 +482,9 @@ export default function Account() {
               Agreement
             </Link>
           </div>
+          {cardSetupMessage && (
+            <p className="mt-3 text-sm text-red-600">{cardSetupMessage}</p>
+          )}
         </div>
 
         {/* ── Usage (billable skip-traces this month) ── */}
@@ -424,7 +502,7 @@ export default function Account() {
               <div className="text-xs text-gray-400 mt-1">
                 {skipTraceWaived
                   ? 'Owner-team skip-trace is complimentary'
-                  : `$${estimateMonthlySkipTraceCost(skipTraceBillable ?? 0).toFixed(2)} running total · billed to your team at month end · cache hits / misses / email-only not counted`}
+                  : `$${estimateMonthlySkipTraceCost(skipTraceBillable ?? 0).toFixed(2)} running total · charged to your card at month end · cache hits / misses / email-only not counted`}
               </div>
             </div>
             <div className="font-serif text-2xl font-bold text-gray-900 tabular-nums">

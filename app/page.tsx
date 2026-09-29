@@ -2281,6 +2281,16 @@ export default function Home() {
       })
 
       const result = await response.json()
+      if (response.status === 402) {
+        const message =
+          result?.message ||
+          'Add a card on Account to run skip-traces. We charge $1 per phone hit at month end.'
+        setToast(message)
+        setTimeout(() => {
+          window.location.href = result?.redirect || '/account'
+        }, 1600)
+        return
+      }
       if (!response.ok) {
         throw new Error(result?.error || result?.message || 'Skip trace failed')
       }
@@ -5928,8 +5938,10 @@ export default function Home() {
                 lineHeight: 1.5,
               }}
             >
-              This will search for phone number and email address.
-              Skip traces are unlimited.
+              This will search for a phone number and email.
+              $1.00 only if we return a phone number — cache hits, misses, and
+              email-only are free. Your team&apos;s card is charged at month end
+              for the total.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button

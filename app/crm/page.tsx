@@ -505,6 +505,18 @@ export default function CRM() {
         }),
       })
       const result = await res.json()
+      if (res.status === 402) {
+        alert(
+          result?.message ||
+            'Add a card on Account to run skip-traces. We charge $1 per phone hit at month end.',
+        )
+        window.location.href = result?.redirect || '/account'
+        return
+      }
+      if (!res.ok) {
+        alert(result?.message || result?.error || 'Skip trace failed')
+        return
+      }
       const phones: string[] = Array.isArray(result.phones) ? result.phones : []
       const emails: string[] = Array.isArray(result.emails) ? result.emails : []
       const phone = phones[0] ?? null

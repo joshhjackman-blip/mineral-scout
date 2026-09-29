@@ -99,9 +99,16 @@ billable. Skip-trace charges accrue per Customer team during the
 calendar month.
 
 ### 4.3 Invoicing
-Skip-trace usage is invoiced in arrears at month end through Stripe
-Invoicing (typically net fourteen (14) days). Payment is due
-according to the Stripe invoice terms Customer receives.
+
+> ⚠️ Collection method updated 2026-09-29. Have counsel re-review before
+> relying on this section in production. Agreement version is unchanged
+> (`2026-08-11`); this is product-copy alignment, not a forced re-sign.
+
+Skip-trace usage is charged in arrears at month end to the payment
+method Customer places on file before running live skip-traces. Mineral
+Map creates a Stripe Invoice for the calendar month's phone-hit total
+and charges that card automatically. Failed charges may suspend further
+skip-trace lookups until the invoice is paid or the card is updated.
 
 ### 4.4 Taxes
 Fees are exclusive of applicable taxes, which Customer is
@@ -115,7 +122,7 @@ use after the effective date constitutes acceptance of the new fees.
 
 ### 5.1 Monthly Report
 Seat access is complimentary. Skip-trace phone
-hits are invoiced separately through Stripe Invoicing at month end.
+hits are charged separately to the card on file at month end.
 If Mineral Map reasonably requests usage clarification, Customer
 shall cooperate in good faith.
 Customer shall also provide Mineral Map, on or before the fifteenth

@@ -35,6 +35,8 @@ type TeamSpend = {
   stripe_customer_id: string | null
   billing_exempt: boolean
   skip_trace_waived: boolean
+  has_card: boolean
+  skip_trace_past_due: boolean
   invoice_status: string | null
   hosted_invoice_url: string | null
   call_clicks: number
@@ -172,10 +174,10 @@ export async function GET(req: NextRequest) {
       .lt('signed_at', endIso),
     adminClient
       .from('subscriptions')
-      .select('user_id, team_owner_id, seat_count, status, stripe_customer_id'),
+      .select('user_id, team_owner_id, seat_count, status, stripe_customer_id, stripe_subscription_id, has_card, skip_trace_past_due'),
     adminClient
       .from('subscriptions')
-      .select('user_id, seat_count, status, stripe_customer_id')
+      .select('user_id, seat_count, status, stripe_customer_id, stripe_subscription_id, has_card, skip_trace_past_due')
       .is('team_owner_id', null)
       .gte('seat_count', 1),
     adminClient
@@ -215,6 +217,26 @@ export async function GET(req: NextRequest) {
   if (wrongCallsRes.error) warnings.push(`deal_phone_calls: ${wrongCallsRes.error.message}`)
   if (agreementsRes.error) {
     warnings.push(`platform_agreement_signatures: ${agreementsRes.error.message}`)
+  }
+  if (subsRes.error) {
+    warnings.push(`subscriptions: ${subsRes.error.message}`)
+    const fallbackSubs = await adminClient
+      .from('subscriptions')
+      .select('user_id, team_owner_id, seat_count, status, stripe_customer_id')
+    if (!fallbackSubs.error) {
+      ;(subsRes as { data: unknown }).data = fallbackSubs.data
+    }
+  }
+  if (ownerSubsRes.error) {
+    warnings.push(`owner subscriptions: ${ownerSubsRes.error.message}`)
+    const fallbackOwners = await adminClient
+      .from('subscriptions')
+      .select('user_id, seat_count, status, stripe_customer_id')
+      .is('team_owner_id', null)
+      .gte('seat_count', 1)
+    if (!fallbackOwners.error) {
+      ;(ownerSubsRes as { data: unknown }).data = fallbackOwners.data
+    }
   }
 
   let dealRows: Array<{ offer_amount?: number | null; user_id?: string | null }> =
@@ -274,16 +296,27 @@ export async function GET(req: NextRequest) {
 
   const subsByUser = new Map<
     string,
-    { team_owner_id: string | null; stripe_customer_id: string | null }
+    {
+      team_owner_id: string | null
+      stripe_customer_id: string | null
+      has_card: boolean
+      skip_trace_past_due: boolean
+    }
   >()
   for (const row of (subsRes.data ?? []) as Array<{
     user_id: string
     team_owner_id: string | null
-    stripe_customer_id?: string | null
+      stripe_customer_id?: string | null
+      stripe_subscription_id?: string | null
+      has_card?: boolean | null
+      skip_trace_past_due?: boolean | null
   }>) {
     subsByUser.set(row.user_id, {
       team_owner_id: row.team_owner_id,
       stripe_customer_id: row.stripe_customer_id ?? null,
+      has_card:
+        Boolean(row.has_card) || Boolean(String(row.stripe_subscription_id ?? '').trim()),
+      skip_trace_past_due: Boolean(row.skip_trace_past_due),
     })
   }
 
@@ -298,6 +331,8 @@ export async function GET(req: NextRequest) {
     stripe_customer_id: subsByUser.get(ownerId)?.stripe_customer_id ?? null,
     billing_exempt: false,
     skip_trace_waived: isSkipTraceCompedTeam(email),
+    has_card: subsByUser.get(ownerId)?.has_card ?? false,
+    skip_trace_past_due: subsByUser.get(ownerId)?.skip_trace_past_due ?? false,
     invoice_status: null,
     hosted_invoice_url: null,
     call_clicks: 0,
@@ -314,6 +349,9 @@ export async function GET(req: NextRequest) {
     user_id: string
     seat_count: number | null
     stripe_customer_id?: string | null
+    has_card?: boolean | null
+    skip_trace_past_due?: boolean | null
+    stripe_subscription_id?: string | null
   }>) {
     const team = emptyTeam(
       row.user_id,
@@ -321,6 +359,11 @@ export async function GET(req: NextRequest) {
       Number(row.seat_count ?? 1),
     )
     team.stripe_customer_id = row.stripe_customer_id ?? team.stripe_customer_id
+    if (row.has_card != null || row.stripe_subscription_id) {
+      team.has_card =
+        Boolean(row.has_card) || Boolean(String(row.stripe_subscription_id ?? '').trim())
+    }
+    if (row.skip_trace_past_due != null) team.skip_trace_past_due = Boolean(row.skip_trace_past_due)
     teamMap.set(row.user_id, team)
   }
 

@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import { hasPaidAccess, isSkipTraceWaivedFor } from './access'
 import {
   SKIP_TRACE_PRICE_USD,
+  billingMonthKey,
   estimateMonthlySkipTraceCost,
   isSkipTraceBillable,
+  previousBillingMonthKey,
 } from './billing'
 import { isSkipTraceCompedTeam } from './team'
 
@@ -47,5 +49,9 @@ assert.equal(isSkipTraceBillable({}), false)
 assert.equal(estimateMonthlySkipTraceCost(0), 0)
 assert.equal(estimateMonthlySkipTraceCost(7), 7)
 assert.equal(estimateMonthlySkipTraceCost(-2), 0)
+
+assert.equal(billingMonthKey(new Date('2026-09-29T12:00:00Z')), '2026-09')
+assert.equal(previousBillingMonthKey(new Date('2026-09-01T06:00:00Z')), '2026-08')
+assert.equal(previousBillingMonthKey(new Date('2026-01-01T00:00:00Z')), '2025-12')
 
 console.log('billing.test.ts ok')
