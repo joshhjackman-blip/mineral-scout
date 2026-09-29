@@ -5,8 +5,9 @@ import { seatPriceId } from '@/lib/billing'
 
 /**
  * Start Checkout for N × $100/mo seat price.
- * Skip-trace is NOT on this subscription — $1 phone hits accrue per team
- * and are invoiced through Stripe Invoicing at month end.
+ * Skip-trace is NOT on this subscription — $1 phone hits accrue per team.
+ * Card-on-file setup lives at POST /api/billing/setup; month-end charges
+ * go through /api/cron/charge-skiptrace.
  *
  * Body: { seats?: number }  — defaults to 1, max 100.
  */

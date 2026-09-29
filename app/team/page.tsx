@@ -221,7 +221,7 @@ export default function TeamAdminDashboard() {
             sub={
               totals?.skip_trace_waived
                 ? 'Mineral Map / Great Plains skip-trace is not billed'
-                : `${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · invoice at month end`
+                : `${loading ? '—' : (totals?.billable_skip_traces ?? 0).toLocaleString()} billed this month · charged to the card at month end`
             }
           />
         </div>

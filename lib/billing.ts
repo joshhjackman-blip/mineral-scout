@@ -6,12 +6,15 @@
  *   • Waived for Mineral Map's team and Jordan's Great Plains team
  *
  * Skip-trace is billed **per customer team**. Hits accumulate as a
- * running total during the calendar month. At month end we create a
- * Stripe Invoice (`collection_method: send_invoice`) for that team.
+ * running total during the calendar month. At month end we charge the
+ * card on file (`collection_method: charge_automatically`) for that
+ * team's phone-hit total. Live skip-traces require a card unless the
+ * workspace is Mineral Map / Great Plains.
  */
 
 export const SEAT_PRICE_USD = 100
 export const SKIP_TRACE_PRICE_USD = 1
+/** @deprecated Month-end invoices charge the card on file; net-14 send_invoice is retired. */
 export const SKIP_TRACE_INVOICE_DAYS_UNTIL_DUE = 14
 
 export function seatPriceId(): string | null {
@@ -64,4 +67,9 @@ export function isBillableSubscriptionStatus(
 
 export function billingMonthKey(d = new Date()): string {
   return d.toISOString().slice(0, 7)
+}
+
+/** Previous calendar month in UTC (`YYYY-MM`), used by the 1st-of-month charge cron. */
+export function previousBillingMonthKey(d = new Date()): string {
+  return billingMonthKey(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1)))
 }

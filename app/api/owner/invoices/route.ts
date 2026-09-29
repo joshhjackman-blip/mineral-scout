@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { isPlatformOwner, isSkipTraceCompedTeam } from '@/lib/team'
+import { isPlatformOwner } from '@/lib/team'
 import { billingMonthKey, estimateMonthlySkipTraceCost } from '@/lib/billing'
-import { createTeamSkipTraceInvoice } from '@/lib/stripe-invoices'
+import { chargeTeamSkipTraceMonth } from '@/lib/skip-trace-charge'
 
 export const dynamic = 'force-dynamic'
 
@@ -87,9 +87,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * Create a Stripe draft invoice for one team's skip-trace phone hits.
- * Body: { team_owner_id, month?, send? }
- * Default is a draft (not emailed). Set send=true to email the customer.
+ * Charge the team's card on file for skip-trace phone hits.
+ * Body: { team_owner_id, month? }
  */
 export async function POST(req: NextRequest) {
   const { error } = await requireOwner(req)
@@ -98,11 +97,9 @@ export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     team_owner_id?: string
     month?: string
-    send?: boolean
   }
   const teamOwnerId = String(body.team_owner_id ?? '').trim()
   const month = String(body.month ?? billingMonthKey()).trim()
-  const send = body.send === true
 
   if (!teamOwnerId) {
     return NextResponse.json(
@@ -112,147 +109,38 @@ export async function POST(req: NextRequest) {
   }
 
   const adminClient = adminDb()
-  const { data: ownerUser } = await adminClient.auth.admin.getUserById(teamOwnerId)
-  const ownerEmail = ownerUser?.user?.email ?? null
-  if (isSkipTraceCompedTeam(ownerEmail)) {
-    return NextResponse.json(
-      {
-        success: false,
-        data: null,
-        error: 'Skip-trace is waived for this owner team (Mineral Map / Great Plains).',
-      },
-      { status: 400 },
-    )
-  }
-
-  const { data: ownerSub } = await adminClient
-    .from('subscriptions')
-    .select('stripe_customer_id')
-    .eq('user_id', teamOwnerId)
-    .maybeSingle()
-  const stripeCustomerId = String(
-    (ownerSub as { stripe_customer_id?: string | null } | null)?.stripe_customer_id ?? '',
-  ).trim()
-  if (!stripeCustomerId) {
-    return NextResponse.json(
-      {
-        success: false,
-        data: null,
-        error:
-          'No Stripe customer on this team. Attach a Stripe Customer before invoicing skip-traces.',
-      },
-      { status: 400 },
-    )
-  }
-
-  const { data: usageRows, error: usageError } = await adminClient
-    .from('skip_trace_usage')
-    .select('billable_count, user_id, team_owner_id')
-    .eq('month', month)
-
-  if (usageError) {
-    return NextResponse.json(
-      {
-        success: false,
-        data: null,
-        error:
-          usageError.message.includes('billable_count')
-            ? 'Run the skip_trace_usage.billable_count migration first.'
-            : usageError.message,
-      },
-      { status: 500 },
-    )
-  }
-
-  const { data: memberRows } = await adminClient
-    .from('team_members')
-    .select('member_id')
-    .eq('owner_id', teamOwnerId)
-    .neq('status', 'revoked')
-  const teamUserIds = new Set<string>([
-    teamOwnerId,
-    ...((memberRows ?? []) as Array<{ member_id?: string | null }>)
-      .map((m) => String(m.member_id ?? '').trim())
-      .filter(Boolean),
-  ])
-
-  const billableCount = ((usageRows ?? []) as Array<{
-    billable_count?: number | null
-    user_id?: string | null
-    team_owner_id?: string | null
-  }>).reduce((sum, row) => {
-    const uid = String(row.user_id ?? '').trim()
-    const owner = String(row.team_owner_id ?? '').trim()
-    if (owner === teamOwnerId || teamUserIds.has(uid)) {
-      return sum + Number(row.billable_count ?? 0)
-    }
-    return sum
-  }, 0)
-
-  if (billableCount <= 0) {
-    return NextResponse.json(
-      {
-        success: false,
-        data: null,
-        error: 'No billable skip-traces (phone hits) for this team this month.',
-      },
-      { status: 400 },
-    )
-  }
-
-  const { data: existing } = await adminClient
-    .from('skip_trace_invoices')
-    .select('stripe_invoice_id, status')
-    .eq('team_owner_id', teamOwnerId)
-    .eq('month', month)
-    .maybeSingle()
 
   try {
-    const invoice = await createTeamSkipTraceInvoice({
-      stripeCustomerId,
+    const invoice = await chargeTeamSkipTraceMonth(adminClient, {
       teamOwnerId,
-      ownerEmail,
       month,
-      billableCount,
-      send,
-      existingStripeInvoiceId:
-        (existing as { stripe_invoice_id?: string | null } | null)?.stripe_invoice_id ??
-        null,
     })
 
-    const row = {
-      team_owner_id: teamOwnerId,
-      month,
-      billable_count: invoice.billableCount,
-      amount_usd: invoice.amountUsd,
-      stripe_customer_id: stripeCustomerId,
-      stripe_invoice_id: invoice.stripeInvoiceId,
-      hosted_invoice_url: invoice.hostedInvoiceUrl,
-      status: invoice.status,
-      updated_at: new Date().toISOString(),
-    }
-
-    const { error: upsertError } = await adminClient
-      .from('skip_trace_invoices')
-      .upsert(row, { onConflict: 'team_owner_id,month' })
-    if (upsertError) {
-      console.error('skip_trace_invoices upsert:', upsertError.message)
+    if (invoice.skipped && invoice.skipReason === 'waived') {
+      return NextResponse.json(
+        {
+          success: false,
+          data: null,
+          error: 'Skip-trace is waived for this owner team (Mineral Map / Great Plains).',
+        },
+        { status: 400 },
+      )
     }
 
     return NextResponse.json({
       success: true,
       data: {
         ...invoice,
-        amount_usd: estimateMonthlySkipTraceCost(billableCount),
+        amount_usd: estimateMonthlySkipTraceCost(invoice.billableCount),
         month,
         team_owner_id: teamOwnerId,
-        owner_email: ownerEmail,
+        owner_email: invoice.ownerEmail,
       },
       error: null,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    console.error('Skip-trace invoice failed:', message)
+    console.error('Skip-trace charge failed:', message)
     return NextResponse.json(
       { success: false, data: null, error: message },
       { status: 500 },

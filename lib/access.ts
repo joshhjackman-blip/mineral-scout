@@ -1,8 +1,9 @@
 import { isSkipTraceCompedTeam } from '@/lib/team'
 
 /**
- * Platform access is free. Skip-trace is $1 per phone hit except for
- * Mineral Map's team and Jordan's Great Plains team.
+ * Platform access is free. Skip-trace is $1 per phone hit (card on file,
+ * charged at month end) except for Mineral Map's team and Jordan's Great
+ * Plains team.
  */
 
 /** @deprecated Seat grandfather flag — does not waive skip-trace. */

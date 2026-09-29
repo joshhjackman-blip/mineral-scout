@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { seatPriceId } from '@/lib/billing'
+import {
+  persistCardFromCheckoutSession,
+  setTeamPastDue,
+  STRIPE_API_VERSION,
+} from '@/lib/stripe-card'
+import { retryOpenSkipTraceInvoices } from '@/lib/stripe-invoices'
 
 function seatQuantityFromSubscription(sub: Stripe.Subscription): number {
   const seatPrice = seatPriceId()
@@ -25,7 +31,7 @@ export async function POST(req: NextRequest) {
   if (!stripeKey || !webhookSecret) {
     return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 })
   }
-  const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' })
+  const stripe = new Stripe(stripeKey, { apiVersion: STRIPE_API_VERSION })
 
   const body = await req.text()
   const sig = req.headers.get('stripe-signature')
@@ -123,6 +129,28 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session
+    if (session.mode === 'setup' && session.metadata?.kind === 'skip_trace_card') {
+      try {
+        const full = await stripe.checkout.sessions.retrieve(session.id, {
+          expand: ['setup_intent.payment_method'],
+        })
+        const card = await persistCardFromCheckoutSession(stripe, supabase, full)
+        const userId = String(full.metadata?.user_id ?? '').trim()
+        const customerId =
+          typeof full.customer === 'string' ? full.customer : full.customer?.id
+        if (card && customerId) {
+          const retried = await retryOpenSkipTraceInvoices(stripe, customerId)
+          if (userId && retried.paid > 0 && retried.failed === 0) {
+            await setTeamPastDue(supabase, userId, false)
+          }
+        }
+      } catch (err) {
+        console.error(
+          'Skip-trace card webhook failed:',
+          err instanceof Error ? err.message : err,
+        )
+      }
+    }
     if (session.mode === 'subscription' && session.metadata?.user_id) {
       const userId = session.metadata.user_id
       const seats = Math.max(1, Number(session.metadata.seat_count) || 1)
@@ -143,5 +171,55 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (
+    event.type === 'invoice.paid' ||
+    event.type === 'invoice.payment_failed' ||
+    event.type === 'invoice.marked_uncollectible'
+  ) {
+    const invoice = event.data.object as Stripe.Invoice
+    await syncSkipTraceInvoiceEvent(supabase, invoice, event.type)
+  }
+
   return NextResponse.json({ received: true })
+}
+
+async function syncSkipTraceInvoiceEvent(
+  supabase: SupabaseClient,
+  invoice: Stripe.Invoice,
+  eventType: string,
+): Promise<void> {
+  if (invoice.metadata?.kind !== 'skip_trace') return
+  const teamOwnerId = String(invoice.metadata.team_owner_id ?? '').trim()
+  const month = String(invoice.metadata.month ?? '').trim()
+  const paid = eventType === 'invoice.paid'
+  const status = paid
+    ? 'paid'
+    : eventType === 'invoice.marked_uncollectible'
+      ? 'uncollectible'
+      : invoice.status ?? 'open'
+
+  if (teamOwnerId && month) {
+    const billed = Number(invoice.metadata?.billable_count ?? 0)
+    const row: Record<string, unknown> = {
+      team_owner_id: teamOwnerId,
+      month,
+      stripe_customer_id:
+        typeof invoice.customer === 'string'
+          ? invoice.customer
+          : invoice.customer?.id ?? null,
+      stripe_invoice_id: invoice.id,
+      hosted_invoice_url: invoice.hosted_invoice_url ?? null,
+      status,
+      amount_usd: Math.round((invoice.amount_paid || invoice.amount_due || 0) / 100),
+      updated_at: new Date().toISOString(),
+    }
+    if (billed > 0) row.billable_count = billed
+    await supabase.from('skip_trace_invoices').upsert(row, {
+      onConflict: 'team_owner_id,month',
+    })
+  }
+
+  if (teamOwnerId) {
+    await setTeamPastDue(supabase, teamOwnerId, !paid)
+  }
 }

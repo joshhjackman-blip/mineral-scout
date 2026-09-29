@@ -6,6 +6,11 @@ import { skipTraceOwnerKey } from '@/lib/workspace'
 import { SKIP_TRACE_PRICE_USD, isSkipTraceBillable } from '@/lib/billing'
 import { isSkipTraceWaivedFor } from '@/lib/access'
 import {
+  skipTracePaymentGate,
+  stripeBillingConfigured,
+} from '@/lib/skip-trace-gate'
+import { readTeamCardStatus } from '@/lib/stripe-card'
+import {
   hasSignedCurrentAgreement,
   isAgreementGateEnabled,
 } from '@/lib/agreement'
@@ -117,6 +122,9 @@ export async function POST(req: NextRequest) {
     userEmail: user.email,
     workspaceOwnerEmail,
   })
+  const teamCard = await readTeamCardStatus(adminClient, workspaceId)
+  const canManageCard = workspaceId === userId
+  const stripeConfigured = stripeBillingConfigured()
 
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
@@ -139,6 +147,25 @@ export async function POST(req: NextRequest) {
     }
 
     if (cached) {
+      const pastDueGate = skipTracePaymentGate({
+        waived: skipTraceWaived,
+        stripeConfigured,
+        gateReady: teamCard.gateReady,
+        hasCard: teamCard.has_card,
+        pastDue: teamCard.skip_trace_past_due,
+        liveLookup: false,
+      })
+      if (!pastDueGate.ok) {
+        return NextResponse.json(
+          {
+            error: pastDueGate.error,
+            message: pastDueGate.message,
+            redirect: pastDueGate.redirect,
+            can_manage_card: canManageCard,
+          },
+          { status: pastDueGate.status },
+        )
+      }
       const cachedPhones = (cached as { phones?: string[] }).phones ?? []
       const cachedEmails = (cached as { emails?: string[] }).emails ?? []
       let needsReview = false
@@ -171,6 +198,26 @@ export async function POST(req: NextRequest) {
         needs_review: needsReview,
       })
     }
+  }
+
+  const liveGate = skipTracePaymentGate({
+    waived: skipTraceWaived,
+    stripeConfigured,
+    gateReady: teamCard.gateReady,
+    hasCard: teamCard.has_card,
+    pastDue: teamCard.skip_trace_past_due,
+    liveLookup: true,
+  })
+  if (!liveGate.ok) {
+    return NextResponse.json(
+      {
+        error: liveGate.error,
+        message: liveGate.message,
+        redirect: liveGate.redirect,
+        can_manage_card: canManageCard,
+      },
+      { status: liveGate.status },
+    )
   }
 
   // 2) Check monthly usage limit (cache misses / paid calls only)
