@@ -72,6 +72,8 @@ function SignInForm() {
     const nextParam = params.get('next')
     if (nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')) {
       setNextPath(nextParam)
+    } else if (welcome === 'signup') {
+      setNextPath('/onboard')
     } else if (welcome === 'admin') {
       setNextPath('/account')
     } else if (welcome === 'ops') {
@@ -83,6 +85,11 @@ function SignInForm() {
       setMode('signup')
       setMessage(
         'You were invited to a team. Choose a password if this is your first time, or sign in to join.',
+      )
+    } else if (welcome === 'signup') {
+      if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
+      setMessage(
+        'Your access was approved. Choose a password, then you will sign the agreement, add a card, and set team admin.',
       )
     } else if (welcome === 'admin') {
       if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
@@ -209,7 +216,7 @@ function SignInForm() {
           ? 'This finishes your invite. You will land in your workspace after saving.'
           : isLogin
             ? 'Access your Mineral Map workspace.'
-            : 'Join with the email you were invited on.'}
+            : 'Join with the email Mineral Map approved.'}
       </div>
 
       {error && <ErrorMessage message={error} />}
@@ -268,12 +275,16 @@ function SignInForm() {
             type="button"
             className="si-form-mode-toggle"
             onClick={() => {
-              setMode(isLogin ? 'signup' : 'login')
+              if (isLogin) {
+                window.location.href = '/get-started'
+                return
+              }
+              setMode('login')
               setError(null)
               setMessage(null)
             }}
           >
-            {isLogin ? 'Need an account? Sign up' : 'Have an account? Sign in'}
+            {isLogin ? 'Request access' : 'Have an account? Sign in'}
           </button>
         </div>
       )}
@@ -303,18 +314,8 @@ function SignInForm() {
           <div className="si-form-request fade-up fade-up-5">
             {isLogin ? (
               <>
-                Invited to a team? Check your email for the join link, or{' '}
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setMode('signup')
-                    setError(null)
-                    setMessage(null)
-                  }}
-                >
-                  join here →
-                </a>
+                Invited to a team? Check your email for the join link. Need an account?{' '}
+                <a href="/get-started">Request access →</a>
               </>
             ) : (
               <>

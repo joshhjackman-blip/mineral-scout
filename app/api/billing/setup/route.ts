@@ -57,6 +57,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
+  const body = (await req.json().catch(() => ({}))) as { return_path?: string }
+  const rawReturn = String(body.return_path ?? '/account').trim()
+  const returnPath =
+    rawReturn.startsWith('/') && !rawReturn.startsWith('//') ? rawReturn : '/account'
+
   try {
     const stripe = stripeClient()
     const customerId = await ensureStripeCustomer(stripe, admin, {
@@ -72,6 +77,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         user_id: gate.user.id,
         kind: 'skip_trace_card',
+        return_path: returnPath,
       },
       setup_intent_data: {
         metadata: {
@@ -80,7 +86,7 @@ export async function POST(req: NextRequest) {
         },
       },
       success_url: `${appUrl}/api/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/account`,
+      cancel_url: `${appUrl}${returnPath}`,
     })
 
     return NextResponse.json({

@@ -90,7 +90,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/landing') ||
     path.startsWith('/pricing') ||
     path.startsWith('/demo') ||
-    path.startsWith('/book-demo')
+    path.startsWith('/book-demo') ||
+    path.startsWith('/get-started')
 
   // Local preview of CRM sample leads / owner skip-trace panels.
   // Production still requires login.
@@ -106,7 +107,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/pricing') ||
     path.startsWith('/account') ||
     path.startsWith('/legal') ||
-    path.startsWith('/help')
+    path.startsWith('/help') ||
+    path.startsWith('/onboard')
 
   if (!isLoggedIn && !isPublicPage && !isDevCrmPreview && !isDevOwnerPreview) {
     return redirectLoggedOut(new URL('/landing', request.url))

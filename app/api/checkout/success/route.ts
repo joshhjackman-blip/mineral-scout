@@ -68,7 +68,12 @@ export async function GET(req: NextRequest) {
         err instanceof Error ? err.message : err,
       )
     }
-    return NextResponse.redirect(new URL('/account?card=saved', req.url))
+    const returnRaw = String(stripeSession.metadata?.return_path ?? '/account?card=saved').trim()
+    const returnPath =
+      returnRaw.startsWith('/') && !returnRaw.startsWith('//')
+        ? returnRaw
+        : '/account?card=saved'
+    return NextResponse.redirect(new URL(returnPath, req.url))
   }
 
   const metaSeats = Math.max(1, Number(stripeSession.metadata?.seat_count) || 1)

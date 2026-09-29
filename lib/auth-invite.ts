@@ -58,7 +58,7 @@ async function sendInviteEmail(input: {
   }
 
   await logEmailSend(input.adminClient, {
-    kind: 'team_invite',
+    kind: input.kind === 'approved_signup' ? 'signup_invite' : 'team_invite',
     toEmail: input.toEmail,
     userId: input.inviterUserId ?? null,
     meta: { invite_kind: input.kind },
