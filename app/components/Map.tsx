@@ -100,8 +100,10 @@ const WELL_OVERLAY_LAYER_IDS = [
 
 // Orange (inactive) / grey (upcoming) county mask in tract view. Wells
 // paint after this overlay is first added, so laterals would otherwise
-// sit on top of the neighbor mask along river borders. Restack these
-// above the well layers (and under rigs) after every well paint.
+// sit on top of the neighbor mask along river borders. Restack the mask
+// above wells, then put the selected county's parcels on top of the mask
+// so CAD tracts that cross the Census line (Midland Block 38 T1N into
+// Martin) stay visible. Rigs stay highest.
 const TRACT_INACTIVE_OVERLAY_LAYER_IDS = [
   'tract-inactive-fill',
   'tract-inactive-outline',
@@ -111,9 +113,29 @@ const TRACT_INACTIVE_OVERLAY_LAYER_IDS = [
   'tract-overlay-sub-labels',
 ] as const
 
-function restackInactiveCountyOverlay(mapInstance: mapboxgl.Map) {
+function restackInactiveCountyOverlay(
+  mapInstance: mapboxgl.Map,
+  selectedCountyId?: string,
+) {
   for (const overlayLayerId of TRACT_INACTIVE_OVERLAY_LAYER_IDS) {
     if (mapInstance.getLayer(overlayLayerId)) mapInstance.moveLayer(overlayLayerId)
+  }
+  if (selectedCountyId) {
+    const selectedOnTop = [
+      `parcels-fill-${selectedCountyId}`,
+      `parcels-permit-glow-outer-${selectedCountyId}`,
+      `parcels-permit-glow-core-${selectedCountyId}`,
+      `parcels-permit-submitted-outer-${selectedCountyId}`,
+      `parcels-permit-submitted-core-${selectedCountyId}`,
+      ...WELL_OVERLAY_LAYER_IDS,
+      `parcels-outline-${selectedCountyId}`,
+      `parcels-labels-${selectedCountyId}`,
+      `parcels-sections-${selectedCountyId}`,
+      `block-labels-${selectedCountyId}`,
+    ]
+    for (const layerId of selectedOnTop) {
+      if (mapInstance.getLayer(layerId)) mapInstance.moveLayer(layerId)
+    }
   }
   if (mapInstance.getLayer('permits-rigs-layer')) {
     mapInstance.moveLayer('permits-rigs-layer')
@@ -1380,10 +1402,10 @@ export default function Map({
     if (mapInstance.getLayer('tract-overlay-labels')) {
       mapInstance.setFilter('tract-overlay-labels', ['!=', ['get', 'fips'], currentFips])
     }
-    // Push overlay layers below the rig dots but above wells and the
-    // base parcel layers, so orange neighbor blocks cover any lateral
-    // that still nicks across a concave county line.
-    restackInactiveCountyOverlay(mapInstance)
+    // Orange neighbors sit above wells that nick a county line, then
+    // the selected county's parcels sit on top of that mask so CAD
+    // overshoot (Midland into Martin) is not painted orange.
+    restackInactiveCountyOverlay(mapInstance, cid)
 
     // Only lock lastStyled once the destination county's parcel layers
     // exist. Otherwise a county switch restyles overlay/wells first and
@@ -1855,10 +1877,15 @@ export default function Map({
           if (instance.getLayer(id)) instance.setLayoutProperty(id, 'visibility', vis)
         }
       }
-      // Wells are added after the orange neighbor mask, so move that mask
-      // back on top. Anything that still nicks a neighbor is covered.
+      // Wells are added after the orange neighbor mask, so restack: mask
+      // above well nicks, selected parcels above the mask, rigs on top.
       // Leave basin laterals unclipped and unmasked.
-      if (!basinViewRef.current) restackInactiveCountyOverlay(instance)
+      if (!basinViewRef.current) {
+        restackInactiveCountyOverlay(
+          instance,
+          COUNTIES[selectedCountyRef.current]?.id,
+        )
+      }
       else if (instance.getLayer('permits-rigs-layer')) instance.moveLayer('permits-rigs-layer')
     }
 

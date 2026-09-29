@@ -78,6 +78,26 @@ const exhausted = shouldSkipResearch(
 )
 assert.equal(exhausted.skip, true)
 
+const llcNeedsGpHop = shouldSkipResearch(
+  review({
+    owner_name: 'BLUE SKY PROPERTIES LP',
+    notes:
+      '[research 2026-01-01T00:00:00.000Z attempt=3] tried officer:REGISTERED AGENT:ROBERT J PROUGH; no phone',
+  }),
+  Date.parse('2026-01-01T01:00:00.000Z'),
+)
+assert.equal(llcNeedsGpHop.skip, false)
+
+const llcAlreadyUnwrappedGp = shouldSkipResearch(
+  review({
+    owner_name: 'BLUE SKY PROPERTIES LP',
+    notes:
+      '[research 2026-01-01T00:00:00.000Z attempt=3] tried officer:GP>MEMBER:DEBRA J PROUGH; no phone',
+  }),
+  Date.parse('2026-09-01T00:00:00.000Z'),
+)
+assert.equal(llcAlreadyUnwrappedGp.skip, true)
+
 const ready = shouldSkipResearch(review({ notes: null }), Date.now())
 assert.equal(ready.skip, false)
 
@@ -95,6 +115,8 @@ assert.equal(hitParsed?.provider, 'idicore')
 assert.equal(hitParsed?.method, 'officer:PRESIDENT')
 assert.equal(hitParsed?.person, 'MARSHALL EVANS BROWN')
 assert.equal(methodLabel('officer:PRESIDENT'), 'TX officer · PRESIDENT')
+assert.equal(methodLabel('officer:GP>MEMBER'), 'TX GP · MEMBER')
+assert.equal(methodLabel('officer:GP>GP>MANAGER'), 'TX GP · MANAGER')
 assert.equal(providerLabel('research-idicore'), 'idiCORE')
 
 const missNote =

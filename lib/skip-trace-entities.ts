@@ -180,13 +180,68 @@ export function peopleFromFtasDetail(detail: FtasDetail): EntityPerson[] {
   return people
 }
 
-export function corporateOfficerNames(detail: FtasDetail): string[] {
-  const names: string[] = []
-  for (const officer of detail.officerInfo ?? []) {
-    const raw = String(officer.AGNT_NM ?? '').trim()
-    if (raw && isBusinessOwner(raw) && !names.includes(raw)) names.push(raw)
+export function isGpTitle(title: string | null | undefined): boolean {
+  return /\b(GENERAL\s*PA|GENERAL PARTNER|\bGP\b)\b/i.test(String(title ?? ''))
+}
+
+export function looksLikeLimitedPartnership(name: string | null | undefined): boolean {
+  return /\b(L\.?P\.?|LTD|LIMITED PARTNERSHIP)\b/i.test(String(name ?? ''))
+}
+
+export function gpSearchQueries(ownerName: string | null | undefined): string[] {
+  const bases = entitySearchQueries(ownerName)
+  const out: string[] = []
+  const push = (q: string) => {
+    const trimmed = q.trim()
+    if (trimmed.length >= 4 && trimmed.length <= 50 && !out.includes(trimmed)) out.push(trimmed)
   }
-  return names
+  for (const base of bases) {
+    push(`${base} GP`)
+    push(`${base} GENERAL PARTNER`)
+    push(`${base} MANAGEMENT`)
+  }
+  return out
+}
+
+function entitySeenKey(name: string | null | undefined): string {
+  return entitySearchQueries(name)[0] ?? String(name ?? '').trim().toUpperCase()
+}
+
+export function corporateOfficerNames(detail: FtasDetail): string[] {
+  return corporateOfficersToRecurse(detail).map((row) => row.name)
+}
+
+export function corporateOfficersToRecurse(detail: FtasDetail): Array<{
+  name: string
+  title: string | null
+}> {
+  const rows: Array<{ name: string; title: string | null }> = []
+  const seen = new Set<string>()
+  const officers = [...(detail.officerInfo ?? [])].sort((a, b) => {
+    const aGp = isGpTitle(a.AGNT_TITL_TX) ? 1 : 0
+    const bGp = isGpTitle(b.AGNT_TITL_TX) ? 1 : 0
+    if (aGp !== bGp) return bGp - aGp
+    return titleRank(b.AGNT_TITL_TX) - titleRank(a.AGNT_TITL_TX)
+  })
+  for (const officer of officers) {
+    const raw = String(officer.AGNT_NM ?? '').trim()
+    if (!raw || !isBusinessOwner(raw)) continue
+    const key = entitySeenKey(raw)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    rows.push({ name: raw, title: officer.AGNT_TITL_TX ?? null })
+  }
+  return rows
+}
+
+function personKey(person: Pick<EntityPerson, 'firstName' | 'lastName'>): string {
+  return `${person.firstName}|${person.lastName}`.toUpperCase()
+}
+
+function withTitlePrefix(person: EntityPerson, prefix: string | null): EntityPerson {
+  if (!prefix) return person
+  const title = person.title ? `${prefix}>${person.title}` : prefix
+  return { ...person, title }
 }
 
 async function fetchFtasDetail(taxpayerId: string): Promise<FtasDetail | null> {
@@ -203,52 +258,128 @@ async function searchFtas(query: string): Promise<FtasSearchRow[]> {
   return Array.isArray(data) ? data : []
 }
 
+export async function findFtasDetail(
+  ownerName: string,
+  zip?: string | null,
+  extraQueries: string[] = [],
+): Promise<FtasDetail | null> {
+  const queries = [...entitySearchQueries(ownerName), ...extraQueries]
+  if (queries.length === 0) return null
+  for (const query of queries) {
+    const rows = await searchFtas(query)
+    const match = pickBestFtasMatch(query, rows, zip ?? undefined)
+    if (!match?.taxpayerId) continue
+    const detail = await fetchFtasDetail(match.taxpayerId)
+    if (detail) return detail
+  }
+  return null
+}
+
 export type LookupEntityPeopleOptions = {
   zip?: string | null
   depth?: number
   maxPeople?: number
+  maxDepth?: number
+  seen?: Set<string>
+}
+
+export type UnwrapFtasPeopleOptions = LookupEntityPeopleOptions & {
+  titlePrefix?: string | null
+  lookup: (name: string, zip?: string | null) => Promise<FtasDetail | null>
+}
+
+export const MAX_TX_ENTITY_DEPTH = 3
+
+/**
+ * Walk officers / RA on a franchise-tax record and, when the GP (or other
+ * officer) is another TX entity, recurse until we have people to skip-trace.
+ * Depth 3 covers LP → GP LLC → GP LLC → person (Blue Sky-style stacks).
+ */
+export async function unwrapFtasPeople(
+  detail: FtasDetail,
+  options: UnwrapFtasPeopleOptions,
+): Promise<EntityPerson[]> {
+  const maxPeople = options.maxPeople ?? 6
+  const depth = options.depth ?? 0
+  const maxDepth = options.maxDepth ?? MAX_TX_ENTITY_DEPTH
+  const seen = options.seen ?? new Set<string>()
+  const titlePrefix = options.titlePrefix ?? null
+  const remember = (name: string | null | undefined) => {
+    const key = entitySeenKey(name)
+    if (key) seen.add(key)
+  }
+  remember(detail.name)
+  if (detail.taxpayerId) seen.add(`tid:${detail.taxpayerId}`)
+
+  const people: EntityPerson[] = []
+  const pushPerson = (person: EntityPerson) => {
+    const prefixed = withTitlePrefix(person, titlePrefix)
+    if (people.some((row) => personKey(row) === personKey(prefixed))) return
+    people.push(prefixed)
+  }
+  for (const person of peopleFromFtasDetail(detail)) pushPerson(person)
+
+  if (people.length >= maxPeople || depth >= maxDepth) {
+    return people.slice(0, maxPeople)
+  }
+
+  const corps = corporateOfficersToRecurse(detail)
+  const lookupNames: Array<{ name: string; title: string | null; zip?: string | null }> = corps.map((row) => ({
+    ...row,
+    zip: options.zip,
+  }))
+  if (
+    lookupNames.length === 0 &&
+    people.length === 0 &&
+    looksLikeLimitedPartnership(detail.name)
+  ) {
+    for (const query of gpSearchQueries(detail.name)) {
+      lookupNames.push({ name: query, title: 'GP', zip: options.zip })
+    }
+  }
+
+  for (const corp of lookupNames) {
+    if (people.length >= maxPeople) break
+    const key = entitySeenKey(corp.name)
+    if (key && seen.has(key)) continue
+    if (key) seen.add(key)
+    const child = await options.lookup(corp.name, corp.zip)
+    if (!child) continue
+    const childTid = child.taxpayerId ? `tid:${child.taxpayerId}` : ''
+    if (childTid && seen.has(childTid)) continue
+    if (childTid) seen.add(childTid)
+    const hopPrefix = isGpTitle(corp.title) || corp.title === 'GP' ? 'GP' : (corp.title || 'ENTITY')
+    const nested = await unwrapFtasPeople(child, {
+      ...options,
+      depth: depth + 1,
+      maxPeople: maxPeople - people.length,
+      seen,
+      titlePrefix: titlePrefix ? `${titlePrefix}>${hopPrefix}` : hopPrefix,
+    })
+    for (const person of nested) pushPerson(person)
+  }
+
+  return people.slice(0, maxPeople)
 }
 
 /**
  * Search TX franchise-tax records for `ownerName` and return people we can
- * skip-trace (officers / RA). Recurses one level when the GP is another entity.
+ * skip-trace (officers / RA). Recurses GP / officer LLCs a few hops.
  */
 export async function lookupTxEntityPeople(
   ownerName: string,
   options: LookupEntityPeopleOptions = {},
 ): Promise<EntityPerson[]> {
-  const depth = options.depth ?? 0
-  const maxPeople = options.maxPeople ?? 4
-  const queries = entitySearchQueries(ownerName)
-  if (queries.length === 0) return []
-
-  let detail: FtasDetail | null = null
-  for (const query of queries) {
-    const rows = await searchFtas(query)
-    const match = pickBestFtasMatch(query, rows, options.zip ?? undefined)
-    if (!match?.taxpayerId) continue
-    detail = await fetchFtasDetail(match.taxpayerId)
-    if (detail) break
-  }
+  const seen = options.seen ?? new Set<string>()
+  const key = entitySeenKey(ownerName)
+  if (key) seen.add(key)
+  const extra =
+    looksLikeLimitedPartnership(ownerName) ? gpSearchQueries(ownerName) : []
+  const detail = await findFtasDetail(ownerName, options.zip, extra)
   if (!detail) return []
-
-  const people = peopleFromFtasDetail(detail)
-  if (people.length < maxPeople && depth < 1) {
-    for (const corpName of corporateOfficerNames(detail)) {
-      const nested = await lookupTxEntityPeople(corpName, {
-        zip: options.zip,
-        depth: depth + 1,
-        maxPeople: maxPeople - people.length,
-      })
-      for (const person of nested) {
-        const key = `${person.firstName}|${person.lastName}`.toUpperCase()
-        if (people.some((p) => `${p.firstName}|${p.lastName}`.toUpperCase() === key)) continue
-        people.push(person)
-        if (people.length >= maxPeople) break
-      }
-      if (people.length >= maxPeople) break
-    }
-  }
-
-  return people.slice(0, maxPeople)
+  return unwrapFtasPeople(detail, {
+    ...options,
+    seen,
+    lookup: (name, zip) => findFtasDetail(name, zip),
+  })
 }

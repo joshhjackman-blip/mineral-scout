@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { PhoneOff } from 'lucide-react'
 import type { SkipTraceReview } from '@/lib/skip-trace-review'
 import { reviewReasonLabel } from '@/lib/skip-trace-review'
+import CollapsiblePanel from './CollapsiblePanel'
 
 type SkipTraceReviewQueueProps = {
   reviews: SkipTraceReview[]
@@ -75,33 +76,24 @@ export default function SkipTraceReviewQueue({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div>
-          <h2 className="font-serif text-lg font-bold text-gray-900">
-            Numbers to fix
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Skip traces with no phone, and numbers callers marked wrong.
-            A background researcher unwraps trusts/LLCs and retries skip-trace
-            automatically. Numbers it finds land on the CRM and shared cache;
-            you can still type one in here.
-          </p>
-        </div>
+    <CollapsiblePanel
+      title="Numbers to fix"
+      subtitle="Skip traces with no phone, and numbers callers marked wrong. A background researcher unwraps trusts, LLCs, and nested Texas GPs, then retries skip-trace automatically. Numbers it finds land on the CRM and shared cache; you can still type one in here."
+      badge={
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
           <PhoneOff size={12} />
           {openReviews.length} open
         </span>
-      </div>
-
+      }
+    >
       {loading ? (
-        <div className="p-8 text-center text-sm text-gray-400">Loading...</div>
+        <div className="p-8 text-center text-sm text-gray-400 border-t border-gray-100">Loading...</div>
       ) : openReviews.length === 0 ? (
-        <div className="p-8 text-center text-sm text-gray-400">
+        <div className="p-8 text-center text-sm text-gray-400 border-t border-gray-100">
           No failed skip traces or wrong numbers waiting.
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] min-h-[360px]">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] min-h-[360px] border-t border-gray-100">
           <div className="overflow-auto border-b lg:border-b-0 lg:border-r border-gray-100">
             <table className="w-full min-w-[560px]">
               <thead>
@@ -244,6 +236,6 @@ export default function SkipTraceReviewQueue({
           </div>
         </div>
       )}
-    </div>
+    </CollapsiblePanel>
   )
 }

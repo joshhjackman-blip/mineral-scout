@@ -3,6 +3,7 @@
 import { Bot, Phone } from 'lucide-react'
 import type { ResearchStats } from '@/lib/skip-trace-research-stats'
 import { methodLabel, providerLabel } from '@/lib/skip-trace-research-stats'
+import CollapsiblePanel from './CollapsiblePanel'
 
 function formatWhen(iso: string): string {
   const ms = Date.parse(iso)
@@ -24,18 +25,11 @@ export default function SkipTraceResearchHits({
   const hasHits = stats.recentHits.length > 0
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">
-      <div className="px-6 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-serif text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Bot size={18} className="text-emerald-600" />
-            Researcher hits
-          </h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Background unwrap of trusts and Texas LLC officers, then a paid
-            skip-trace retry. Numbers land on the CRM and shared cache.
-          </p>
-        </div>
+    <CollapsiblePanel
+      title="Researcher hits"
+      subtitle="Background unwrap of trusts, Texas LLC officers, and nested general-partner LLCs, then a paid skip-trace retry. Numbers land on the CRM and shared cache."
+      icon={<Bot size={18} className="text-emerald-600" />}
+      badge={
         <span
           className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
             stats.hitsToday > 0
@@ -46,9 +40,9 @@ export default function SkipTraceResearchHits({
           <Phone size={12} />
           {stats.hitsToday} today
         </span>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-gray-100 border-b border-gray-100">
+      }
+    >
+      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-gray-100 border-t border-b border-gray-100">
         {[
           { label: 'Numbers found', value: stats.hits, hint: 'Resolved by the researcher' },
           { label: 'Found today', value: stats.hitsToday, hint: 'Since midnight' },
@@ -161,6 +155,6 @@ export default function SkipTraceResearchHits({
           </table>
         </div>
       )}
-    </div>
+    </CollapsiblePanel>
   )
 }
