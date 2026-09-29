@@ -78,7 +78,7 @@ export default function SkipTraceReviewQueue({
   return (
     <CollapsiblePanel
       title="Numbers to fix"
-      subtitle="Skip traces with no phone, and numbers callers marked wrong. A background researcher unwraps trusts/LLCs and retries skip-trace automatically. Numbers it finds land on the CRM and shared cache; you can still type one in here."
+      subtitle="Skip traces with no phone, and numbers callers marked wrong. A background researcher unwraps trusts, LLCs, and nested Texas GPs, then retries skip-trace automatically. Numbers it finds land on the CRM and shared cache; you can still type one in here."
       badge={
         <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
           <PhoneOff size={12} />

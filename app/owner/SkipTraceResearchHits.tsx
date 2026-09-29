@@ -27,7 +27,7 @@ export default function SkipTraceResearchHits({
   return (
     <CollapsiblePanel
       title="Researcher hits"
-      subtitle="Background unwrap of trusts and Texas LLC officers, then a paid skip-trace retry. Numbers land on the CRM and shared cache."
+      subtitle="Background unwrap of trusts, Texas LLC officers, and nested general-partner LLCs, then a paid skip-trace retry. Numbers land on the CRM and shared cache."
       icon={<Bot size={18} className="text-emerald-600" />}
       badge={
         <span

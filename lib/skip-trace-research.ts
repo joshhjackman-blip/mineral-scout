@@ -1,8 +1,9 @@
 /**
  * Background miss researcher. Walks open skip_trace_reviews, unwraps tax-roll
- * trust names and TX Comptroller officers, then re-runs the paid skip-trace
- * chain. Hits are written to skip_trace_cache + every deal for that owner.
- * Not a fifth live-path provider — the user is not billed again.
+ * trust names and TX Comptroller officers (including nested GP LLCs), then
+ * re-runs the paid skip-trace chain. Hits are written to skip_trace_cache +
+ * every deal for that owner. Not a fifth live-path provider — the user is
+ * not billed again.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -59,14 +60,20 @@ export function parseResearchAttempts(notes: string | null | undefined): {
 }
 
 export function shouldSkipResearch(
-  review: Pick<SkipTraceReview, 'notes'>,
+  review: Pick<SkipTraceReview, 'notes' | 'owner_name'>,
   now = Date.now(),
 ): { skip: boolean; reason: string } {
   const { attempts, lastAt } = parseResearchAttempts(review.notes)
-  if (attempts >= MAX_ATTEMPTS) {
+  const notes = String(review.notes ?? '')
+  const alreadyUnwrappedGp = /officer:GP|GP>/.test(notes)
+  const allowGpRetry =
+    !alreadyUnwrappedGp && parseTaxRollOwner(review.owner_name).kind === 'business'
+  const maxAttempts = allowGpRetry ? MAX_ATTEMPTS + 1 : MAX_ATTEMPTS
+  if (attempts >= maxAttempts) {
     return { skip: true, reason: `already tried ${attempts} times` }
   }
-  if (lastAt != null && now - lastAt < RECENT_MS) {
+  const extraPass = allowGpRetry && attempts >= MAX_ATTEMPTS
+  if (!extraPass && lastAt != null && now - lastAt < RECENT_MS) {
     return { skip: true, reason: 'researched recently' }
   }
   return { skip: false, reason: '' }
@@ -167,7 +174,7 @@ export async function collectResearchTargets(
 
   const officers = await lookupTxEntityPeople(review.owner_name, {
     zip: review.mailing_zip,
-    maxPeople: 4,
+    maxPeople: 6,
   })
   const fromOfficers = officerToTargets(review.owner_name, officers, review)
   const merged: ResearchTarget[] = []

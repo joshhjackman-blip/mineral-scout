@@ -57,6 +57,10 @@ export function methodLabel(method: string | null | undefined): string {
   if (raw.startsWith('officer:')) {
     const title = raw.slice('officer:'.length).replace(/_/g, ' ')
     if (/registered agent/i.test(title)) return 'TX registered agent'
+    if (title.includes('>') || /\bGP\b/.test(title)) {
+      const leaf = title.split('>').filter(Boolean).pop()?.trim() || ''
+      return leaf && leaf !== 'GP' ? `TX GP · ${leaf}` : 'TX GP unwrap'
+    }
     return `TX officer · ${title}`
   }
   if (raw === 'tax-roll-full') return 'Tax-roll full name'
