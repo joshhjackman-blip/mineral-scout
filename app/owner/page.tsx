@@ -68,11 +68,10 @@ type UsagePayload = {
 }
 
 export default function OwnerPortfolioPage() {
-  const supabase = useMemo(
-    () =>
-      createClient(),
-    [],
-  )
+  const supabase = useMemo(() => {
+    if (typeof window !== 'undefined' && shouldLoadPreviewReviews()) return null
+    return createClient()
+  }, [])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -167,30 +166,25 @@ export default function OwnerPortfolioPage() {
 
   useEffect(() => {
     const gate = async () => {
+      if (shouldLoadPreviewReviews()) {
+        setReviews(PREVIEW_REVIEWS)
+        setResearch(PREVIEW_RESEARCH)
+        setReviewsLoading(false)
+        setLoading(false)
+        setEmail('preview@mineralmapllc.com')
+        return
+      }
+      if (!supabase) return
       const {
         data: { session },
       } = await supabase.auth.getSession()
       if (!session?.user) {
-        if (shouldLoadPreviewReviews()) {
-          setReviews(PREVIEW_REVIEWS)
-          setResearch(PREVIEW_RESEARCH)
-          setReviewsLoading(false)
-          setLoading(false)
-          return
-        }
         window.location.href = '/auth'
         return
       }
       const userEmail = session.user.email ?? ''
       setEmail(userEmail)
       if (!isPlatformOwner(userEmail)) {
-        if (shouldLoadPreviewReviews()) {
-          setReviews(PREVIEW_REVIEWS)
-          setResearch(PREVIEW_RESEARCH)
-          setReviewsLoading(false)
-          setLoading(false)
-          return
-        }
         // Staff admins go to /admin; everyone else home.
         window.location.href = session.user.user_metadata?.is_admin ? '/admin' : '/'
         return

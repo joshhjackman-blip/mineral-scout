@@ -92,11 +92,13 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/demo') ||
     path.startsWith('/book-demo')
 
-  // Local preview of CRM sample leads. Production still requires login.
-  const isDevCrmPreview =
+  // Local preview of CRM sample leads / owner skip-trace panels.
+  // Production still requires login.
+  const isPreview =
     process.env.NODE_ENV !== 'production' &&
-    path.startsWith('/crm') &&
     request.nextUrl.searchParams.get('preview') === '1'
+  const isDevCrmPreview = isPreview && path.startsWith('/crm')
+  const isDevOwnerPreview = isPreview && path.startsWith('/owner')
 
   // Logged-in users may always reach account / legal so they can
   // manage the team or sign the agreement.
@@ -106,7 +108,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/legal') ||
     path.startsWith('/help')
 
-  if (!isLoggedIn && !isPublicPage && !isDevCrmPreview) {
+  if (!isLoggedIn && !isPublicPage && !isDevCrmPreview && !isDevOwnerPreview) {
     return redirectLoggedOut(new URL('/landing', request.url))
   }
 
@@ -123,7 +125,7 @@ export async function updateSession(request: NextRequest) {
   }
 
   const isAdminPath = path.startsWith('/admin') || path.startsWith('/owner')
-  if (isAdminPath) {
+  if (isAdminPath && !isDevOwnerPreview) {
     const isAdmin = isPlatformAdmin(metadata, email)
     if (!isAdmin) {
       return redirectLoggedIn(new URL('/', request.url))
