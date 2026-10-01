@@ -1,4 +1,8 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
+import { readBrand } from '@/app/components/BrandToggle'
 
 type AppLogoProps = {
   width?: number
@@ -8,7 +12,28 @@ type AppLogoProps = {
 export default function AppLogo({ width = 150, variant = 'default' }: AppLogoProps) {
   const safeWidth = Math.max(40, Math.round(width))
   const safeHeight = Math.round((safeWidth * 100) / 420)
-  const src = variant === 'light' ? '/mineral-map-logo-light.svg' : '/mineral-map-logo.svg'
+  const [tech, setTech] = useState(false)
+
+  useEffect(() => {
+    const sync = () => setTech(readBrand() === 'tech')
+    sync()
+    window.addEventListener('mm:brand-change', sync)
+    const observer = new MutationObserver(sync)
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-brand'] })
+    return () => {
+      window.removeEventListener('mm:brand-change', sync)
+      observer.disconnect()
+    }
+  }, [])
+
+  const src =
+    variant === 'light'
+      ? tech
+        ? '/mineral-map-logo-light-tech.svg'
+        : '/mineral-map-logo-light.svg'
+      : tech
+        ? '/mineral-map-logo-tech.svg'
+        : '/mineral-map-logo.svg'
 
   return (
     <Image

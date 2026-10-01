@@ -25,7 +25,7 @@
   line-height: 1.6;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
-  min-height: calc(100vh - var(--preview-banner-h, 36px));
+  min-height: 100vh;
 }
 
 /* Noise texture */
@@ -105,7 +105,7 @@
 /* ── Hero ────────────────────────────────────────────────────────────────── */
 
 .lp-hero {
-  min-height: calc(100vh - var(--preview-banner-h, 36px));
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;

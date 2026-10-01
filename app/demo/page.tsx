@@ -432,7 +432,7 @@ export default function DemoPage() {
   )
 
   return (
-    <div style={{ background: '#FFFFFF', height: 'calc(100vh - var(--preview-banner-h))', color: '#111827', fontFamily: 'system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: '#FFFFFF', height: '100vh', color: '#111827', fontFamily: 'system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
       <div
         style={{
           height: 38,

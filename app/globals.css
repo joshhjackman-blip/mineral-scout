@@ -110,43 +110,8 @@
   --font-body: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 
-  /* Preview-only Texas Tech brand (scarlet / black). Production `main`
-     stays amber / navy. Toggle with ?theme=amber or ?theme=tech. */
-  --preview-banner-h: 36px;
-  --mm-brand: #CC0000;
-  --mm-brand-rgb: 204, 0, 0;
-  --mm-brand-hot: #E31C23;
-  --mm-brand-deep: #9B0000;
-  --mm-ink: #111111;
-  --mm-ink-rgb: 17, 17, 17;
-  --mm-amber-50: #FDECEC;
-  --mm-amber-100: #F9D2D2;
-  --mm-amber-200: #F0A3A3;
-  --mm-amber-300: #E06A6A;
-  --mm-amber-400: #D62B2B;
-  --mm-amber-500: #CC0000;
-  --mm-amber-600: #A80000;
-  --mm-amber-700: #8B0000;
-  --mm-amber-800: #5C0000;
-  --mm-amber-900: #3D0000;
-  --mm-amber-950: #1A0000;
-
-  /* Map / app chrome tokens — used by header, bottom bar, theme toggle. */
-  --mm-chrome-bg: #ffffff;
-  --mm-chrome-fg: #111827;
-  --mm-chrome-muted: #6b7280;
-  --mm-chrome-border: #e5e7eb;
-  --mm-chrome-surface: #f4f5f7;
-  --mm-chrome-muted-fill: #f3f4f6;
-  --mm-chrome-panel: #ffffff;
-  --mm-chrome-header-overlay: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.94) 0%,
-    rgba(255, 255, 255, 0.98) 100%
-  );
-}
-
-html[data-brand='amber'] {
+  /* Default brand is amber / navy. `html[data-brand="tech"]` is the
+     optional Texas Tech scarlet/black look, toggled with the TT button. */
   --mm-brand: #EF9F27;
   --mm-brand-rgb: 239, 159, 39;
   --mm-brand-hot: #F5B041;
@@ -164,42 +129,40 @@ html[data-brand='amber'] {
   --mm-amber-800: #92400e;
   --mm-amber-900: #78350f;
   --mm-amber-950: #451a03;
+
+  /* Map / app chrome tokens — used by header, bottom bar, theme toggle. */
+  --mm-chrome-bg: #ffffff;
+  --mm-chrome-fg: #111827;
+  --mm-chrome-muted: #6b7280;
+  --mm-chrome-border: #e5e7eb;
+  --mm-chrome-surface: #f4f5f7;
+  --mm-chrome-muted-fill: #f3f4f6;
+  --mm-chrome-panel: #ffffff;
+  --mm-chrome-header-overlay: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.98) 100%
+  );
 }
 
-.tech-preview-banner {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 10000;
-  height: var(--preview-banner-h);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 16px;
-  background: #111111;
-  color: #ffffff;
-  font-family: var(--font-body);
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  border-bottom: 3px solid var(--mm-brand);
-  box-sizing: border-box;
-}
-
-.tech-preview-banner a {
-  color: #ffffff;
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.tech-preview-banner a:hover {
-  color: var(--mm-brand-hot);
-}
-
-body {
-  padding-top: var(--preview-banner-h);
+html[data-brand='tech'] {
+  --mm-brand: #CC0000;
+  --mm-brand-rgb: 204, 0, 0;
+  --mm-brand-hot: #E31C23;
+  --mm-brand-deep: #9B0000;
+  --mm-ink: #111111;
+  --mm-ink-rgb: 17, 17, 17;
+  --mm-amber-50: #FDECEC;
+  --mm-amber-100: #F9D2D2;
+  --mm-amber-200: #F0A3A3;
+  --mm-amber-300: #E06A6A;
+  --mm-amber-400: #D62B2B;
+  --mm-amber-500: #CC0000;
+  --mm-amber-600: #A80000;
+  --mm-amber-700: #8B0000;
+  --mm-amber-800: #5C0000;
+  --mm-amber-900: #3D0000;
+  --mm-amber-950: #1A0000;
 }
 
 .dark {

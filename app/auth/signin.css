@@ -13,7 +13,7 @@
   --si-amber-dim: rgba(var(--mm-brand-rgb), 0.14);
   --si-font:      'Geist', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  min-height: calc(100vh - var(--preview-banner-h, 36px));
+  min-height: 100vh;
   background: var(--si-surface);
   color: var(--si-text);
   font-family: var(--si-font);
@@ -23,7 +23,7 @@
 }
 
 .si-shell {
-  min-height: calc(100vh - var(--preview-banner-h, 36px));
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;

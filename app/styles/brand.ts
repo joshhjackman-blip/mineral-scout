@@ -1,7 +1,6 @@
 /**
- * Texas Tech preview brand. This branch is not production.
- * CSS variables on `:root` / `html[data-brand]` are the source of truth
- * for in-app chrome. Mapbox paint needs a resolved hex.
+ * Brand colors. CSS variables on `:root` / `html[data-brand="tech"]` are
+ * the source of truth for in-app chrome. Mapbox paint needs a resolved hex.
  */
 export const BRAND_HEX = {
   tech: {
@@ -18,11 +17,11 @@ export const BRAND_HEX = {
   },
 } as const
 
-export type BrandPreview = keyof typeof BRAND_HEX
+export type BrandName = keyof typeof BRAND_HEX
 
 export function cssBrand(property: '--mm-brand' | '--mm-ink' | '--mm-brand-deep' = '--mm-brand'): string {
-  if (typeof document === 'undefined') return BRAND_HEX.tech.primary
+  if (typeof document === 'undefined') return BRAND_HEX.amber.primary
   const value = getComputedStyle(document.documentElement).getPropertyValue(property).trim()
   if (value) return value
-  return property === '--mm-ink' ? BRAND_HEX.tech.ink : BRAND_HEX.tech.primary
+  return property === '--mm-ink' ? BRAND_HEX.amber.ink : BRAND_HEX.amber.primary
 }

@@ -738,7 +738,7 @@ export default function Map({
   const onCountySwitchRef = useRef(onCountySwitch)
   const onCountySelectRef = useRef(onCountySelect)
   const selectedCountyRef = useRef<CountyKey>(selectedCounty)
-  const basinViewRef = useRef(mapLevel === 'basin')
+  const basinViewRef = useRef(false)
   const lastClickTimeRef = useRef(0)
   const renderForCurrentLevelRef = useRef<() => Promise<void>>(async () => {})
   const renderTokenRef = useRef(0)
@@ -825,10 +825,6 @@ export default function Map({
   useEffect(() => {
     selectedCountyRef.current = selectedCounty
   }, [selectedCounty])
-
-  // Keep this in sync during render so setupTractLevel / style passes
-  // that run in the same mapLevel effect do not see a stale value.
-  basinViewRef.current = mapLevel === 'basin'
 
   const removeLayerIfExists = (mapInstance: mapboxgl.Map, layerId: string) => {
     if (mapInstance.getLayer(layerId)) mapInstance.removeLayer(layerId)
@@ -3141,20 +3137,8 @@ export default function Map({
     }
     if (mapLevel === 'tract') {
       await setupTractLevel()
-      return
     }
-    const missingParcels = countyEntries.some(([, cfg]) => (
-      !map.current?.getLayer(`parcels-fill-${cfg.id}`)
-    ))
-    if (!missingParcels) {
-      lastStyledSelectedCountyRef.current = null
-      applyTractCountyStyles()
-      fitBasinCamera()
-      void loadSelectedCountyPermits()
-      return
-    }
-    await setupTractLevel()
-  }, [applyTractCountyStyles, countyEntries, fitBasinCamera, loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, setupCountyOverview, setupTractLevel])
+  }, [loadSelectedCountyPermits, loadSelectedCountyWells, mapLevel, setupCountyOverview, setupTractLevel])
 
   useEffect(() => {
     renderForCurrentLevelRef.current = renderForCurrentLevel
@@ -3224,6 +3208,33 @@ export default function Map({
   }, [resolvedTheme, clearCountyMarkers])
 
   useEffect(() => {
+    const applyBrandPaint = () => {
+      const instance = map.current
+      if (!instance?.isStyleLoaded()) return
+      const brand = cssBrand('--mm-brand')
+      const deep = cssBrand('--mm-brand-deep')
+      if (instance.getLayer('tx-counties-active-fill')) {
+        instance.setPaintProperty(
+          'tx-counties-active-fill',
+          'fill-color',
+          ['case', ['boolean', ['feature-state', 'hover'], false], deep, brand],
+        )
+      }
+      if (instance.getLayer('tx-counties-active-outline')) {
+        instance.setPaintProperty('tx-counties-active-outline', 'line-color', deep)
+      }
+      if (instance.getLayer('tract-inactive-fill')) {
+        instance.setPaintProperty('tract-inactive-fill', 'fill-color', brand)
+      }
+      if (instance.getLayer('tract-inactive-outline')) {
+        instance.setPaintProperty('tract-inactive-outline', 'line-color', deep)
+      }
+    }
+    window.addEventListener('mm:brand-change', applyBrandPaint)
+    return () => window.removeEventListener('mm:brand-change', applyBrandPaint)
+  }, [])
+
+  useEffect(() => {
     setHoverCard(null)
   }, [mapLevel])
 
@@ -3279,14 +3290,9 @@ export default function Map({
 
   useEffect(() => {
     if (!map.current?.isStyleLoaded()) return
-    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
+    if (mapLevel !== 'tract') return
     // Re-color active/muted counties immediately (cheap paint-property swaps).
     applyTractCountyStyles()
-    if (mapLevel === 'basin') {
-      // Keep every county's rigs on the basin map. Reloading from the
-      // clicked tract's county would wipe the other red dots.
-      return
-    }
     const selectedFillId = `parcels-fill-${COUNTIES[selectedCounty].id}`
     if (!map.current.getLayer(selectedFillId)) {
       // Tract view only mounts the active county (loading all 12 at once
@@ -3313,7 +3319,7 @@ export default function Map({
   useEffect(() => {
     if (!activityRefreshTick) return
     if (!map.current?.isStyleLoaded()) return
-    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
+    if (mapLevel !== 'tract') return
     permitsCacheRef.current = {}
     void loadSelectedCountyPermits({ force: true })
   }, [activityRefreshTick, loadSelectedCountyPermits, mapLevel])
@@ -3321,7 +3327,7 @@ export default function Map({
   // Amber ring around tracts whose CAD ownership matches the operator filter.
   useEffect(() => {
     const mapInstance = map.current
-    if (!mapInstance?.isStyleLoaded() || (mapLevel !== 'tract' && mapLevel !== 'basin')) return
+    if (!mapInstance?.isStyleLoaded() || mapLevel !== 'tract') return
 
     const countyId = COUNTIES[selectedCounty]?.id
     if (!countyId) return
@@ -3400,7 +3406,7 @@ export default function Map({
   // which applyTractCountyStyles' same-county short-circuit would skip — so
   // force a full re-style when it flips.
   useEffect(() => {
-    if (!map.current?.isStyleLoaded() || (mapLevel !== 'tract' && mapLevel !== 'basin')) return
+    if (!map.current?.isStyleLoaded() || mapLevel !== 'tract') return
     lastStyledSelectedCountyRef.current = null
     applyTractCountyStyles()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3410,7 +3416,7 @@ export default function Map({
     if (!map.current?.isStyleLoaded()) return
     if (!map.current) return
     const mapInstance = map.current
-    const tractLevel = mapLevel === 'tract' || mapLevel === 'basin'
+    const tractLevel = mapLevel === 'tract'
     // Rigs overlay + permit glow layers are the two toggle-driven
     // overlays. Both stay hidden when mapLevel is 'county' (no
     // parcel-level layers to sit on top of).
@@ -3458,7 +3464,7 @@ export default function Map({
   }, [mapLevel, showRigs, showWells, showPermitGlow, showSubmittedGlow, countyEntries, statusVisible])
 
   useEffect(() => {
-    if (mapLevel !== 'tract' && mapLevel !== 'basin') return
+    if (mapLevel !== 'tract') return
     if (!focusTarget || !map.current?.isStyleLoaded()) return
 
     const features = currentParcelsByCountyRef.current[selectedCountyRef.current]?.features ?? []
@@ -3539,7 +3545,7 @@ export default function Map({
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
-      {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && hoverCard && (
+      {mapReady && mapLevel === 'tract' && hoverCard && (
         <div
           data-testid="tract-hover-card"
           style={{
@@ -3592,7 +3598,7 @@ export default function Map({
           )}
         </div>
       )}
-      {mapReady && (mapLevel === 'tract' || mapLevel === 'basin') && (
+      {mapReady && mapLevel === 'tract' && (
         <LayerTogglePanel
           statusVisible={statusVisible}
           onStatus={setStatus}

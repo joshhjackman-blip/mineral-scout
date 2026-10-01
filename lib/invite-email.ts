@@ -55,7 +55,7 @@ export function inviteEmailHtml(input: {
           <p style="font-size: 15px; color: #4B5563; line-height: 1.7; margin-bottom: 24px;">
             ${copy.body}
           </p>
-          <a href="${input.actionUrl}" style="display: inline-block; background: #CC0000; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-family: Inter, sans-serif; font-weight: 600; font-size: 14px;">
+          <a href="${input.actionUrl}" style="display: inline-block; background: #EF9F27; color: white; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-family: Inter, sans-serif; font-weight: 600; font-size: 14px;">
             ${copy.cta}
           </a>
           <p style="font-size: 12px; color: #9CA3AF; margin-top: 32px;">

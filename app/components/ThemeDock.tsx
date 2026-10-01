@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import ThemeToggle from '@/app/components/ThemeToggle'
+import ThemeControls from '@/app/components/ThemeControls'
 
 /**
  * Fixed footer theme control for pages that don't have the map bottom bar.
@@ -32,7 +32,7 @@ export default function ThemeDock() {
         zIndex: 45,
       }}
     >
-      <ThemeToggle size="md" />
+      <ThemeControls size="md" />
     </div>
   )
 }
