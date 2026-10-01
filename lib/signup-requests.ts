@@ -139,7 +139,7 @@ export function decidePageHtml(input: {
   </head>
   <body style="margin:0;background:#F8FAFC;font-family:Geist,Inter,system-ui,sans-serif;color:#111827;">
     <div style="max-width:480px;margin:72px auto;padding:32px;background:white;border:1px solid #E5E7EB;border-radius:12px;">
-      <p style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#D97706;margin:0 0 12px;">Mineral Map</p>
+      <p style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#9B0000;margin:0 0 12px;">Mineral Map</p>
       <h1 style="font-size:22px;margin:0 0 12px;">${escapeHtml(input.title)}</h1>
       <p style="font-size:15px;line-height:1.6;color:#4B5563;">${escapeHtml(input.body)}</p>
       ${

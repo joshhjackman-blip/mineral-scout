@@ -11,6 +11,7 @@ import OperatorMultiSelect from './OperatorMultiSelect'
 import type { OperatorOption } from '@/lib/operator-filter'
 import { omitInjectionWellFeatures } from '@/lib/well-kind'
 import { clipWellFeaturesToCounty, countyPolygonFromFeatures } from '@/lib/geo-clip'
+import { cssBrand } from '@/app/styles/brand'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN!
 
@@ -2041,7 +2042,7 @@ export default function Map({
       source: 'tx-counties',
       filter: ['in', ['get', '__fips'], ['literal', Array.from(activeFipsSet)]],
       paint: {
-        'fill-color': ['case', ['boolean', ['feature-state', 'hover'], false], '#D97706', '#EF9F27'],
+        'fill-color': ['case', ['boolean', ['feature-state', 'hover'], false], cssBrand('--mm-brand-deep'), cssBrand('--mm-brand')],
         'fill-opacity': 0.75,
       },
     })
@@ -2051,7 +2052,7 @@ export default function Map({
       type: 'line',
       source: 'tx-counties',
       filter: ['in', ['get', '__fips'], ['literal', Array.from(activeFipsSet)]],
-      paint: { 'line-color': '#D97706', 'line-width': 1.5 },
+      paint: { 'line-color': cssBrand('--mm-brand-deep'), 'line-width': 1.5 },
     })
 
     // "Coming soon" grey squares for Permian counties whose parcel
@@ -2906,7 +2907,7 @@ export default function Map({
           type: 'fill',
           source: 'tract-mode-overlay',
           filter: ['==', ['get', '__role'], 'inactive'],
-          paint: { 'fill-color': '#EF9F27', 'fill-opacity': 0.75 },
+          paint: { 'fill-color': cssBrand('--mm-brand'), 'fill-opacity': 0.75 },
         })
       }
       if (!map.current.getLayer('tract-inactive-outline')) {
@@ -2915,7 +2916,7 @@ export default function Map({
           type: 'line',
           source: 'tract-mode-overlay',
           filter: ['==', ['get', '__role'], 'inactive'],
-          paint: { 'line-color': '#D97706', 'line-width': 1.5 },
+          paint: { 'line-color': cssBrand('--mm-brand-deep'), 'line-width': 1.5 },
         })
       }
       // Grey COMING SOON block for the 10 upcoming counties.
@@ -3347,7 +3348,7 @@ export default function Map({
       filter: ['in', ['get', 'ABSTRACT_L'], ['literal', literals]],
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': '#EF9F27',
+        'line-color': cssBrand('--mm-brand'),
         'line-width': 3.5,
         'line-opacity': 0.95,
       },

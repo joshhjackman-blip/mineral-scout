@@ -139,7 +139,7 @@ export default function HelpChatWidget() {
                   width: 32,
                   height: 32,
                   borderRadius: 10,
-                  background: '#EF9F27',
+                  background: 'var(--mm-brand)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -332,7 +332,7 @@ export default function HelpChatWidget() {
                     background:
                       submitting || !subject.trim() || !message.trim()
                         ? '#D1D5DB'
-                        : '#EF9F27',
+                        : 'var(--mm-brand)',
                     border: 'none',
                     borderRadius: 10,
                     padding: '11px 12px',
@@ -360,7 +360,7 @@ export default function HelpChatWidget() {
           height: 56,
           borderRadius: 28,
           border: 'none',
-          background: open ? '#111827' : '#EF9F27',
+          background: open ? '#111827' : 'var(--mm-brand)',
           color: '#fff',
           boxShadow: '0 10px 28px rgba(15, 23, 42, 0.28)',
           cursor: 'pointer',

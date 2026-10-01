@@ -6,6 +6,7 @@ import PostHogProvider from "@/app/components/PostHogProvider"
 import HelpChatWidget from "@/app/components/HelpChatWidget"
 import ThemeProvider from "@/app/components/ThemeProvider"
 import ThemeDock from "@/app/components/ThemeDock"
+import BrandPreviewBanner from "@/app/components/BrandPreviewBanner"
 
 import "./globals.css"
 
@@ -24,8 +25,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" data-brand="tech" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var q=new URLSearchParams(location.search).get('theme');var m=document.cookie.match(/(?:^|; )mm-brand-preview=(tech|amber)/);var b=(q==='amber'||q==='tech')?q:(m?m[1]:'tech');document.documentElement.setAttribute('data-brand',b);}catch(e){document.documentElement.setAttribute('data-brand','tech');}})();`,
+          }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         {/* Type stack (2026-07-17 third refinement — matches
@@ -43,7 +49,8 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body style={{ margin: 0, padding: 0 }}>
+      <body style={{ margin: 0 }}>
+        <BrandPreviewBanner />
         <ThemeProvider>
           <PostHogProvider>
             <TooltipProvider>{children}</TooltipProvider>
