@@ -16,10 +16,10 @@ export const tokens = {
     textMuted: '#9CA3AF',
     textDisabled: '#D1D5DB',
 
-    // Brand
-    amber: '#D97706',
-    amberLight: '#FEF3C7',
-    amberBorder: '#FDE68A',
+    // Brand (Texas Tech preview — CSS vars keep Tailwind + inline in sync)
+    amber: 'var(--mm-brand)',
+    amberLight: 'var(--mm-amber-100)',
+    amberBorder: 'var(--mm-amber-200)',
 
     // Semantic
     red: '#DC2626',

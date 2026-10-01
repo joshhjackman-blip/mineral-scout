@@ -446,7 +446,7 @@ export default function DemoPage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#EF9F27', display: 'inline-block' }} />
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--mm-brand)', display: 'inline-block' }} />
           <span style={{ fontSize: 11, letterSpacing: '0.09em', fontWeight: 700, color: '#111827' }}>MINERAL MAP</span>
           <span style={{ color: '#9CA3AF', fontSize: 11 }}>·</span>
           <span style={{ fontSize: 11, color: '#6B7280' }}>Howard County, TX</span>
@@ -461,9 +461,9 @@ export default function DemoPage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(239,159,39,0.1)',
-          borderBottom: '1px solid rgba(239,159,39,0.25)',
-          color: 'rgba(239,159,39,0.9)',
+          background: 'rgba(var(--mm-brand-rgb),0.1)',
+          borderBottom: '1px solid rgba(var(--mm-brand-rgb),0.25)',
+          color: 'rgba(var(--mm-brand-rgb),0.9)',
           fontSize: 11,
           fontWeight: 600,
           textAlign: 'center',
@@ -509,7 +509,7 @@ export default function DemoPage() {
               <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 10, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(var(--mm-brand-rgb),0.15)', color: 'var(--mm-brand)', border: '0.5px solid rgba(var(--mm-brand-rgb),0.35)' }}>
                   {selectedTract.owners.length} owners
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: '#F3F4F6', color: '#6B7280', border: '1px solid #E5E7EB' }}>
@@ -518,7 +518,7 @@ export default function DemoPage() {
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
+                <div style={{ color: 'var(--mm-brand)', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>PRODUCTION HISTORY</div>
                 <div style={{ width: '100%', height: 140, minHeight: 140 }}>
                   <ResponsiveContainer width="100%" height={140}>
                     <LineChart data={selectedTract.productionData}>
@@ -528,7 +528,7 @@ export default function DemoPage() {
                         contentStyle={{ background: '#FFFFFF', border: '1px solid #E5E7EB', color: '#111827' }}
                         labelStyle={{ color: '#6B7280' }}
                       />
-                      <Line type="monotone" dataKey="oil" stroke="#EF9F27" strokeWidth={2} dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="oil" stroke="var(--mm-brand)" strokeWidth={2} dot={{ r: 2 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -539,7 +539,7 @@ export default function DemoPage() {
               </div>
 
               <div style={{ background: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                <div style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
+                <div style={{ color: 'var(--mm-brand)', fontSize: 12, fontWeight: 600, marginBottom: 8 }}>OPERATOR & LEASE INFO</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Operator: {selectedTract.operatorName}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Field: {selectedTract.fieldName}</div>
                 <div style={{ fontSize: 12, color: '#111827', marginBottom: 6 }}>Well status: PRODUCING</div>
@@ -624,7 +624,7 @@ export default function DemoPage() {
                                 padding: '1px 5px',
                                 borderRadius: 3,
                                 background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
-                                color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
+                                color: well.well_type === 'HORIZONTAL' ? 'var(--mm-brand)' : '#6B7280',
                                 border: `1px solid ${well.well_type === 'HORIZONTAL' ? '#FDE68A' : '#E5E7EB'}`,
                               }}
                             >
@@ -676,8 +676,8 @@ export default function DemoPage() {
                         cursor: 'pointer',
                         fontFamily: 'Geist, Inter, system-ui, sans-serif',
                         fontWeight: ownerSort === s.key ? 600 : 400,
-                        background: ownerSort === s.key ? '#EF9F27' : 'transparent',
-                        border: ownerSort === s.key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
+                        background: ownerSort === s.key ? 'var(--mm-brand)' : 'transparent',
+                        border: ownerSort === s.key ? '1px solid var(--mm-brand)' : '1px solid #E5E7EB',
                         color: ownerSort === s.key ? '#fff' : '#6B7280',
                       }}
                     >
@@ -702,7 +702,7 @@ export default function DemoPage() {
                           padding: '10px 16px',
                           cursor: 'pointer',
                           background: isExpanded ? '#FFFBEB' : 'transparent',
-                          borderLeft: isExpanded ? '3px solid #EF9F27' : '3px solid transparent',
+                          borderLeft: isExpanded ? '3px solid var(--mm-brand)' : '3px solid transparent',
                           transition: 'all 0.2s',
                         }}
                         onMouseEnter={(e) => {
@@ -749,7 +749,7 @@ export default function DemoPage() {
                               {owner.typeLabel}
                             </span>
                             {owner.outOfState && (
-                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(239,159,39,0.12)', color: '#B45309', border: '0.5px solid rgba(239,159,39,0.3)' }}>
+                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(var(--mm-brand-rgb),0.12)', color: 'var(--mm-amber-700)', border: '0.5px solid rgba(var(--mm-brand-rgb),0.3)' }}>
                                 OOS
                               </span>
                             )}
@@ -780,9 +780,9 @@ export default function DemoPage() {
                                     padding: '4px 10px',
                                     borderRadius: 4,
                                     cursor: 'pointer',
-                                    background: inPipeline ? 'rgba(122,184,53,0.15)' : 'rgba(239,159,39,0.12)',
-                                    border: inPipeline ? '0.5px solid #7AB835' : '0.5px solid #EF9F27',
-                                    color: inPipeline ? '#7AB835' : '#B45309',
+                                    background: inPipeline ? 'rgba(122,184,53,0.15)' : 'rgba(var(--mm-brand-rgb),0.12)',
+                                    border: inPipeline ? '0.5px solid #7AB835' : '0.5px solid var(--mm-brand)',
+                                    color: inPipeline ? '#7AB835' : 'var(--mm-amber-700)',
                                   }}
                                 >
                                   {inPipeline ? '✓ In pipeline' : '+ Add to pipeline'}
@@ -817,7 +817,7 @@ export default function DemoPage() {
                               <div
                                 style={{
                                   background: '#FFF9F0',
-                                  border: '1px solid rgba(239,159,39,0.3)',
+                                  border: '1px solid rgba(var(--mm-brand-rgb),0.3)',
                                   borderRadius: 6,
                                   padding: 10,
                                   marginTop: 8,
@@ -844,7 +844,7 @@ export default function DemoPage() {
               </div>
 
               <div style={{ display: 'flex', marginTop: 14 }}>
-                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(var(--mm-brand-rgb),0.4)', background: 'rgba(var(--mm-brand-rgb),0.15)', color: 'var(--mm-brand)', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   Add all to pipeline
                 </button>
               </div>

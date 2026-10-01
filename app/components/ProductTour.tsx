@@ -12,7 +12,7 @@ import { createPortal } from 'react-dom'
 // Context the host page feeds in so gated steps know when the required
 // action has already happened (e.g. the user is already inside a county).
 export type TourContext = {
-  mapLevel?: 'county' | 'tract' | 'basin'
+  mapLevel?: 'county' | 'tract'
   tractSelected?: boolean
 }
 
@@ -44,7 +44,7 @@ export const TOUR_ADVANCE_EVENT = 'mm:tour-advance'
 const SPOTLIGHT_PADDING = 8
 const CARD_WIDTH = 320
 const CARD_EST_HEIGHT = 240
-const ACCENT = '#EF9F27'
+const ACCENT = 'var(--mm-brand)'
 
 function visibleAnchorRect(el: HTMLElement | null): DOMRect | null {
   if (!el) return null
@@ -363,8 +363,8 @@ export default function ProductTour({
               marginTop: 12,
               padding: '8px 10px',
               borderRadius: 8,
-              background: 'rgba(239, 159, 39, 0.12)',
-              border: `1px solid rgba(239, 159, 39, 0.4)`,
+              background: 'rgba(var(--mm-brand-rgb), 0.12)',
+              border: `1px solid rgba(var(--mm-brand-rgb), 0.4)`,
               color: '#92400e',
               fontSize: 12,
               fontWeight: 600,

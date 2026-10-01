@@ -110,6 +110,26 @@
   --font-body: 'Geist', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'Geist Mono', 'JetBrains Mono', 'SF Mono', ui-monospace, monospace;
 
+  /* Default brand is amber / navy. `html[data-brand="tech"]` is the
+     optional Texas Tech scarlet/black look, toggled with the TT button. */
+  --mm-brand: #EF9F27;
+  --mm-brand-rgb: 239, 159, 39;
+  --mm-brand-hot: #F5B041;
+  --mm-brand-deep: #D97706;
+  --mm-ink: #0B2A5C;
+  --mm-ink-rgb: 11, 42, 92;
+  --mm-amber-50: #fffbeb;
+  --mm-amber-100: #fef3c7;
+  --mm-amber-200: #fde68a;
+  --mm-amber-300: #fcd34d;
+  --mm-amber-400: #fbbf24;
+  --mm-amber-500: #f59e0b;
+  --mm-amber-600: #d97706;
+  --mm-amber-700: #b45309;
+  --mm-amber-800: #92400e;
+  --mm-amber-900: #78350f;
+  --mm-amber-950: #451a03;
+
   /* Map / app chrome tokens — used by header, bottom bar, theme toggle. */
   --mm-chrome-bg: #ffffff;
   --mm-chrome-fg: #111827;
@@ -123,6 +143,26 @@
     rgba(255, 255, 255, 0.94) 0%,
     rgba(255, 255, 255, 0.98) 100%
   );
+}
+
+html[data-brand='tech'] {
+  --mm-brand: #CC0000;
+  --mm-brand-rgb: 204, 0, 0;
+  --mm-brand-hot: #E31C23;
+  --mm-brand-deep: #9B0000;
+  --mm-ink: #111111;
+  --mm-ink-rgb: 17, 17, 17;
+  --mm-amber-50: #FDECEC;
+  --mm-amber-100: #F9D2D2;
+  --mm-amber-200: #F0A3A3;
+  --mm-amber-300: #E06A6A;
+  --mm-amber-400: #D62B2B;
+  --mm-amber-500: #CC0000;
+  --mm-amber-600: #A80000;
+  --mm-amber-700: #8B0000;
+  --mm-amber-800: #5C0000;
+  --mm-amber-900: #3D0000;
+  --mm-amber-950: #1A0000;
 }
 
 .dark {
@@ -242,7 +282,7 @@ h1, h2, h3, h4, .font-display {
 
 /* Focus rings */
 *:focus-visible {
-  outline: 2px solid #D97706;
+  outline: 2px solid var(--mm-brand);
   outline-offset: 2px;
 }
 
@@ -301,10 +341,10 @@ button, a { transition: all 0.15s ease; }
   transition: all 0.15s ease;
 }
 .btn-primary {
-  background: #D97706;
+  background: var(--mm-brand);
   color: white;
 }
-.btn-primary:hover { background: #B45309; }
+.btn-primary:hover { background: var(--mm-brand-deep); }
 .btn-secondary {
   background: white;
   color: #374151;
@@ -339,7 +379,7 @@ button, a { transition: all 0.15s ease; }
   transition: border-color 0.15s;
   outline: none;
 }
-.input:focus { border-color: #D97706; box-shadow: 0 0 0 3px rgba(217,119,6,0.1); }
+.input:focus { border-color: var(--mm-brand); box-shadow: 0 0 0 3px rgba(var(--mm-brand-rgb), 0.1); }
 .input::placeholder { color: #9CA3AF; }
 
 /* Section header */

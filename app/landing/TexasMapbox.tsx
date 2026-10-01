@@ -4,12 +4,9 @@ import { useEffect, useRef } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { COUNTIES, TX_COUNTIES_GEOJSON_PATH } from '@/lib/counties'
+import { cssBrand } from '@/app/styles/brand'
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
-
-/** Brand navy — matches `--cs-navy` in coming-soon.css */
-const NAVY = '#0B2A5C'
-const AMBER = '#EF9F27'
 
 /** Same Permian roadmap counties as the in-app county overview. */
 const UPCOMING_COUNTIES: Array<{ fips: string }> = []
@@ -88,7 +85,7 @@ export default function TexasMapbox() {
           type: 'fill',
           source: 'tx-counties',
           paint: {
-            'fill-color': NAVY,
+            'fill-color': cssBrand('--mm-ink'),
             'fill-opacity': 1,
           },
         })
@@ -115,7 +112,7 @@ export default function TexasMapbox() {
           source: 'tx-counties',
           filter: ['in', ['get', '__fips'], ['literal', permianFips]],
           paint: {
-            'line-color': AMBER,
+            'line-color': cssBrand('--mm-brand'),
             'line-width': 2,
             'line-opacity': 1,
           },

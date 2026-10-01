@@ -11,9 +11,9 @@
   --lp-text: #f0ece4;
   --lp-text-muted: #7a7468;
   --lp-text-mid: #b0a89a;
-  --lp-amber: #EF9F27;
-  --lp-amber-dim: rgba(239,159,39,0.12);
-  --lp-amber-glow: rgba(239,159,39,0.25);
+  --lp-amber: var(--mm-brand);
+  --lp-amber-dim: rgba(var(--mm-brand-rgb), 0.12);
+  --lp-amber-glow: rgba(var(--mm-brand-rgb), 0.25);
   --lp-teal: #2ec4b6;
   --lp-font-serif: 'Geist', Inter, system-ui, sans-serif;
   --lp-font-sans: 'Geist', Inter, system-ui, sans-serif;
@@ -422,7 +422,7 @@
   transform: translate(-50%, -50%);
   width: 800px;
   height: 400px;
-  background: radial-gradient(ellipse, rgba(239,159,39,0.08) 0%, transparent 65%);
+  background: radial-gradient(ellipse, rgba(var(--mm-brand-rgb),0.08) 0%, transparent 65%);
   pointer-events: none;
 }
 
@@ -617,9 +617,9 @@
 }
 
 .lp-model-col-good {
-  border-color: rgba(239,159,39,0.35);
-  background: linear-gradient(180deg, rgba(239,159,39,0.06) 0%, transparent 100%), var(--lp-bg);
-  box-shadow: 0 24px 60px -30px rgba(239,159,39,0.35);
+  border-color: rgba(var(--mm-brand-rgb),0.35);
+  background: linear-gradient(180deg, rgba(var(--mm-brand-rgb),0.06) 0%, transparent 100%), var(--lp-bg);
+  box-shadow: 0 24px 60px -30px rgba(var(--mm-brand-rgb),0.35);
 }
 
 .lp-model-col-good .lp-model-col-tag { color: var(--lp-amber); }
@@ -670,12 +670,12 @@
 .lp-pricing-card {
   max-width: 560px;
   margin: 0 auto;
-  border: 1px solid rgba(239,159,39,0.35);
+  border: 1px solid rgba(var(--mm-brand-rgb),0.35);
   border-radius: 16px;
   padding: 44px 40px 40px;
-  background: linear-gradient(180deg, rgba(239,159,39,0.05) 0%, var(--lp-bg2) 100%);
+  background: linear-gradient(180deg, rgba(var(--mm-brand-rgb),0.05) 0%, var(--lp-bg2) 100%);
   text-align: left;
-  box-shadow: 0 40px 80px -40px rgba(239,159,39,0.35);
+  box-shadow: 0 40px 80px -40px rgba(var(--mm-brand-rgb),0.35);
 }
 
 .lp-pricing-card-header {
@@ -776,7 +776,7 @@
   color: var(--lp-text-mid);
   text-decoration: underline;
   text-underline-offset: 2px;
-  text-decoration-color: rgba(239,159,39,0.35);
+  text-decoration-color: rgba(var(--mm-brand-rgb),0.35);
 }
 
 .lp-pricing-card-fineprint a:hover {

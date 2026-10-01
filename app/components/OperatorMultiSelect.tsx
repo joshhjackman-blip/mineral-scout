@@ -83,11 +83,11 @@ export default function OperatorMultiSelect({
           width: '100%',
           fontSize: 12,
           border: active
-            ? '1px solid rgba(239,159,39,0.7)'
+            ? '1px solid rgba(var(--mm-brand-rgb),0.7)'
             : '1px solid var(--mm-chrome-border)',
           borderRadius: 6,
           padding: '6px 8px',
-          background: active ? 'rgba(239,159,39,0.12)' : 'var(--mm-chrome-panel)',
+          background: active ? 'rgba(var(--mm-brand-rgb),0.12)' : 'var(--mm-chrome-panel)',
           color: 'var(--mm-chrome-fg)',
           textAlign: 'left',
           cursor: 'pointer',
@@ -114,7 +114,7 @@ export default function OperatorMultiSelect({
       </button>
 
       {active && matchCount != null && (
-        <div style={{ marginTop: 4, fontSize: 10.5, color: '#B45309' }}>
+        <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--mm-amber-700)' }}>
           {matchCount} tract{matchCount === 1 ? '' : 's'} match
         </div>
       )}
@@ -199,9 +199,9 @@ export default function OperatorMultiSelect({
                       gap: 8,
                       padding: '6px 10px',
                       cursor: 'pointer',
-                      background: checked ? 'rgba(239,159,39,0.12)' : 'transparent',
+                      background: checked ? 'rgba(var(--mm-brand-rgb),0.12)' : 'transparent',
                       borderLeft: checked
-                        ? '3px solid #EF9F27'
+                        ? '3px solid var(--mm-brand)'
                         : '3px solid transparent',
                     }}
                   >
@@ -209,7 +209,7 @@ export default function OperatorMultiSelect({
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggle(op.key)}
-                      style={{ marginTop: 2, accentColor: '#EF9F27' }}
+                      style={{ marginTop: 2, accentColor: 'var(--mm-brand)' }}
                     />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span

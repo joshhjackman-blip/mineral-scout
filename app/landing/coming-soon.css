@@ -1,10 +1,11 @@
 /* Coming-soon homepage — TRDDATA-style poster, Mineral Map brand colors */
 
 .cs-root {
-  --cs-navy: #0B2A5C;
-  --cs-amber: #EF9F27;
-  --cs-amber-deep: #D97706;
-  --cs-amber-hot: #F5B041;
+  --cs-navy: var(--mm-ink);
+  --cs-navy-rgb: var(--mm-ink-rgb);
+  --cs-amber: var(--mm-brand);
+  --cs-amber-deep: var(--mm-brand-deep);
+  --cs-amber-hot: var(--mm-brand-hot);
   --cs-white: #FFFFFF;
   --cs-ink: #0A0A0A;
   --cs-display: var(--font-barlow-condensed), 'Arial Narrow', sans-serif;
@@ -27,7 +28,7 @@
   inset: 0;
   background:
     radial-gradient(ellipse 70% 55% at 18% 42%, rgba(255, 255, 255, 0.18), transparent 60%),
-    radial-gradient(ellipse 50% 40% at 78% 70%, rgba(11, 42, 92, 0.14), transparent 65%);
+    radial-gradient(ellipse 50% 40% at 78% 70%, rgba(var(--cs-navy-rgb), 0.14), transparent 65%);
   pointer-events: none;
   z-index: 0;
 }
@@ -66,7 +67,7 @@
 }
 
 .cs-login:hover {
-  border-bottom-color: rgba(11, 42, 92, 0.85);
+  border-bottom-color: rgba(var(--cs-navy-rgb), 0.85);
   opacity: 0.95;
 }
 
@@ -78,7 +79,7 @@
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: 8px 14px;
-  border: 1.5px solid rgba(11, 42, 92, 0.55);
+  border: 1.5px solid rgba(var(--cs-navy-rgb), 0.55);
   border-radius: 999px;
   transition: background 160ms ease, border-color 160ms ease;
 }
@@ -118,11 +119,11 @@
 }
 
 .cs-btn-email {
-  color: rgba(11, 42, 92, 0.92);
+  color: rgba(var(--cs-navy-rgb), 0.92);
   font-size: 13px;
   font-weight: 600;
   text-decoration: none;
-  border-bottom: 1px solid rgba(11, 42, 92, 0.35);
+  border-bottom: 1px solid rgba(var(--cs-navy-rgb), 0.35);
 }
 
 .cs-btn-email:hover {
@@ -200,7 +201,7 @@
 }
 
 .cs-mbx-map-loading {
-  background: rgba(11, 42, 92, 0.08);
+  background: rgba(var(--cs-navy-rgb), 0.08);
 }
 
 .cs-mbx-map .mapboxgl-canvas {

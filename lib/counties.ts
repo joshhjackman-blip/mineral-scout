@@ -34,7 +34,7 @@ export type County = {
 
 export type CountyKey = keyof typeof COUNTIES
 
-export type MapLevel = 'county' | 'tract' | 'basin'
+export type MapLevel = 'county' | 'tract'
 
 // All live counties at once. The 12-county footprint spans roughly
 // -103.5 to -101.0 lon and 30.7 to 32.5 lat.

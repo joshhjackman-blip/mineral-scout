@@ -62,7 +62,7 @@ const TRACTS = [
 
 const tierColor: Record<(typeof TRACTS)[number]['tier'], string> = {
   red: '#F44336',
-  orange: '#EF9F27',
+  orange: 'var(--mm-brand)',
   green: '#7AB835',
   gray: '#5B616E',
 }
@@ -107,7 +107,7 @@ export default function InteractiveDemo() {
         }}
       >
         <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(239,159,39,0.8)', fontWeight: 600 }}>
+          <div style={{ fontSize: 11, letterSpacing: '0.08em', color: 'rgba(var(--mm-brand-rgb),0.8)', fontWeight: 600 }}>
             STEP {currentStep} OF 7
           </div>
           <div style={{ color: '#fff', fontSize: 14, fontWeight: 600 }}>{DEMO_STEPS[stepIndex].title}</div>
@@ -136,7 +136,7 @@ export default function InteractiveDemo() {
               background: '#121821',
               height: '100%',
               position: 'relative',
-              boxShadow: isTierHighlightStep ? 'inset 0 0 0 2px rgba(239,159,39,0.65)' : 'none',
+              boxShadow: isTierHighlightStep ? 'inset 0 0 0 2px rgba(var(--mm-brand-rgb),0.65)' : 'none',
               transition: 'box-shadow 0.25s ease',
             }}
           >
@@ -173,7 +173,7 @@ export default function InteractiveDemo() {
                   width={132}
                   height={96}
                   fill="none"
-                  stroke="#EF9F27"
+                  stroke="var(--mm-brand)"
                   strokeWidth={3}
                   rx={7}
                   style={{ transformOrigin: '235px 157px', animation: 'demoPulseRing 1.4s ease-in-out infinite' }}
@@ -194,7 +194,7 @@ export default function InteractiveDemo() {
             >
               {[
                 { label: 'HOT', color: '#F44336' },
-                { label: 'WARM', color: '#EF9F27' },
+                { label: 'WARM', color: 'var(--mm-brand)' },
                 { label: 'STABLE', color: '#7AB835' },
                 { label: 'LOW', color: '#5B616E' },
               ].map((tier) => (
@@ -227,7 +227,7 @@ export default function InteractiveDemo() {
             }}
           >
             <div style={{ padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: 10, color: 'rgba(239,159,39,0.82)', letterSpacing: '0.08em', fontWeight: 700 }}>
+              <div style={{ fontSize: 10, color: 'rgba(var(--mm-brand-rgb),0.82)', letterSpacing: '0.08em', fontWeight: 700 }}>
                 SELECTED TRACT
               </div>
               <div style={{ fontSize: 14, color: '#fff', marginTop: 2 }}>A‑543 · Howard County</div>
@@ -236,7 +236,7 @@ export default function InteractiveDemo() {
             <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
               {OWNER_ROWS.map((owner, index) => {
                 const isTopOwner = index === 0
-                const scoreColor = owner.score >= 8 ? '#F44336' : owner.score >= 6 ? '#EF9F27' : '#7AB835'
+                const scoreColor = owner.score >= 8 ? '#F44336' : owner.score >= 6 ? 'var(--mm-brand)' : '#7AB835'
                 return (
                   <div
                     key={owner.name}
@@ -262,7 +262,7 @@ export default function InteractiveDemo() {
                           borderRadius: 999,
                           padding: '2px 8px',
                           fontWeight: 700,
-                          outline: showScoreBreakdown && isTopOwner ? '1px solid #EF9F27' : 'none',
+                          outline: showScoreBreakdown && isTopOwner ? '1px solid var(--mm-brand)' : 'none',
                         }}
                       >
                         {owner.score}/10
@@ -270,7 +270,7 @@ export default function InteractiveDemo() {
                     </div>
 
                     <div style={{ marginTop: 6, display: 'flex', gap: 10, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 10 }}>
-                      <span style={{ color: emphasizeNra ? '#EF9F27' : 'rgba(255,255,255,0.68)' }}>{owner.nra}</span>
+                      <span style={{ color: emphasizeNra ? 'var(--mm-brand)' : 'rgba(255,255,255,0.68)' }}>{owner.nra}</span>
                       {owner.estMonthly && <span style={{ color: 'rgba(255,255,255,0.54)' }}>{owner.estMonthly}</span>}
                     </div>
 
@@ -297,9 +297,9 @@ export default function InteractiveDemo() {
                     type="button"
                     style={{
                       width: '100%',
-                      border: '1px solid rgba(239,159,39,0.55)',
-                      background: 'rgba(239,159,39,0.14)',
-                      color: '#EF9F27',
+                      border: '1px solid rgba(var(--mm-brand-rgb),0.55)',
+                      background: 'rgba(var(--mm-brand-rgb),0.14)',
+                      color: 'var(--mm-brand)',
                       borderRadius: 7,
                       fontSize: 11,
                       fontWeight: 600,
@@ -372,7 +372,7 @@ export default function InteractiveDemo() {
                 borderRadius: '50%',
                 border: 'none',
                 padding: 0,
-                background: idx === stepIndex ? '#EF9F27' : 'rgba(255,255,255,0.2)',
+                background: idx === stepIndex ? 'var(--mm-brand)' : 'rgba(255,255,255,0.2)',
                 cursor: 'pointer',
               }}
             />
@@ -384,9 +384,9 @@ export default function InteractiveDemo() {
           onClick={() => setStepIndex((prev) => Math.min(DEMO_STEPS.length - 1, prev + 1))}
           disabled={stepIndex === DEMO_STEPS.length - 1}
           style={{
-            border: '1px solid rgba(239,159,39,0.5)',
-            background: 'rgba(239,159,39,0.16)',
-            color: stepIndex === DEMO_STEPS.length - 1 ? 'rgba(239,159,39,0.35)' : '#EF9F27',
+            border: '1px solid rgba(var(--mm-brand-rgb),0.5)',
+            background: 'rgba(var(--mm-brand-rgb),0.16)',
+            color: stepIndex === DEMO_STEPS.length - 1 ? 'rgba(var(--mm-brand-rgb),0.35)' : 'var(--mm-brand)',
             borderRadius: 7,
             padding: '7px 11px',
             fontSize: 11,

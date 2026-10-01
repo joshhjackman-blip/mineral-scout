@@ -13,7 +13,7 @@ import AppLogo from '@/app/components/AppLogo'
 import { identifyUser, trackEvent } from '@/lib/posthog'
 import { isPlatformOwner } from '@/lib/team'
 import { getWorkspaceContext, skipTraceOwnerKey } from '@/lib/workspace'
-import ThemeToggle from '@/app/components/ThemeToggle'
+import ThemeControls from '@/app/components/ThemeControls'
 import {
   bareAbstract,
   permitBestDate,
@@ -1082,7 +1082,7 @@ export default function Home() {
   const wellsGeoCacheRef = useRef<Record<string, GeoJSON.FeatureCollection | null>>({})
   const ownershipTable = county.ownershipTable
   const countyLabel =
-    mapLevel === 'county' ? 'All Counties' : mapLevel === 'basin' ? 'Permian Basin' : county.displayName
+    mapLevel === 'county' ? 'All Counties' : county.displayName
   const countyBreakdown = county.breakdown
   // Live per-county stat counts fetched from Supabase. Replaces the
   // static county.stats values baked in lib/counties.ts, which
@@ -1241,21 +1241,6 @@ export default function Home() {
     setSelectedCounty(nextKey)
     flyToCountyView(nextKey)
   }, [selectedCounty, flyToCountyView])
-
-  const openBasinView = useCallback(() => {
-    setSelected(null)
-    setExpandedOwner(null)
-    setSearchQuery('')
-    setSearchResults([])
-    setSearchOpen(false)
-    setOwnerTracts([])
-    setOwnerTractsName('')
-    setOwnerWells({})
-    setTractWells([])
-    setTractWellsLoaded(false)
-    setWellsExpanded(false)
-    setMapLevel('basin')
-  }, [])
 
   useEffect(() => {
     countyRef.current = county
@@ -1419,8 +1404,6 @@ export default function Home() {
       clearTimeout(countySwitchClearTimeoutRef.current)
     }
 
-    if (mapLevel === 'basin') return
-
     setCountySwitchLabel(county.displayName)
     setCountySwitchLabelVisible(true)
 
@@ -1434,12 +1417,9 @@ export default function Home() {
   }, [county.displayName, selectedCounty, mapLevel])
 
   useEffect(() => {
-    // In basin view a tract click in another county updates selectedCounty
-    // and then selects that tract in the same tick. Keep the incoming
-    // selection so the owner panel can open.
-    if (mapLevel !== 'basin') {
-      setSelected(null)
-    }
+    // Switching counties always drops the current tract so the owner
+    // panel does not show another county's selection.
+    setSelected(null)
     setExpandedOwner(null)
     setSearchQuery('')
     setSearchResults([])
@@ -1457,8 +1437,7 @@ export default function Home() {
     setDrawerOwner(null)
     setDrawerTractLabel(null)
     setDevStatusByAbstract({})
-    // mapLevel is read only so a basin tract-click can keep the new
-    // selection. Do not add it to deps or opening the basin map would
+    // Do not add mapLevel to deps or changing overview/tract would
     // wipe per-county development status.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCounty])
@@ -2134,7 +2113,7 @@ export default function Home() {
         return
       }
 
-      const searchCounties = mapLevel === 'county' || mapLevel === 'basin'
+      const searchCounties = mapLevel === 'county'
         ? COUNTY_ORDER
         : [selectedCounty]
 
@@ -2675,7 +2654,7 @@ export default function Home() {
     }
 
     const resultCounty = result.countyId ?? selectedCounty
-    if (mapLevel === 'county' || mapLevel === 'basin') {
+    if (mapLevel === 'county') {
       if (resultCounty !== selectedCounty) {
         setSelectedCounty(resultCounty)
       }
@@ -3569,27 +3548,7 @@ export default function Home() {
                 {navCountyLabel}
               </span>
             )}
-            {mapLevel === 'county' && (
-              <button
-                type="button"
-                onClick={openBasinView}
-                style={{
-                  height: 26,
-                  border: '1px solid var(--mm-chrome-border)',
-                  borderRadius: 6,
-                  background: 'var(--mm-chrome-fg)',
-                  color: 'var(--mm-chrome-panel)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                  padding: '0 8px',
-                  cursor: 'pointer',
-                }}
-              >
-                Basin view
-              </button>
-            )}
-            {(mapLevel === 'tract' || mapLevel === 'basin') && (
+            {mapLevel === 'tract' && (
               <button
                 onClick={() => {
                   setMapLevel('county')
@@ -3616,59 +3575,6 @@ export default function Home() {
                 {backToAllLabel}
               </button>
             )}
-            {(mapLevel === 'tract' || mapLevel === 'basin') && (
-              <div
-                style={{
-                  display: 'flex',
-                  height: 26,
-                  border: '1px solid var(--mm-chrome-border)',
-                  borderRadius: 6,
-                  overflow: 'hidden',
-                  background: 'var(--mm-chrome-panel)',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mapLevel === 'tract') return
-                    setSelected(null)
-                    setMapLevel('tract')
-                    flyToCountyView(selectedCounty)
-                  }}
-                  style={{
-                    height: 26,
-                    border: 'none',
-                    borderRight: '1px solid var(--mm-chrome-border)',
-                    background: mapLevel === 'tract' ? 'var(--mm-chrome-fg)' : 'transparent',
-                    color: mapLevel === 'tract' ? 'var(--mm-chrome-panel)' : 'var(--mm-chrome-muted)',
-                    fontSize: 11,
-                    fontWeight: mapLevel === 'tract' ? 600 : 400,
-                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    padding: '0 8px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  County view
-                </button>
-                <button
-                  type="button"
-                  onClick={openBasinView}
-                  style={{
-                    height: 26,
-                    border: 'none',
-                    background: mapLevel === 'basin' ? 'var(--mm-chrome-fg)' : 'transparent',
-                    color: mapLevel === 'basin' ? 'var(--mm-chrome-panel)' : 'var(--mm-chrome-muted)',
-                    fontSize: 11,
-                    fontWeight: mapLevel === 'basin' ? 600 : 400,
-                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    padding: '0 8px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Basin view
-                </button>
-              </div>
-            )}
             <select
               data-tour="county-select"
               value={selectedCounty}
@@ -3676,11 +3582,6 @@ export default function Home() {
                 const next = event.target.value as CountyKey
                 setSelected(null)
                 setSelectedCounty(next)
-                if (mapLevel === 'basin') {
-                  setMapLevel('tract')
-                  flyToCountyView(next)
-                  return
-                }
                 if (mapLevel === 'tract') flyToCountyView(next)
               }}
               style={{
@@ -3728,7 +3629,7 @@ export default function Home() {
                 }}
               />
               {searching && (
-                <div style={{ width: 12, height: 12, border: '2px solid #E5E7EB', borderTopColor: '#EF9F27', borderRadius: '50%', animation: 'spin 0.6s linear infinite', flexShrink: 0 }} />
+                <div style={{ width: 12, height: 12, border: '2px solid #E5E7EB', borderTopColor: 'var(--mm-brand)', borderRadius: '50%', animation: 'spin 0.6s linear infinite', flexShrink: 0 }} />
               )}
             </div>
 
@@ -3889,11 +3790,11 @@ export default function Home() {
             href={waitingLeadCount > 0 ? '/crm?waiting=1' : '/crm'}
             style={{
               fontSize: 12,
-              color: '#EF9F27',
+              color: 'var(--mm-brand)',
               textDecoration: 'none',
               padding: '6px 14px',
               borderRadius: 6,
-              border: '1px solid #EF9F27',
+              border: '1px solid var(--mm-brand)',
               fontWeight: 500,
               fontFamily: 'Geist, Inter, system-ui, sans-serif',
               whiteSpace: 'nowrap',
@@ -3907,7 +3808,7 @@ export default function Home() {
               href="/owner"
               style={{
                 fontSize: 12,
-                color: '#B45309',
+                color: 'var(--mm-amber-700)',
                 textDecoration: 'none',
                 padding: '6px 12px',
                 borderRadius: 6,
@@ -4134,7 +4035,7 @@ export default function Home() {
               <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 12, marginBottom: 10 }} />
 
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(239,159,39,0.15)', color: '#EF9F27', border: '0.5px solid rgba(239,159,39,0.35)' }}>
+                <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'rgba(var(--mm-brand-rgb),0.15)', color: 'var(--mm-brand)', border: '0.5px solid rgba(var(--mm-brand-rgb),0.35)' }}>
                   {ownerCount} owners
                 </span>
                 <span style={{ fontSize: 11, padding: '3px 9px', borderRadius: 12, background: 'var(--mm-chrome-muted-fill)', color: 'var(--mm-chrome-muted)', border: '1px solid var(--mm-chrome-border)' }}>
@@ -4323,7 +4224,7 @@ export default function Home() {
                 return (
                   <div style={{ background: 'var(--mm-chrome-panel)', border: '1px solid var(--mm-chrome-border)', borderRadius: 8, padding: 12, marginBottom: 14, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <span style={{ color: '#EF9F27', fontSize: 12, fontWeight: 600 }}>DEVELOPMENT</span>
+                      <span style={{ color: 'var(--mm-brand)', fontSize: 12, fontWeight: 600 }}>DEVELOPMENT</span>
                       <span style={{ fontSize: 10, color: 'var(--mm-chrome-muted)' }} title="Texas Railroad Commission signals, refreshed nightly">
                         RRC · score {dev?.pud_score ?? 0}/10
                       </span>
@@ -4528,7 +4429,7 @@ export default function Home() {
                                   padding: '1px 5px',
                                   borderRadius: 3,
                                   background: well.well_type === 'HORIZONTAL' ? '#FEF3C7' : '#F9FAFB',
-                                  color: well.well_type === 'HORIZONTAL' ? '#EF9F27' : '#6B7280',
+                                  color: well.well_type === 'HORIZONTAL' ? 'var(--mm-brand)' : '#6B7280',
                                   border: `1px solid ${well.well_type === 'HORIZONTAL' ? '#FDE68A' : '#E5E7EB'}`,
                                 }}
                               >
@@ -4617,8 +4518,8 @@ export default function Home() {
                         cursor: 'pointer',
                         fontFamily: 'Geist, Inter, system-ui, sans-serif',
                         fontWeight: ownerSort === s.key ? 600 : 400,
-                        background: ownerSort === s.key ? '#EF9F27' : 'transparent',
-                        border: ownerSort === s.key ? '1px solid #EF9F27' : '1px solid #E5E7EB',
+                        background: ownerSort === s.key ? 'var(--mm-brand)' : 'transparent',
+                        border: ownerSort === s.key ? '1px solid var(--mm-brand)' : '1px solid #E5E7EB',
                         color: ownerSort === s.key ? '#fff' : '#6B7280',
                         transition: 'all 0.15s',
                       }}
@@ -4741,7 +4642,7 @@ export default function Home() {
                                 ? '#FFFBEB'
                                 : 'transparent',
                           borderLeft: operatorHit || isHighlighted
-                            ? '3px solid #EF9F27'
+                            ? '3px solid var(--mm-brand)'
                             : '3px solid transparent',
                           transition: 'all 0.2s',
                         }}
@@ -4768,7 +4669,7 @@ export default function Home() {
                                     fontWeight: 700,
                                     letterSpacing: '0.04em',
                                     textTransform: 'uppercase',
-                                    color: '#B45309',
+                                    color: 'var(--mm-amber-700)',
                                     background: '#FDE68A',
                                     border: '1px solid #F59E0B',
                                     borderRadius: 4,
@@ -4815,7 +4716,7 @@ export default function Home() {
                               <div
                                 style={{
                                   fontSize: 10,
-                                  color: operatorHit ? '#B45309' : '#9CA3AF',
+                                  color: operatorHit ? 'var(--mm-amber-700)' : '#9CA3AF',
                                   marginTop: 2,
                                   fontWeight: operatorHit ? 600 : 400,
                                 }}
@@ -4883,7 +4784,7 @@ export default function Home() {
                               {typeLabel}
                             </span>
                             {owner.out_of_state && (
-                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(239,159,39,0.12)', color: '#B45309', border: '0.5px solid rgba(239,159,39,0.3)' }}>OOS</span>
+                              <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 6, background: 'rgba(var(--mm-brand-rgb),0.12)', color: 'var(--mm-amber-700)', border: '0.5px solid rgba(var(--mm-brand-rgb),0.3)' }}>OOS</span>
                             )}
                             {selectedTractDevStatus && (
                               selectedTractDevStatus.development_status === 'PUD_DUC' ||
@@ -4915,7 +4816,7 @@ export default function Home() {
                           </div>
                         </div>
                         <div style={{ fontSize: 9, color: 'var(--mm-chrome-muted)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span aria-hidden style={{ display: 'inline-block', transform: isExpanded ? 'translateY(-1px)' : 'none', transition: 'transform 0.15s', color: isExpanded ? '#EF9F27' : '#9CA3AF' }}>
+                          <span aria-hidden style={{ display: 'inline-block', transform: isExpanded ? 'translateY(-1px)' : 'none', transition: 'transform 0.15s', color: isExpanded ? 'var(--mm-brand)' : '#9CA3AF' }}>
                             ↗
                           </span>
                           {isExpanded ? 'Open in detail drawer' : 'Click to open details'}
@@ -4990,7 +4891,7 @@ export default function Home() {
 
               {displayedOwners.length > 0 && (
                 <div style={{ display: 'flex', marginTop: 14 }}>
-                  <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(239,159,39,0.4)', background: 'rgba(239,159,39,0.15)', color: '#EF9F27', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+                  <button style={{ width: '100%', padding: '9px', borderRadius: 6, border: '0.5px solid rgba(var(--mm-brand-rgb),0.4)', background: 'rgba(var(--mm-brand-rgb),0.15)', color: 'var(--mm-brand)', cursor: 'pointer', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                     Add all to pipeline
                   </button>
                 </div>
@@ -5086,17 +4987,12 @@ export default function Home() {
             </div>
           ) : (
             <div>
-              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: mapLevel === 'county' || mapLevel === 'basin' ? 4 : 16 }}>
-                {mapLevel === 'county' ? 'All Counties' : mapLevel === 'basin' ? 'Permian Basin' : 'County Overview'}
+              <div style={{ fontFamily: 'Geist, Inter, system-ui, sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--mm-chrome-fg)', marginBottom: mapLevel === 'county' ? 4 : 16 }}>
+                {mapLevel === 'county' ? 'All Counties' : 'County Overview'}
               </div>
               {mapLevel === 'county' && (
                 <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
                   Click any highlighted county to explore
-                </div>
-              )}
-              {mapLevel === 'basin' && (
-                <div style={{ color: 'var(--mm-chrome-muted)', fontSize: 12, marginBottom: 16, fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                  Every live county on one map. Click a tract to see owners, or pick a county to zoom in.
                 </div>
               )}
 
@@ -5141,30 +5037,8 @@ export default function Home() {
                 </div>
               )}
 
-              {mapLevel === 'tract' && (
-                <button
-                  type="button"
-                  onClick={openBasinView}
-                  style={{
-                    marginTop: 12,
-                    padding: 0,
-                    border: 'none',
-                    background: 'transparent',
-                    color: 'var(--mm-chrome-muted)',
-                    fontSize: 12,
-                    fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  Basin view
-                </button>
-              )}
-
-              {(mapLevel === 'county' || mapLevel === 'basin') && (
+              {mapLevel === 'county' && (
                 <>
-                  {mapLevel === 'county' && (
-                    <>
                   {/* Real-time commodity prices — WTI Crude + Henry Hub
                      Natural Gas. Polled from /api/market/prices every
                      60s. Sits at the top of the sidebar so brokers
@@ -5179,31 +5053,8 @@ export default function Home() {
                      show per-county contributions. */}
                   <BasinActivityWidget />
 
-                  <button
-                    type="button"
-                    onClick={openBasinView}
-                    style={{
-                      width: '100%',
-                      marginBottom: 16,
-                      padding: '12px 14px',
-                      border: '1px solid var(--mm-chrome-border)',
-                      borderRadius: 8,
-                      background: 'var(--mm-chrome-panel)',
-                      color: 'var(--mm-chrome-fg)',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      fontFamily: 'Geist, Inter, system-ui, sans-serif',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                    }}
-                  >
-                    Basin view
-                  </button>
-                    </>
-                  )}
-
                   <div style={{ marginTop: 4, marginBottom: 10, fontSize: 10, fontWeight: 600, color: 'var(--mm-chrome-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
-                    {mapLevel === 'basin' ? 'ZOOM TO A COUNTY' : 'ACTIVE COUNTIES'}
+                    ACTIVE COUNTIES
                   </div>
                   <div>
                     {Object.values(COUNTIES).map((c) => {
@@ -5234,7 +5085,7 @@ export default function Home() {
                             gap: 10,
                           }}
                           onMouseEnter={(event) => {
-                            event.currentTarget.style.borderColor = '#EF9F27'
+                            event.currentTarget.style.borderColor = 'var(--mm-brand)'
                           }}
                           onMouseLeave={(event) => {
                             event.currentTarget.style.borderColor = '#E5E7EB'
@@ -5349,7 +5200,7 @@ export default function Home() {
                       transition: 'border-color 0.15s',
                     }}
                     onMouseEnter={(event) => {
-                      event.currentTarget.style.borderColor = '#EF9F27'
+                      event.currentTarget.style.borderColor = 'var(--mm-brand)'
                     }}
                     onMouseLeave={(event) => {
                       event.currentTarget.style.borderColor = '#E5E7EB'
@@ -5384,7 +5235,7 @@ export default function Home() {
                       <span style={{ color: 'var(--mm-chrome-muted)' }}>{row.pct}%</span>
                     </div>
                     <div style={{ height: 7, borderRadius: 4, background: 'var(--mm-chrome-muted-fill)' }}>
-                      <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: '#EF9F27' }} />
+                      <div style={{ width: `${row.pct}%`, height: 7, borderRadius: 4, background: 'var(--mm-brand)' }} />
                     </div>
                   </div>
                 ))}
@@ -5416,9 +5267,9 @@ export default function Home() {
                 zIndex: 10,
                 padding: '5px 12px',
                 borderRadius: 999,
-                background: 'rgba(239,159,39,0.14)',
-                border: '1px solid rgba(239,159,39,0.45)',
-                color: '#B45309',
+                background: 'rgba(var(--mm-brand-rgb),0.14)',
+                border: '1px solid rgba(var(--mm-brand-rgb),0.45)',
+                color: 'var(--mm-amber-700)',
                 fontSize: 11,
                 fontWeight: 600,
                 fontFamily: 'Geist, Inter, system-ui, sans-serif',
@@ -5485,7 +5336,7 @@ export default function Home() {
             </button>
           )}
           {loading ? (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#EF9F27', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mm-brand)', fontFamily: 'Geist, Inter, system-ui, sans-serif' }}>
               Loading...
             </div>
           ) : (
@@ -5503,19 +5354,6 @@ export default function Home() {
               operatorMatchTractCount={operatorMatchTractCount}
               onCountySwitch={(countyId) => {
                 const key = countyId as CountyKey
-                if (mapLevel === 'basin') {
-                  setSelectedCounty(key)
-                  setExpandedOwner(null)
-                  setSearchQuery('')
-                  setSearchResults([])
-                  setSearchOpen(false)
-                  setOwnerWells({})
-                  setTractWells([])
-                  setTractWellsLoaded(false)
-                  setWellsExpanded(false)
-                  setSelectedOperatorKeys([])
-                  return
-                }
                 setSelected(null)
                 setSelectedCounty(key)
                 setMapLevel('tract')
@@ -5650,7 +5488,7 @@ export default function Home() {
             height: 18,
             borderRadius: 9,
             border: 'none',
-            background: outOfStateOnly ? '#EF9F27' : '#D1D5DB',
+            background: outOfStateOnly ? 'var(--mm-brand)' : '#D1D5DB',
             position: 'relative',
             cursor: 'pointer',
           }}
@@ -5674,7 +5512,7 @@ export default function Home() {
             onClick={() => setLargeInterestOnly(!largeInterestOnly)}
             style={{
               width: 32, height: 18, borderRadius: 9,
-              background: largeInterestOnly ? '#EF9F27' : '#E5E7EB',
+              background: largeInterestOnly ? 'var(--mm-brand)' : '#E5E7EB',
               cursor: 'pointer', position: 'relative', transition: 'background 0.2s'
             }}
           >
@@ -5701,9 +5539,9 @@ export default function Home() {
                 cursor: 'pointer',
                 fontFamily: 'Geist, Inter, system-ui, sans-serif',
                 whiteSpace: 'nowrap',
-                background: ownerTypeFilter === type ? 'rgba(239,159,39,0.2)' : 'transparent',
-                border: ownerTypeFilter === type ? '1px solid rgba(239,159,39,0.6)' : '1px solid var(--mm-chrome-border)',
-                color: ownerTypeFilter === type ? '#EF9F27' : '#6B7280',
+                background: ownerTypeFilter === type ? 'rgba(var(--mm-brand-rgb),0.2)' : 'transparent',
+                border: ownerTypeFilter === type ? '1px solid rgba(var(--mm-brand-rgb),0.6)' : '1px solid var(--mm-chrome-border)',
+                color: ownerTypeFilter === type ? 'var(--mm-brand)' : '#6B7280',
               }}
             >
               {type === 'all' ? 'All' : type === 'individual' ? 'People' : type === 'trust' ? 'Trusts' : 'Companies'}
@@ -5718,7 +5556,7 @@ export default function Home() {
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginRight: 16 }}>
           <span style={{ fontSize: 11, color: 'var(--mm-chrome-muted)', marginRight: 4 }}>Activity:</span>
           {([
-            { key: 'all',            label: 'All',    color: '#EF9F27' },
+            { key: 'all',            label: 'All',    color: 'var(--mm-brand)' },
             { key: 'pdp',            label: 'PDP',    color: '#CA8A04' }, // yellow chip
             { key: 'pud',            label: 'PUD',    color: '#16A34A' }, // green chip
             { key: 'new_permit',     label: 'New',    color: '#2563EB' },
@@ -5767,7 +5605,7 @@ export default function Home() {
 
         {/* Theme toggle — right edge of the map footer. */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
-          <ThemeToggle size="sm" />
+          <ThemeControls size="sm" />
         </div>
 
         {/* Operator filter lives in the map Legend/Overlays panel (top-right).
@@ -5965,9 +5803,9 @@ export default function Home() {
                 disabled={skipTraceLoading}
                 style={{
                   flex: 1, padding: '9px', borderRadius: 6,
-                  background: skipTraceLoading ? 'rgba(239,159,39,0.08)' : 'rgba(239,159,39,0.15)',
-                  border: '0.5px solid rgba(239,159,39,0.4)',
-                  color: '#EF9F27', fontSize: 12, cursor: skipTraceLoading ? 'not-allowed' : 'pointer',
+                  background: skipTraceLoading ? 'rgba(var(--mm-brand-rgb),0.08)' : 'rgba(var(--mm-brand-rgb),0.15)',
+                  border: '0.5px solid rgba(var(--mm-brand-rgb),0.4)',
+                  color: 'var(--mm-brand)', fontSize: 12, cursor: skipTraceLoading ? 'not-allowed' : 'pointer',
                   fontFamily: 'monospace'
                 }}
               >
@@ -6058,7 +5896,7 @@ export default function Home() {
                 }}
                 style={{
                   flex: 1, padding: '10px', borderRadius: 8,
-                  background: '#EF9F27', border: 'none',
+                  background: 'var(--mm-brand)', border: 'none',
                   color: '#fff', fontSize: 13, cursor: 'pointer',
                   fontWeight: 600
                 }}

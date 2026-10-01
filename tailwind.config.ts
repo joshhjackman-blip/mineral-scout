@@ -10,6 +10,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        amber: {
+          50: "var(--mm-amber-50)",
+          100: "var(--mm-amber-100)",
+          200: "var(--mm-amber-200)",
+          300: "var(--mm-amber-300)",
+          400: "var(--mm-amber-400)",
+          500: "var(--mm-amber-500)",
+          600: "var(--mm-amber-600)",
+          700: "var(--mm-amber-700)",
+          800: "var(--mm-amber-800)",
+          900: "var(--mm-amber-900)",
+          950: "var(--mm-amber-950)",
+        },
         border: "var(--border)",
         input: "var(--input)",
         ring: "var(--ring)",
