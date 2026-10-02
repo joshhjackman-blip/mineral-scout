@@ -12,7 +12,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { User, LogOut, MapPin, BarChart2, FileText, Shield, LifeBuoy, CreditCard } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
-import { inviteSeatCapacity, resolveTeamRole, type TeamRole } from '@/lib/team'
+import { resolveTeamRole, type TeamRole } from '@/lib/team'
 import { estimateMonthlySkipTraceCost } from '@/lib/billing'
 
 export const dynamic = 'force-dynamic'
@@ -80,7 +80,6 @@ export default function Account() {
   )
 
   const seatCount = Number(subscription?.seat_count ?? 0)
-  const inviteCapacity = inviteSeatCapacity(seatCount)
   const seatsUsed =
     teamRole === 'team_admin' ||
     teamRole === 'platform_admin' ||
@@ -544,7 +543,7 @@ export default function Account() {
                 <p className="text-sm text-gray-500">
                   Invite teammates by email. They get a join link and set their
                   own password — you do not create accounts for them. They get
-                  map + CRM, not Admin.
+                  map + CRM, not Admin. No seat cap.
                 </p>
                 <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
                   {seatsUsed}/{seatCount || '—'} seats
@@ -563,18 +562,12 @@ export default function Account() {
                   onClick={() => {
                     void handleInvite()
                   }}
-                  disabled={inviting || !inviteEmail || teamMembers.length >= inviteCapacity}
+                  disabled={inviting || !inviteEmail}
                   className="px-4 py-2 text-sm font-semibold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50"
                 >
                   {inviting ? 'Sending...' : 'Send invite'}
                 </button>
               </div>
-
-              {inviteCapacity < 1 && (
-                <p className="text-sm text-amber-700 mb-4">
-                  No member seats available. Ask Mineral Map to increase your seat count.
-                </p>
-              )}
 
               {inviteMessage && <p className="text-sm text-gray-500 mb-4">{inviteMessage}</p>}
 

@@ -91,24 +91,6 @@ export async function POST(req: NextRequest) {
 
   const seatLimit = Number(sub?.seat_count ?? 1)
   const capacity = inviteSeatCapacity(seatLimit)
-  if (capacity < 1) {
-    return NextResponse.json(
-      {
-        error:
-          'No member seats available. Ask Mineral Map to increase your seat count.',
-      },
-      { status: 403 },
-    )
-  }
-
-  if ((existingMembers?.length ?? 0) >= capacity) {
-    return NextResponse.json(
-      {
-        error: `Seat limit reached. Your team includes ${seatLimit} seats (1 admin + ${capacity} members).`,
-      },
-      { status: 403 },
-    )
-  }
 
   const { error: inviteError } = await adminClient.from('team_members').upsert(
     {
