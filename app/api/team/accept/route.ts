@@ -28,30 +28,6 @@ async function attachMember(
     return { error: 'No valid invite found for this email.', status: 404 }
   }
 
-  const { data: ownerSub } = await adminClient
-    .from('subscriptions')
-    .select('seat_count')
-    .eq('user_id', input.ownerId)
-    .maybeSingle()
-
-  const { data: existingMembers } = await adminClient
-    .from('team_members')
-    .select('id, invite_email, status')
-    .eq('owner_id', input.ownerId)
-    .neq('status', 'revoked')
-
-  const seatLimit = Number(ownerSub?.seat_count ?? 1)
-  const capacity = Math.max(0, seatLimit - 1)
-  const others = (existingMembers ?? []).filter(
-    (m) => (m.invite_email ?? '').toLowerCase() !== input.email,
-  )
-  if (others.length >= capacity && invite.status !== 'accepted') {
-    return {
-      error: 'This team has no open seats. Ask your admin to free a seat.',
-      status: 403,
-    }
-  }
-
   const { error } = await adminClient
     .from('team_members')
     .update({
