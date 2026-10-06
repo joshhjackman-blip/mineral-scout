@@ -14,7 +14,7 @@ export function inviteCopy(kind: InviteEmailKind, inviterEmail?: string | null):
     return {
       subject: "You're approved for Mineral Map — finish signup",
       headline: 'Your Mineral Map access was approved',
-      body: 'Click below to choose a password, sign the agreement, add a card for skip-trace, and say whether you will be the team admin. Access is free; $1 per skip-trace phone hit is charged to that card at month end.',
+      body: 'Click below to choose a password, accept the Terms of Service, add a card for skip-trace, and say whether you will be the team admin. Access is free; $1 per skip-trace phone hit is charged to that card at month end.',
       cta: 'Finish signup',
     }
   }

@@ -145,7 +145,7 @@ export default function AgreementSignClient({
   if (!authReady && !success) {
     return (
       <div className="ag-classic-root">
-        <div className="ag-classic-loading">Loading agreement…</div>
+        <div className="ag-classic-loading">Loading Terms of Service…</div>
       </div>
     )
   }
@@ -154,11 +154,10 @@ export default function AgreementSignClient({
     return (
       <div className="ag-classic-root">
         <div className="ag-classic-success">
-          <h1>Agreement accepted</h1>
+          <h1>Terms accepted</h1>
           <p>
             Thanks, {success.signer_name}. Your acceptance of version{' '}
-            {success.agreement_version} is on file
-            {fromCheckout ? ' and your subscription is active' : ''}.
+            {success.agreement_version} is on file.
           </p>
           <Link href="/" className="ag-classic-btn">
             Continue to Mineral Map →
@@ -182,8 +181,8 @@ export default function AgreementSignClient({
 
       {fromCheckout ? (
         <div className="ag-classic-banner">
-          Payment complete. Please review and accept the Platform Services
-          Agreement to open the map.
+          Payment complete. Please review and accept the Terms of Service
+          to open the map.
         </div>
       ) : null}
 
@@ -201,7 +200,7 @@ export default function AgreementSignClient({
         <div className="ag-classic-accept-inner">
           {!reachedEnd ? (
             <p className="ag-classic-hint">
-              Scroll to the end of the agreement to enable acceptance.
+              Scroll to the end of the Terms of Service to enable acceptance.
             </p>
           ) : null}
 
@@ -224,7 +223,7 @@ export default function AgreementSignClient({
               onChange={(e) => setAccepted(e.target.checked)}
             />
             <span>
-              I have read and agree to the Platform Services Agreement (version{' '}
+              I have read and agree to the Terms of Service (version{' '}
               {CURRENT_AGREEMENT_VERSION}), and I consent to electronic
               acceptance.
             </span>

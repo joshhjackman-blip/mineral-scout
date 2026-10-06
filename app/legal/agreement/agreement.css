@@ -51,6 +51,10 @@
   line-height: 1.72;
 }
 
+.lp-legal-body > h1:first-child {
+  display: none;
+}
+
 .lp-legal-body h1 {
   font-family: var(--lp-font-serif);
   font-size: clamp(30px, 3.6vw, 42px);

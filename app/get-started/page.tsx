@@ -113,9 +113,9 @@ export default function GetStartedPage() {
         <div className="bd-panel">
           <h2>Request access</h2>
           <p className="bd-panel-lead">
-            Access is free. After we approve you, you will set a password, sign the agreement, add
-            a card for skip-trace ($1 per phone hit, billed at month end), and say if you are the
-            team admin.
+            Access is free. After we approve you, you will set a password, accept the Terms of
+            Service, add a card for skip-trace ($1 per phone hit, billed at month end), and say if
+            you are the team admin.
           </p>
 
           <form className="bd-form" onSubmit={onSubmit} noValidate>
