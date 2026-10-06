@@ -310,6 +310,36 @@
   }
 }
 
+.cs-legal {
+  position: absolute;
+  left: 36px;
+  bottom: 22px;
+  z-index: 3;
+  display: flex;
+  gap: 18px;
+}
+
+.cs-legal a {
+  color: var(--cs-navy);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.72;
+}
+
+.cs-legal a:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+@media (max-width: 860px) {
+  .cs-legal {
+    left: 20px;
+    bottom: 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cs-copy .cs-headline,
   .cs-copy .cs-subhead,

@@ -91,7 +91,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/pricing') ||
     path.startsWith('/demo') ||
     path.startsWith('/book-demo') ||
-    path.startsWith('/get-started')
+    path.startsWith('/get-started') ||
+    path.startsWith('/legal')
 
   // Local preview of CRM sample leads / owner skip-trace panels.
   // Production still requires login.
