@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { attachUserToTeam } from '@/lib/team-attach'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,41 +29,16 @@ async function attachMember(
     return { error: 'No valid invite found for this email.', status: 404 }
   }
 
-  const { error } = await adminClient
-    .from('team_members')
-    .update({
-      member_id: input.userId,
-      status: 'accepted',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('owner_id', input.ownerId)
-    .eq('invite_email', input.email)
-
-  if (error) {
-    return { error: error.message, status: 500 }
-  }
-
-  await adminClient.from('subscriptions').upsert(
-    {
-      user_id: input.userId,
-      status: 'active',
-      team_owner_id: input.ownerId,
-      seat_count: 1,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' },
-  )
-
-  await adminClient.auth.admin.updateUserById(input.userId, {
-    user_metadata: {
-      ...input.metadata,
-      subscription_status: 'active',
-      team_owner_id: input.ownerId,
-      team_role: 'member',
-      is_admin: false,
-    },
+  const result = await attachUserToTeam(adminClient, {
+    ownerId: input.ownerId,
+    userId: input.userId,
+    email: input.email,
+    metadata: input.metadata,
+    status: 'accepted',
   })
-
+  if (result.error) {
+    return { error: result.error, status: 500 }
+  }
   return {}
 }
 

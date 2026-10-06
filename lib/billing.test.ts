@@ -7,7 +7,7 @@ import {
   isSkipTraceBillable,
   previousBillingMonthKey,
 } from './billing'
-import { isSkipTraceCompedTeam } from './team'
+import { isGreatPlainsMember, isSkipTraceCompedTeam } from './team'
 
 assert.equal(SKIP_TRACE_PRICE_USD, 1)
 assert.equal(hasPaidAccess({}, 'anyone@example.com'), true)
@@ -18,7 +18,24 @@ assert.equal(isSkipTraceCompedTeam('jordan@greatplainsinterests.com'), true)
 assert.equal(isSkipTraceCompedTeam('JORDAN@GreatPlainsInterests.com'), true)
 assert.equal(isSkipTraceCompedTeam('quatrocone@gmail.com'), false)
 assert.equal(isSkipTraceCompedTeam('broker@example.com'), false)
+assert.equal(isGreatPlainsMember('mtfminerals@gmail.com'), true)
+assert.equal(isGreatPlainsMember('MTFMinerals@Gmail.com'), true)
+assert.equal(isGreatPlainsMember('quatrocone@gmail.com'), false)
+assert.equal(isSkipTraceCompedTeam('mtfminerals@gmail.com'), false)
 
+assert.equal(
+  isSkipTraceWaivedFor({
+    userEmail: 'mtfminerals@gmail.com',
+  }),
+  true,
+)
+assert.equal(
+  isSkipTraceWaivedFor({
+    userEmail: 'MTFMinerals@gmail.com',
+    workspaceOwnerEmail: 'jordan@greatplainsinterests.com',
+  }),
+  true,
+)
 assert.equal(
   isSkipTraceWaivedFor({
     userEmail: 'quatrocone@gmail.com',

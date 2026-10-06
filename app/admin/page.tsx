@@ -127,6 +127,8 @@ export default function AdminDashboard() {
   const [provisionSeats, setProvisionSeats] = useState(4)
   const [provisionMsg, setProvisionMsg] = useState<string | null>(null)
   const [provisioning, setProvisioning] = useState(false)
+  const [seedGpMsg, setSeedGpMsg] = useState<string | null>(null)
+  const [seedingGp, setSeedingGp] = useState(false)
   const [grandfatherMsg, setGrandfatherMsg] = useState<string | null>(null)
   const [grandfathering, setGrandfathering] = useState(false)
   const [grandfatherStats, setGrandfatherStats] = useState<{
@@ -303,6 +305,46 @@ export default function AdminDashboard() {
       setProvisionMsg('Failed to provision team')
     } finally {
       setProvisioning(false)
+    }
+  }
+
+  const handleSeedGreatPlains = async () => {
+    setSeedingGp(true)
+    setSeedGpMsg(null)
+    try {
+      const res = await fetch('/api/admin/teams/members', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seed: true }),
+      })
+      const data = (await res.json()) as {
+        success?: boolean
+        error?: string
+        ownerEmail?: string
+        members?: Array<{
+          email: string
+          attached?: boolean
+          emailed?: boolean
+          created?: boolean
+        }>
+      }
+      if (!res.ok || !data.success) {
+        setSeedGpMsg(data.error || 'Failed to add Great Plains members')
+        return
+      }
+      const summary = (data.members ?? [])
+        .map((m) =>
+          `${m.email} (${m.attached ? 'on team' : m.created ? 'invited' : 'updated'})`,
+        )
+        .join(', ')
+      setSeedGpMsg(
+        `Great Plains (${data.ownerEmail}): ${summary || 'no members listed'}. Skip-trace is waived for this team.`,
+      )
+      await refresh()
+    } catch {
+      setSeedGpMsg('Failed to add Great Plains members')
+    } finally {
+      setSeedingGp(false)
     }
   }
 
@@ -932,6 +974,30 @@ export default function AdminDashboard() {
               {grandfatherMsg && (
                 <p className="mt-3 text-sm text-gray-600">{grandfatherMsg}</p>
               )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
+              <h2 className="font-serif text-lg font-bold text-gray-900 mb-1">
+                Great Plains members
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                Put mtfminerals@gmail.com on jordan@greatplainsinterests.com&apos;s
+                team. Skip-trace stays waived the same way as everyone else on
+                that workspace.
+              </p>
+              <button
+                type="button"
+                disabled={seedingGp}
+                onClick={() => {
+                  void handleSeedGreatPlains()
+                }}
+                className="px-4 py-2 text-sm font-semibold bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {seedingGp ? 'Adding…' : 'Add mtfminerals to Great Plains'}
+              </button>
+              {seedGpMsg ? (
+                <p className="mt-3 text-sm text-gray-600">{seedGpMsg}</p>
+              ) : null}
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">

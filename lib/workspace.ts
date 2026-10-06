@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { getTeamOwnerId } from '@/lib/team'
+import { getTeamOwnerId, isGreatPlainsMember } from '@/lib/team'
 
 export type WorkspaceContext = {
   userId: string
@@ -47,6 +47,19 @@ export async function getWorkspaceContext(
           metadata,
           (sub as { team_owner_id?: string | null } | null)?.team_owner_id,
         )
+      }
+
+      if (!fromTeam && isGreatPlainsMember(user.email)) {
+        try {
+          const res = await fetch('/api/workspace', { cache: 'no-store' })
+          const payload = (await res.json()) as {
+            data?: { workspaceId?: string }
+          }
+          const seeded = String(payload.data?.workspaceId ?? '').trim()
+          if (seeded && seeded !== user.id) fromTeam = seeded
+        } catch {
+          // Fall through to solo workspace; skip-trace waiver still applies.
+        }
       }
 
       const ctx: WorkspaceContext = {

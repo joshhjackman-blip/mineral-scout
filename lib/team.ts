@@ -39,6 +39,23 @@ export const PLATFORM_ADMIN_EMAILS = [
   ...PLATFORM_OWNER_EMAILS,
 ] as const
 
+/**
+ * Jordan's Great Plains workspace owner emails. Prefer the .com account
+ * when attaching members. Both inherit skip-trace waiver as team admins.
+ */
+export const GREAT_PLAINS_OWNER_EMAILS = [
+  'jordan@greatplainsinterests.com',
+  'jordan@greatplainsinterestsllc.com',
+] as const
+
+/**
+ * People who belong on Jordan's Great Plains team even if they signed up
+ * on their own. They get the same skip-trace waiver as anyone he invites.
+ */
+export const GREAT_PLAINS_MEMBER_EMAILS = [
+  'mtfminerals@gmail.com',
+] as const
+
 export function normalizeEmail(email: string | null | undefined): string {
   return String(email ?? '').toLowerCase().trim()
 }
@@ -60,6 +77,16 @@ export function isPlatformInternalEmail(email: string | null | undefined): boole
  */
 export function isSkipTraceCompedTeam(email: string | null | undefined): boolean {
   return isPlatformOwner(email)
+}
+
+export function isGreatPlainsOwner(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email)
+  return (GREAT_PLAINS_OWNER_EMAILS as readonly string[]).includes(normalized)
+}
+
+export function isGreatPlainsMember(email: string | null | undefined): boolean {
+  const normalized = normalizeEmail(email)
+  return (GREAT_PLAINS_MEMBER_EMAILS as readonly string[]).includes(normalized)
 }
 
 export function isAllowlistedPlatformAdmin(email: string | null | undefined): boolean {

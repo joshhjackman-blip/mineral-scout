@@ -5,6 +5,7 @@ import { getTeamOwnerId } from '@/lib/team'
 import { skipTraceOwnerKey } from '@/lib/workspace'
 import { SKIP_TRACE_PRICE_USD, isSkipTraceBillable } from '@/lib/billing'
 import { isSkipTraceWaivedFor } from '@/lib/access'
+import { ensureGreatPlainsMembership } from '@/lib/team-attach'
 import {
   skipTracePaymentGate,
   stripeBillingConfigured,
@@ -98,6 +99,8 @@ export async function POST(req: NextRequest) {
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
+  const ensured = await ensureGreatPlainsMembership(adminClient, user)
+
   // Workspace for usage rollups. Cache itself is intentionally global —
   // if Team A already paid to skip-trace this owner, Team B gets a hit.
   const { data: subRow } = await adminClient
@@ -106,6 +109,7 @@ export async function POST(req: NextRequest) {
     .eq('user_id', userId)
     .maybeSingle()
   const workspaceId =
+    ensured.ownerId ||
     getTeamOwnerId(
       metadata,
       (subRow as { team_owner_id?: string | null } | null)?.team_owner_id,
