@@ -11,12 +11,16 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   output: 'standalone',
-  // Bundle the Platform Services Agreement markdown alongside the
-  // /legal/agreement route so its `fs.readFileSync` still resolves when
-  // the page is served from a Vercel serverless function (Next's file
-  // tracer misses filesystem reads outside app/ and public/ by default).
+  // Bundle legal markdown alongside the routes that `fs.readFileSync` it,
+  // so those pages still resolve when served from a Vercel serverless
+  // function (Next's file tracer misses filesystem reads outside app/
+  // and public/ by default).
   outputFileTracingIncludes: {
     '/legal/agreement': ['./legal/**/*.md'],
+    '/legal/agreement/sign': ['./legal/**/*.md'],
+    '/legal/terms': ['./legal/**/*.md'],
+    '/legal/privacy': ['./legal/**/*.md'],
+    '/onboard': ['./legal/**/*.md'],
   },
   // The enriched parcels GeoJSON (30–80 MB each) are static CDN assets that
   // /api/tract-owners fetches over HTTP. Never bundle them into a serverless

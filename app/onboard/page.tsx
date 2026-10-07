@@ -7,7 +7,7 @@ import '../legal/agreement/sign/classic.css'
 
 export const metadata: Metadata = {
   title: 'Finish signup · Mineral Map',
-  description: 'Set up your Mineral Map workspace: agreement, billing, and team admin.',
+  description: 'Set up your Mineral Map workspace: Terms of Service, billing, and team admin.',
 }
 
 export default function OnboardPage() {

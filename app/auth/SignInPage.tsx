@@ -89,7 +89,7 @@ function SignInForm() {
     } else if (welcome === 'signup') {
       if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
       setMessage(
-        'Your access was approved. Choose a password, then you will sign the agreement, add a card, and set team admin.',
+        'Your access was approved. Choose a password, then you will accept the Terms of Service, add a card, and set team admin.',
       )
     } else if (welcome === 'admin') {
       if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
@@ -98,7 +98,7 @@ function SignInForm() {
       if (inviteEmail) setEmail(decodeURIComponent(inviteEmail))
       setMessage('You were invited as an operator. Choose a password to continue.')
     } else if (nextParam?.startsWith('/legal/agreement')) {
-      setMessage('Sign in to review and accept the Platform Services Agreement.')
+      setMessage('Sign in to review and accept the Terms of Service.')
     }
 
     const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))

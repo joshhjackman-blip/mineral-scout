@@ -91,7 +91,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith('/pricing') ||
     path.startsWith('/demo') ||
     path.startsWith('/book-demo') ||
-    path.startsWith('/get-started')
+    path.startsWith('/get-started') ||
+    path.startsWith('/legal')
 
   // Local preview of CRM sample leads / owner skip-trace panels.
   // Production still requires login.
@@ -134,8 +135,8 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  // Agreement gate: must have signed the current PSA version before
-  // map / CRM. /legal + /account stay reachable so they can sign.
+  // Agreement gate: must have accepted the current Terms of Service
+  // before map / CRM. /legal + /account stay reachable so they can sign.
   // Disable with AGREEMENT_GATE_ENABLED=false if needed.
   if (
     isAgreementGateEnabled() &&

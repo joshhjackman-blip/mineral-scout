@@ -9,9 +9,9 @@ import '../../landing/landing.css'
 import './agreement.css'
 
 export const metadata: Metadata = {
-  title: 'Platform Services Agreement · Mineral Map',
+  title: 'Terms of Service · Mineral Map',
   description:
-    'The Platform Services Agreement every Mineral Map customer signs before accessing the platform — seats, skip-trace usage, and related terms.',
+    'Terms of Service for the Mineral Map platform, including license, data-use restrictions, and skip-trace billing.',
 }
 
 export default function AgreementPage() {
@@ -24,21 +24,16 @@ export default function AgreementPage() {
   return (
     <LegalDocShell
       label="Legal"
-      title="Platform Services Agreement"
+      title="Terms of Service"
       subtitle={
         <>
-          The agreement every Mineral Map customer signs before accessing the
-          platform. Read it in full, then sign at{' '}
+          The terms that govern use of Mineral Map. Customers accept them at{' '}
           <Link href="/legal/agreement/sign">
             <span className="lp-legal-inline-link">/legal/agreement/sign</span>
           </Link>
-          . Also see{' '}
-          <Link href="/legal/terms">
-            <span className="lp-legal-inline-link">Terms</span>
-          </Link>{' '}
-          and{' '}
+          . See also our{' '}
           <Link href="/legal/privacy">
-            <span className="lp-legal-inline-link">Privacy</span>
+            <span className="lp-legal-inline-link">Privacy Policy</span>
           </Link>
           .
         </>
@@ -47,11 +42,10 @@ export default function AgreementPage() {
       cta={
         <>
           <Link href="/legal/agreement/sign" className="lp-btn-primary lp-btn-large">
-            Sign the agreement →
+            Accept Terms of Service →
           </Link>
           <span className="lp-legal-cta-hint">
-            Signing captures name, IP, user agent, and timestamp for the audit
-            trail described in Section 15.
+            Acceptance records your name, IP address, user agent, and timestamp.
           </span>
         </>
       }
