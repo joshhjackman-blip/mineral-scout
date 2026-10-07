@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { estimateMonthlySkipTraceCost } from '@/lib/billing'
-import { isSkipTraceCompedTeam } from '@/lib/team'
+import { isGreatPlainsMember, isSkipTraceCompedTeam } from '@/lib/team'
 import { createTeamSkipTraceInvoice, type SkipTraceInvoiceResult } from '@/lib/stripe-invoices'
 import { setTeamPastDue, stripeClient } from '@/lib/stripe-card'
 
@@ -124,7 +124,7 @@ export async function chargeTeamSkipTraceMonth(
 ): Promise<ChargeTeamResult> {
   const { data: ownerUser } = await admin.auth.admin.getUserById(input.teamOwnerId)
   const ownerEmail = ownerUser?.user?.email ?? null
-  if (isSkipTraceCompedTeam(ownerEmail)) {
+  if (isSkipTraceCompedTeam(ownerEmail) || isGreatPlainsMember(ownerEmail)) {
     return {
       stripeInvoiceId: '',
       hostedInvoiceUrl: null,

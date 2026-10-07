@@ -1,4 +1,4 @@
-import { isSkipTraceCompedTeam } from '@/lib/team'
+import { isGreatPlainsMember, isSkipTraceCompedTeam } from '@/lib/team'
 
 /**
  * Platform access is free. Skip-trace is $1 per phone hit (card on file,
@@ -27,6 +27,7 @@ export function isSkipTraceWaivedFor(input: {
 }): boolean {
   return (
     isSkipTraceCompedTeam(input.userEmail) ||
-    isSkipTraceCompedTeam(input.workspaceOwnerEmail)
+    isSkipTraceCompedTeam(input.workspaceOwnerEmail) ||
+    isGreatPlainsMember(input.userEmail)
   )
 }

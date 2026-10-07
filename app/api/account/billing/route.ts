@@ -5,6 +5,7 @@ import { isSkipTraceWaivedFor } from '@/lib/access'
 import { getTeamOwnerId } from '@/lib/team'
 import { readTeamCardStatus } from '@/lib/stripe-card'
 import { stripeBillingConfigured } from '@/lib/skip-trace-gate'
+import { ensureGreatPlainsMembership } from '@/lib/team-attach'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +24,8 @@ export async function GET(req: NextRequest) {
     { auth: { persistSession: false, autoRefreshToken: false } },
   )
 
+  const ensured = await ensureGreatPlainsMembership(adminClient, gate.user)
+
   const { data: sub } = await adminClient
     .from('subscriptions')
     .select('team_owner_id')
@@ -30,6 +33,7 @@ export async function GET(req: NextRequest) {
     .maybeSingle()
 
   const workspaceId =
+    ensured.ownerId ||
     getTeamOwnerId(
       gate.user.user_metadata as Record<string, unknown>,
       (sub as { team_owner_id?: string | null } | null)?.team_owner_id,
