@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   PhoneOff,
   Activity,
+  ShieldCheck,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import { isPlatformAdmin, isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
@@ -102,6 +103,30 @@ type AdminAccountRow = {
 
 type AdminTab = 'overview' | 'usage' | 'admins' | 'teams' | 'users'
 
+type IdicoreAuthProbe = {
+  ok: boolean
+  status: number | null
+  viaProxy: boolean
+  tokenChars: number
+  error: string | null
+}
+
+type IdicoreWiringPayload = {
+  enabled: boolean
+  environment: 'test' | 'production' | 'mixed' | 'unknown' | 'unset'
+  authHost: string | null
+  searchHost: string | null
+  searchPath: string | null
+  clientIdSet: boolean
+  clientIdLooksTest: boolean | null
+  clientSecretSet: boolean
+  proxySet: boolean
+  issues: string[]
+  readyForPaidQuota: boolean
+  billedSearch?: boolean
+  auth?: IdicoreAuthProbe
+}
+
 export default function AdminDashboard() {
   const supabase = useMemo(
     () =>
@@ -140,6 +165,7 @@ export default function AdminDashboard() {
   const [grantAdminMsg, setGrantAdminMsg] = useState<string | null>(null)
   const [grantingAdmin, setGrantingAdmin] = useState(false)
   const [sessionEmail, setSessionEmail] = useState<string | null>(null)
+  const [idicore, setIdicore] = useState<IdicoreWiringPayload | null>(null)
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
     []
@@ -148,13 +174,14 @@ export default function AdminDashboard() {
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [usersRes, usageRes, teamsRes, adminsRes, grandfatherRes] =
+      const [usersRes, usageRes, teamsRes, adminsRes, grandfatherRes, idicoreRes] =
         await Promise.all([
           fetch('/api/admin/users', { cache: 'no-store' }),
           fetch('/api/admin/usage', { cache: 'no-store' }),
           fetch('/api/admin/teams', { cache: 'no-store' }),
           fetch('/api/admin/admins', { cache: 'no-store' }),
           fetch('/api/admin/grandfather', { cache: 'no-store' }),
+          fetch('/api/admin/idicore', { cache: 'no-store' }),
         ])
       if (usersRes.status === 401) {
         window.location.href = '/'
@@ -214,6 +241,16 @@ export default function AdminDashboard() {
         )
       } else {
         setGrandfatherStats(null)
+      }
+
+      if (idicoreRes.ok) {
+        const idicoreData = (await idicoreRes.json()) as {
+          success?: boolean
+          data?: IdicoreWiringPayload
+        }
+        setIdicore(idicoreData.data ?? null)
+      } else {
+        setIdicore(null)
       }
       setLastUpdated(new Date())
     } finally {
@@ -608,6 +645,118 @@ export default function AdminDashboard() {
                 hint="Provisioned customer workspaces"
                 sub={`${stats.totalUsers} total users on platform`}
               />
+            </div>
+
+            <div
+              className={`bg-white rounded-xl border shadow-sm p-5 mb-6 ${
+                idicore?.readyForPaidQuota && idicore.auth?.ok
+                  ? 'border-emerald-200'
+                  : 'border-amber-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck
+                    size={16}
+                    className={
+                      idicore?.readyForPaidQuota && idicore.auth?.ok
+                        ? 'text-emerald-600'
+                        : 'text-amber-500'
+                    }
+                  />
+                  <div>
+                    <h2 className="font-serif text-lg font-bold text-gray-900">
+                      idiCORE wiring
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Auth-only check — does not use a skip-trace credit. Paid
+                      allotment is 12,500 production searches.
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`text-xs font-semibold px-2 py-1 rounded ${
+                    idicore?.readyForPaidQuota && idicore.auth?.ok
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {loading
+                    ? 'Checking…'
+                    : idicore?.readyForPaidQuota && idicore.auth?.ok
+                      ? 'Production ready'
+                      : idicore?.environment === 'test'
+                        ? 'Still on test API'
+                        : 'Needs attention'}
+                </span>
+              </div>
+              {idicore ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-600">
+                  <ul className="space-y-1">
+                    <li>
+                      Environment:{' '}
+                      <strong className="text-gray-900">{idicore.environment}</strong>
+                    </li>
+                    <li>
+                      Auth host:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.authHost ?? 'unset'}
+                      </strong>
+                    </li>
+                    <li>
+                      Search host:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.searchHost ?? 'unset'}
+                      </strong>
+                    </li>
+                    <li>
+                      Proxy:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.proxySet ? 'set' : 'missing'}
+                      </strong>
+                    </li>
+                  </ul>
+                  <ul className="space-y-1">
+                    <li>
+                      Client id:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.clientIdSet
+                          ? idicore.clientIdLooksTest
+                            ? 'set (looks like test)'
+                            : 'set'
+                          : 'unset'}
+                      </strong>
+                    </li>
+                    <li>
+                      Client secret:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.clientSecretSet ? 'set' : 'unset'}
+                      </strong>
+                    </li>
+                    <li>
+                      Auth probe:{' '}
+                      <strong className="text-gray-900">
+                        {idicore.auth?.ok
+                          ? `ok (${idicore.auth.tokenChars} token chars${
+                              idicore.auth.viaProxy ? ', via proxy' : ', no proxy'
+                            })`
+                          : idicore.auth?.error || 'not run'}
+                      </strong>
+                    </li>
+                  </ul>
+                  {idicore.issues.length > 0 && (
+                    <ul className="md:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-md px-3 py-2 space-y-1">
+                      {idicore.issues.map((issue) => (
+                        <li key={issue}>{issue}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  {loading ? 'Checking idiCORE…' : 'Could not load idiCORE status.'}
+                </p>
+              )}
             </div>
 
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mb-6">

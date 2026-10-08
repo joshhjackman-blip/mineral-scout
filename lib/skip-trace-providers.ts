@@ -408,6 +408,77 @@ async function idicoreAuthenticate(): Promise<string | null> {
   return token
 }
 
+export type IdicoreAuthProbe = {
+  ok: boolean
+  status: number | null
+  viaProxy: boolean
+  tokenChars: number
+  error: string | null
+}
+
+/**
+ * Fresh auth-only probe. Does not POST /search, so it does not consume a
+ * skip-trace credit. Clears the in-memory token cache so the result is live.
+ */
+export async function probeIdicoreAuth(): Promise<IdicoreAuthProbe> {
+  idicoreToken = null
+  const viaProxy = Boolean(idicoreProxyUrl())
+  const authUrl = process.env.IDICORE_AUTH_URL?.trim()
+  const clientId = process.env.IDICORE_CLIENT_ID?.trim()
+  const clientSecret = process.env.IDICORE_CLIENT_SECRET?.trim()
+  if (!authUrl || !clientId || !clientSecret) {
+    return {
+      ok: false,
+      status: null,
+      viaProxy,
+      tokenChars: 0,
+      error: 'missing IDICORE_AUTH_URL / CLIENT_ID / CLIENT_SECRET',
+    }
+  }
+
+  const glba = process.env.IDICORE_GLBA?.trim() || 'otheruse'
+  const dppa = process.env.IDICORE_DPPA?.trim() || 'none'
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  try {
+    const res = await idicoreHttp(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${basic}`,
+      },
+      body: JSON.stringify({ glba, dppa }),
+    })
+    const token = res.text.trim()
+    if (!res.ok || !token) {
+      return {
+        ok: false,
+        status: res.status,
+        viaProxy,
+        tokenChars: 0,
+        error: res.ok
+          ? 'auth returned an empty body'
+          : `auth failed (${res.status})`,
+      }
+    }
+    idicoreToken = { value: token, expiresAt: Date.now() + 12 * 60_000 }
+    return {
+      ok: true,
+      status: res.status,
+      viaProxy,
+      tokenChars: token.length,
+      error: null,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      viaProxy,
+      tokenChars: 0,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
 /** idiCORE (IDI) skip-trace — first provider.
  *
  * Two-step: authenticate (idicoreAuthenticate) then POST the search to
