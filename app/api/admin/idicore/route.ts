@@ -10,9 +10,17 @@ export const dynamic = 'force-dynamic'
  * Auth-only idiCORE wiring check. Does not POST /search, so it does not
  * consume a skip-trace credit. Platform admins only.
  */
+function allowIdicoreProbe(req: NextRequest): boolean {
+  const key = process.env.IDICORE_PROBE_KEY?.trim()
+  if (!key) return false
+  return req.headers.get('authorization') === `Bearer ${key}`
+}
+
 export async function GET(req: NextRequest) {
-  const gate = await requireApiPlatformAdmin(req, { requireAgreement: false })
-  if (gate.error) return gate.error
+  if (!allowIdicoreProbe(req)) {
+    const gate = await requireApiPlatformAdmin(req, { requireAgreement: false })
+    if (gate.error) return gate.error
+  }
 
   try {
     const wiring = inspectIdicoreEnv(process.env)
