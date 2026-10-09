@@ -127,6 +127,15 @@ type IdicoreWiringPayload = {
   auth?: IdicoreAuthProbe
 }
 
+type AccurateAppendProbe = {
+  keySet: boolean
+  keyChars: number
+  ok: boolean
+  status: number | null
+  error: string | null
+  billedSearch: false
+}
+
 export default function AdminDashboard() {
   const supabase = useMemo(
     () =>
@@ -166,6 +175,7 @@ export default function AdminDashboard() {
   const [grantingAdmin, setGrantingAdmin] = useState(false)
   const [sessionEmail, setSessionEmail] = useState<string | null>(null)
   const [idicore, setIdicore] = useState<IdicoreWiringPayload | null>(null)
+  const [accurateAppend, setAccurateAppend] = useState<AccurateAppendProbe | null>(null)
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
     []
@@ -174,7 +184,7 @@ export default function AdminDashboard() {
   const refresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [usersRes, usageRes, teamsRes, adminsRes, grandfatherRes, idicoreRes] =
+      const [usersRes, usageRes, teamsRes, adminsRes, grandfatherRes, idicoreRes, aaRes] =
         await Promise.all([
           fetch('/api/admin/users', { cache: 'no-store' }),
           fetch('/api/admin/usage', { cache: 'no-store' }),
@@ -182,6 +192,7 @@ export default function AdminDashboard() {
           fetch('/api/admin/admins', { cache: 'no-store' }),
           fetch('/api/admin/grandfather', { cache: 'no-store' }),
           fetch('/api/admin/idicore', { cache: 'no-store' }),
+          fetch('/api/admin/accurate-append', { cache: 'no-store' }),
         ])
       if (usersRes.status === 401) {
         window.location.href = '/'
@@ -251,6 +262,16 @@ export default function AdminDashboard() {
         setIdicore(idicoreData.data ?? null)
       } else {
         setIdicore(null)
+      }
+
+      if (aaRes.ok) {
+        const aaData = (await aaRes.json()) as {
+          success?: boolean
+          data?: AccurateAppendProbe
+        }
+        setAccurateAppend(aaData.data ?? null)
+      } else {
+        setAccurateAppend(null)
       }
       setLastUpdated(new Date())
     } finally {
@@ -755,6 +776,69 @@ export default function AdminDashboard() {
               ) : (
                 <p className="text-sm text-gray-400">
                   {loading ? 'Checking idiCORE…' : 'Could not load idiCORE status.'}
+                </p>
+              )}
+            </div>
+
+            <div
+              className={`bg-white rounded-xl border shadow-sm p-5 mb-6 ${
+                accurateAppend?.ok ? 'border-emerald-200' : 'border-amber-200'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-4 mb-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck
+                    size={16}
+                    className={accurateAppend?.ok ? 'text-emerald-600' : 'text-amber-500'}
+                  />
+                  <div>
+                    <h2 className="font-serif text-lg font-bold text-gray-900">
+                      Accurate Append wiring
+                    </h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Official Services/V2 license check — does not append a
+                      person. Set ACCURATE_APPEND_API_KEY on Vercel Production.
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`text-xs font-semibold px-2 py-1 rounded ${
+                    accurateAppend?.ok
+                      ? 'bg-emerald-50 text-emerald-800'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {loading
+                    ? 'Checking…'
+                    : accurateAppend?.ok
+                      ? 'Official key live'
+                      : 'Needs attention'}
+                </span>
+              </div>
+              {accurateAppend ? (
+                <ul className="space-y-1 text-sm text-gray-600">
+                  <li>
+                    License key:{' '}
+                    <strong className="text-gray-900">
+                      {accurateAppend.keySet
+                        ? `set (${accurateAppend.keyChars} chars)`
+                        : 'unset'}
+                    </strong>
+                  </li>
+                  <li>
+                    Probe:{' '}
+                    <strong className="text-gray-900">
+                      {accurateAppend.ok
+                        ? `ok${accurateAppend.status ? ` (HTTP ${accurateAppend.status})` : ''}`
+                        : accurateAppend.error || 'not run'}
+                    </strong>
+                  </li>
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-400">
+                  {loading
+                    ? 'Checking Accurate Append…'
+                    : 'Could not load Accurate Append status.'}
                 </p>
               )}
             </div>

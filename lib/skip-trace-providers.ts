@@ -7,6 +7,15 @@
  * allow-listed static IP.
  */
 
+import {
+  ACCURATE_APPEND_BASE,
+  accurateAppendLicenseKey,
+  accurateAppendPeople,
+  accurateAppendStreet,
+  classifyAccurateAppendProbe,
+  redactAccurateAppendKey,
+  type AccurateAppendLicenseProbe,
+} from '@/lib/accurate-append'
 import { buildIdicoreSearchPlan, isBusinessOwner } from '@/lib/skip-trace-name'
 
 export type TraceArgs = {
@@ -125,16 +134,6 @@ export function classifyOwner(
   return isBusinessOwner(ownerName, firstName, lastName) ? 'entity' : 'person'
 }
 
-const ACCURATE_APPEND_BASE = 'https://api.accurateappend.com/Services/V2'
-
-function accurateAppendLicenseKey(): string {
-  return (
-    process.env.ACCURATE_APPEND_API_KEY?.trim() ||
-    process.env.ACCURATE_APPEND_LICENSE_KEY?.trim() ||
-    ''
-  )
-}
-
 function pushAccurateAppendPhones(payload: unknown, phones: string[]) {
   if (!payload || typeof payload !== 'object') return
   const root = payload as Record<string, unknown>
@@ -150,7 +149,7 @@ function pushAccurateAppendPhones(payload: unknown, phones: string[]) {
     }
     if (!item || typeof item !== 'object') continue
     const obj = item as Record<string, unknown>
-    const area = String(obj.AreaCode ?? obj.areaCode ?? '').replace(/\D/g, '')
+    const area = String(obj.AreaCode ?? obj.Areacode ?? obj.areaCode ?? '').replace(/\D/g, '')
     const rest = String(
       obj.PhoneNumber ?? obj.phoneNumber ?? obj.number ?? obj.phone ?? '',
     ).replace(/\D/g, '')
@@ -181,22 +180,74 @@ function pushAccurateAppendEmails(payload: unknown, emails: string[]) {
 async function accurateAppendGet(
   path: string,
   params: URLSearchParams,
+  licenseKey: string,
 ): Promise<Record<string, unknown> | null> {
-  const url = `${ACCURATE_APPEND_BASE}${path}?${params.toString()}`
+  const qs = params.toString()
+  const url = `${ACCURATE_APPEND_BASE}${path}${qs ? `?${qs}` : ''}`
+  const safePath = redactAccurateAppendKey(path, licenseKey)
   const res = await fetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
-  const text = await res.text()
+  const text = redactAccurateAppendKey(await res.text(), licenseKey)
   if (!res.ok) {
-    console.error('Accurate Append', path, 'failed:', res.status, text.slice(0, 300))
+    console.error('Accurate Append', safePath, 'failed:', res.status, text.slice(0, 300))
     return null
   }
   try {
     return JSON.parse(text) as Record<string, unknown>
   } catch {
-    console.error('Accurate Append', path, 'parse failed')
+    console.error('Accurate Append', safePath, 'parse failed')
     return null
+  }
+}
+
+/** License check only — nameless Ads call. 400 means the official key is live. */
+export async function probeAccurateAppendLicense(): Promise<AccurateAppendLicenseProbe> {
+  const key = accurateAppendLicenseKey()
+  if (!key) {
+    return {
+      keySet: false,
+      keyChars: 0,
+      ok: false,
+      status: null,
+      error: 'ACCURATE_APPEND_API_KEY is unset',
+      billedSearch: false,
+    }
+  }
+  const path = `/AppendPhone/Ads/${encodeURIComponent(key)}/`
+  const url = `${ACCURATE_APPEND_BASE}${path}`
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const text = redactAccurateAppendKey(await res.text(), key)
+    let error: string | null = null
+    try {
+      const parsed = JSON.parse(text) as { Error?: string; error?: string }
+      error = parsed.Error || parsed.error || null
+    } catch {
+      error = text.slice(0, 160) || null
+    }
+    const classified = classifyAccurateAppendProbe(res.status, error)
+    return {
+      keySet: true,
+      keyChars: key.length,
+      ok: classified.ok,
+      status: res.status,
+      error: classified.error,
+      billedSearch: false,
+    }
+  } catch (err) {
+    return {
+      keySet: true,
+      keyChars: key.length,
+      ok: false,
+      status: null,
+      error: err instanceof Error ? err.message : String(err),
+      billedSearch: false,
+    }
   }
 }
 
@@ -208,71 +259,99 @@ async function accurateAppendGet(
 async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
-  const firstName = (a.firstName || '').trim()
-  const lastName = (a.lastName || '').trim()
   const ownerName = (a.ownerName || '').trim()
-  const lastNameOrFull = lastName || ownerName
-  if (!lastNameOrFull && !firstName) return { phones, emails }
-
-  const common = new URLSearchParams()
-  if (firstName) common.set('firstname', firstName)
-  if (lastNameOrFull) common.set('lastname', lastNameOrFull)
-  if (a.address?.trim()) common.set('address', a.address.trim())
-  if (a.city?.trim()) common.set('city', a.city.trim())
-  if (a.state?.trim()) common.set('state', a.state.trim())
-  if (a.zip?.trim()) common.set('postalcode', a.zip.trim())
-
+  const street = accurateAppendStreet(a.address)
+  const city = (a.city || '').trim()
+  const state = (a.state || '').trim()
+  const zip = (a.zip || '').trim()
   const ownerType = classifyOwner(a.ownerName, a.firstName, a.lastName)
-  const jobs: Promise<void>[] = []
+
+  const fillAddress = (params: URLSearchParams) => {
+    if (street) params.set('address', street)
+    if (city) params.set('city', city)
+    if (state) params.set('state', state)
+    if (zip) params.set('postalcode', zip)
+  }
 
   if (ownerType === 'entity' && ownerName) {
     const biz = new URLSearchParams()
     biz.set('businessname', ownerName)
-    if (a.address?.trim()) biz.set('address', a.address.trim())
-    if (a.city?.trim()) biz.set('city', a.city.trim())
-    if (a.state?.trim()) biz.set('state', a.state.trim())
-    if (a.zip?.trim()) biz.set('postalcode', a.zip.trim())
-    jobs.push(
-      accurateAppendGet(`/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`, biz).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
+    fillAddress(biz)
+    const emailParams = new URLSearchParams()
+    emailParams.set('lastname', ownerName)
+    fillAddress(emailParams)
+    emailParams.set('maxResults', '5')
+    await Promise.all([
+      accurateAppendGet(
+        `/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`,
+        biz,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendPhones(data, phones)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+      accurateAppendGet(
+        `/AppendEmail/${encodeURIComponent(licenseKey)}/`,
+        emailParams,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendEmails(data, emails)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+    ])
+    console.log(
+      'Accurate Append result:',
+      JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
     )
-  } else {
-    const phoneParams = new URLSearchParams(common)
-    phoneParams.set('lineType', 'C;S')
-    jobs.push(
-      accurateAppendGet(`/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`, phoneParams).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
-    )
+    return { phones, emails }
   }
 
-  if (lastNameOrFull) {
-    const emailParams = new URLSearchParams(common)
-    emailParams.set('maxResults', '5')
-    jobs.push(
-      accurateAppendGet(`/AppendEmail/${encodeURIComponent(licenseKey)}/`, emailParams).then(
-        (data) => {
+  const people = accurateAppendPeople(a)
+  for (let index = 0; index < people.length; index += 1) {
+    const person = people[index]
+    const common = new URLSearchParams()
+    if (person.firstName) common.set('firstname', person.firstName)
+    if (person.lastName) common.set('lastname', person.lastName)
+    fillAddress(common)
+
+    const phoneParams = new URLSearchParams(common)
+    phoneParams.set('lineType', 'C;S')
+    const jobs: Promise<void>[] = [
+      accurateAppendGet(
+        `/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`,
+        phoneParams,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendPhones(data, phones)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+    ]
+    // Email once on the first candidate so a miss does not 3x-bill MaxConnect.
+    if (index === 0 && person.lastName) {
+      const emailParams = new URLSearchParams(common)
+      emailParams.set('maxResults', '5')
+      jobs.push(
+        accurateAppendGet(
+          `/AppendEmail/${encodeURIComponent(licenseKey)}/`,
+          emailParams,
+          licenseKey,
+        ).then((data) => {
           if (!data) return
           pushAccurateAppendEmails(data, emails)
           extractContactsFromPayload(data, phones, emails)
-        },
-      ),
-    )
+        }),
+      )
+    }
+    await Promise.all(jobs)
+    if (phones.length > 0) break
   }
 
-  await Promise.all(jobs)
   console.log(
     'Accurate Append result:',
-    JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
+    JSON.stringify({ ownerType, tried: people.map((p) => p.label), phones: phones.length, emails: emails.length }),
   )
   return { phones, emails }
 }
