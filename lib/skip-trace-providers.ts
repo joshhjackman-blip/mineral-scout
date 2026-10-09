@@ -94,7 +94,18 @@ const extractContactsFromPayload = (
   pushUniquePhone(phones, root.phone ?? root.phoneNumber ?? root.mobile)
   pushUniqueEmail(emails, root.email ?? root.emailAddress)
 
-  const nestedCollections = [root.persons, root.results, root.data, root.skips]
+  const nestedCollections = [
+    root.persons,
+    root.results,
+    root.result,
+    root.Result,
+    root.Results,
+    root.data,
+    root.skips,
+    root.identities,
+    root.records,
+    root.Records,
+  ]
   for (const collection of nestedCollections) {
     if (!Array.isArray(collection)) continue
     for (const item of collection) {
@@ -506,65 +517,178 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
     return { phones, emails }
   }
 
-  // idiCORE person-search inputs. First/last + address narrow the match; the
-  // tailored MineralMap template returns only phone + email.
-  const body = {
-    firstName: a.firstName || '',
-    lastName: a.lastName || '',
-    address: a.address || '',
-    city: a.city || '',
-    state: a.state || '',
-    zip: a.zip || '',
-  }
   // idiCORE expects the token as the raw Authorization header value; set
   // IDICORE_AUTH_SCHEME=bearer if the account requires a "Bearer " prefix.
   const authHeader =
     process.env.IDICORE_AUTH_SCHEME?.trim().toLowerCase() === 'bearer'
       ? `Bearer ${token}`
       : token
+
+  const street = (a.address || '').trim()
+  const streetLooksBad = /%|c\/o|care of|po box|p\.o\. box/i.test(street)
+  const attempts: Array<{ label: string; body: Record<string, string> }> = [
+    {
+      label: 'full',
+      body: {
+        firstName: a.firstName || '',
+        lastName: a.lastName || '',
+        address: street,
+        city: a.city || '',
+        state: a.state || '',
+        zip: a.zip || '',
+      },
+    },
+  ]
+  // Care-of / PO Box / attorney lines over-constrain MineralMap. A second
+  // search without street (name + city/state/zip) often still finds the person.
+  if (street) {
+    attempts.push({
+      label: streetLooksBad ? 'drop-bad-street' : 'name-city-zip',
+      body: {
+        firstName: a.firstName || '',
+        lastName: a.lastName || '',
+        address: '',
+        city: a.city || '',
+        state: a.state || '',
+        zip: a.zip || '',
+      },
+    })
+  }
+
+  for (const attempt of attempts) {
+    const found = await idicoreSearchOnce(searchUrl, authHeader, attempt.label, {
+      ownerName: a.ownerName || '',
+      ...attempt.body,
+    })
+    for (const num of found.phones) pushUniquePhone(phones, num)
+    for (const addr of found.emails) pushUniqueEmail(emails, addr)
+    if (phones.length > 0) break
+  }
+  return { phones, emails }
+}
+
+function idicoreIdentities(data: Record<string, unknown>): Array<Record<string, unknown>> {
+  const buckets = [
+    data.result,
+    data.results,
+    data.Result,
+    data.Results,
+    data.identities,
+    data.records,
+    data.Records,
+    data.people,
+    data.People,
+  ]
+  const out: Array<Record<string, unknown>> = []
+  for (const bucket of buckets) {
+    if (!Array.isArray(bucket)) continue
+    for (const item of bucket) {
+      if (item && typeof item === 'object') out.push(item as Record<string, unknown>)
+    }
+  }
+  return out
+}
+
+function pullIdicorePhones(identity: Record<string, unknown>, phones: string[]) {
+  const lists = [
+    identity.phone,
+    identity.phones,
+    identity.Phone,
+    identity.Phones,
+    identity.phoneNumbers,
+    identity.PhoneNumbers,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      if (typeof item === 'string') {
+        pushUniquePhone(phones, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      if (obj.fake === true) continue
+      pushUniquePhone(
+        phones,
+        obj.number ?? obj.phone ?? obj.phoneNumber ?? obj.PhoneNumber ?? obj.data,
+      )
+    }
+  }
+}
+
+function pullIdicoreEmails(identity: Record<string, unknown>, emails: string[]) {
+  const lists = [
+    identity.email,
+    identity.emails,
+    identity.Email,
+    identity.Emails,
+    identity.emailAddresses,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      if (typeof item === 'string') {
+        pushUniqueEmail(emails, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      pushUniqueEmail(emails, obj.data ?? obj.email ?? obj.address ?? obj.Email)
+    }
+  }
+}
+
+async function idicoreSearchOnce(
+  searchUrl: string,
+  authHeader: string,
+  label: string,
+  body: Record<string, string>,
+): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
   console.log('idiCORE search POST', {
+    label,
     host: idicoreHost(searchUrl),
     viaProxy: Boolean(idicoreProxyUrl()),
-    hasFirst: Boolean(body.firstName),
-    hasLast: Boolean(body.lastName),
+    firstName: body.firstName,
+    lastName: body.lastName,
+    ownerName: body.ownerName,
     hasAddress: Boolean(body.address && body.city && body.state),
   })
+  const searchBody = { ...body }
+  delete searchBody.ownerName
   const res = await idicoreHttp(searchUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify(body),
+    body: JSON.stringify(searchBody),
   })
   if (!res.ok) {
-    console.error('idiCORE search failed:', res.status, res.text.slice(0, 300))
+    console.error('idiCORE search failed:', label, res.status, res.text.slice(0, 400))
     return { phones, emails }
   }
-  const data = JSON.parse(res.text) as Record<string, unknown>
-  // idiCORE MineralMap response: { result: [ { phone: [{number,...}],
-  // email: [{data,...}] }, ... ], error?, ... }. A too-broad query returns an
-  // `error` (e.g. TooManyMatches) with result=[]; we just yield no contacts
-  // and the chain falls through to Tracerfy.
-  const results = Array.isArray(data.result) ? (data.result as Array<Record<string, unknown>>) : []
-  for (const identity of results) {
-    for (const p of (identity?.phone as Array<Record<string, unknown>>) ?? []) {
-      if (p?.fake === true) continue
-      const num = String(p?.number ?? '').trim()
-      if (num && !phones.includes(num)) phones.push(num)
-    }
-    for (const e of (identity?.email as Array<Record<string, unknown>>) ?? []) {
-      const addr = String(e?.data ?? '').trim()
-      if (addr && !emails.includes(addr)) emails.push(addr)
-    }
+  let data: Record<string, unknown> = {}
+  try {
+    data = JSON.parse(res.text) as Record<string, unknown>
+  } catch {
+    console.error('idiCORE search parse failed:', label, res.text.slice(0, 200))
+    return { phones, emails }
   }
-  const err = data.error as { message?: string } | undefined
-  if (err?.message && results.length === 0) {
-    console.warn('idiCORE search returned no results:', err.message)
+  const identities = idicoreIdentities(data)
+  for (const identity of identities) {
+    pullIdicorePhones(identity, phones)
+    pullIdicoreEmails(identity, emails)
   }
-  // Defensive fallback for any other shape.
   extractContactsFromPayload(data, phones, emails)
+  const err = data.error as { message?: string } | string | undefined
+  const errMsg = typeof err === 'string' ? err : err?.message
   console.log('idiCORE search parsed', {
-    identities: results.length,
+    label,
+    keys: Object.keys(data).slice(0, 12),
+    identities: identities.length,
     phones: phones.length,
     emails: emails.length,
+    error: errMsg || null,
+    snippet: res.text.replace(/\s+/g, ' ').slice(0, 280),
   })
   return { phones, emails }
 }
