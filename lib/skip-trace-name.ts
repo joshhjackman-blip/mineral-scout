@@ -233,10 +233,6 @@ export function parseTaxRollOwner(ownerName: string | null | undefined): ParsedT
 export function personCandidatesFromTaxRoll(
   ownerName: string | null | undefined,
 ): PersonTraceCandidate[] {
-  const parsed = parseTaxRollOwner(ownerName)
-  if (parsed.kind === 'business' || !parsed.lastName || parsed.givenNames.length === 0) {
-    return []
-  }
   const out: PersonTraceCandidate[] = []
   const seen = new Set<string>()
   const push = (firstName: string, lastName: string, label: string) => {
@@ -249,11 +245,53 @@ export function personCandidatesFromTaxRoll(
     out.push({ firstName: first, lastName: last, label })
   }
 
-  push(parsed.givenNames.join(' '), parsed.lastName, 'tax-roll-full')
-  if (parsed.givenNames.length > 1) {
-    push(parsed.givenNames[0], parsed.lastName, 'tax-roll-first')
+  const original = String(ownerName ?? '').trim()
+  const jointParts = original
+    .split(/\s*(?:&|\bAND\b)\s*/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (jointParts.length >= 2 && !isBusinessOwner(original)) {
+    const left = parseTaxRollOwner(jointParts[0])
+    if (left.lastName && left.givenNames.length > 0) {
+      pushGiven(push, left.givenNames, left.lastName, 'tax-roll-full', 'tax-roll-first')
+      const rightTokens = tokenizeOwnerName(jointParts[1]).filter(
+        (token) =>
+          !FIDUCIARY_TOKENS.has(token) &&
+          !PERSON_TAG_TOKENS.has(token) &&
+          !NAME_SUFFIXES.has(token) &&
+          !FILLER_TOKENS.has(token),
+      )
+      if (rightTokens.length === 1) {
+        push(rightTokens[0], left.lastName, 'joint-spouse')
+      } else if (rightTokens.length >= 2) {
+        pushGiven(push, rightTokens, left.lastName, 'joint-spouse-full', 'joint-spouse')
+      }
+    }
+    if (out.length > 0) return out
   }
+
+  const parsed = parseTaxRollOwner(ownerName)
+  if (parsed.kind === 'business' || !parsed.lastName || parsed.givenNames.length === 0) {
+    return []
+  }
+
+  pushGiven(push, parsed.givenNames, parsed.lastName, 'tax-roll-full', 'tax-roll-first')
   return out
+}
+
+function pushGiven(
+  push: (firstName: string, lastName: string, label: string) => void,
+  givenNames: string[],
+  lastName: string,
+  fullLabel: string,
+  firstLabel: string,
+) {
+  if (givenNames.length === 0) return
+  push(givenNames.join(' '), lastName, fullLabel)
+  if (givenNames.length > 1) {
+    push(givenNames[0], lastName, firstLabel)
+  }
 }
 
 /** Officer / registered-agent names from SOS/Comptroller are FIRST MIDDLE LAST. */
@@ -287,6 +325,67 @@ export type TraceNameArgs = {
   city?: string
   state?: string
   zip?: string
+  /** Live skip-trace expands joints + first-token fallbacks. Research already loops. */
+  expandNameCandidates?: boolean
+}
+
+export type IdicoreSearchAttempt = {
+  label: string
+  firstName: string
+  lastName: string
+  address: string
+}
+
+const IDICORE_MAX_SEARCHES = 4
+const BAD_STREET_RE = /%|c\/o|care of|po box|p\.o\. box/i
+
+/**
+ * Name + address attempts for one live idiCORE search. PO Box / care-of
+ * streets are dropped (they over-constrain MineralMap). When expanding,
+ * every person is tried on the best address before a streetless retry so
+ * a joint spouse is not starved by the 4-call cap.
+ */
+export function buildIdicoreSearchPlan(a: TraceNameArgs): IdicoreSearchAttempt[] {
+  const street = (a.address || '').trim()
+  const streetLooksBad = BAD_STREET_RE.test(street)
+  const roll = personCandidatesFromTaxRoll(a.ownerName)
+  const incomingFirst = (a.firstName || '').trim()
+  const incomingLast = (a.lastName || '').trim()
+
+  const names =
+    a.expandNameCandidates && roll.length > 0
+      ? roll
+      : incomingFirst || incomingLast
+        ? [{ firstName: incomingFirst, lastName: incomingLast, label: 'incoming' }]
+        : roll
+
+  const addressPasses: Array<{ label: string; address: string }> = []
+  if (street && !streetLooksBad) {
+    addressPasses.push({ label: 'full', address: street })
+  }
+  if (streetLooksBad || street) {
+    addressPasses.push({
+      label: streetLooksBad ? 'drop-bad-street' : 'name-city-zip',
+      address: '',
+    })
+  }
+  if (addressPasses.length === 0) {
+    addressPasses.push({ label: 'name-only', address: '' })
+  }
+
+  const out: IdicoreSearchAttempt[] = []
+  for (const pass of addressPasses) {
+    for (const name of names) {
+      out.push({
+        label: `${pass.label}/${name.label}`,
+        firstName: name.firstName,
+        lastName: name.lastName,
+        address: pass.address,
+      })
+      if (out.length >= IDICORE_MAX_SEARCHES) return out
+    }
+  }
+  return out
 }
 
 /**
@@ -295,6 +394,16 @@ export type TraceNameArgs = {
  */
 export function enrichPersonTraceArgs<T extends TraceNameArgs>(args: T): T {
   const zip = normalizeZip(args.zip)
+  const candidates = personCandidatesFromTaxRoll(args.ownerName)
+  const isJoint = candidates.some((candidate) => candidate.label.startsWith('joint'))
+  if (isJoint && candidates[0]) {
+    return {
+      ...args,
+      firstName: candidates[0].firstName,
+      lastName: candidates[0].lastName,
+      zip,
+    }
+  }
   const parsed = parseTaxRollOwner(args.ownerName)
   if (parsed.kind === 'business' || !parsed.lastName || parsed.givenNames.length === 0) {
     return zip === args.zip ? args : { ...args, zip }

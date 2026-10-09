@@ -57,6 +57,18 @@ const llc = personTargetsFromReview(
 )
 assert.deepEqual(llc, [])
 
+const joint = personTargetsFromReview(
+  review({
+    owner_name: 'ANDERSON JIMMIE L & MARILYN',
+    first_name: 'JIMMIE',
+    last_name: 'ANDERSON',
+  }),
+)
+assert.deepEqual(
+  joint.map((t) => `${t.firstName}|${t.lastName}`),
+  ['JIMMIE L|ANDERSON', 'JIMMIE|ANDERSON', 'MARILYN|ANDERSON'],
+)
+
 const parsed = parseResearchAttempts(
   '[research 2026-09-28T12:00:00.000Z attempt=1] tried tax-roll-full:MONROE E ALENICK; no phone',
 )
@@ -114,6 +126,7 @@ assert.equal(hitParsed?.hit, true)
 assert.equal(hitParsed?.provider, 'idicore')
 assert.equal(hitParsed?.method, 'officer:PRESIDENT')
 assert.equal(hitParsed?.person, 'MARSHALL EVANS BROWN')
+assert.equal(methodLabel('joint-spouse'), 'Joint spouse')
 assert.equal(methodLabel('officer:PRESIDENT'), 'TX officer · PRESIDENT')
 assert.equal(methodLabel('officer:GP>MEMBER'), 'TX GP · MEMBER')
 assert.equal(methodLabel('officer:GP>GP>MANAGER'), 'TX GP · MANAGER')

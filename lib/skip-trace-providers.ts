@@ -7,7 +7,16 @@
  * allow-listed static IP.
  */
 
-import { isBusinessOwner } from '@/lib/skip-trace-name'
+import {
+  ACCURATE_APPEND_BASE,
+  accurateAppendLicenseKey,
+  accurateAppendPeople,
+  accurateAppendStreet,
+  classifyAccurateAppendProbe,
+  redactAccurateAppendKey,
+  type AccurateAppendLicenseProbe,
+} from '@/lib/accurate-append'
+import { buildIdicoreSearchPlan, isBusinessOwner } from '@/lib/skip-trace-name'
 
 export type TraceArgs = {
   firstName?: string
@@ -17,6 +26,8 @@ export type TraceArgs = {
   city?: string
   state?: string
   zip?: string
+  /** Live skip-trace expands joints + first-token fallbacks. Research already loops. */
+  expandNameCandidates?: boolean
 }
 
 export type TraceResult = { phones: string[]; emails: string[] }
@@ -94,7 +105,18 @@ const extractContactsFromPayload = (
   pushUniquePhone(phones, root.phone ?? root.phoneNumber ?? root.mobile)
   pushUniqueEmail(emails, root.email ?? root.emailAddress)
 
-  const nestedCollections = [root.persons, root.results, root.data, root.skips]
+  const nestedCollections = [
+    root.persons,
+    root.results,
+    root.result,
+    root.Result,
+    root.Results,
+    root.data,
+    root.skips,
+    root.identities,
+    root.records,
+    root.Records,
+  ]
   for (const collection of nestedCollections) {
     if (!Array.isArray(collection)) continue
     for (const item of collection) {
@@ -112,16 +134,6 @@ export function classifyOwner(
   return isBusinessOwner(ownerName, firstName, lastName) ? 'entity' : 'person'
 }
 
-const ACCURATE_APPEND_BASE = 'https://api.accurateappend.com/Services/V2'
-
-function accurateAppendLicenseKey(): string {
-  return (
-    process.env.ACCURATE_APPEND_API_KEY?.trim() ||
-    process.env.ACCURATE_APPEND_LICENSE_KEY?.trim() ||
-    ''
-  )
-}
-
 function pushAccurateAppendPhones(payload: unknown, phones: string[]) {
   if (!payload || typeof payload !== 'object') return
   const root = payload as Record<string, unknown>
@@ -137,7 +149,7 @@ function pushAccurateAppendPhones(payload: unknown, phones: string[]) {
     }
     if (!item || typeof item !== 'object') continue
     const obj = item as Record<string, unknown>
-    const area = String(obj.AreaCode ?? obj.areaCode ?? '').replace(/\D/g, '')
+    const area = String(obj.AreaCode ?? obj.Areacode ?? obj.areaCode ?? '').replace(/\D/g, '')
     const rest = String(
       obj.PhoneNumber ?? obj.phoneNumber ?? obj.number ?? obj.phone ?? '',
     ).replace(/\D/g, '')
@@ -168,22 +180,74 @@ function pushAccurateAppendEmails(payload: unknown, emails: string[]) {
 async function accurateAppendGet(
   path: string,
   params: URLSearchParams,
+  licenseKey: string,
 ): Promise<Record<string, unknown> | null> {
-  const url = `${ACCURATE_APPEND_BASE}${path}?${params.toString()}`
+  const qs = params.toString()
+  const url = `${ACCURATE_APPEND_BASE}${path}${qs ? `?${qs}` : ''}`
+  const safePath = redactAccurateAppendKey(path, licenseKey)
   const res = await fetch(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   })
-  const text = await res.text()
+  const text = redactAccurateAppendKey(await res.text(), licenseKey)
   if (!res.ok) {
-    console.error('Accurate Append', path, 'failed:', res.status, text.slice(0, 300))
+    console.error('Accurate Append', safePath, 'failed:', res.status, text.slice(0, 300))
     return null
   }
   try {
     return JSON.parse(text) as Record<string, unknown>
   } catch {
-    console.error('Accurate Append', path, 'parse failed')
+    console.error('Accurate Append', safePath, 'parse failed')
     return null
+  }
+}
+
+/** License check only — nameless Ads call. 400 means the official key is live. */
+export async function probeAccurateAppendLicense(): Promise<AccurateAppendLicenseProbe> {
+  const key = accurateAppendLicenseKey()
+  if (!key) {
+    return {
+      keySet: false,
+      keyChars: 0,
+      ok: false,
+      status: null,
+      error: 'ACCURATE_APPEND_API_KEY is unset',
+      billedSearch: false,
+    }
+  }
+  const path = `/AppendPhone/Ads/${encodeURIComponent(key)}/`
+  const url = `${ACCURATE_APPEND_BASE}${path}`
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const text = redactAccurateAppendKey(await res.text(), key)
+    let error: string | null = null
+    try {
+      const parsed = JSON.parse(text) as { Error?: string; error?: string }
+      error = parsed.Error || parsed.error || null
+    } catch {
+      error = text.slice(0, 160) || null
+    }
+    const classified = classifyAccurateAppendProbe(res.status, error)
+    return {
+      keySet: true,
+      keyChars: key.length,
+      ok: classified.ok,
+      status: res.status,
+      error: classified.error,
+      billedSearch: false,
+    }
+  } catch (err) {
+    return {
+      keySet: true,
+      keyChars: key.length,
+      ok: false,
+      status: null,
+      error: err instanceof Error ? err.message : String(err),
+      billedSearch: false,
+    }
   }
 }
 
@@ -195,71 +259,99 @@ async function accurateAppendGet(
 async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<TraceResult> {
   const phones: string[] = []
   const emails: string[] = []
-  const firstName = (a.firstName || '').trim()
-  const lastName = (a.lastName || '').trim()
   const ownerName = (a.ownerName || '').trim()
-  const lastNameOrFull = lastName || ownerName
-  if (!lastNameOrFull && !firstName) return { phones, emails }
-
-  const common = new URLSearchParams()
-  if (firstName) common.set('firstname', firstName)
-  if (lastNameOrFull) common.set('lastname', lastNameOrFull)
-  if (a.address?.trim()) common.set('address', a.address.trim())
-  if (a.city?.trim()) common.set('city', a.city.trim())
-  if (a.state?.trim()) common.set('state', a.state.trim())
-  if (a.zip?.trim()) common.set('postalcode', a.zip.trim())
-
+  const street = accurateAppendStreet(a.address)
+  const city = (a.city || '').trim()
+  const state = (a.state || '').trim()
+  const zip = (a.zip || '').trim()
   const ownerType = classifyOwner(a.ownerName, a.firstName, a.lastName)
-  const jobs: Promise<void>[] = []
+
+  const fillAddress = (params: URLSearchParams) => {
+    if (street) params.set('address', street)
+    if (city) params.set('city', city)
+    if (state) params.set('state', state)
+    if (zip) params.set('postalcode', zip)
+  }
 
   if (ownerType === 'entity' && ownerName) {
     const biz = new URLSearchParams()
     biz.set('businessname', ownerName)
-    if (a.address?.trim()) biz.set('address', a.address.trim())
-    if (a.city?.trim()) biz.set('city', a.city.trim())
-    if (a.state?.trim()) biz.set('state', a.state.trim())
-    if (a.zip?.trim()) biz.set('postalcode', a.zip.trim())
-    jobs.push(
-      accurateAppendGet(`/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`, biz).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
+    fillAddress(biz)
+    const emailParams = new URLSearchParams()
+    emailParams.set('lastname', ownerName)
+    fillAddress(emailParams)
+    emailParams.set('maxResults', '5')
+    await Promise.all([
+      accurateAppendGet(
+        `/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`,
+        biz,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendPhones(data, phones)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+      accurateAppendGet(
+        `/AppendEmail/${encodeURIComponent(licenseKey)}/`,
+        emailParams,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendEmails(data, emails)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+    ])
+    console.log(
+      'Accurate Append result:',
+      JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
     )
-  } else {
-    const phoneParams = new URLSearchParams(common)
-    phoneParams.set('lineType', 'C;S')
-    jobs.push(
-      accurateAppendGet(`/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`, phoneParams).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
-    )
+    return { phones, emails }
   }
 
-  if (lastNameOrFull) {
-    const emailParams = new URLSearchParams(common)
-    emailParams.set('maxResults', '5')
-    jobs.push(
-      accurateAppendGet(`/AppendEmail/${encodeURIComponent(licenseKey)}/`, emailParams).then(
-        (data) => {
+  const people = accurateAppendPeople(a)
+  for (let index = 0; index < people.length; index += 1) {
+    const person = people[index]
+    const common = new URLSearchParams()
+    if (person.firstName) common.set('firstname', person.firstName)
+    if (person.lastName) common.set('lastname', person.lastName)
+    fillAddress(common)
+
+    const phoneParams = new URLSearchParams(common)
+    phoneParams.set('lineType', 'C;S')
+    const jobs: Promise<void>[] = [
+      accurateAppendGet(
+        `/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`,
+        phoneParams,
+        licenseKey,
+      ).then((data) => {
+        if (!data) return
+        pushAccurateAppendPhones(data, phones)
+        extractContactsFromPayload(data, phones, emails)
+      }),
+    ]
+    // Email once on the first candidate so a miss does not 3x-bill MaxConnect.
+    if (index === 0 && person.lastName) {
+      const emailParams = new URLSearchParams(common)
+      emailParams.set('maxResults', '5')
+      jobs.push(
+        accurateAppendGet(
+          `/AppendEmail/${encodeURIComponent(licenseKey)}/`,
+          emailParams,
+          licenseKey,
+        ).then((data) => {
           if (!data) return
           pushAccurateAppendEmails(data, emails)
           extractContactsFromPayload(data, phones, emails)
-        },
-      ),
-    )
+        }),
+      )
+    }
+    await Promise.all(jobs)
+    if (phones.length > 0) break
   }
 
-  await Promise.all(jobs)
   console.log(
     'Accurate Append result:',
-    JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
+    JSON.stringify({ ownerType, tried: people.map((p) => p.label), phones: phones.length, emails: emails.length }),
   )
   return { phones, emails }
 }
@@ -408,6 +500,77 @@ async function idicoreAuthenticate(): Promise<string | null> {
   return token
 }
 
+export type IdicoreAuthProbe = {
+  ok: boolean
+  status: number | null
+  viaProxy: boolean
+  tokenChars: number
+  error: string | null
+}
+
+/**
+ * Fresh auth-only probe. Does not POST /search, so it does not consume a
+ * skip-trace credit. Clears the in-memory token cache so the result is live.
+ */
+export async function probeIdicoreAuth(): Promise<IdicoreAuthProbe> {
+  idicoreToken = null
+  const viaProxy = Boolean(idicoreProxyUrl())
+  const authUrl = process.env.IDICORE_AUTH_URL?.trim()
+  const clientId = process.env.IDICORE_CLIENT_ID?.trim()
+  const clientSecret = process.env.IDICORE_CLIENT_SECRET?.trim()
+  if (!authUrl || !clientId || !clientSecret) {
+    return {
+      ok: false,
+      status: null,
+      viaProxy,
+      tokenChars: 0,
+      error: 'missing IDICORE_AUTH_URL / CLIENT_ID / CLIENT_SECRET',
+    }
+  }
+
+  const glba = process.env.IDICORE_GLBA?.trim() || 'otheruse'
+  const dppa = process.env.IDICORE_DPPA?.trim() || 'none'
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+  try {
+    const res = await idicoreHttp(authUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${basic}`,
+      },
+      body: JSON.stringify({ glba, dppa }),
+    })
+    const token = res.text.trim()
+    if (!res.ok || !token) {
+      return {
+        ok: false,
+        status: res.status,
+        viaProxy,
+        tokenChars: 0,
+        error: res.ok
+          ? 'auth returned an empty body'
+          : `auth failed (${res.status})`,
+      }
+    }
+    idicoreToken = { value: token, expiresAt: Date.now() + 12 * 60_000 }
+    return {
+      ok: true,
+      status: res.status,
+      viaProxy,
+      tokenChars: token.length,
+      error: null,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      status: null,
+      viaProxy,
+      tokenChars: 0,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
 /** idiCORE (IDI) skip-trace — first provider.
  *
  * Two-step: authenticate (idicoreAuthenticate) then POST the search to
@@ -435,65 +598,157 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
     return { phones, emails }
   }
 
-  // idiCORE person-search inputs. First/last + address narrow the match; the
-  // tailored MineralMap template returns only phone + email.
-  const body = {
-    firstName: a.firstName || '',
-    lastName: a.lastName || '',
-    address: a.address || '',
-    city: a.city || '',
-    state: a.state || '',
-    zip: a.zip || '',
-  }
   // idiCORE expects the token as the raw Authorization header value; set
   // IDICORE_AUTH_SCHEME=bearer if the account requires a "Bearer " prefix.
   const authHeader =
     process.env.IDICORE_AUTH_SCHEME?.trim().toLowerCase() === 'bearer'
       ? `Bearer ${token}`
       : token
+
+  const city = a.city || ''
+  const state = a.state || ''
+  const zip = a.zip || ''
+  const plan = buildIdicoreSearchPlan(a)
+
+  for (const attempt of plan) {
+    const found = await idicoreSearchOnce(searchUrl, authHeader, attempt.label, {
+      ownerName: a.ownerName || '',
+      firstName: attempt.firstName,
+      lastName: attempt.lastName,
+      address: attempt.address,
+      city,
+      state,
+      zip,
+    })
+    for (const num of found.phones) pushUniquePhone(phones, num)
+    for (const addr of found.emails) pushUniqueEmail(emails, addr)
+    if (phones.length > 0) break
+  }
+  return { phones, emails }
+}
+
+function idicoreIdentities(data: Record<string, unknown>): Array<Record<string, unknown>> {
+  const buckets = [
+    data.result,
+    data.results,
+    data.Result,
+    data.Results,
+    data.identities,
+    data.records,
+    data.Records,
+    data.people,
+    data.People,
+  ]
+  const out: Array<Record<string, unknown>> = []
+  for (const bucket of buckets) {
+    if (!Array.isArray(bucket)) continue
+    for (const item of bucket) {
+      if (item && typeof item === 'object') out.push(item as Record<string, unknown>)
+    }
+  }
+  return out
+}
+
+function pullIdicorePhones(identity: Record<string, unknown>, phones: string[]) {
+  const lists = [
+    identity.phone,
+    identity.phones,
+    identity.Phone,
+    identity.Phones,
+    identity.phoneNumbers,
+    identity.PhoneNumbers,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      if (typeof item === 'string') {
+        pushUniquePhone(phones, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      if (obj.fake === true) continue
+      pushUniquePhone(
+        phones,
+        obj.number ?? obj.phone ?? obj.phoneNumber ?? obj.PhoneNumber ?? obj.data,
+      )
+    }
+  }
+}
+
+function pullIdicoreEmails(identity: Record<string, unknown>, emails: string[]) {
+  const lists = [
+    identity.email,
+    identity.emails,
+    identity.Email,
+    identity.Emails,
+    identity.emailAddresses,
+  ]
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue
+    for (const item of list) {
+      if (typeof item === 'string') {
+        pushUniqueEmail(emails, item)
+        continue
+      }
+      if (!item || typeof item !== 'object') continue
+      const obj = item as Record<string, unknown>
+      pushUniqueEmail(emails, obj.data ?? obj.email ?? obj.address ?? obj.Email)
+    }
+  }
+}
+
+async function idicoreSearchOnce(
+  searchUrl: string,
+  authHeader: string,
+  label: string,
+  body: Record<string, string>,
+): Promise<TraceResult> {
+  const phones: string[] = []
+  const emails: string[] = []
   console.log('idiCORE search POST', {
+    label,
     host: idicoreHost(searchUrl),
     viaProxy: Boolean(idicoreProxyUrl()),
-    hasFirst: Boolean(body.firstName),
-    hasLast: Boolean(body.lastName),
+    firstName: body.firstName,
+    lastName: body.lastName,
+    ownerName: body.ownerName,
     hasAddress: Boolean(body.address && body.city && body.state),
   })
+  const searchBody = { ...body }
+  delete searchBody.ownerName
   const res = await idicoreHttp(searchUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: authHeader },
-    body: JSON.stringify(body),
+    body: JSON.stringify(searchBody),
   })
   if (!res.ok) {
-    console.error('idiCORE search failed:', res.status, res.text.slice(0, 300))
+    console.error('idiCORE search failed:', label, res.status, res.text.slice(0, 400))
     return { phones, emails }
   }
-  const data = JSON.parse(res.text) as Record<string, unknown>
-  // idiCORE MineralMap response: { result: [ { phone: [{number,...}],
-  // email: [{data,...}] }, ... ], error?, ... }. A too-broad query returns an
-  // `error` (e.g. TooManyMatches) with result=[]; we just yield no contacts
-  // and the chain falls through to Tracerfy.
-  const results = Array.isArray(data.result) ? (data.result as Array<Record<string, unknown>>) : []
-  for (const identity of results) {
-    for (const p of (identity?.phone as Array<Record<string, unknown>>) ?? []) {
-      if (p?.fake === true) continue
-      const num = String(p?.number ?? '').trim()
-      if (num && !phones.includes(num)) phones.push(num)
-    }
-    for (const e of (identity?.email as Array<Record<string, unknown>>) ?? []) {
-      const addr = String(e?.data ?? '').trim()
-      if (addr && !emails.includes(addr)) emails.push(addr)
-    }
+  let data: Record<string, unknown> = {}
+  try {
+    data = JSON.parse(res.text) as Record<string, unknown>
+  } catch {
+    console.error('idiCORE search parse failed:', label, res.text.slice(0, 200))
+    return { phones, emails }
   }
-  const err = data.error as { message?: string } | undefined
-  if (err?.message && results.length === 0) {
-    console.warn('idiCORE search returned no results:', err.message)
+  const identities = idicoreIdentities(data)
+  for (const identity of identities) {
+    pullIdicorePhones(identity, phones)
+    pullIdicoreEmails(identity, emails)
   }
-  // Defensive fallback for any other shape.
   extractContactsFromPayload(data, phones, emails)
+  const err = data.error as { message?: string } | string | undefined
+  const errMsg = typeof err === 'string' ? err : err?.message
   console.log('idiCORE search parsed', {
-    identities: results.length,
+    label,
+    keys: Object.keys(data).slice(0, 12),
+    identities: identities.length,
     phones: phones.length,
     emails: emails.length,
+    error: errMsg || null,
+    snippet: res.text.replace(/\s+/g, ' ').slice(0, 280),
   })
   return { phones, emails }
 }
