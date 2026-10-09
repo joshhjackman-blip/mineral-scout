@@ -65,6 +65,7 @@ export function methodLabel(method: string | null | undefined): string {
   }
   if (raw === 'tax-roll-full') return 'Tax-roll full name'
   if (raw === 'tax-roll-first') return 'First name only'
+  if (raw === 'joint-spouse' || raw === 'joint-spouse-full') return 'Joint spouse'
   if (raw === 'review-enriched') return 'Enriched name'
   if (raw === 'cache') return 'Already in cache'
   return raw.replace(/_/g, ' ')

@@ -7,7 +7,7 @@
  * allow-listed static IP.
  */
 
-import { isBusinessOwner } from '@/lib/skip-trace-name'
+import { buildIdicoreSearchPlan, isBusinessOwner } from '@/lib/skip-trace-name'
 
 export type TraceArgs = {
   firstName?: string
@@ -17,6 +17,8 @@ export type TraceArgs = {
   city?: string
   state?: string
   zip?: string
+  /** Live skip-trace expands joints + first-token fallbacks. Research already loops. */
+  expandNameCandidates?: boolean
 }
 
 export type TraceResult = { phones: string[]; emails: string[] }
@@ -524,41 +526,20 @@ async function traceIdicore(a: TraceArgs): Promise<TraceResult> {
       ? `Bearer ${token}`
       : token
 
-  const street = (a.address || '').trim()
-  const streetLooksBad = /%|c\/o|care of|po box|p\.o\. box/i.test(street)
-  const attempts: Array<{ label: string; body: Record<string, string> }> = [
-    {
-      label: 'full',
-      body: {
-        firstName: a.firstName || '',
-        lastName: a.lastName || '',
-        address: street,
-        city: a.city || '',
-        state: a.state || '',
-        zip: a.zip || '',
-      },
-    },
-  ]
-  // Care-of / PO Box / attorney lines over-constrain MineralMap. A second
-  // search without street (name + city/state/zip) often still finds the person.
-  if (street) {
-    attempts.push({
-      label: streetLooksBad ? 'drop-bad-street' : 'name-city-zip',
-      body: {
-        firstName: a.firstName || '',
-        lastName: a.lastName || '',
-        address: '',
-        city: a.city || '',
-        state: a.state || '',
-        zip: a.zip || '',
-      },
-    })
-  }
+  const city = a.city || ''
+  const state = a.state || ''
+  const zip = a.zip || ''
+  const plan = buildIdicoreSearchPlan(a)
 
-  for (const attempt of attempts) {
+  for (const attempt of plan) {
     const found = await idicoreSearchOnce(searchUrl, authHeader, attempt.label, {
       ownerName: a.ownerName || '',
-      ...attempt.body,
+      firstName: attempt.firstName,
+      lastName: attempt.lastName,
+      address: attempt.address,
+      city,
+      state,
+      zip,
     })
     for (const num of found.phones) pushUniquePhone(phones, num)
     for (const addr of found.emails) pushUniqueEmail(emails, addr)

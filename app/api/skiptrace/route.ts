@@ -261,15 +261,18 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const traceArgs = enrichPersonTraceArgs({
-    firstName,
-    lastName,
-    ownerName,
-    address,
-    city,
-    state,
-    zip,
-  })
+  const traceArgs = {
+    ...enrichPersonTraceArgs({
+      firstName,
+      lastName,
+      ownerName,
+      address,
+      city,
+      state,
+      zip,
+    }),
+    expandNameCandidates: true,
+  }
   const ownerType = classifyOwner(traceArgs.ownerName, traceArgs.firstName, traceArgs.lastName)
 
   try {
