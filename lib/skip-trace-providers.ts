@@ -165,10 +165,15 @@ function pushAccurateAppendEmails(payload: unknown, emails: string[]) {
   }
 }
 
+type AccurateAppendHttp = {
+  status: number
+  data: Record<string, unknown> | null
+}
+
 async function accurateAppendGet(
   path: string,
   params: URLSearchParams,
-): Promise<Record<string, unknown> | null> {
+): Promise<AccurateAppendHttp> {
   const url = `${ACCURATE_APPEND_BASE}${path}?${params.toString()}`
   const res = await fetch(url, {
     method: 'GET',
@@ -177,19 +182,37 @@ async function accurateAppendGet(
   const text = await res.text()
   if (!res.ok) {
     console.error('Accurate Append', path, 'failed:', res.status, text.slice(0, 300))
-    return null
+    return { status: res.status, data: null }
   }
   try {
-    return JSON.parse(text) as Record<string, unknown>
+    return { status: res.status, data: JSON.parse(text) as Record<string, unknown> }
   } catch {
     console.error('Accurate Append', path, 'parse failed')
-    return null
+    return { status: res.status, data: null }
   }
+}
+
+/** Ads 401/403 means this key is licensed for cell + landline as separate
+ * Accurate Advantage products, not the combined Ads endpoint. */
+export function shouldFallbackToSplitLineTypeProducts(status: number): boolean {
+  return status === 401 || status === 403
+}
+
+function applyAccurateAppendPayload(
+  data: Record<string, unknown> | null,
+  phones: string[],
+  emails: string[],
+) {
+  if (!data) return
+  pushAccurateAppendPhones(data, phones)
+  pushAccurateAppendEmails(data, emails)
+  extractContactsFromPayload(data, phones, emails)
 }
 
 /** Accurate Append phone + email append — backup after idiCORE when
  * ACCURATE_APPEND_API_KEY is set.
- * People: ADS consumer phone (mobile + landline) + MaxConnect email.
+ * People: ADS consumer phone with lineType S;C (landline + cell in one call).
+ * If Ads is not on the key, fall back to SBMMobile + SBMLandline.
  * Entities: business phone append + email (owner name as lastname).
  * Empty result falls through to BatchData. */
 async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<TraceResult> {
@@ -209,8 +232,10 @@ async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<Tr
   if (a.state?.trim()) common.set('state', a.state.trim())
   if (a.zip?.trim()) common.set('postalcode', a.zip.trim())
 
+  const keyPath = encodeURIComponent(licenseKey)
   const ownerType = classifyOwner(a.ownerName, a.firstName, a.lastName)
   const jobs: Promise<void>[] = []
+  let phonePath = 'none'
 
   if (ownerType === 'entity' && ownerName) {
     const biz = new URLSearchParams()
@@ -220,25 +245,35 @@ async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<Tr
     if (a.state?.trim()) biz.set('state', a.state.trim())
     if (a.zip?.trim()) biz.set('postalcode', a.zip.trim())
     jobs.push(
-      accurateAppendGet(`/AppendPhone/Business/${encodeURIComponent(licenseKey)}/`, biz).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
+      accurateAppendGet(`/AppendPhone/Business/${keyPath}/`, biz).then((res) => {
+        phonePath = `business:${res.status}`
+        applyAccurateAppendPayload(res.data, phones, emails)
+      }),
     )
   } else {
-    const phoneParams = new URLSearchParams(common)
-    phoneParams.set('lineType', 'C;S')
     jobs.push(
-      accurateAppendGet(`/AppendPhone/Ads/${encodeURIComponent(licenseKey)}/`, phoneParams).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendPhones(data, phones)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
+      (async () => {
+        const adsParams = new URLSearchParams(common)
+        // S = landline, C = cell. One Ads call returns a listing per type.
+        adsParams.set('lineType', 'S;C')
+        const ads = await accurateAppendGet(`/AppendPhone/Ads/${keyPath}/`, adsParams)
+        if (ads.data) {
+          phonePath = `ads:${ads.status}`
+          applyAccurateAppendPayload(ads.data, phones, emails)
+          return
+        }
+        if (!shouldFallbackToSplitLineTypeProducts(ads.status)) {
+          phonePath = `ads:${ads.status}`
+          return
+        }
+        const [mobile, landline] = await Promise.all([
+          accurateAppendGet(`/AppendPhone/SBMMobile/${keyPath}/`, new URLSearchParams(common)),
+          accurateAppendGet(`/AppendPhone/SBMLandline/${keyPath}/`, new URLSearchParams(common)),
+        ])
+        phonePath = `sbm:${mobile.status}/${landline.status}`
+        applyAccurateAppendPayload(mobile.data, phones, emails)
+        applyAccurateAppendPayload(landline.data, phones, emails)
+      })(),
     )
   }
 
@@ -246,20 +281,21 @@ async function traceAccurateAppend(licenseKey: string, a: TraceArgs): Promise<Tr
     const emailParams = new URLSearchParams(common)
     emailParams.set('maxResults', '5')
     jobs.push(
-      accurateAppendGet(`/AppendEmail/${encodeURIComponent(licenseKey)}/`, emailParams).then(
-        (data) => {
-          if (!data) return
-          pushAccurateAppendEmails(data, emails)
-          extractContactsFromPayload(data, phones, emails)
-        },
-      ),
+      accurateAppendGet(`/AppendEmail/${keyPath}/`, emailParams).then((res) => {
+        applyAccurateAppendPayload(res.data, phones, emails)
+      }),
     )
   }
 
   await Promise.all(jobs)
   console.log(
     'Accurate Append result:',
-    JSON.stringify({ ownerType, phones: phones.length, emails: emails.length }),
+    JSON.stringify({
+      ownerType,
+      phonePath,
+      phones: phones.length,
+      emails: emails.length,
+    }),
   )
   return { phones, emails }
 }
