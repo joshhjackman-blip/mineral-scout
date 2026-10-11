@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import {
   parseResearchAttempts,
   personTargetsFromReview,
+  pickReviewsForResearch,
   shouldSkipResearch,
 } from './skip-trace-research'
 import {
@@ -100,6 +101,40 @@ assert.equal(llcAlreadyUnwrappedGp.skip, true)
 
 const ready = shouldSkipResearch(review({ notes: null }), Date.now())
 assert.equal(ready.skip, false)
+
+const ranked = pickReviewsForResearch(
+  [
+    review({
+      id: 'old-exhausted',
+      owner_name: 'BEDLAM INVESTMENTS LLC',
+      created_at: '2026-09-14T22:46:58.000Z',
+      notes: '[research 2026-09-28T22:45:00.000Z attempt=4] no person candidates',
+    }),
+    review({
+      id: 'oct8-new',
+      owner_name: 'HALL TOYA ELIZABETH',
+      created_at: '2026-10-08T19:35:02.000Z',
+      notes: null,
+    }),
+    review({
+      id: 'today-miss',
+      owner_name: 'DIXIE OIL & GAS LLC',
+      created_at: '2026-10-11T19:21:36.000Z',
+      notes: null,
+    }),
+    review({
+      id: 'retryable',
+      owner_name: 'ALENICK MONROE E',
+      created_at: '2026-09-16T17:06:18.000Z',
+      notes: '[research 2026-09-28T23:00:00.000Z attempt=1] tried tax-roll-full:MONROE E ALENICK; no phone',
+    }),
+  ],
+  { limit: 3, now: Date.parse('2026-10-11T19:30:00.000Z') },
+)
+assert.deepEqual(
+  ranked.map((row) => row.owner_name),
+  ['DIXIE OIL & GAS LLC', 'HALL TOYA ELIZABETH', 'ALENICK MONROE E'],
+)
 
 const hitNote = formatResearchHitNote({
   attempt: 1,

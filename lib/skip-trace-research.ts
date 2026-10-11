@@ -29,6 +29,8 @@ import { formatResearchHitNote } from '@/lib/skip-trace-research-stats'
 const MAX_ATTEMPTS = 3
 const RECENT_MS = 6 * 60 * 60 * 1000
 const MAX_TARGETS = 5
+/** How many open reviews to scan so exhausted oldest rows cannot starve new misses. */
+const OPEN_REVIEW_SCAN = 200
 
 export type ResearchTarget = TraceArgs & { label: string }
 
@@ -77,6 +79,26 @@ export function shouldSkipResearch(
     return { skip: true, reason: 'researched recently' }
   }
   return { skip: false, reason: '' }
+}
+
+/**
+ * Exhausted reviews used to fill the cron's tiny oldest-first window and
+ * starve every new miss. Rank never-attempted newest first so a batch the
+ * user just clicked gets researched on the next tick, then older retries.
+ */
+export function pickReviewsForResearch(
+  reviews: Array<Pick<SkipTraceReview, 'notes' | 'owner_name' | 'created_at'>>,
+  options: { limit: number; now?: number },
+): typeof reviews {
+  const now = options.now ?? Date.now()
+  const actionable = reviews.filter((review) => !shouldSkipResearch(review, now).skip)
+  const neverAttempted = actionable
+    .filter((review) => parseResearchAttempts(review.notes).attempts === 0)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  const retried = actionable
+    .filter((review) => parseResearchAttempts(review.notes).attempts > 0)
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at))
+  return [...neverAttempted, ...retried].slice(0, Math.max(1, options.limit))
 }
 
 function mailingFromReview(review: SkipTraceReview): Pick<TraceArgs, 'address' | 'city' | 'state' | 'zip'> {
@@ -364,7 +386,7 @@ export async function researchOpenSkipTraceReviews(
     .select('*')
     .eq('status', 'open')
     .order('created_at', { ascending: true })
-    .limit(limit * 3)
+    .limit(OPEN_REVIEW_SCAN)
 
   if (options.ownerName) {
     query = query.eq('owner_name_key', skipTraceOwnerKey(options.ownerName))
@@ -375,9 +397,11 @@ export async function researchOpenSkipTraceReviews(
     throw new Error(error.message)
   }
   const reviews = (data ?? []) as SkipTraceReview[]
+  const selected = options.ownerName
+    ? reviews.slice(0, limit)
+    : (pickReviewsForResearch(reviews, { limit }) as SkipTraceReview[])
   const results: ResearchItemResult[] = []
-  for (const review of reviews) {
-    if (results.filter((r) => r.status !== 'skipped').length >= limit) break
+  for (const review of selected) {
     const result = await researchSkipTraceReview(admin, review)
     results.push(result)
   }
