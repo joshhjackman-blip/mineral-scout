@@ -30,7 +30,12 @@ import {
   emptyResearchStats,
   type ResearchStats,
 } from '@/lib/skip-trace-research-stats'
-import { PREVIEW_REVIEWS, PREVIEW_RESEARCH, shouldLoadPreviewReviews } from './preview-reviews'
+import {
+  PREVIEW_REVIEWS,
+  PREVIEW_RESEARCH,
+  PREVIEW_USAGE,
+  shouldLoadPreviewReviews,
+} from './preview-reviews'
 
 export const dynamic = 'force-dynamic'
 
@@ -193,6 +198,7 @@ export default function OwnerPortfolioPage() {
       if (shouldLoadPreviewReviews()) {
         setReviews(PREVIEW_REVIEWS)
         setResearch(PREVIEW_RESEARCH)
+        setUsage(PREVIEW_USAGE)
         setReviewsLoading(false)
         setLoading(false)
         setEmail('preview@mineralmapllc.com')

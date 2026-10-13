@@ -38,6 +38,79 @@ export const PREVIEW_REVIEWS: SkipTraceReview[] = [
   },
 ]
 
+export const PREVIEW_USAGE = {
+  month: '2026-10',
+  callVolume: {
+    callClicks: 12,
+    skipTraces: 78,
+    skipTraceHits: 49,
+    skipTraceMisses: 29,
+    billableSkipTraces: 0,
+  },
+  skipTraceBilling: { billableCount: 0, amountUsd: 0, unitPriceUsd: 1 },
+  wrongNumbers: { open: 1, thisMonth: 0 },
+  monthlyDollars: {
+    closedDealCount: 0,
+    closedDealVolume: 0,
+    estimatedSuccessFee: 0,
+  },
+  email: { sent: 0 },
+  teams: [
+    {
+      owner_id: 'preview-great-plains',
+      owner_email: 'jordan@greatplainsinterests.com',
+      seat_count: 4,
+      member_count: 3,
+      skip_traces: 78,
+      skip_trace_hits: 49,
+      skip_trace_misses: 29,
+      billable_skip_traces: 0,
+      skip_trace_amount_usd: 0,
+      skip_trace_waived: true,
+      call_clicks: 12,
+      emails_sent: 0,
+      closed_deal_count: 0,
+      closed_deal_volume: 0,
+      estimated_success_fee: 0,
+      wrong_numbers: 0,
+      members: [
+        {
+          user_id: 'preview-quatrocone',
+          email: 'quatrocone@example.com',
+          role: 'member' as const,
+          skip_traces: 73,
+          hits: 45,
+          misses: 28,
+        },
+        {
+          user_id: 'preview-jordan',
+          email: 'jordan@greatplainsinterests.com',
+          role: 'admin' as const,
+          skip_traces: 5,
+          hits: 4,
+          misses: 1,
+        },
+        {
+          user_id: 'preview-bskyburch',
+          email: 'bskyburch@example.com',
+          role: 'member' as const,
+          skip_traces: 0,
+          hits: 0,
+          misses: 0,
+        },
+        {
+          user_id: 'preview-mtf',
+          email: 'mtfminerals@example.com',
+          role: 'member' as const,
+          skip_traces: 0,
+          hits: 0,
+          misses: 0,
+        },
+      ],
+    },
+  ],
+}
+
 export const PREVIEW_RESEARCH = {
   queued: 2,
   hits: 2,
