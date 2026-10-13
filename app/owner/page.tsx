@@ -6,7 +6,7 @@
  * Cross-team activity + skip-trace running totals. Ops tools stay under /admin.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import {
@@ -16,6 +16,8 @@ import {
   Shield,
   PhoneOff,
   Activity,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import AppLogo from '@/app/components/AppLogo'
 import { isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
@@ -32,12 +34,23 @@ import { PREVIEW_REVIEWS, PREVIEW_RESEARCH, shouldLoadPreviewReviews } from './p
 
 export const dynamic = 'force-dynamic'
 
+type TeamMemberSpend = {
+  user_id: string | null
+  email: string
+  role: 'admin' | 'member'
+  skip_traces: number
+  hits: number
+  misses: number
+}
+
 type TeamSpendRow = {
   owner_id: string
   owner_email: string
   seat_count: number
   member_count: number
   skip_traces: number
+  skip_trace_hits?: number
+  skip_trace_misses?: number
   billable_skip_traces?: number
   skip_trace_amount_usd?: number
   stripe_customer_id?: string | null
@@ -53,11 +66,18 @@ type TeamSpendRow = {
   closed_deal_volume: number
   estimated_success_fee: number
   wrong_numbers?: number
+  members?: TeamMemberSpend[]
 }
 
 type UsagePayload = {
   month: string
-  callVolume: { callClicks: number; skipTraces: number; billableSkipTraces?: number }
+  callVolume: {
+    callClicks: number
+    skipTraces: number
+    skipTraceHits?: number
+    skipTraceMisses?: number
+    billableSkipTraces?: number
+  }
   skipTraceBilling?: { billableCount: number; amountUsd: number; unitPriceUsd: number }
   wrongNumbers?: { open: number; thisMonth: number }
   monthlyDollars: {
@@ -86,6 +106,7 @@ export default function OwnerPortfolioPage() {
   const [reviewsLoading, setReviewsLoading] = useState(true)
   const [invoicingId, setInvoicingId] = useState<string | null>(null)
   const [invoiceMessage, setInvoiceMessage] = useState<string | null>(null)
+  const [openTeamId, setOpenTeamId] = useState<string | null>(null)
 
   const currentMonth = useMemo(
     () => new Date().toLocaleString('default', { month: 'short', year: 'numeric' }),
@@ -246,6 +267,12 @@ export default function OwnerPortfolioPage() {
   const teamRows = (usage?.teams ?? []).filter((t) => !isPlatformInternalEmail(t.owner_email))
   const calls = usage?.callVolume.callClicks ?? 0
   const skips = usage?.callVolume.skipTraces ?? 0
+  const skipHits =
+    usage?.callVolume.skipTraceHits ??
+    teamRows.reduce((sum, t) => sum + (t.skip_trace_hits ?? 0), 0)
+  const skipMisses =
+    usage?.callVolume.skipTraceMisses ??
+    teamRows.reduce((sum, t) => sum + (t.skip_trace_misses ?? 0), 0)
   const billableSkips =
     usage?.skipTraceBilling?.billableCount ?? usage?.callVolume.billableSkipTraces ?? 0
   const skipTraceDue =
@@ -358,7 +385,7 @@ export default function OwnerPortfolioPage() {
             icon={<Phone size={18} className="text-gray-500" />}
             value={loading ? '—' : skips.toLocaleString()}
             hint={`${currentMonth} · lookups`}
-            sub={`${billableSkips.toLocaleString()} phone hits billed`}
+            sub={`${skipHits.toLocaleString()} hit · ${skipMisses.toLocaleString()} miss · ${billableSkips.toLocaleString()} billed`}
           />
           <Card
             label="Skip-trace $"
@@ -383,8 +410,9 @@ export default function OwnerPortfolioPage() {
                 Every team — {currentMonth}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Calls and skip-traces this month. Phone hits $ is charged to the
-                card on file at month end (${SKIP_TRACE_PRICE_USD.toFixed(2)} when a number comes back).
+                Expand a team to see who ran skip-traces. Hit = phone came back.
+                Miss = no phone. Phone-hit $ is charged at month end ($
+                {SKIP_TRACE_PRICE_USD.toFixed(2)}) unless waived.
               </p>
             </div>
             <Link
@@ -435,14 +463,33 @@ export default function OwnerPortfolioPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {teamRows.map((team) => (
-                    <tr key={team.owner_id} className="hover:bg-gray-50">
+                  {teamRows.map((team) => {
+                    const open = openTeamId === team.owner_id
+                    const people = team.members ?? []
+                    return (
+                    <Fragment key={team.owner_id}>
+                    <tr className="hover:bg-gray-50">
                       <td className="px-5 py-3 text-sm font-medium text-gray-900">
-                        {team.owner_email}
-                        <div className="text-xs text-gray-400">
-                          {team.member_count} member
-                          {team.member_count === 1 ? '' : 's'}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenTeamId(open ? null : team.owner_id)
+                          }
+                          className="flex items-start gap-2 text-left"
+                        >
+                          {open ? (
+                            <ChevronDown size={14} className="mt-1 text-gray-400 shrink-0" />
+                          ) : (
+                            <ChevronRight size={14} className="mt-1 text-gray-400 shrink-0" />
+                          )}
+                          <span>
+                            {team.owner_email}
+                            <div className="text-xs text-gray-400 font-normal">
+                              {team.member_count} member
+                              {team.member_count === 1 ? '' : 's'}
+                            </div>
+                          </span>
+                        </button>
                       </td>
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.call_clicks.toLocaleString()}
@@ -450,7 +497,11 @@ export default function OwnerPortfolioPage() {
                       <td className="px-5 py-3 text-sm text-gray-600">
                         {team.skip_traces.toLocaleString()}
                         <div className="text-xs text-gray-400">
-                          {(team.billable_skip_traces ?? 0).toLocaleString()} billable
+                          {(team.skip_trace_hits ?? 0).toLocaleString()} hit ·{' '}
+                          {(team.skip_trace_misses ?? 0).toLocaleString()} miss
+                          {team.skip_trace_waived
+                            ? ''
+                            : ` · ${(team.billable_skip_traces ?? 0).toLocaleString()} billed`}
                         </div>
                       </td>
                       <td className="px-5 py-3 text-sm font-semibold text-gray-900">
@@ -520,7 +571,56 @@ export default function OwnerPortfolioPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                    {open && people.length > 0 && (
+                      <tr className="bg-gray-50/80">
+                        <td colSpan={6} className="px-5 py-3">
+                          <div className="ml-6 rounded-lg border border-gray-200 bg-white overflow-hidden">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-gray-100">
+                                  <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    Person
+                                  </th>
+                                  <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    Skip traces
+                                  </th>
+                                  <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    Hit
+                                  </th>
+                                  <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    Miss
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-50">
+                                {people.map((person) => (
+                                  <tr key={`${person.user_id ?? person.email}`}>
+                                    <td className="px-4 py-2 text-sm text-gray-800">
+                                      {person.email}
+                                      <div className="text-[11px] text-gray-400">
+                                        {person.role === 'admin' ? 'Team admin' : 'Member'}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-gray-700">
+                                      {person.skip_traces.toLocaleString()}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-emerald-700">
+                                      {person.hits.toLocaleString()}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-amber-700">
+                                      {person.misses.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

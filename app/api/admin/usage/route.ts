@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isPlatformAdmin, isPlatformOwner, isSkipTraceCompedTeam } from '@/lib/team'
 import { estimateMonthlySkipTraceCost, SKIP_TRACE_PRICE_USD } from '@/lib/billing'
+import { deriveSkipTraceHits } from '@/lib/skip-trace-usage'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,12 +25,23 @@ type AuthUser = {
   user_metadata?: Record<string, unknown>
 }
 
+type TeamMemberSpend = {
+  user_id: string | null
+  email: string
+  role: 'admin' | 'member'
+  skip_traces: number
+  hits: number
+  misses: number
+}
+
 type TeamSpend = {
   owner_id: string
   owner_email: string
   seat_count: number
   member_count: number
   skip_traces: number
+  skip_trace_hits: number
+  skip_trace_misses: number
   billable_skip_traces: number
   skip_trace_amount_usd: number
   stripe_customer_id: string | null
@@ -45,6 +57,7 @@ type TeamSpend = {
   closed_deal_volume: number
   estimated_success_fee: number
   wrong_numbers: number
+  members: TeamMemberSpend[]
 }
 
 async function listAllUsers(adminClient: SupabaseClient): Promise<AuthUser[]> {
@@ -143,10 +156,12 @@ export async function GET(req: NextRequest) {
     ownerSubsRes,
     reviewsRes,
     wrongCallsRes,
+    missReviewsRes,
+    teamMembersRes,
   ] = await Promise.all([
     adminClient
       .from('skip_trace_usage')
-      .select('user_id, count, billable_count, team_owner_id')
+      .select('user_id, count, billable_count, hit_count, team_owner_id')
       .eq('month', monthKey),
     adminClient
       .from('usage_events')
@@ -192,6 +207,16 @@ export async function GET(req: NextRequest) {
       .gte('called_at', startIso)
       .lt('called_at', endIso)
       .limit(10000),
+    adminClient
+      .from('skip_trace_reviews')
+      .select('requested_by, requested_by_email, team_owner_id, reason')
+      .gte('created_at', startIso)
+      .lt('created_at', endIso)
+      .limit(10000),
+    adminClient
+      .from('team_members')
+      .select('owner_id, invite_email, status, member_id')
+      .neq('status', 'revoked'),
   ])
 
   const warnings: string[] = []
@@ -199,22 +224,33 @@ export async function GET(req: NextRequest) {
     user_id?: string | null
     count?: number | null
     billable_count?: number | null
+    hit_count?: number | null
     team_owner_id?: string | null
   }>
   if (skipTraceRes.error) {
     warnings.push(`skip_trace_usage: ${skipTraceRes.error.message}`)
-    const fallback = await adminClient
+    const withBillable = await adminClient
       .from('skip_trace_usage')
-      .select('user_id, count, team_owner_id')
+      .select('user_id, count, billable_count, team_owner_id')
       .eq('month', monthKey)
-    if (!fallback.error) {
-      skipRows = (fallback.data ?? []) as typeof skipRows
+    if (!withBillable.error) {
+      skipRows = (withBillable.data ?? []) as typeof skipRows
+    } else {
+      const fallback = await adminClient
+        .from('skip_trace_usage')
+        .select('user_id, count, team_owner_id')
+        .eq('month', monthKey)
+      if (!fallback.error) {
+        skipRows = (fallback.data ?? []) as typeof skipRows
+      }
     }
   }
   if (callsRes.error) warnings.push(`usage_events: ${callsRes.error.message}`)
   if (emailsRes.error) warnings.push(`email_send_log: ${emailsRes.error.message}`)
   if (reviewsRes.error) warnings.push(`skip_trace_reviews: ${reviewsRes.error.message}`)
   if (wrongCallsRes.error) warnings.push(`deal_phone_calls: ${wrongCallsRes.error.message}`)
+  if (missReviewsRes.error) warnings.push(`skip_trace_reviews (month): ${missReviewsRes.error.message}`)
+  if (teamMembersRes.error) warnings.push(`team_members: ${teamMembersRes.error.message}`)
   if (agreementsRes.error) {
     warnings.push(`platform_agreement_signatures: ${agreementsRes.error.message}`)
   }
@@ -326,6 +362,8 @@ export async function GET(req: NextRequest) {
     seat_count: seatCount,
     member_count: 0,
     skip_traces: 0,
+    skip_trace_hits: 0,
+    skip_trace_misses: 0,
     billable_skip_traces: 0,
     skip_trace_amount_usd: 0,
     stripe_customer_id: subsByUser.get(ownerId)?.stripe_customer_id ?? null,
@@ -341,6 +379,7 @@ export async function GET(req: NextRequest) {
     closed_deal_volume: 0,
     estimated_success_fee: 0,
     wrong_numbers: 0,
+    members: [],
   })
 
   const teamMap = new Map<string, TeamSpend>()
@@ -383,14 +422,100 @@ export async function GET(req: NextRequest) {
     return team
   }
 
+  const skipByUser = new Map<
+    string,
+    { ownerId: string; count: number; billable: number; storedHits: number }
+  >()
   for (const row of skipRows) {
     const uid = String(row.user_id ?? '').trim()
     if (!uid) continue
     const ownerId = String(row.team_owner_id ?? '').trim() || teamKeyForUser(uid, subsByUser)
     const team = ensureTeam(ownerId)
-    team.skip_traces += Number(row.count ?? 0)
-    team.billable_skip_traces += Number(row.billable_count ?? 0)
+    const count = Number(row.count ?? 0)
+    const billable = Number(row.billable_count ?? 0)
+    const storedHits = Number(row.hit_count ?? 0)
+    team.skip_traces += count
+    team.billable_skip_traces += billable
     team.skip_trace_amount_usd = estimateMonthlySkipTraceCost(team.billable_skip_traces)
+    const prev = skipByUser.get(uid) ?? { ownerId, count: 0, billable: 0, storedHits: 0 }
+    prev.count += count
+    prev.billable += billable
+    prev.storedHits += storedHits
+    skipByUser.set(uid, prev)
+  }
+
+  const missByUser = new Map<string, number>()
+  for (const row of (missReviewsRes.data ?? []) as Array<{
+    requested_by?: string | null
+    reason?: string | null
+  }>) {
+    if (row.reason === 'wrong_number') continue
+    const uid = String(row.requested_by ?? '').trim()
+    if (!uid) continue
+    missByUser.set(uid, (missByUser.get(uid) ?? 0) + 1)
+  }
+
+  const rosterByOwner = new Map<string, Array<{ userId: string | null; email: string }>>()
+  const pushRoster = (ownerId: string, userId: string | null, email: string) => {
+    const list = rosterByOwner.get(ownerId) ?? []
+    const key = (userId || email).toLowerCase()
+    if (list.some((m) => (m.userId || m.email).toLowerCase() === key)) {
+      rosterByOwner.set(ownerId, list)
+      return
+    }
+    list.push({ userId, email })
+    rosterByOwner.set(ownerId, list)
+  }
+  for (const [ownerId, team] of Array.from(teamMap.entries())) {
+    pushRoster(ownerId, ownerId, team.owner_email)
+  }
+  for (const row of (teamMembersRes.data ?? []) as Array<{
+    owner_id?: string | null
+    member_id?: string | null
+    invite_email?: string | null
+  }>) {
+    const ownerId = String(row.owner_id ?? '').trim()
+    if (!ownerId) continue
+    ensureTeam(ownerId)
+    const memberId = String(row.member_id ?? '').trim() || null
+    const email =
+      (memberId ? emailById.get(memberId) : null) ||
+      String(row.invite_email ?? '').trim() ||
+      '(member)'
+    pushRoster(ownerId, memberId, email)
+  }
+  for (const [uid, stats] of Array.from(skipByUser.entries())) {
+    pushRoster(stats.ownerId, uid, emailById.get(uid) || '(unknown)')
+  }
+
+  for (const [ownerId, roster] of Array.from(rosterByOwner.entries())) {
+    const team = teamMap.get(ownerId)
+    if (!team) continue
+    const members: TeamMemberSpend[] = roster.map((person) => {
+      const uid = person.userId ?? ''
+      const stats = uid ? skipByUser.get(uid) : undefined
+      const outcome = deriveSkipTraceHits(
+        stats?.count ?? 0,
+        stats?.storedHits ?? 0,
+        uid ? missByUser.get(uid) ?? 0 : 0,
+      )
+      return {
+        user_id: person.userId,
+        email: person.email,
+        role: person.userId === ownerId ? 'admin' : 'member',
+        skip_traces: stats?.count ?? 0,
+        hits: outcome.hits,
+        misses: outcome.misses,
+      }
+    })
+    members.sort(
+      (a, b) =>
+        b.skip_traces - a.skip_traces ||
+        a.email.localeCompare(b.email),
+    )
+    team.members = members
+    team.skip_trace_hits = members.reduce((sum, m) => sum + m.hits, 0)
+    team.skip_trace_misses = members.reduce((sum, m) => sum + m.misses, 0)
   }
 
   for (const row of callRows) {
@@ -460,6 +585,8 @@ export async function GET(req: NextRequest) {
     (a, b) => b.call_clicks - a.call_clicks || b.skip_traces - a.skip_traces,
   )
   const billableDue = teams.reduce((sum, t) => sum + t.billable_skip_traces, 0)
+  const skipTraceHits = teams.reduce((sum, t) => sum + t.skip_trace_hits, 0)
+  const skipTraceMisses = teams.reduce((sum, t) => sum + t.skip_trace_misses, 0)
   const wrongNumbersThisMonth = (wrongCallsRes.data ?? []).length
 
   return NextResponse.json({
@@ -467,6 +594,8 @@ export async function GET(req: NextRequest) {
     callVolume: {
       callClicks: callClicksThisMonth,
       skipTraces: skipTracesThisMonth,
+      skipTraceHits,
+      skipTraceMisses,
       billableSkipTraces: billableDue,
       primary: callClicksThisMonth,
     },
