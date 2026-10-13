@@ -24,7 +24,8 @@ import {
   deleteOwnerOverride,
   upsertOwnerOverride,
 } from '@/lib/owner-overrides'
-import { getWorkspaceContext } from '@/lib/workspace'
+import { getWorkspaceContext, skipTraceOwnerKey } from '@/lib/workspace'
+import { SKIP_TRACE_HIT_OPEN_EVENT } from '@/lib/skip-trace-hits'
 import { PREVIEW_CALL_LOGS, PREVIEW_DEALS, shouldLoadPreviewDeals } from './preview-deals'
 import CrmDashboard from './CrmDashboard'
 import type { DashboardOpenFilter } from './CrmDashboard'
@@ -274,9 +275,29 @@ export default function CRM() {
     }
     const deal = leadId
       ? deals.find((d) => d.id === leadId)
-      : deals.find((d) => d.owner_name === ownerName)
+      : deals.find(
+          (d) => skipTraceOwnerKey(d.owner_name) === skipTraceOwnerKey(ownerName),
+        )
     if (deal) openLead(deal, { callNow: wantCall })
   }, [deals, dealsReady, openLead])
+
+  useEffect(() => {
+    const onHit = (event: Event) => {
+      const detail =
+        (event as CustomEvent<{ leadId?: string | null; ownerName?: string | null }>)
+          .detail ?? {}
+      const leadId = String(detail.leadId ?? '').trim()
+      const ownerName = String(detail.ownerName ?? '').trim()
+      const deal = leadId
+        ? deals.find((d) => d.id === leadId)
+        : deals.find(
+            (d) => skipTraceOwnerKey(d.owner_name) === skipTraceOwnerKey(ownerName),
+          )
+      if (deal) openLead(deal, { callNow: true })
+    }
+    window.addEventListener(SKIP_TRACE_HIT_OPEN_EVENT, onHit)
+    return () => window.removeEventListener(SKIP_TRACE_HIT_OPEN_EVENT, onHit)
+  }, [deals, openLead])
 
   const openLeadsFilter = useCallback((next: DashboardOpenFilter) => {
     setActiveTag(next.tag ?? 'all')
