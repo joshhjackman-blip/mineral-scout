@@ -81,6 +81,15 @@ export function shouldSkipResearch(
   return { skip: false, reason: '' }
 }
 
+/** Fast 15-minute researcher has finished its retries. Deep pass may pick these up. */
+export function isFastResearchExhausted(
+  review: Pick<SkipTraceReview, 'notes' | 'owner_name'>,
+  now = Date.now(),
+): boolean {
+  const gate = shouldSkipResearch(review, now)
+  return gate.skip && gate.reason.startsWith('already tried')
+}
+
 /**
  * Exhausted reviews used to fill the cron's tiny oldest-first window and
  * starve every new miss. Rank never-attempted newest first so a batch the
