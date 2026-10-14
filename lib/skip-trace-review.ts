@@ -205,18 +205,15 @@ export async function applySkipTracePhones(
   const cacheKey = skipTraceOwnerKey(input.ownerName)
   const now = new Date().toISOString()
   if (cacheKey) {
-    await admin.from('skip_trace_cache').delete().eq('owner_name', cacheKey)
-    const { error: cacheError } = await admin.from('skip_trace_cache').insert({
-      owner_name: cacheKey,
-      mailing_address: input.mailingAddress ?? '',
+    const wrote = await writeSharedSkipTraceCache(admin, {
+      ownerName: cacheKey,
+      mailingAddress: input.mailingAddress ?? '',
       phones,
       emails,
       source: input.source,
-      updated_at: now,
+      updatedAt: now,
     })
-    if (cacheError) {
-      console.error('Skip-trace cache write failed:', cacheError)
-    }
+    if (!wrote) return false
   }
 
   const dealPatch = {
@@ -252,6 +249,34 @@ export async function applySkipTracePhones(
     }
   }
   return true
+}
+
+async function writeSharedSkipTraceCache(
+  admin: SupabaseClient,
+  input: {
+    ownerName: string
+    mailingAddress: string
+    phones: string[]
+    emails: string[]
+    source: string
+    updatedAt: string
+  },
+): Promise<boolean> {
+  const payload = {
+    owner_name: input.ownerName,
+    mailing_address: input.mailingAddress,
+    phones: input.phones,
+    emails: input.emails,
+    source: input.source,
+    updated_at: input.updatedAt,
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await admin.from('skip_trace_cache').delete().eq('owner_name', input.ownerName)
+    const { error } = await admin.from('skip_trace_cache').insert(payload)
+    if (!error) return true
+    console.error('Skip-trace cache write failed:', error)
+  }
+  return false
 }
 
 /** Drop a bad number from the shared skip-trace cache so other teams don't get it. */

@@ -247,7 +247,7 @@ export async function researchSkipTraceReview(
       | undefined
     const cachedPhones = cached?.phones ?? []
     if (cachedPhones.length > 0) {
-      await applySkipTracePhones(admin, {
+      const applied = await applySkipTracePhones(admin, {
         ownerName,
         mailingAddress: review.mailing_address ?? '',
         phones: cachedPhones,
@@ -264,6 +264,17 @@ export async function researchSkipTraceReview(
           tried: ['cache'],
         }),
       })
+      if (!applied) {
+        return {
+          ownerName,
+          status: 'skipped',
+          source: cached?.source || 'cache',
+          phones: cachedPhones,
+          emails: cached?.emails ?? [],
+          tried: ['cache'],
+          note: 'cache already had phones; failed to stamp CRM',
+        }
+      }
       return {
         ownerName,
         status: 'cached',
@@ -338,7 +349,7 @@ export async function researchSkipTraceReview(
           phones: result.phones,
           tried: triedLabels,
         })
-        await applySkipTracePhones(admin, {
+        const applied = await applySkipTracePhones(admin, {
           ownerName,
           mailingAddress: target.address || review.mailing_address || '',
           phones: result.phones,
@@ -348,6 +359,23 @@ export async function researchSkipTraceReview(
           reviewId: review.id,
           notes: note,
         })
+        if (!applied) {
+          await markResearchMiss(
+            admin,
+            review,
+            attempt,
+            `found ${result.phones.join(',')} via ${target.label} but failed to save shared cache`,
+          )
+          return {
+            ownerName,
+            status: 'miss',
+            source: result.source,
+            phones: result.phones,
+            emails: result.emails,
+            tried: triedLabels,
+            note: 'cache write failed',
+          }
+        }
         return {
           ownerName,
           status: 'hit',

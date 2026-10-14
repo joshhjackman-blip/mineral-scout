@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import PostHogProvider from "@/app/components/PostHogProvider"
 import HelpChatWidget from "@/app/components/HelpChatWidget"
+import SkipTraceHitInbox from "@/app/components/SkipTraceHitInbox"
 import ThemeProvider from "@/app/components/ThemeProvider"
 import ThemeDock from "@/app/components/ThemeDock"
 
@@ -55,6 +56,7 @@ export default function RootLayout({
           </PostHogProvider>
           <ThemeDock />
           <HelpChatWidget />
+          <SkipTraceHitInbox />
           <Toaster richColors position="top-right" />
         </ThemeProvider>
       </body>
