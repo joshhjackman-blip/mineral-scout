@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
   const currentMonth = new Date().toISOString().slice(0, 7)
   let currentCount = 0
   let currentBillable = 0
+  let currentHit = 0
   const cacheKey = skipTraceOwnerKey(ownerName)
 
   // 1) Shared cache first — any prior team's result counts. Cache hits
@@ -230,6 +231,7 @@ export async function POST(req: NextRequest) {
       const usage = await readSkipTraceUsage(adminClient, userId, currentMonth)
       currentCount = usage.count
       currentBillable = usage.billableCount
+      currentHit = usage.hitCount
     } catch (usageError) {
       console.error('Skip trace usage lookup error:', usageError)
       return NextResponse.json({ error: 'Failed to read skip trace usage' }, { status: 500 })
@@ -287,6 +289,7 @@ export async function POST(req: NextRequest) {
       waived: skipTraceWaived,
       phoneCount: phones.length,
     })
+    const hit = phones.length > 0
     let nextCount = currentCount + 1
     let nextBillable = currentBillable
     try {
@@ -296,7 +299,9 @@ export async function POST(req: NextRequest) {
         month: currentMonth,
         currentCount,
         currentBillable,
+        currentHit,
         billable,
+        hit,
       })
       nextCount = usage.nextCount
       nextBillable = usage.nextBillable
