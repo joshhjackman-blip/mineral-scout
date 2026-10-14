@@ -57,6 +57,10 @@
       "schedule": "*/15 * * * *"
     },
     {
+      "path": "/api/cron/research-skiptrace-deep",
+      "schedule": "7 * * * *"
+    },
+    {
       "path": "/api/cron/charge-skiptrace",
       "schedule": "0 6 1 * *"
     }
