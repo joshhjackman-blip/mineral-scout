@@ -1,345 +1,209 @@
-# Mineral Map — Platform Services Agreement
+# Terms of Service
 
-**Version:** `2026-08-11`
-**Effective when signed** by an authorized representative of Customer through
-the Sign page at `/legal/agreement/sign` on `getmineralmap.com`.
+**Brentwood Enterprises LLC d/b/a Mineral Map**
 
-> ⚠️ **This is a first-pass template drafted by the platform team, not by
-> counsel.** It is intended to be reviewed, edited, and approved by a
-> Texas-licensed attorney before it is relied upon as an enforceable
-> agreement. Signing infrastructure is included so consent records are
-> preserved from day one, but the substance of these terms must be
-> attorney-reviewed before enforcement.
+**Last Updated:** October 6, 2026
+
+**Version:** `2026-10-06`
+
+These Terms of Service ("**Terms**") are a legally binding agreement between you ("**Customer**," "**you**," or "**your**") and **Brentwood Enterprises LLC**, a Texas limited liability company doing business as **Mineral Map** ("**Mineral Map**," "**we**," "**us**," or "**our**").
+
+These Terms govern your access to and use of the Mineral Map website, software-as-a-service application, APIs, and related services (collectively, the "**Services**"). By creating an account, clicking to accept these Terms, or accessing or using the Services, you agree to be bound by these Terms and by our [Privacy Policy](/legal/privacy). If you are entering into these Terms on behalf of a company or other legal entity, you represent that you have authority to bind that entity, and "**you**" refers to that entity. If you do not have such authority, or if you do not agree to these Terms, you may not use the Services.
 
 ---
 
-## 1. Parties
+## 1. The Services
 
-This Platform Services Agreement (**"Agreement"**) is entered into between:
+Mineral Map provides a software platform for mineral acquisition, brokerage, and prospecting. The Services may include mapping, ownership and parcel records, well and permit data, valuations, contact information, CRM tools, skip-trace lookups, document templates, and related features.
 
-- **Brentwood Enterprises LLC**, a Texas limited liability company doing
-  business as **Mineral Map** (**"Mineral Map"**), and
-- The individual or entity identified in the signature block below
-  (**"Customer"**). If Customer is signing on behalf of an entity, the
-  signatory represents that they have authority to bind that entity.
+We may add, change, suspend, or discontinue any part of the Services at any time. We do not guarantee that any particular feature will remain available.
 
-Together, Mineral Map and Customer are the **"Parties"** and each a
-**"Party"**.
+The Services and the data made available through them are provided for informational and internal business purposes only. They are not a substitute for independent title examination, legal advice, tax advice, or brokerage services. Document templates (including deed and purchase-and-sale drafts) are forms only and are not legal advice.
 
-## 2. Definitions
+## 2. Eligibility and Accounts
 
-For the purposes of this Agreement:
+You must be at least 18 years old and able to form a binding contract to use the Services. You agree to provide accurate account information and to keep it current.
 
-- **"Platform"** — the Mineral Map software-as-a-service application,
-  including any web, mobile, or API interfaces, plus the ownership,
-  parcel, permit, well, valuation, and contact records surfaced through
-  it.
-- **"Platform Data"** — all data made available to Customer through the
-  Platform, including but not limited to mineral owner names, contact
-  information, tract identifiers, parcel geometries, well status,
-  permits, valuations, and any derivative work products Mineral Map
-  produces.
-- **"Platform Lead"** — any Mineral Owner, tract, parcel, working
-  interest, royalty interest, non-participating royalty interest,
-  overriding royalty interest, or other mineral or leasehold interest
-  identifier that Customer or any of its Users viewed, exported,
-  received in a valuation, was assigned to in the CRM, or otherwise
-  interacted with through the Platform. A Platform Lead includes any
-  successor-in-title, affiliate, or related party of that owner.
-- **"Closed Deal"** — the acquisition, assignment, purchase, farm-in,
-  option, or other conveyance (in whole or in part, direct or indirect,
-  by Customer or by any party to whom Customer disclosed the Platform
-  Lead) of any mineral or leasehold interest in which a Platform Lead is
-  the counterparty, seller, or subject.
-- **"Net Consideration"** — the gross purchase price and all other
-  consideration (cash, notes, retained interests, deferred payments,
-  overriding royalties valued at fair market present value, and any
-  finder or referral fee retained by Customer) paid or payable in
-  connection with a Closed Deal, less only (a) recording fees, (b)
-  title curative costs actually incurred with third parties, and
-  (c) reasonable and customary broker commissions paid to third
-  parties who are not affiliates of Customer.
-- **"Attribution Tail"** — the period beginning when Customer, its
-  Users, or its affiliates first accessed the Platform Lead on the
-  Platform and continuing for **twenty‑four (24) months** after the
-  most recent such access.
-- **"User"** — any employee, contractor, agent, affiliate, or
-  representative of Customer who accesses the Platform under
-  Customer's account or credentials.
+You are responsible for maintaining the confidentiality of your login credentials and for all activity that occurs under your account, including activity by any employee, contractor, agent, affiliate, or other person you permit to access the Services (each, a "**User**"). You will promptly notify us of any unauthorized use. We may suspend or terminate accounts that appear compromised, abusive, or in breach of these Terms.
 
-## 3. Grant of Access
+You may invite Users under your team as permitted by the Services. You are fully responsible for the acts and omissions of your Users as if they were your own.
 
-Subject to Customer's ongoing compliance with this Agreement,
-Mineral Map grants Customer a non-exclusive, non-transferable,
-non-sublicensable, revocable license to access and use the Platform
-for Customer's internal mineral acquisition, brokerage, and
-prospecting activities. Customer may create Users for its own
-personnel and affiliates. Customer is fully responsible for the acts
-and omissions of its Users under this Agreement.
+## 3. License
 
-## 4. Fees
+Subject to your ongoing compliance with these Terms, Mineral Map grants you a limited, non-exclusive, non-transferable, non-sublicensable, revocable license to access and use the Services solely for your internal mineral acquisition, brokerage, and prospecting activities.
 
-> ⚠️ Fee schedule updated 2026-09-25. Have counsel re-review before
-> relying on this section in production.
+Except for the license granted in this Section 3, no rights are granted to you, whether by implication, estoppel, or otherwise. The Services are licensed, not sold.
 
-### 4.1 Access
-Access to the Platform is provided at **no subscription or seat
-charge**. Customer may invite Users under Customer's team as
-permitted by Mineral Map.
+## 4. Platform Data; Restrictions
 
-### 4.2 Skip-Trace Usage
-Customer shall pay **one U.S. dollar (US $1.00)** for each
-billable skip-trace lookup performed through the Platform. A lookup
-is billable only when Mineral Map returns at least one phone number
-from a third-party skip-trace provider on Customer's behalf. Lookups
-that return no phone number, email-only results, and lookups
-satisfied from Mineral Map's shared skip-trace cache (including
-results originally obtained for another customer) are **not**
-billable. Skip-trace charges accrue per Customer team during the
-calendar month.
+"**Platform Data**" means all data, content, records, compilations, and materials made available through the Services, including without limitation mineral owner names, mailing addresses, phone numbers, email addresses, tract and parcel identifiers, parcel geometries, well status, permits, valuations, scores, methodologies, and any enrichments or other derivative works of the foregoing.
 
-### 4.3 Invoicing
+### 4.1 Ownership
 
-> ⚠️ Collection method updated 2026-09-29. Have counsel re-review before
-> relying on this section in production. Agreement version is unchanged
-> (`2026-08-11`); this is product-copy alignment, not a forced re-sign.
+Mineral Map and its licensors own all right, title, and interest in and to the Services, Platform Data, software, documentation, trademarks, scoring and valuation models, and all improvements and derivative works thereof. Platform Data is a commercially valuable compilation. You receive only the limited license in Section 3.
 
-Skip-trace usage is charged in arrears at month end to the payment
-method Customer places on file before running live skip-traces. Mineral
-Map creates a Stripe Invoice for the calendar month's phone-hit total
-and charges that card automatically. Failed charges may suspend further
-skip-trace lookups until the invoice is paid or the card is updated.
+### 4.2 Restrictions
 
-### 4.4 Taxes
-Fees are exclusive of applicable taxes, which Customer is
-responsible for where required by law.
+You shall not, and shall not permit any User or third party to:
 
-### 4.5 Changes
-Mineral Map may change fees on thirty (30) days' notice. Continued
-use after the effective date constitutes acceptance of the new fees.
+1. copy, reproduce, modify, or create derivative works of the Services or Platform Data except as reasonably necessary for your internal use of the Services;
+2. sell, resell, license, sublicense, distribute, rent, lease, disclose, publish, transfer, or otherwise make Platform Data available to any third party, including any competitor, data vendor, brokerage, acquisition shop, investor, or affiliate that is not bound by these Terms;
+3. scrape, crawl, harvest, spider, or use any robot, bot, script, or other automated means to access, query, extract, or download Platform Data, except through interfaces we expressly provide;
+4. bulk-export Platform Data except through features we make available, and then only in volumes reasonably necessary for your active internal pipelines;
+5. reverse engineer, decompile, disassemble, or otherwise attempt to derive the source code, data model, scoring, or valuation methodology of the Services;
+6. use the Services or Platform Data to build, train, improve, or operate a competing product, service, or dataset;
+7. circumvent or disable any security, access-control, billing, rate-limit, or usage-tracking feature of the Services;
+8. share account credentials or permit access by anyone other than your authorized Users;
+9. remove, obscure, or alter any proprietary notices; or
+10. use the Services in violation of applicable law, including the Telephone Consumer Protection Act, CAN-SPAM, Do-Not-Call rules, and similar laws.
 
-## 5. Reporting
+### 4.3 Permitted internal use
 
-### 5.1 Monthly Report
-Seat access is complimentary. Skip-trace phone
-hits are charged separately to the card on file at month end.
-If Mineral Map reasonably requests usage clarification, Customer
-shall cooperate in good faith.
-Customer shall also provide Mineral Map, on or before the fifteenth
-(15th) day of each calendar month upon request, a written report
-identifying:
-(a) every Closed Deal that closed in the prior calendar month
-involving any Platform Lead; (b) the Net Consideration for each such
-Closed Deal; and (c) any Closed
-Deals expected to close in the next 60 days that involve a Platform
-Lead. Reports may be filed through the Platform's reporting
-interface once available; until then they may be sent by email to
-`josh@brentwoodenterprisesllc.com`.
+You may use Platform Data in the ordinary course of your internal acquisition and brokerage work, including contacting mineral owners on your own behalf and preparing transaction documents for deals you are pursuing. You may disclose specific records to an actual counterparty, title company, or counsel solely as needed to close a transaction you are a party to. Any other disclosure requires our prior written consent.
 
-### 5.2 Nothing to Report
-Customer must file a report even if no Closed Deals occurred in the
-reporting period; a "nothing to report" filing is acceptable.
+### 4.4 Equitable relief
 
-## 6. Audit Rights
+You acknowledge that unauthorized use or disclosure of Platform Data would cause irreparable harm for which monetary damages would be an inadequate remedy. Mineral Map is entitled to injunctive and other equitable relief (without the requirement of posting a bond) to prevent or restrain any breach of this Section 4, in addition to any other rights and remedies available at law or in equity, including recovery of damages and reasonable attorneys' fees.
 
-### 6.1 Records
-Customer shall maintain complete and accurate books and records
-sufficient to verify Closed Deals and the Net Consideration paid,
-including recorded conveyance instruments, closing statements,
-settlement statements, escrow disbursement records, and any
-side-letter or supplemental consideration agreements, for a period
-of **five (5) years** after each Closed Deal.
+## 5. Customer Content
 
-### 6.2 Audit
-Mineral Map may, at its own expense and on **fifteen (15) business
-days'** written notice, inspect and audit Customer's records
-relating to Closed Deals and Platform Leads. The audit shall be
-conducted during normal business hours by Mineral Map or by an
-independent auditor bound to confidentiality. Audits may occur no
-more than twice per calendar year unless a prior audit disclosed a
-material discrepancy.
+You retain ownership of CRM notes, deal records, documents, and other content you submit to the Services ("**Customer Content**"). You grant Mineral Map a worldwide, non-exclusive license to host, store, process, and display Customer Content solely as needed to provide and support the Services.
 
-### 6.3 Underpayment Fee-Shifting
-If an audit reveals underpayment of Success Fees greater than
-**five percent (5%)** of amounts owed in the audited period, then
-(a) Customer shall pay the shortfall plus interest at 12% per annum,
-and (b) Customer shall reimburse Mineral Map for the reasonable
-out-of-pocket cost of the audit. Underpayments in any amount shall
-be paid within **fifteen (15) days** of the audit report.
+You represent that you have all rights necessary to submit Customer Content and that Customer Content does not violate law or any third-party right. We may remove Customer Content that we reasonably believe violates these Terms.
 
-## 7. Non-Circumvention
+## 6. Fees and Payment
 
-Customer covenants that during the term of this Agreement and for
-the duration of the Attribution Tail applicable to each Platform
-Lead, Customer shall not, and shall cause its Users, affiliates, and
-successors not to:
+### 6.1 Access
 
-1. **Circumvent** the Platform by contacting, negotiating with, or
-   closing on any Platform Lead (a) through a channel intended to
-   avoid or reduce the Success Fee, (b) through a shell entity,
-   nominee, straw purchaser, or trust structure designed to obscure
-   Customer's involvement, or (c) through any affiliate or related
-   party not bound by this Agreement.
-2. **Resell, redistribute, or transfer** Platform Data, Platform
-   Leads, or contact information obtained through the Platform to
-   any third party — including, without limitation, competitors,
-   data vendors, other brokerages, other acquisition shops, or
-   investors — except (i) to an actual counterparty in a Closed
-   Deal for which the Success Fee has been or will be paid, or
-   (ii) as required by law.
-3. **Terminate and re-approach.** If Customer terminates this
-   Agreement, the Attribution Tail continues to apply to every
-   Platform Lead accessed during the term. Terminating the account
-   and later approaching a Platform Lead directly does not release
-   the Success Fee obligation.
-4. **Scrape, extract, or bulk-export** Platform Data beyond the
-   volume reasonably necessary for Customer's active pipelines, and
-   in no event through automated means not sanctioned by
-   Mineral Map's published interfaces.
-5. **Reverse-engineer** the Platform, its data model, or its scoring
-   or valuation methodology.
+Access to the Services is provided at no subscription or seat charge, unless we notify you otherwise under Section 6.5.
 
-Breach of this Section 7 constitutes a material breach and, in
-addition to any other remedy, entitles Mineral Map to (a) injunctive
-relief without bond, (b) liquidated damages equal to **twenty-five
-percent (25%) of Net Consideration** for each affected Closed Deal
-(the Parties agreeing that actual damages would be difficult to
-compute and that this amount is a reasonable pre-estimate, not a
-penalty), and (c) recovery of reasonable attorneys' fees and costs.
+### 6.2 Skip-trace usage
 
-## 8. Confidentiality
+You will pay **one U.S. dollar (US $1.00)** for each billable skip-trace lookup performed through the Services. A lookup is billable only when Mineral Map returns at least one phone number from a third-party skip-trace provider on your behalf. Lookups that return no phone number, email-only results, and lookups satisfied from Mineral Map's shared skip-trace cache (including results originally obtained for another customer) are not billable. Skip-trace charges accrue per Customer team during the calendar month.
 
-Each Party shall protect the other Party's Confidential Information
-with the same care it uses to protect its own confidential
-information of like importance, and in no event less than a
-reasonable standard of care. "Confidential Information" includes
-Platform Data, pricing, roadmaps, methodologies, business plans,
-and any information marked confidential or that reasonably should
-be understood to be confidential. This obligation survives
-termination for **three (3) years**.
+### 6.3 Invoicing
 
-## 9. Ownership
+Skip-trace usage is charged in arrears at month end to the payment method you place on file before running live skip-traces. Mineral Map creates a Stripe Invoice for the calendar month's phone-hit total and charges that payment method automatically. Failed charges may suspend further skip-trace lookups until the invoice is paid or the payment method is updated.
 
-Platform Data, the Platform, Mineral Map's methodologies, scoring
-models, valuation frameworks, and all improvements are and remain
-the sole property of Mineral Map. Customer receives only the
-limited license granted in Section 3. Customer retains ownership of
-its own CRM notes, closing documents, and other Customer-generated
-records.
+### 6.4 Taxes
 
-## 10. Warranties and Disclaimers
+Fees are exclusive of applicable taxes, which you are responsible for paying where required by law.
 
-The Platform is provided **"AS IS"** and **"AS AVAILABLE."**
-Mineral Map disclaims all warranties, express or implied,
-including merchantability, fitness for a particular purpose,
-non-infringement, and any warranty arising from course of dealing
-or usage of trade. Mineral Map does not warrant the accuracy of any
-Platform Data (which is derived from county records, RRC filings,
-and third-party sources) and does not warrant that the Platform
-will be error-free or uninterrupted.
+### 6.5 Changes
+
+Mineral Map may change fees on thirty (30) days' notice. Continued use of the Services after the effective date constitutes acceptance of the new fees.
+
+## 7. Confidentiality
+
+Each party shall protect the other party's Confidential Information with at least the same degree of care it uses to protect its own confidential information of like importance, and in no event less than reasonable care. "**Confidential Information**" includes Platform Data, Customer Content, pricing, product roadmaps, methodologies, non-public business information, and any information that reasonably should be understood to be confidential.
+
+Confidential Information does not include information that is or becomes public through no fault of the receiving party, was rightfully known without restriction, is independently developed, or is required to be disclosed by law (provided the receiving party gives prompt notice where legally permitted).
+
+This obligation survives termination for three (3) years, except that trade secrets (including Platform Data compilations) remain protected for so long as they remain trade secrets under applicable law.
+
+## 8. Acceptable Use
+
+You will not, and will not permit others to:
+
+- use the Services to harass, spam, or contact any person in violation of law;
+- upload malware, unlawful content, or content you do not have the right to use;
+- interfere with or disrupt the Services or any third-party systems;
+- probe, scan, or test the vulnerability of the Services except with our prior written consent; or
+- use the Services for any purpose that is illegal or that infringes the rights of others.
+
+We may investigate suspected violations and suspend or terminate access.
+
+You are solely responsible for your outreach to mineral owners and other third parties, including compliance with the Telephone Consumer Protection Act, CAN-SPAM, Do-Not-Call rules, and similar laws. Mineral Map does not place calls or send marketing messages on your behalf.
+
+## 9. Third-Party Services
+
+The Services may integrate third-party products and services, including payment processing (Stripe), hosting, authentication, email delivery, mapping, imagery, analytics, and skip-trace or data-enrichment providers. Those services are subject to their own terms and privacy policies. We are not responsible for third-party outages, errors, or independent processing except as required by law.
+
+Skip-trace and enrichment results are obtained from third-party sources and may be incomplete, outdated, or inaccurate. You are responsible for verifying contact information before use.
+
+## 10. Disclaimers
+
+THE SERVICES AND ALL PLATFORM DATA ARE PROVIDED "**AS IS**" AND "**AS AVAILABLE**." TO THE MAXIMUM EXTENT PERMITTED BY LAW, MINERAL MAP DISCLAIMS ALL WARRANTIES, WHETHER EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE, INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT, AND ANY WARRANTY ARISING FROM COURSE OF DEALING OR USAGE OF TRADE.
+
+MINERAL MAP DOES NOT WARRANT THAT THE SERVICES WILL BE UNINTERRUPTED, ERROR-FREE, SECURE, OR FREE OF HARMFUL COMPONENTS, OR THAT PLATFORM DATA WILL BE ACCURATE, COMPLETE, CURRENT, OR RELIABLE. PLATFORM DATA IS DERIVED FROM COUNTY RECORDS, REGULATORY FILINGS, AND THIRD-PARTY SOURCES. YOU ARE SOLELY RESPONSIBLE FOR INDEPENDENT VERIFICATION BEFORE CONTACTING ANY PERSON OR ENTERING INTO ANY TRANSACTION.
 
 ## 11. Limitation of Liability
 
-To the maximum extent permitted by law, Mineral Map's aggregate
-liability under this Agreement shall not exceed **the greater of
-(a) $5,000 or (b) the total Success Fees actually paid by Customer
-in the twelve (12) months preceding the event giving rise to
-liability.** In no event shall Mineral Map be liable for indirect,
-special, incidental, consequential, exemplary, or punitive damages.
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, MINERAL MAP AND ITS OFFICERS, MEMBERS, EMPLOYEES, AND AGENTS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, REVENUE, DATA, OR BUSINESS, ARISING OUT OF OR RELATED TO THE SERVICES OR THESE TERMS, WHETHER BASED IN CONTRACT, TORT (INCLUDING NEGLIGENCE), STRICT LIABILITY, OR OTHERWISE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+MINERAL MAP'S AGGREGATE LIABILITY ARISING OUT OF OR RELATED TO THESE TERMS WILL NOT EXCEED THE GREATER OF (A) FIVE THOUSAND U.S. DOLLARS (US $5,000) OR (B) THE TOTAL FEES ACTUALLY PAID BY YOU TO MINERAL MAP IN THE TWELVE (12) MONTHS PRECEDING THE EVENT GIVING RISE TO LIABILITY.
+
+THE FOREGOING LIMITATIONS APPLY TO THE FULLEST EXTENT PERMITTED BY LAW AND SURVIVE FAILURE OF ESSENTIAL PURPOSE. SOME JURISDICTIONS DO NOT ALLOW CERTAIN LIMITATIONS; IN THOSE CASES, OUR LIABILITY IS LIMITED TO THE MAXIMUM EXTENT PERMITTED.
 
 ## 12. Indemnification
 
-Customer shall indemnify, defend, and hold harmless Mineral Map and
-its officers, members, employees, and contractors from and against
-any third-party claim arising from (a) Customer's breach of this
-Agreement, (b) Customer's use of Platform Data in Closed Deals or
-outreach, (c) any misrepresentation Customer makes to a Platform
-Lead, or (d) any violation of Do-Not-Call, CAN-SPAM, TCPA, or
-similar law by Customer or its Users.
+You will indemnify, defend, and hold harmless Mineral Map and its officers, members, employees, and contractors from and against any third-party claim, demand, loss, liability, and expense (including reasonable attorneys' fees) arising out of or related to: (a) your breach of these Terms; (b) your use of the Services or Platform Data, including outreach and transactions; (c) Customer Content; (d) any misrepresentation you make to a third party; or (e) any violation of the Telephone Consumer Protection Act, CAN-SPAM, Do-Not-Call rules, or similar law by you or your Users.
 
 ## 13. Term and Termination
 
-This Agreement is effective upon signature and continues until
-terminated. **Either Party** may terminate at any time on
-**thirty (30) days'** written notice or immediately upon a material
-breach that is uncured after fifteen (15) days' written notice.
+These Terms are effective when you accept them and continue until terminated. Either party may terminate at any time on thirty (30) days' written notice. Either party may terminate immediately if the other party materially breaches these Terms and fails to cure within fifteen (15) days after written notice.
 
-**Survival.** Sections 4 (Success Fee — with respect to Closed
-Deals occurring during the Attribution Tail), 5 (Reporting), 6
-(Audit), 7 (Non-Circumvention), 8 (Confidentiality), 9
-(Ownership), 11 (Limitation of Liability), 12 (Indemnification),
-14 (Dispute Resolution), and 15 (Miscellaneous) survive
-termination.
+We may suspend or terminate access immediately for non-payment, legal risk, suspected abuse, or to protect the Services or Platform Data.
 
-## 14. Dispute Resolution
+Upon termination, your license ends and you must cease using the Services. You will remain responsible for fees incurred before termination. Sections 4, 5, 6 (as to unpaid fees), 7, 10, 11, 12, 14, and 15 survive termination, as do any other provisions that by their nature should survive.
 
-### 14.1 Good-Faith Negotiation
-The Parties shall attempt in good faith to resolve any dispute
-through direct negotiation between senior representatives before
-initiating any formal proceeding.
+Termination does not authorize you to retain, reuse, or disclose Platform Data except as permitted by Section 4.3 for transactions already in process at termination, and in any event you may not use Platform Data to build or populate any competing database.
 
-### 14.2 Arbitration
-Any dispute that cannot be resolved through negotiation shall be
-resolved by final and binding arbitration administered by the
-**American Arbitration Association** under its Commercial
-Arbitration Rules. The seat of arbitration is **Harris County,
-Texas**. Judgment on the award may be entered in any court of
-competent jurisdiction.
+## 14. Governing Law and Dispute Resolution
 
-### 14.3 Injunctive Relief
-Notwithstanding Section 14.2, either Party may seek injunctive or
-other equitable relief in any Texas state or federal court to
-prevent or restrain a breach of Sections 7, 8, or 9 without first
-proceeding to arbitration.
+### 14.1 Governing law
 
-### 14.4 Governing Law
-This Agreement is governed by the laws of the **State of Texas**,
-without regard to its conflict-of-laws principles.
+These Terms are governed by the laws of the State of Texas, without regard to its conflict-of-laws principles.
+
+### 14.2 Informal resolution
+
+The parties shall attempt in good faith to resolve any dispute through direct negotiation before initiating a formal proceeding.
+
+### 14.3 Arbitration
+
+Any dispute that cannot be resolved through negotiation shall be resolved by final and binding arbitration administered by the American Arbitration Association under its Commercial Arbitration Rules. The seat of arbitration is Harris County, Texas. Judgment on the award may be entered in any court of competent jurisdiction.
+
+### 14.4 Injunctive relief
+
+Notwithstanding Section 14.3, either party may seek injunctive or other equitable relief in any Texas state or federal court to prevent or restrain a breach of Sections 4, 5, or 7 without first proceeding to arbitration.
 
 ## 15. Miscellaneous
 
-- **Entire Agreement.** This Agreement is the entire agreement
-  between the Parties regarding its subject matter and supersedes
-  all prior discussions and understandings.
-- **Amendment.** Mineral Map may update this Agreement by publishing
-  a new version at `/legal/agreement`. Continued use of the
-  Platform after the effective date of a new version constitutes
-  acceptance. Success Fees earned under the version in effect at
-  the time of first Platform Lead access shall be honored.
-- **Assignment.** Customer may not assign this Agreement without
-  Mineral Map's prior written consent. Mineral Map may assign this
-  Agreement to a successor in connection with a merger, acquisition,
-  or sale of substantially all assets.
-- **Notices.** Notices to Mineral Map may be sent to
-  `josh@brentwoodenterprisesllc.com`. Notices to Customer may be
-  sent to the email address on file with Customer's Platform
-  account.
-- **Severability.** If any provision is held unenforceable, the
-  remainder of this Agreement remains in effect.
-- **Electronic Signature.** The Parties agree that this Agreement
-  may be executed electronically, and that an electronic signature
-  captured through the Platform's `/legal/agreement/sign` interface
-  — including Customer's typed name, IP address, user agent,
-  timestamp, and agreement version — constitutes a valid and
-  binding signature under the Electronic Signatures in Global and
-  National Commerce Act (E-Sign Act) and the Texas Uniform
-  Electronic Transactions Act.
+**Entire agreement.** These Terms, together with the Privacy Policy and any order or billing terms you accept, are the entire agreement between the parties regarding the Services and supersede all prior discussions and understandings.
+
+**Amendments.** Mineral Map may update these Terms by posting a new version at `/legal/agreement` (and `/legal/terms`) and updating the version date. Material changes may also be communicated in-product or by email and may require re-acceptance. Continued use of the Services after the effective date constitutes acceptance of the updated Terms.
+
+**Assignment.** You may not assign these Terms without Mineral Map's prior written consent. Mineral Map may assign these Terms to a successor in connection with a merger, acquisition, or sale of substantially all assets.
+
+**Notices.** Notices to Mineral Map may be sent to `josh@brentwoodenterprisesllc.com`. Notices to you may be sent to the email address on file with your account.
+
+**Severability.** If any provision is held unenforceable, the remainder of these Terms remains in effect, and the unenforceable provision will be modified to the minimum extent necessary to make it enforceable.
+
+**Waiver.** Failure to enforce any provision is not a waiver of that provision.
+
+**No third-party beneficiaries.** These Terms do not confer any rights on any third party.
+
+**Export and government use.** You will not use or export the Services in violation of U.S. export laws.
+
+**Electronic signatures.** These Terms may be executed electronically. An electronic signature captured through `/legal/agreement/sign` (including your typed name, IP address, user agent, timestamp, and agreement version) constitutes a valid and binding signature under the Electronic Signatures in Global and National Commerce Act and the Texas Uniform Electronic Transactions Act.
+
+## 16. Contact
+
+Brentwood Enterprises LLC d/b/a Mineral Map
+
+`josh@brentwoodenterprisesllc.com`
+
+`management@mineralmapllc.com`
 
 ---
 
-## Signature block
+## Acceptance
 
-By checking the acceptance box and continuing on
-`/legal/agreement/sign`, Customer:
+By checking the acceptance box and continuing on `/legal/agreement/sign`, you:
 
-- Represents that Customer has read and understood this Agreement
-  in full;
-- Represents that the signatory has authority to bind Customer;
-- Agrees to be bound by every term of this Agreement; and
-- Consents to electronic acceptance and to Mineral Map's recording
-  of the signature metadata described in Section 15.
+- represent that you have read and understood these Terms in full;
+- represent that you have authority to bind Customer;
+- agree to be bound by these Terms; and
+- consent to electronic acceptance and to Mineral Map's recording of the signature metadata described in Section 15.
 
-_Accepted electronically through `/legal/agreement/sign` after the
-Customer has scrolled the agreement and checked the acceptance box.
-See the `platform_agreement_signatures` audit table for the specific
-record associated with each accepted instance of this Agreement._
+Accepted electronically through `/legal/agreement/sign` after the Customer has scrolled these Terms and checked the acceptance box. Signature records are stored for audit.

@@ -65,6 +65,11 @@ export default function LandingPage() {
           <TexasMapbox />
         </div>
       </main>
+
+      <footer className="cs-legal">
+        <Link href="/legal/terms">Terms of Service</Link>
+        <Link href="/legal/privacy">Privacy Policy</Link>
+      </footer>
     </div>
   )
 }

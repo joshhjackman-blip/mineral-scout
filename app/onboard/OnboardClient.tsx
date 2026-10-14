@@ -276,7 +276,7 @@ export default function OnboardClient({ agreementHtml }: { agreementHtml: string
 
         <section className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
           <h2 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">
-            2. Platform Services Agreement
+            2. Terms of Service
           </h2>
           {agreementDone ? (
             <p className="text-sm text-emerald-700">Signed. Version {CURRENT_AGREEMENT_VERSION} is on file.</p>
@@ -290,7 +290,7 @@ export default function OnboardClient({ agreementHtml }: { agreementHtml: string
                 <div ref={endRef} className="h-4" />
               </div>
               {!reachedEnd ? (
-                <p className="text-xs text-gray-500 mt-2">Scroll the agreement to the end to enable accept.</p>
+                <p className="text-xs text-gray-500 mt-2">Scroll the Terms of Service to the end to enable accept.</p>
               ) : null}
               <label className="flex gap-2 items-start mt-3 text-sm text-gray-700">
                 <input
@@ -300,7 +300,7 @@ export default function OnboardClient({ agreementHtml }: { agreementHtml: string
                   onChange={(e) => setAccepted(e.target.checked)}
                 />
                 <span>
-                  I have read and agree to the Platform Services Agreement (version{' '}
+                  I have read and agree to the Terms of Service (version{' '}
                   {CURRENT_AGREEMENT_VERSION}) and consent to electronic acceptance.
                 </span>
               </label>
@@ -312,7 +312,7 @@ export default function OnboardClient({ agreementHtml }: { agreementHtml: string
                 }}
                 className="mt-3 px-4 py-2 text-sm font-semibold bg-gray-900 text-white rounded-lg disabled:opacity-50"
               >
-                {saving ? 'Saving…' : 'Accept agreement'}
+                {saving ? 'Saving…' : 'Accept Terms of Service'}
               </button>
             </>
           )}
@@ -361,7 +361,7 @@ export default function OnboardClient({ agreementHtml }: { agreementHtml: string
         </div>
         {!canFinish ? (
           <p className="text-xs text-gray-400">
-            Accept the agreement{stripeOn ? ' and add a card' : ''} to open the map.
+            Accept the Terms of Service{stripeOn ? ' and add a card' : ''} to open the map.
           </p>
         ) : null}
       </div>

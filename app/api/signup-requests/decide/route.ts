@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
       title: action === 'accept' ? 'Approve this signup?' : 'Decline this signup?',
       body:
         action === 'accept'
-          ? 'Confirming sends them a Resend email with a link to choose a password, sign the agreement, add a card, and say if they are the team admin.'
+          ? 'Confirming sends them a Resend email with a link to choose a password, accept the Terms of Service, add a card, and say if they are the team admin.'
           : 'Confirming emails them that we are not opening a workspace for this request.',
       token,
       action,
