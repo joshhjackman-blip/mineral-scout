@@ -45,6 +45,7 @@ type TeamMemberSpend = {
   role: 'admin' | 'member'
   skip_traces: number
   hits: number
+  researcher_hits?: number
   misses: number
 }
 
@@ -55,6 +56,7 @@ type TeamSpendRow = {
   member_count: number
   skip_traces: number
   skip_trace_hits?: number
+  skip_trace_researcher_hits?: number
   skip_trace_misses?: number
   billable_skip_traces?: number
   skip_trace_amount_usd?: number
@@ -80,6 +82,7 @@ type UsagePayload = {
     callClicks: number
     skipTraces: number
     skipTraceHits?: number
+    skipTraceResearcherHits?: number
     skipTraceMisses?: number
     billableSkipTraces?: number
   }
@@ -276,6 +279,9 @@ export default function OwnerPortfolioPage() {
   const skipHits =
     usage?.callVolume.skipTraceHits ??
     teamRows.reduce((sum, t) => sum + (t.skip_trace_hits ?? 0), 0)
+  const skipResearcherHits =
+    usage?.callVolume.skipTraceResearcherHits ??
+    teamRows.reduce((sum, t) => sum + (t.skip_trace_researcher_hits ?? 0), 0)
   const skipMisses =
     usage?.callVolume.skipTraceMisses ??
     teamRows.reduce((sum, t) => sum + (t.skip_trace_misses ?? 0), 0)
@@ -391,7 +397,7 @@ export default function OwnerPortfolioPage() {
             icon={<Phone size={18} className="text-gray-500" />}
             value={loading ? '—' : skips.toLocaleString()}
             hint={`${currentMonth} · lookups`}
-            sub={`${skipHits.toLocaleString()} hit · ${skipMisses.toLocaleString()} miss · ${billableSkips.toLocaleString()} billed`}
+            sub={`${skipHits.toLocaleString()} hit · ${skipResearcherHits.toLocaleString()} researcher · ${skipMisses.toLocaleString()} miss · ${billableSkips.toLocaleString()} billed`}
           />
           <Card
             label="Skip-trace $"
@@ -416,8 +422,9 @@ export default function OwnerPortfolioPage() {
                 Every team — {currentMonth}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Expand a team to see who ran skip-traces. Hit = phone came back.
-                Miss = no phone. Phone-hit $ is charged at month end ($
+                Expand a team to see who ran skip-traces. Hit = phone came
+                back live. Researcher = recovered later. Miss = still no
+                phone. Phone-hit $ is charged at month end ($
                 {SKIP_TRACE_PRICE_USD.toFixed(2)}) unless waived.
               </p>
             </div>
@@ -504,7 +511,9 @@ export default function OwnerPortfolioPage() {
                         {team.skip_traces.toLocaleString()}
                         <div className="text-xs text-gray-400">
                           {(team.skip_trace_hits ?? 0).toLocaleString()} hit ·{' '}
-                          {(team.skip_trace_misses ?? 0).toLocaleString()} miss
+                          {(team.skip_trace_researcher_hits ?? 0).toLocaleString()}{' '}
+                          researcher · {(team.skip_trace_misses ?? 0).toLocaleString()}{' '}
+                          miss
                           {team.skip_trace_waived
                             ? ''
                             : ` · ${(team.billable_skip_traces ?? 0).toLocaleString()} billed`}
@@ -594,6 +603,9 @@ export default function OwnerPortfolioPage() {
                                     Hit
                                   </th>
                                   <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    Researcher
+                                  </th>
+                                  <th className="px-4 py-2 text-left text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
                                     Miss
                                   </th>
                                 </tr>
@@ -612,6 +624,9 @@ export default function OwnerPortfolioPage() {
                                     </td>
                                     <td className="px-4 py-2 text-sm text-emerald-700">
                                       {person.hits.toLocaleString()}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-blue-700">
+                                      {(person.researcher_hits ?? 0).toLocaleString()}
                                     </td>
                                     <td className="px-4 py-2 text-sm text-amber-700">
                                       {person.misses.toLocaleString()}
