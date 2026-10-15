@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { deriveSkipTraceHits } from './skip-trace-usage'
 
+// Live hits stay lookups minus original no-phone reviews, even after
+// researcher recoveries (13 of 28 later found → remaining miss is 15).
 assert.deepEqual(deriveSkipTraceHits(73, 0, 28), { hits: 45, misses: 28 })
 assert.deepEqual(deriveSkipTraceHits(5, 0, 1), { hits: 4, misses: 1 })
 assert.deepEqual(deriveSkipTraceHits(18, 0, 13), { hits: 5, misses: 13 })

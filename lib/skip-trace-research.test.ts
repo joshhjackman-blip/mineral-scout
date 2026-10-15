@@ -6,6 +6,7 @@ import {
   shouldSkipResearch,
 } from './skip-trace-research'
 import {
+  classifySkipTraceMonthReview,
   formatResearchHitNote,
   methodLabel,
   parseLatestResearchLine,
@@ -178,5 +179,32 @@ assert.equal(stats.hitsToday, 1)
 assert.equal(stats.recentHits[0].ownerName, 'BROWN ROYALTIES INC')
 assert.ok(stats.byProvider.some((row) => row.name === 'idiCORE' && row.count === 1))
 assert.ok(stats.byMethod.some((row) => row.name === 'TX officer · PRESIDENT' && row.count === 1))
+
+assert.deepEqual(
+  classifySkipTraceMonthReview({ reason: 'wrong_number', status: 'open' }),
+  { originalMiss: false, researcherHit: false, remainingMiss: false },
+)
+assert.deepEqual(
+  classifySkipTraceMonthReview({ reason: 'no_phone', status: 'open', phones: [] }),
+  { originalMiss: true, researcherHit: false, remainingMiss: true },
+)
+assert.deepEqual(
+  classifySkipTraceMonthReview({
+    reason: 'no_phone',
+    status: 'resolved',
+    notes: hitNote,
+    phones: ['3255550199'],
+  }),
+  { originalMiss: true, researcherHit: true, remainingMiss: false },
+)
+assert.deepEqual(
+  classifySkipTraceMonthReview({
+    reason: 'no_phone',
+    status: 'resolved',
+    notes: 'Owner typed this in',
+    phones: ['4325550100'],
+  }),
+  { originalMiss: true, researcherHit: false, remainingMiss: false },
+)
 
 console.log('skip-trace-research tests passed')

@@ -77,6 +77,40 @@ function attrValue(header: string, key: string): string | null {
   return plain ? plain[1] : null
 }
 
+export type SkipTraceMonthReviewClass = {
+  originalMiss: boolean
+  researcherHit: boolean
+  remainingMiss: boolean
+}
+
+/**
+ * Owner-dashboard month outcomes for a skip-trace review.
+ * Live hits stay lookups minus original no-phone reviews; researcher
+ * recoveries are counted separately so they stop looking like misses.
+ */
+export function classifySkipTraceMonthReview(review: {
+  reason?: string | null
+  status?: string | null
+  notes?: string | null
+  phones?: string[] | null
+}): SkipTraceMonthReviewClass {
+  if (review.reason === 'wrong_number') {
+    return { originalMiss: false, researcherHit: false, remainingMiss: false }
+  }
+  const status = String(review.status ?? 'open').trim() || 'open'
+  const parsed = parseLatestResearchLine(review.notes)
+  const phones = (review.phones ?? [])
+    .map((p) => String(p ?? '').trim())
+    .filter(Boolean)
+  const researcherHit =
+    status === 'resolved' && parsed?.hit === true && phones.length > 0
+  return {
+    originalMiss: true,
+    researcherHit,
+    remainingMiss: status === 'open',
+  }
+}
+
 export function parseLatestResearchLine(notes: string | null | undefined): {
   at: string | null
   attempt: number

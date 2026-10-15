@@ -79,7 +79,7 @@ export async function readSkipTraceUsage(
  * Waived teams never increment billable_count, so owner dashboards cannot
  * use that column as "successful." Prefer stored hit_count when it is
  * consistent with this month's lookups; otherwise derive hits as
- * lookups minus no-phone reviews.
+ * lookups minus original no-phone reviews (before researcher recoveries).
  */
 export function deriveSkipTraceHits(
   count: number,
