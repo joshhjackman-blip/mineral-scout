@@ -1306,11 +1306,11 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </nav>
       )}
 
-      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-5 py-4' : 'px-6 py-5'}`}>
-        <div className={crmMode ? 'mx-auto w-full max-w-[1400px]' : undefined}>
+      <div className={`flex-1 overflow-y-auto ${crmMode ? 'crm-lead-scroll px-3 py-3 sm:px-4 sm:py-4 xl:px-5 xl:py-4' : 'px-6 py-5'}`}>
+        <div className={crmMode ? 'crm-lead-layout h-full' : undefined}>
         {crmMode && (
-          <div className="mb-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] gap-4 items-start">
-            <div className="order-2 xl:order-1 min-w-0 space-y-3">
+          <>
+            <div className="crm-lead-contact min-w-0 space-y-3">
             {address && (
               <div className="text-sm text-gray-500">{address}</div>
             )}
@@ -1533,7 +1533,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               crmMode
             />
             </div>
-            <aside className="order-1 xl:order-2 min-w-0 space-y-3">
+            <aside className="crm-lead-lease min-w-0">
               <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                 <div className="mb-2 border-b border-gray-100 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   Lease ownership
@@ -1549,7 +1549,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                   royaltyEstimate={royaltyEstimate}
                   cumOil={cumOil}
                 />
-                <div className="mt-3 border-t border-gray-100 pt-2">
+                <div className="crm-lease-list mt-3 border-t border-gray-100 pt-2">
                   <HoldingsPanel
                     holdings={holdings}
                     loading={holdingsLoading}
@@ -1563,7 +1563,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 </div>
               </section>
             </aside>
-          </div>
+          </>
         )}
         {!crmMode && tab === 'overview' && (
           <OverviewPanel
@@ -1616,8 +1616,8 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           />
         )}
         {crmMode ? (
-          <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div>
+          <>
+            <div className="crm-lead-wells min-w-0">
               <SectionHeading>Wells</SectionHeading>
               <WellsPanel
                 wells={wells}
@@ -1626,9 +1626,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 highlightOperators={highlightOperators}
               />
             </div>
-            <div>
-              <SectionHeading>Notes</SectionHeading>
+            <div className="crm-lead-notes min-w-0">
               <NotesPanel
+                fill
                 value={note}
                 loading={noteLoading}
                 saving={noteSaving}
@@ -1638,7 +1638,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 onBlur={() => { void saveNote(note) }}
               />
             </div>
-          </div>
+          </>
         ) : (
           <>
             {tab === 'wells' && (
@@ -1791,7 +1791,7 @@ function LeaseOwnershipStats({
 }) {
   return (
     <div
-      className={compact ? 'grid grid-cols-2 gap-2' : 'grid gap-3'}
+      className={compact ? 'crm-lease-stats' : 'grid gap-3'}
       style={compact ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
     >
       <StatCard
@@ -2535,7 +2535,7 @@ function HoldingsPanel({
       <div className="flex flex-col gap-1">
         {header}
         <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
-        <div className="max-h-[min(28rem,50vh)] overflow-y-auto">
+        <div>
           {rows.map((row) => (
             <div
               key={row.key}
@@ -3247,7 +3247,7 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
 //  broker-outreach workflow the platform doesn't offer anyway.)
 
 function NotesPanel({
-  value, loading, saving, savedAt, error, onChange, onBlur,
+  value, loading, saving, savedAt, error, onChange, onBlur, fill = false,
 }: {
   value: string
   loading: boolean
@@ -3256,13 +3256,14 @@ function NotesPanel({
   error: string | null
   onChange: (v: string) => void
   onBlur: () => void
+  fill?: boolean
 }) {
   const savedLabel = savedAt
     ? `Saved ${savedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
     : ''
   return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className={`flex flex-col gap-3 ${fill ? 'crm-lead-notes-fill' : ''}`}>
+      <div className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
         <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
           <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
             Notes
@@ -3276,8 +3277,8 @@ function NotesPanel({
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder="Add call prep notes, offer history, contact preferences, or anything else your team should know about this lead. Autosaves when you click out of the box."
-          rows={10}
-          className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-900 focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400 focus:outline-none"
+          rows={fill ? 8 : 10}
+          className={`w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-900 focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400 focus:outline-none ${fill ? 'min-h-[9rem] flex-1' : ''}`}
         />
         {error && (
           <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">

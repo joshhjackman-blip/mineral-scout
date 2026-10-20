@@ -934,7 +934,7 @@ export default function CRM() {
         {/* Left sidebar — leads list, search, filter chips, county filter.
             Preserved from the previous CRM layout because it was already
             the good part; the middle+right panels are what got nuked. */}
-        <aside className="w-[260px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
+        <aside className="w-[min(42vw,260px)] min-w-[176px] lg:w-[220px] xl:w-[260px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-200 bg-white">
             <div className="grid grid-cols-3 gap-1">
               {[
