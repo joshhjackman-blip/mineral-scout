@@ -135,6 +135,7 @@ const dealToOwner = (deal: Deal): OwnerLike => ({
   mailing_state: deal.mailing_state,
   mailing_zip: deal.mailing_zip,
   acreage: deal.acreage,
+  ownership_pct: deal.ownership_pct,
   phone: deal.phone,
   email: deal.email,
   phones: deal.phones,
@@ -827,6 +828,9 @@ export default function CRM() {
       selected?.mailing_city,
       selected?.mailing_state,
       selected?.mailing_zip,
+      selected?.acreage,
+      selected?.ownership_pct,
+      selected?.rrc_lease_id,
       selected?.tag,
       selected?.phone_activity,
       selected?.connected_phone,
@@ -913,16 +917,20 @@ export default function CRM() {
       )}
 
       {view === 'dashboard' ? (
+        <div key="dashboard" className="page-enter flex-1 min-h-0 overflow-hidden">
         <CrmDashboard
           deals={deals}
           onOpenLead={openLead}
           onOpenFilter={openLeadsFilter}
           onOpenCalendar={() => setView('calendar')}
         />
+        </div>
       ) : view === 'calendar' ? (
+        <div key="calendar" className="page-enter flex-1 min-h-0 overflow-hidden">
         <CrmCalendar deals={deals} onOpenLead={openLead} onSetFollowUp={handleSetFollowUp} />
+        </div>
       ) : (
-      <div className="flex flex-1 overflow-hidden">
+      <div key="leads" className="page-enter flex flex-1 overflow-hidden">
         {/* Left sidebar — leads list, search, filter chips, county filter.
             Preserved from the previous CRM layout because it was already
             the good part; the middle+right panels are what got nuked. */}

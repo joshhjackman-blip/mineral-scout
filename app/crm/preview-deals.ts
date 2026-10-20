@@ -4,6 +4,26 @@ import type { Deal } from './crm-utils'
 /** Local-only sample rows so the dashboard can be previewed without auth. */
 export const PREVIEW_DEALS: Deal[] = [
   {
+    id: 'preview-cates',
+    owner_name: 'CATES PENNY ISABELLE',
+    tract_abstract: 'A-486',
+    surv_name: '',
+    block: '36',
+    surv_sect: '8',
+    tract_survey: 'T2S',
+    operator_name: 'HighPeak Energy',
+    county: 'howard',
+    mailing_address: '244-115 GEORGE ST',
+    mailing_city: 'OAKVILLE ONTARIO',
+    mailing_state: 'CANADA',
+    mailing_zip: 'L6J 0A2',
+    acreage: null,
+    ownership_pct: 0.001242,
+    rrc_lease_id: '29014',
+    tag: 'prospect',
+    updated_at: new Date().toISOString(),
+  },
+  {
     id: 'preview-1',
     owner_name: 'James R. Holcomb',
     tract_abstract: 'A-142',

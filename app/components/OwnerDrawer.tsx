@@ -973,10 +973,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       aria-label={`Details for ${owner.owner_name}`}
       style={{ minHeight: 0 }}
     >
-      <header className="shrink-0 flex items-start gap-4 px-6 py-4 border-b border-gray-100 bg-white">
+      <header className={`shrink-0 flex items-start gap-4 border-b border-gray-100 bg-white ${crmMode ? 'px-5 py-3' : 'px-6 py-4'}`}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-2xl' : 'text-xl'}`}>
+            <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-xl' : 'text-xl'}`}>
               {displayName}
             </div>
             {ownerIsHidden && (
@@ -1236,12 +1236,13 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </nav>
       )}
 
-      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-6 py-6' : 'px-6 py-5'}`}>
-        <div className={crmMode ? 'mx-auto w-full max-w-7xl' : undefined}>
+      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-5 py-4' : 'px-6 py-5'}`}>
+        <div className={crmMode ? 'mx-auto w-full max-w-[1400px]' : undefined}>
         {crmMode && (
-          <div className="mb-6">
+          <div className="mb-4 grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] gap-4 items-start">
+            <div className="order-2 xl:order-1 min-w-0 space-y-3">
             {address && (
-              <div className="mb-3 text-sm text-gray-500">{address}</div>
+              <div className="text-sm text-gray-500">{address}</div>
             )}
             <LeadPhones
               phones={phoneList.map((p) => ({ ...p, raw: p.href }))}
@@ -1261,7 +1262,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 void onLogCallOutcome?.(owner, phone.raw, outcome)
               }}
             />
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {emailList.length > 0 ? (
                 emailList.map((e) => (
                   <ContactPill
@@ -1283,10 +1284,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 <ContactPill icon="✉︎" label="No email on file" disabled wide />
               )}
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => onSkipTrace(owner)}
-                className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
+                className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
               >
                 ⚡ Skip trace
               </button>
@@ -1299,7 +1300,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                     setRemoving(false)
                     setActionError(null)
                   }}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Update owner
                 </button>
@@ -1317,7 +1318,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                       setActionError(result.error || 'Failed to restore owner')
                     }
                   }}
-                  className="rounded-md border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
+                  className="rounded-md border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
                 >
                   Restore to list
                 </button>
@@ -1329,14 +1330,14 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                     setEditingContact(false)
                     setActionError(null)
                   }}
-                  className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                  className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
                 >
                   Remove from list
                 </button>
               ) : null}
               <button
                 onClick={() => onAddToPipeline(owner)}
-                className={`rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
                   inPipeline
                     ? 'border-lime-300 bg-lime-50 text-lime-700 hover:bg-lime-100'
                     : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -1346,7 +1347,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               </button>
             </div>
             {removing && onRemoveOwner && (
-              <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3">
+              <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3">
                 <div className="text-sm font-semibold text-rose-800">
                   Remove from your working list?
                 </div>
@@ -1399,31 +1400,61 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 )}
               </div>
             )}
-          </div>
-        )}
-        {crmMode && onSetStatus && (
-          <StatusPicker
-            current={dealStatus}
-            busy={statusBusy}
-            onSelect={async (status) => {
-              setStatusBusy(true)
-              setActionError(null)
-              const result = await onSetStatus(owner, status)
-              setStatusBusy(false)
-              if (!result.success) setActionError(result.error || 'Failed to set status')
-            }}
-          />
-        )}
-        {crmMode && onAddCallLog && (
-          <div className="mb-5">
-            <CallLog
-              key={owner.id}
-              rows={callLogs}
-              currentDesignation={dealStatus}
-              saving={callLogSaving}
-              error={callLogError}
-              onAdd={(draft) => onAddCallLog(owner, draft)}
-            />
+            {onSetStatus && (
+              <StatusPicker
+                current={dealStatus}
+                busy={statusBusy}
+                onSelect={async (status) => {
+                  setStatusBusy(true)
+                  setActionError(null)
+                  const result = await onSetStatus(owner, status)
+                  setStatusBusy(false)
+                  if (!result.success) setActionError(result.error || 'Failed to set status')
+                }}
+              />
+            )}
+            {onAddCallLog && (
+              <CallLog
+                key={owner.id}
+                rows={callLogs}
+                currentDesignation={dealStatus}
+                saving={callLogSaving}
+                error={callLogError}
+                onAdd={(draft) => onAddCallLog(owner, draft)}
+              />
+            )}
+            </div>
+            <aside className="order-1 xl:order-2 min-w-0 xl:sticky xl:top-0">
+              <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="mb-2 border-b border-gray-100 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Lease ownership
+                </div>
+                <LeaseOwnershipStats
+                  compact
+                  owner={owner}
+                  ownershipPct={ownershipPct}
+                  acreage={acreage}
+                  acreageEstimated={acreageEstimate.estimated}
+                  nra={nra}
+                  nriPct={nriPct}
+                  royaltyEstimate={royaltyEstimate}
+                  cumOil={cumOil}
+                />
+                <div className="mt-3 border-t border-gray-100 pt-2 space-y-1.5">
+                  <KVRow
+                    k="Legal description"
+                    v={tractLegalDescription || holdingLegal || tractLabel || 'Not recorded'}
+                    mono
+                  />
+                  <KVRow k="RRC lease" v={rrcLease || 'Not linked'} mono />
+                  <KVRow k="Operator" v={clean(owner.operator_name) || 'Unknown operator'} />
+                  <KVRow k="County" v={county.displayName} />
+                  {clean(owner.sptb_code) && (
+                    <KVRow k="Interest code" v={owner.sptb_code ?? ''} mono />
+                  )}
+                </div>
+              </section>
+            </aside>
           </div>
         )}
         {(crmMode || tab === 'overview') && (
@@ -1468,7 +1499,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           />
         )}
         {(crmMode || tab === 'holdings') && (
-          <div className={crmMode ? 'mt-8' : ''}>
+          <div className={crmMode ? 'mt-4' : ''}>
             <HoldingsPanel
               holdings={holdings}
               loading={holdingsLoading}
@@ -1480,30 +1511,52 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             />
           </div>
         )}
-        {(crmMode || tab === 'wells') && (
-          <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Wells</SectionHeading>}
-          <WellsPanel
-            wells={wells}
-            loading={wellsLoading}
-            county={county}
-            highlightOperators={highlightOperators}
-          />
+        {crmMode ? (
+          <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <div>
+              <SectionHeading>Wells</SectionHeading>
+              <WellsPanel
+                wells={wells}
+                loading={wellsLoading}
+                county={county}
+                highlightOperators={highlightOperators}
+              />
+            </div>
+            <div>
+              <SectionHeading>Notes</SectionHeading>
+              <NotesPanel
+                value={note}
+                loading={noteLoading}
+                saving={noteSaving}
+                savedAt={noteSavedAt}
+                error={noteError}
+                onChange={setNote}
+                onBlur={() => { void saveNote(note) }}
+              />
+            </div>
           </div>
-        )}
-        {(crmMode || tab === 'notes') && (
-          <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Notes</SectionHeading>}
-          <NotesPanel
-            value={note}
-            loading={noteLoading}
-            saving={noteSaving}
-            savedAt={noteSavedAt}
-            error={noteError}
-            onChange={setNote}
-            onBlur={() => { void saveNote(note) }}
-          />
-          </div>
+        ) : (
+          <>
+            {tab === 'wells' && (
+              <WellsPanel
+                wells={wells}
+                loading={wellsLoading}
+                county={county}
+                highlightOperators={highlightOperators}
+              />
+            )}
+            {tab === 'notes' && (
+              <NotesPanel
+                value={note}
+                loading={noteLoading}
+                saving={noteSaving}
+                savedAt={noteSavedAt}
+                error={noteError}
+                onChange={setNote}
+                onBlur={() => { void saveNote(note) }}
+              />
+            )}
+          </>
         )}
         </div>
       </div>
@@ -1530,7 +1583,7 @@ function StatusPicker({
   onSelect: (status: string) => void
 }) {
   return (
-    <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-3">
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
       <div className="mb-2 text-xs font-semibold text-gray-500">
         Lead status
       </div>
@@ -1589,12 +1642,92 @@ function ContactPill({
   )
 }
 
-function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+function StatCard({
+  label,
+  value,
+  hint,
+  compact = false,
+}: {
+  label: string
+  value: ReactNode
+  hint?: ReactNode
+  compact?: boolean
+}) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+    <div className={`rounded-lg border border-gray-200 bg-gray-50 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
       <div className="text-[11px] font-semibold text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{value}</div>
-      {hint && <div className="mt-1 text-[11px] text-gray-500">{hint}</div>}
+      <div className={`mt-0.5 font-semibold tabular-nums text-gray-900 ${compact ? 'text-lg leading-tight' : 'text-2xl'}`}>
+        {value}
+      </div>
+      {hint && <div className="mt-0.5 text-[11px] leading-snug text-gray-500">{hint}</div>}
+    </div>
+  )
+}
+
+function LeaseOwnershipStats({
+  owner,
+  ownershipPct,
+  acreage,
+  acreageEstimated = false,
+  nra,
+  nriPct,
+  royaltyEstimate,
+  cumOil,
+  compact = false,
+}: {
+  owner: OwnerLike
+  ownershipPct: number | null
+  acreage: string | null
+  acreageEstimated?: boolean
+  nra: number | null
+  nriPct?: number | null
+  royaltyEstimate: number | null
+  cumOil: number
+  compact?: boolean
+}) {
+  return (
+    <div
+      className={compact ? 'grid grid-cols-2 gap-2' : 'grid gap-3'}
+      style={compact ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
+    >
+      <StatCard
+        compact={compact}
+        label="Ownership %"
+        value={ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
+        hint={ownershipPct != null ? `Decimal: ${(ownershipPct / 100).toFixed(6)}` : undefined}
+      />
+      <StatCard
+        compact={compact}
+        label="Gross acres"
+        value={acreage ?? '—'}
+        hint={
+          acreage != null
+            ? (acreageEstimated
+                ? 'Estimated from section / legal (640 ac square section)'
+                : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
+            : (clean(owner.sptb_code)
+                ? `${owner.sptb_code} interest — no acreage on roll`
+                : 'No acreage on roll for this interest')
+        }
+      />
+      <StatCard
+        compact={compact}
+        label="Net mineral acres"
+        value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
+        hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
+      />
+      <StatCard
+        compact={compact}
+        label="NRI"
+        value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
+        hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
+      />
+      <StatCard
+        compact={compact}
+        label="Est. royalty"
+        value={royaltyEstimate != null ? `$${royaltyEstimate.toLocaleString()}/mo` : '—'}
+        hint={cumOil > 0 ? `Cum. oil: ${cumOil.toLocaleString()} bbl` : 'No production on file'}
+      />
     </div>
   )
 }
@@ -1619,7 +1752,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
   // second line and defeat the whole one-line-per-field layout the
   // Contact snapshot / Lease context cards were redesigned for.
   return (
-    <div className="grid grid-cols-[160px_1fr] items-baseline gap-3">
+    <div className="grid grid-cols-[minmax(92px,38%)_1fr] items-baseline gap-2">
       <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
       <div
         className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'tabular-nums' : ''}`}
@@ -1695,48 +1828,20 @@ function OverviewPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        <StatCard
-          label="Ownership %"
-          value={ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-          hint={ownershipPct != null ? `Decimal: ${(ownershipPct / 100).toFixed(6)}` : undefined}
+      {!crmMode && (
+        <LeaseOwnershipStats
+          owner={owner}
+          ownershipPct={ownershipPct}
+          acreage={acreage}
+          acreageEstimated={acreageEstimated}
+          nra={nra}
+          nriPct={nriPct}
+          royaltyEstimate={royaltyEstimate}
+          cumOil={cumOil}
         />
-        <StatCard
-          label="Gross acres"
-          value={acreage ?? '—'}
-          hint={
-            acreage != null
-              ? (acreageEstimated
-                  ? 'Estimated from section / legal (640 ac square section)'
-                  : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
-              : (clean(owner.sptb_code)
-                  ? `${owner.sptb_code} interest — no acreage on roll`
-                  : 'No acreage on roll for this interest')
-          }
-        />
-        <StatCard
-          label="Net mineral acres"
-          value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
-          hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
-        />
-        <StatCard
-          label="NRI"
-          value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
-          hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
-        />
-        <StatCard
-          label="Est. royalty"
-          value={royaltyEstimate != null ? `$${royaltyEstimate.toLocaleString()}/mo` : '—'}
-          hint={cumOil > 0 ? `Cum. oil: ${cumOil.toLocaleString()} bbl` : 'No production on file'}
-        />
-      </div>
+      )}
 
-      {/* Contact snapshot and Lease context stacked full-width instead
-          of side-by-side. Two half-width columns squeezed each field's
-          value column so tightly that long mailing addresses / legal
-          descriptions wrapped onto a second line under the label —
-          full-width lets each field sit on one line. */}
-      <div className="flex flex-col gap-4">
+      <div className={crmMode ? '' : 'flex flex-col gap-4'}>
         <SectionCard title="Contact snapshot">
           {editingContact && onSaveDetails ? (
             <div className="flex flex-col gap-3">
@@ -1848,6 +1953,7 @@ function OverviewPanel({
           )}
         </SectionCard>
 
+        {!crmMode && (
         <SectionCard title="Lease context">
           <KVRow
             k="Legal description"
@@ -1861,6 +1967,7 @@ function OverviewPanel({
             <KVRow k="Interest code" v={owner.sptb_code ?? ''} mono />
           )}
         </SectionCard>
+        )}
       </div>
 
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
