@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { isPlatformAdmin, isPlatformOwner, isSkipTraceCompedTeam } from '@/lib/team'
 import { estimateMonthlySkipTraceCost, SKIP_TRACE_PRICE_USD } from '@/lib/billing'
+import { classifySkipTraceMonthReview } from '@/lib/skip-trace-research-stats'
 import { deriveSkipTraceHits } from '@/lib/skip-trace-usage'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,7 @@ type TeamMemberSpend = {
   role: 'admin' | 'member'
   skip_traces: number
   hits: number
+  researcher_hits: number
   misses: number
 }
 
@@ -41,6 +43,7 @@ type TeamSpend = {
   member_count: number
   skip_traces: number
   skip_trace_hits: number
+  skip_trace_researcher_hits: number
   skip_trace_misses: number
   billable_skip_traces: number
   skip_trace_amount_usd: number
@@ -209,7 +212,7 @@ export async function GET(req: NextRequest) {
       .limit(10000),
     adminClient
       .from('skip_trace_reviews')
-      .select('requested_by, requested_by_email, team_owner_id, reason')
+      .select('requested_by, requested_by_email, team_owner_id, reason, status, notes, phones')
       .gte('created_at', startIso)
       .lt('created_at', endIso)
       .limit(10000),
@@ -249,7 +252,18 @@ export async function GET(req: NextRequest) {
   if (emailsRes.error) warnings.push(`email_send_log: ${emailsRes.error.message}`)
   if (reviewsRes.error) warnings.push(`skip_trace_reviews: ${reviewsRes.error.message}`)
   if (wrongCallsRes.error) warnings.push(`deal_phone_calls: ${wrongCallsRes.error.message}`)
-  if (missReviewsRes.error) warnings.push(`skip_trace_reviews (month): ${missReviewsRes.error.message}`)
+  if (missReviewsRes.error) {
+    warnings.push(`skip_trace_reviews (month): ${missReviewsRes.error.message}`)
+    const fallbackMiss = await adminClient
+      .from('skip_trace_reviews')
+      .select('requested_by, requested_by_email, team_owner_id, reason, status')
+      .gte('created_at', startIso)
+      .lt('created_at', endIso)
+      .limit(10000)
+    if (!fallbackMiss.error) {
+      ;(missReviewsRes as { data: unknown }).data = fallbackMiss.data
+    }
+  }
   if (teamMembersRes.error) warnings.push(`team_members: ${teamMembersRes.error.message}`)
   if (agreementsRes.error) {
     warnings.push(`platform_agreement_signatures: ${agreementsRes.error.message}`)
@@ -363,6 +377,7 @@ export async function GET(req: NextRequest) {
     member_count: 0,
     skip_traces: 0,
     skip_trace_hits: 0,
+    skip_trace_researcher_hits: 0,
     skip_trace_misses: 0,
     billable_skip_traces: 0,
     skip_trace_amount_usd: 0,
@@ -444,15 +459,25 @@ export async function GET(req: NextRequest) {
     skipByUser.set(uid, prev)
   }
 
-  const missByUser = new Map<string, number>()
+  const originalMissByUser = new Map<string, number>()
+  const researcherHitByUser = new Map<string, number>()
+  const remainingMissByUser = new Map<string, number>()
+  const bump = (map: Map<string, number>, uid: string) => {
+    map.set(uid, (map.get(uid) ?? 0) + 1)
+  }
   for (const row of (missReviewsRes.data ?? []) as Array<{
     requested_by?: string | null
     reason?: string | null
+    status?: string | null
+    notes?: string | null
+    phones?: string[] | null
   }>) {
-    if (row.reason === 'wrong_number') continue
+    const classified = classifySkipTraceMonthReview(row)
     const uid = String(row.requested_by ?? '').trim()
     if (!uid) continue
-    missByUser.set(uid, (missByUser.get(uid) ?? 0) + 1)
+    if (classified.originalMiss) bump(originalMissByUser, uid)
+    if (classified.researcherHit) bump(researcherHitByUser, uid)
+    if (classified.remainingMiss) bump(remainingMissByUser, uid)
   }
 
   const rosterByOwner = new Map<string, Array<{ userId: string | null; email: string }>>()
@@ -497,7 +522,7 @@ export async function GET(req: NextRequest) {
       const outcome = deriveSkipTraceHits(
         stats?.count ?? 0,
         stats?.storedHits ?? 0,
-        uid ? missByUser.get(uid) ?? 0 : 0,
+        uid ? originalMissByUser.get(uid) ?? 0 : 0,
       )
       return {
         user_id: person.userId,
@@ -505,7 +530,8 @@ export async function GET(req: NextRequest) {
         role: person.userId === ownerId ? 'admin' : 'member',
         skip_traces: stats?.count ?? 0,
         hits: outcome.hits,
-        misses: outcome.misses,
+        researcher_hits: uid ? researcherHitByUser.get(uid) ?? 0 : 0,
+        misses: uid ? remainingMissByUser.get(uid) ?? 0 : 0,
       }
     })
     members.sort(
@@ -515,6 +541,10 @@ export async function GET(req: NextRequest) {
     )
     team.members = members
     team.skip_trace_hits = members.reduce((sum, m) => sum + m.hits, 0)
+    team.skip_trace_researcher_hits = members.reduce(
+      (sum, m) => sum + m.researcher_hits,
+      0,
+    )
     team.skip_trace_misses = members.reduce((sum, m) => sum + m.misses, 0)
   }
 
@@ -586,6 +616,10 @@ export async function GET(req: NextRequest) {
   )
   const billableDue = teams.reduce((sum, t) => sum + t.billable_skip_traces, 0)
   const skipTraceHits = teams.reduce((sum, t) => sum + t.skip_trace_hits, 0)
+  const skipTraceResearcherHits = teams.reduce(
+    (sum, t) => sum + t.skip_trace_researcher_hits,
+    0,
+  )
   const skipTraceMisses = teams.reduce((sum, t) => sum + t.skip_trace_misses, 0)
   const wrongNumbersThisMonth = (wrongCallsRes.data ?? []).length
 
@@ -595,6 +629,7 @@ export async function GET(req: NextRequest) {
       callClicks: callClicksThisMonth,
       skipTraces: skipTracesThisMonth,
       skipTraceHits,
+      skipTraceResearcherHits,
       skipTraceMisses,
       billableSkipTraces: billableDue,
       primary: callClicksThisMonth,
