@@ -299,6 +299,70 @@ function abstractKey(raw: unknown): string {
   return text.replace(/^A-\s*/i, '').trim()
 }
 
+function isCrmPreview(): boolean {
+  if (process.env.NODE_ENV === 'production') return false
+  if (typeof window === 'undefined') return false
+  return (
+    window.location.pathname.startsWith('/crm') &&
+    new URLSearchParams(window.location.search).get('preview') === '1'
+  )
+}
+
+const PREVIEW_HOLDINGS: OwnerDrawerHolding[] = [
+  {
+    id: 'preview-h-0',
+    county_id: 'howard',
+    field_name: 'CATES 8-36 UNIT',
+    abstract: '486',
+    block: '36 T2S',
+    section: '8',
+    survey: 'T&P RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 640,
+    rrc_lease_id: 29014,
+  },
+  {
+    id: 'preview-h-1',
+    county_id: 'howard',
+    field_name: 'CARPENTER 11-31 A UNIT',
+    abstract: '113',
+    block: '25',
+    section: '11',
+    survey: 'H&TC RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 640,
+    rrc_lease_id: 55683,
+  },
+  {
+    id: 'preview-h-2',
+    county_id: 'howard',
+    field_name: 'MITCHELL 47-31 A UNIT',
+    abstract: '75',
+    block: '30 T1N',
+    section: '3',
+    survey: 'T&P RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 320,
+    rrc_lease_id: 58440,
+  },
+  {
+    id: 'preview-h-3',
+    county_id: 'martin',
+    field_name: 'WHAM UNIT B 22-23',
+    abstract: '447',
+    block: '36 T1S',
+    section: '10',
+    survey: 'T&P RR CO',
+    operator_name: 'SURGE OPERATING, LLC',
+    ownership_pct: 0.0008,
+    acreage: 160,
+    rrc_lease_id: 57823,
+  },
+]
+
 function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean) {
   // Cross-county holdings. Every county the platform knows about
   // (COUNTIES in lib/counties.ts) is queried in parallel; results are
@@ -314,6 +378,12 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     if (!open || !owner) {
       setHoldings([])
       setErrorMessages([])
+      return
+    }
+    if (isCrmPreview()) {
+      setHoldings(PREVIEW_HOLDINGS)
+      setErrorMessages([])
+      setLoading(false)
       return
     }
     let cancelled = false
@@ -1463,7 +1533,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               crmMode
             />
             </div>
-            <aside className="order-1 xl:order-2 min-w-0 xl:sticky xl:top-0">
+            <aside className="order-1 xl:order-2 min-w-0 space-y-3">
               <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                 <div className="mb-2 border-b border-gray-100 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   Lease ownership
@@ -1479,18 +1549,17 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                   royaltyEstimate={royaltyEstimate}
                   cumOil={cumOil}
                 />
-                <div className="mt-3 border-t border-gray-100 pt-2 space-y-1.5">
-                  <KVRow
-                    k="Legal description"
-                    v={tractLegalDescription || holdingLegal || tractLabel || 'Not recorded'}
-                    mono
+                <div className="mt-3 border-t border-gray-100 pt-2">
+                  <HoldingsPanel
+                    holdings={holdings}
+                    loading={holdingsLoading}
+                    county={county}
+                    legalDescByAbstract={legalDescByAbstract}
+                    errorMessages={holdingsErrors}
+                    highlightOperators={highlightOperators}
+                    crmMode
+                    layout="stack"
                   />
-                  <KVRow k="RRC lease" v={rrcLease || 'Not linked'} mono />
-                  <KVRow k="Operator" v={clean(owner.operator_name) || 'Unknown operator'} />
-                  <KVRow k="County" v={county.displayName} />
-                  {clean(owner.sptb_code) && (
-                    <KVRow k="Interest code" v={owner.sptb_code ?? ''} mono />
-                  )}
                 </div>
               </section>
             </aside>
@@ -1536,18 +1605,15 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             saveError={actionError}
           />
         )}
-        {(crmMode || tab === 'holdings') && (
-          <div className={crmMode ? 'mt-4' : ''}>
-            <HoldingsPanel
-              holdings={holdings}
-              loading={holdingsLoading}
-              county={county}
-              legalDescByAbstract={legalDescByAbstract}
-              errorMessages={holdingsErrors}
-              highlightOperators={highlightOperators}
-              crmMode={crmMode}
-            />
-          </div>
+        {!crmMode && tab === 'holdings' && (
+          <HoldingsPanel
+            holdings={holdings}
+            loading={holdingsLoading}
+            county={county}
+            legalDescByAbstract={legalDescByAbstract}
+            errorMessages={holdingsErrors}
+            highlightOperators={highlightOperators}
+          />
         )}
         {crmMode ? (
           <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -1790,7 +1856,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
   // second line and defeat the whole one-line-per-field layout the
   // Contact snapshot / Lease context cards were redesigned for.
   return (
-    <div className="grid grid-cols-[minmax(92px,38%)_1fr] items-baseline gap-2">
+    <div className="grid grid-cols-[120px_1fr] items-baseline gap-2">
       <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
       <div
         className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'tabular-nums' : ''}`}
@@ -2312,8 +2378,102 @@ function HoldingsErrorBanner({
   )
 }
 
+function holdingRowView(
+  h: OwnerDrawerHolding,
+  i: number,
+  activeCountyId: CountyKey,
+  legalDescByAbstract: Record<string, string> | undefined,
+  highlightOperators?: string[] | null,
+) {
+  const rowCountyId = (h.county_id ?? activeCountyId) as CountyKey
+  const cfg = COUNTIES[rowCountyId]
+  const isActive = rowCountyId === activeCountyId
+  const bare = abstractKey(h.abstract)
+  const abstractLabel = bare ? `A-${bare}` : ''
+  const opHit = Boolean(
+    highlightOperators &&
+      highlightOperators.length > 0 &&
+      operatorMatchesAny(h.operator_name, highlightOperators),
+  )
+  const legalDesc = isActive && bare
+    ? (legalDescByAbstract?.[bare] || '')
+    : ''
+  const parsed = parseLegalDescription(legalDesc)
+  const rawBlock   = clean(h.block)
+  const rawSection = clean(h.section)
+  const rawSurvey  = clean(h.survey)
+  const blockTownshipMatch = rawBlock.match(/T\d+[NS]/i)
+  const townshipFromBlock = blockTownshipMatch
+    ? blockTownshipMatch[0].toUpperCase()
+    : ''
+  const blockOnly = townshipFromBlock
+    ? rawBlock.replace(blockTownshipMatch![0], '').trim()
+    : rawBlock
+  const parts = {
+    section:  rawSection || parsed.section,
+    township: townshipFromBlock || parsed.township,
+    block:    blockOnly || parsed.block,
+    range:    parsed.range,
+    survey:   rawSurvey || parsed.survey,
+  }
+  const ownershipPct = ownershipPctValue(
+    h.ownership_pct ?? h.decimal_interest,
+    cfg.ownershipPctIsDecimal,
+  )
+  const unitLabel = clean(h.county_lease_name)
+    || clean(h.field_name)
+    || (h.rrc_lease_id != null ? `Lease #${h.rrc_lease_id}` : '—')
+  const composedLegal = (() => {
+    if (legalDesc) return legalDesc
+    const bits: string[] = []
+    if (parts.township) bits.push(parts.township)
+    if (parts.block) bits.push(`BLK ${parts.block}`)
+    if (parts.section) bits.push(`SEC ${parts.section}`)
+    if (abstractLabel) bits.push(abstractLabel)
+    if (bits.length > 0) return bits.join(' ')
+    if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
+    return abstractLabel
+  })()
+  const acreageEstimate = estimateGrossAcres({
+    cadAcres: h.acreage,
+    legal: composedLegal,
+    survey: clean(h.survey),
+    section: parts.section,
+    block: parts.block,
+    township: parts.township,
+  })
+  const acres = acreageEstimate.acres
+  const nra = (ownershipPct != null && acres != null)
+    ? netMineralAcres(acres, ownershipPct)
+    : null
+  const nriPct = ownershipPct != null
+    ? mineralOwnerNriPct(ownershipPct)
+    : null
+  return {
+    key: `${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`,
+    unitLabel,
+    fieldName: clean(h.field_name),
+    composedLegal,
+    abstractLabel,
+    parts,
+    operator: clean(h.operator_name),
+    opHit,
+    isActive,
+    countyLabelShort: cfg.displayName.replace(/\s+County,\s+TX$/i, ''),
+    countyDisplayName: cfg.displayName,
+    ownershipPct,
+    interestType: clean(h.interest_type),
+    acres,
+    acresEstimated: acreageEstimate.estimated,
+    nra,
+    nriPct,
+    i,
+  }
+}
+
 function HoldingsPanel({
   holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators, crmMode = false,
+  layout = 'table',
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
@@ -2322,6 +2482,7 @@ function HoldingsPanel({
   errorMessages?: Array<{ county: CountyKey; message: string }>
   highlightOperators?: string[] | null
   crmMode?: boolean
+  layout?: 'table' | 'stack'
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -2347,35 +2508,126 @@ function HoldingsPanel({
     holdings.map((h) => h.county_id ?? activeCountyId),
   )
   const totalCounties = countiesRepresented.size
+  const rows = holdings.map((h, i) =>
+    holdingRowView(h, i, activeCountyId, legalDescByAbstract, highlightOperators),
+  )
+
+  const header = (
+    <div
+      className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 py-1.5 ${
+        layout === 'stack' ? 'px-0' : 'px-1'
+      } ${crmMode ? '' : 'sticky backdrop-blur'}`}
+      style={crmMode ? undefined : { top: '-20px' }}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
+        {layout === 'stack' ? 'Leases this lead owns' : 'Leases'}
+      </div>
+      <div className="text-xs tabular-nums text-gray-700">
+        <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
+        {' · '}
+        <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
+      </div>
+    </div>
+  )
+
+  if (layout === 'stack') {
+    return (
+      <div className="flex flex-col gap-1">
+        {header}
+        <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
+        <div className="max-h-[min(28rem,50vh)] overflow-y-auto">
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className={`border-b border-gray-100 py-2 last:border-b-0 ${
+                row.opHit
+                  ? 'bg-amber-50/80'
+                  : row.isActive
+                    ? 'bg-amber-50/30'
+                    : ''
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div
+                    className="truncate text-[13px] font-semibold leading-tight text-gray-900"
+                    title={row.fieldName && row.fieldName !== row.unitLabel
+                      ? `${row.unitLabel} · ${row.fieldName}`
+                      : row.unitLabel}
+                  >
+                    {row.unitLabel}
+                  </div>
+                  <div
+                    className="mt-0.5 truncate text-[11px] leading-snug text-gray-500"
+                    title={row.composedLegal || row.abstractLabel || undefined}
+                  >
+                    {row.composedLegal || row.abstractLabel || '—'}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div
+                    className="text-[12px] font-semibold tabular-nums text-gray-900"
+                    title={row.interestType
+                      ? `${row.ownershipPct?.toFixed(4)}% · ${row.interestType}`
+                      : undefined}
+                  >
+                    {row.ownershipPct != null ? `${row.ownershipPct.toFixed(4)}%` : '—'}
+                  </div>
+                  {row.nra != null && (
+                    <div className="text-[10px] tabular-nums text-gray-500">
+                      {row.nra.toFixed(row.nra < 1 ? 3 : 2)} NMA
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-gray-600">
+                <span
+                  className={`rounded-full border px-1.5 py-0.5 font-semibold ${
+                    row.isActive
+                      ? 'border-amber-300 bg-amber-100 text-amber-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                  title={row.countyDisplayName}
+                >
+                  {row.countyLabelShort}
+                </span>
+                <span
+                  className={`min-w-0 truncate ${row.opHit ? 'font-semibold text-amber-900' : ''}`}
+                  title={row.operator || undefined}
+                >
+                  {row.operator || 'Unknown operator'}
+                </span>
+                {row.opHit && (
+                  <span className="rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                    Match
+                  </span>
+                )}
+                {row.acres != null && (
+                  <span
+                    className="tabular-nums text-gray-400"
+                    title={row.acresEstimated
+                      ? `${formatAcres(row.acres)} ac estimated from section / legal`
+                      : `${formatAcres(row.acres)} ac from CAD`}
+                  >
+                    {formatAcres(row.acres)} ac{row.acresEstimated ? ' est.' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // Compact table view. Columns follow the on-call spec:
   //   Unit | Legal | Sec | Township | Block | Range | Operator | County
-  // Sec / Township / Block / Range are parsed from the legal
-  // description we already computed for the active county's tracts
-  // via legalDescByAbstract. For cross-county rows we don't have a
-  // pre-computed legal description, so those columns show "—" and
-  // the Legal column falls back to the bare abstract label.
-  //
   // Sticky top strip + sticky table header stay pinned in the map
   // drawer. CRM uses page scroll under a fixed name bar, so the
   // negative sticky offset would clip this heading and the first row.
   return (
     <div className="flex flex-col gap-2">
-      <div
-        className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 ${
-          crmMode ? '' : 'sticky backdrop-blur'
-        }`}
-        style={crmMode ? undefined : { top: '-20px' }}
-      >
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
-          Leases
-        </div>
-        <div className="text-xs tabular-nums text-gray-700">
-          <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
-          {' · '}
-          <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
-        </div>
-      </div>
+      {header}
 
       <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
 
@@ -2406,188 +2658,102 @@ function HoldingsPanel({
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h, i) => {
-              const rowCountyId = (h.county_id ?? activeCountyId) as CountyKey
-              const cfg = COUNTIES[rowCountyId]
-              const isActive = rowCountyId === activeCountyId
-              const bare = abstractKey(h.abstract)
-              const abstractLabel = bare ? `A-${bare}` : ''
-              const opHit = Boolean(
-                highlightOperators &&
-                  highlightOperators.length > 0 &&
-                  operatorMatchesAny(h.operator_name, highlightOperators),
-              )
-              // Only the active county has a pre-computed legal
-              // description available — legalDescByAbstract is built
-              // from the tracts currently loaded on the map.
-              const legalDesc = isActive && bare
-                ? (legalDescByAbstract?.[bare] || '')
-                : ''
-
-              // Prefer the real columns from the ownership row over
-              // regex-parsing the composed legal description. Howard /
-              // Martin ship block+section+survey natively (loaded from
-              // the county tax roll); Gonzales rows don't have them,
-              // so parseLegalDescription() fills gaps from whatever
-              // legal string the parent computed.
-              const parsed = parseLegalDescription(legalDesc)
-              const rawBlock   = clean(h.block)
-              const rawSection = clean(h.section)
-              const rawSurvey  = clean(h.survey)
-              // The tax-roll `block` column often has "35 T1N" stuffed
-              // into it — split off the township token so the Block
-              // column shows only "35" and Township shows "T1N".
-              const blockTownshipMatch = rawBlock.match(/T\d+[NS]/i)
-              const townshipFromBlock = blockTownshipMatch
-                ? blockTownshipMatch[0].toUpperCase()
-                : ''
-              const blockOnly = townshipFromBlock
-                ? rawBlock.replace(blockTownshipMatch![0], '').trim()
-                : rawBlock
-              const parts = {
-                section:  rawSection || parsed.section,
-                township: townshipFromBlock || parsed.township,
-                block:    blockOnly || parsed.block,
-                range:    parsed.range,
-                survey:   rawSurvey || parsed.survey,
-              }
-
-              const ownershipPct = ownershipPctValue(
-                h.ownership_pct ?? h.decimal_interest,
-                cfg.ownershipPctIsDecimal,
-              )
-
-              const unitLabel = clean(h.county_lease_name)
-                || clean(h.field_name)
-                || (h.rrc_lease_id != null ? `Lease #${h.rrc_lease_id}` : '—')
-
-              // Compose a legal string when the parent didn't hand us
-              // one (i.e. for cross-county rows). Uses whichever raw
-              // columns the ownership row carried: block/section for
-              // Howard/Martin, survey name for named-grantee tracts.
-              const composedLegal = (() => {
-                if (legalDesc) return legalDesc
-                const bits: string[] = []
-                if (parts.township) bits.push(parts.township)
-                if (parts.block) bits.push(`BLK ${parts.block}`)
-                if (parts.section) bits.push(`SEC ${parts.section}`)
-                if (abstractLabel) bits.push(abstractLabel)
-                if (bits.length > 0) return bits.join(' ')
-                if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
-                return abstractLabel
-              })()
-
-              const acreageEstimate = estimateGrossAcres({
-                cadAcres: h.acreage,
-                legal: composedLegal,
-                survey: clean(h.survey),
-                section: parts.section,
-                block: parts.block,
-                township: parts.township,
-              })
-              const acres = acreageEstimate.acres
-              const nra = (ownershipPct != null && acres != null)
-                ? netMineralAcres(acres, ownershipPct)
-                : null
-              const nriPct = ownershipPct != null
-                ? mineralOwnerNriPct(ownershipPct)
-                : null
-
-              const fieldName = clean(h.field_name)
-              const countyLabelShort = cfg.displayName.replace(/\s+County,\s+TX$/i, '')
-              return (
-                <tr
-                  key={`${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`}
-                  className={`text-gray-800 ${
-                    opHit
-                      ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
-                      : isActive
-                        ? 'bg-amber-50/40'
-                        : ''
-                  } ${!opHit && i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
+            {rows.map((row) => (
+              <tr
+                key={row.key}
+                className={`text-gray-800 ${
+                  row.opHit
+                    ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
+                    : row.isActive
+                      ? 'bg-amber-50/40'
+                      : ''
+                } ${!row.opHit && row.i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
+              >
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
+                  title={row.fieldName && row.fieldName !== row.unitLabel
+                    ? `${row.unitLabel} · ${row.fieldName}`
+                    : row.unitLabel}
                 >
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
-                    title={fieldName && clean(h.county_lease_name) ? `${unitLabel} · ${fieldName}` : unitLabel}
-                  >
-                    {unitLabel}
-                  </td>
-                  <td
-                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 leading-snug"
-                    title={composedLegal && abstractLabel && composedLegal !== abstractLabel
-                      ? `${composedLegal} · ${abstractLabel}`
-                      : composedLegal || abstractLabel || undefined}
-                  >
-                    {composedLegal || abstractLabel || '—'}
-                  </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.section || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.township || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.block || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.range || '—'}</td>
-                  <td
-                    className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
-                      opHit ? 'font-semibold text-amber-900' : ''
-                    }`}
-                    title={clean(h.operator_name) || undefined}
-                  >
-                    {clean(h.operator_name) || '—'}
-                    {opHit && (
-                      <span className="ml-1 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
-                        Match
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={cfg.displayName}>
-                    <span
-                      className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                        isActive
-                          ? 'border-amber-300 bg-amber-100 text-amber-900'
-                          : 'border-slate-200 bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      {countyLabelShort}
+                  {row.unitLabel}
+                </td>
+                <td
+                  className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 leading-snug"
+                  title={row.composedLegal && row.abstractLabel && row.composedLegal !== row.abstractLabel
+                    ? `${row.composedLegal} · ${row.abstractLabel}`
+                    : row.composedLegal || row.abstractLabel || undefined}
+                >
+                  {row.composedLegal || row.abstractLabel || '—'}
+                </td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.section || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.township || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.block || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.range || '—'}</td>
+                <td
+                  className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
+                    row.opHit ? 'font-semibold text-amber-900' : ''
+                  }`}
+                  title={row.operator || undefined}
+                >
+                  {row.operator || '—'}
+                  {row.opHit && (
+                    <span className="ml-1 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                      Match
                     </span>
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
-                    title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
+                  )}
+                </td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={row.countyDisplayName}>
+                  <span
+                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                      row.isActive
+                        ? 'border-amber-300 bg-amber-100 text-amber-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                    }`}
                   >
-                    {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
-                    title={
-                      acres != null
-                        ? acreageEstimate.estimated
-                          ? `${formatAcres(acres)} ac estimated from section / legal`
-                          : `${formatAcres(acres)} ac from CAD`
-                        : undefined
-                    }
-                  >
-                    {acres != null ? formatAcres(acres) : '—'}
-                    {acres != null && acreageEstimate.estimated && (
-                      <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
-                    )}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums text-gray-600"
-                    title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
-                  >
-                    {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right tabular-nums text-gray-600"
-                    title={
-                      nriPct != null
-                        ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
-                        : undefined
-                    }
-                  >
-                    {nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
-                  </td>
-                </tr>
-              )
-            })}
+                    {row.countyLabelShort}
+                  </span>
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
+                  title={row.interestType
+                    ? `${row.ownershipPct?.toFixed(4)}% · ${row.interestType}`
+                    : undefined}
+                >
+                  {row.ownershipPct != null ? `${row.ownershipPct.toFixed(4)}%` : '—'}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
+                  title={
+                    row.acres != null
+                      ? row.acresEstimated
+                        ? `${formatAcres(row.acres)} ac estimated from section / legal`
+                        : `${formatAcres(row.acres)} ac from CAD`
+                      : undefined
+                  }
+                >
+                  {row.acres != null ? formatAcres(row.acres) : '—'}
+                  {row.acres != null && row.acresEstimated && (
+                    <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
+                  )}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums text-gray-600"
+                  title={row.nra != null ? `${row.nra.toFixed(3)} NMA` : undefined}
+                >
+                  {row.nra != null ? row.nra.toFixed(row.nra < 1 ? 3 : 2) : '—'}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right tabular-nums text-gray-600"
+                  title={
+                    row.nriPct != null
+                      ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
+                      : undefined
+                  }
+                >
+                  {row.nriPct != null ? `${row.nriPct.toFixed(4)}%` : '—'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
