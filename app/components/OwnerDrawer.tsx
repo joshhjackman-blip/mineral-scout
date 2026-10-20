@@ -1423,6 +1423,45 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 onAdd={(draft) => onAddCallLog(owner, draft)}
               />
             )}
+            <OverviewPanel
+              owner={owner}
+              ownershipPct={ownershipPct}
+              acreage={acreage}
+              acreageEstimated={acreageEstimate.estimated}
+              nra={nra}
+              nriPct={nriPct}
+              royaltyEstimate={royaltyEstimate}
+              cumOil={cumOil}
+              tractLabel={tractLabel ?? null}
+              tractLegalDescription={tractLegalDescription || holdingLegal || null}
+              rrcLease={rrcLease}
+              county={county}
+              tractDevStatus={tractDevStatus ?? null}
+              editingContact={editingContact}
+              onCancelEdit={() => {
+                setEditingContact(false)
+                setActionError(null)
+              }}
+              onSaveDetails={
+                onSaveOwnerDetails
+                  ? async (patch) => {
+                      setActionBusy(true)
+                      setActionError(null)
+                      const result = await onSaveOwnerDetails(owner, patch)
+                      setActionBusy(false)
+                      if (!result.success) {
+                        setActionError(result.error || 'Failed to save owner details')
+                        return false
+                      }
+                      setEditingContact(false)
+                      return true
+                    }
+                  : undefined
+              }
+              saveBusy={actionBusy}
+              saveError={actionError}
+              crmMode
+            />
             </div>
             <aside className="order-1 xl:order-2 min-w-0 xl:sticky xl:top-0">
               <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
@@ -1457,7 +1496,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             </aside>
           </div>
         )}
-        {(crmMode || tab === 'overview') && (
+        {!crmMode && tab === 'overview' && (
           <OverviewPanel
             owner={owner}
             ownershipPct={ownershipPct}
@@ -1495,7 +1534,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             }
             saveBusy={actionBusy}
             saveError={actionError}
-            crmMode={crmMode}
           />
         )}
         {(crmMode || tab === 'holdings') && (
