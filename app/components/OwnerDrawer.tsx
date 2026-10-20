@@ -78,6 +78,8 @@ export type OwnerDetailsPatch = {
 
 // CRM lead statuses (the pipeline designations shown in the lead workspace).
 export const LEAD_STATUSES: { key: string; label: string }[] = [
+  { key: 'prospect', label: 'Prospect' },
+  { key: 'hot', label: 'Hot' },
   { key: 'interested', label: 'Interested' },
   { key: 'not_interested', label: 'Not interested' },
   { key: 'offer_sent', label: 'Offer sent' },
@@ -225,6 +227,8 @@ export type OwnerDrawerProps = {
   callLogs?: CallLogRow[]
   callLogSaving?: boolean
   callLogError?: string | null
+  /** Rendered under Contact snapshot in CRM (offer documents, etc.). */
+  crmAfterContact?: ReactNode
   onAddCallLog?: (
     owner: OwnerLike,
     draft: CallLogDraft,
@@ -875,6 +879,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     callLogSaving = false,
     callLogError = null,
     onAddCallLog,
+    crmAfterContact,
   } = props
 
   const county = COUNTIES[countyId]
@@ -1045,7 +1050,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
     >
       <header className={`shrink-0 flex items-start gap-4 border-b border-gray-100 bg-white ${crmMode ? 'px-5 py-3' : 'px-6 py-4'}`}>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-xl' : 'text-xl'}`}>
               {displayName}
             </div>
@@ -1053,6 +1058,20 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
                 Removed from list
               </span>
+            )}
+            {crmMode && onSetStatus && (
+              <StatusPicker
+                compact
+                current={dealStatus}
+                busy={statusBusy}
+                onSelect={async (status) => {
+                  setStatusBusy(true)
+                  setActionError(null)
+                  const result = await onSetStatus(owner, status)
+                  setStatusBusy(false)
+                  if (!result.success) setActionError(result.error || 'Failed to set status')
+                }}
+              />
             )}
           </div>
           {clean(owner.display_name) && clean(owner.display_name) !== owner.owner_name && (
@@ -1082,6 +1101,9 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
           </div>
           {!crmMode && address && (
             <div className="mt-2 text-xs text-gray-500">{address}</div>
+          )}
+          {crmMode && actionError && (
+            <div className="mt-2 text-xs text-rose-700">{actionError}</div>
           )}
         </div>
         <button
@@ -1470,19 +1492,6 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 )}
               </div>
             )}
-            {onSetStatus && (
-              <StatusPicker
-                current={dealStatus}
-                busy={statusBusy}
-                onSelect={async (status) => {
-                  setStatusBusy(true)
-                  setActionError(null)
-                  const result = await onSetStatus(owner, status)
-                  setStatusBusy(false)
-                  if (!result.success) setActionError(result.error || 'Failed to set status')
-                }}
-              />
-            )}
             {onAddCallLog && (
               <CallLog
                 key={owner.id}
@@ -1532,24 +1541,14 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               saveError={actionError}
               crmMode
             />
+            {crmAfterContact}
             </div>
             <aside className="crm-lead-lease min-w-0">
               <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
                 <div className="mb-2 border-b border-gray-100 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
                   Lease ownership
                 </div>
-                <LeaseOwnershipStats
-                  compact
-                  owner={owner}
-                  ownershipPct={ownershipPct}
-                  acreage={acreage}
-                  acreageEstimated={acreageEstimate.estimated}
-                  nra={nra}
-                  nriPct={nriPct}
-                  royaltyEstimate={royaltyEstimate}
-                  cumOil={cumOil}
-                />
-                <div className="crm-lease-list mt-3 border-t border-gray-100 pt-2">
+                <div className="crm-lease-list">
                   <HoldingsPanel
                     holdings={holdings}
                     loading={holdingsLoading}
@@ -1681,36 +1680,44 @@ function StatusPicker({
   current,
   busy,
   onSelect,
+  compact = false,
 }: {
   current?: string | null
   busy?: boolean
   onSelect: (status: string) => void
+  compact?: boolean
 }) {
+  const pills = (
+    <div className="flex flex-wrap gap-1.5">
+      {LEAD_STATUSES.map((s) => {
+        const active = current === s.key
+        return (
+          <button
+            key={s.key}
+            type="button"
+            disabled={busy}
+            onClick={() => onSelect(s.key)}
+            className={`rounded-full border font-semibold transition-colors disabled:opacity-60 ${
+              compact ? 'px-2.5 py-0.5 text-[11px]' : 'px-3 py-1 text-xs'
+            } ${
+              active
+                ? 'border-amber-500 bg-amber-500 text-white'
+                : 'border-gray-300 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700'
+            }`}
+          >
+            {s.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+  if (compact) return pills
   return (
     <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
       <div className="mb-2 text-xs font-semibold text-gray-500">
         Lead status
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {LEAD_STATUSES.map((s) => {
-          const active = current === s.key
-          return (
-            <button
-              key={s.key}
-              type="button"
-              disabled={busy}
-              onClick={() => onSelect(s.key)}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-60 ${
-                active
-                  ? 'border-amber-500 bg-amber-500 text-white'
-                  : 'border-gray-300 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700'
-              }`}
-            >
-              {s.label}
-            </button>
-          )
-        })}
-      </div>
+      {pills}
     </div>
   )
 }

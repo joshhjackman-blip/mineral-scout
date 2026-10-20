@@ -213,9 +213,10 @@ type Props = {
   deal: OfferDeal
   countyLabel: string
   onOfferSent?: (dealId: string) => void
+  variant?: 'bar' | 'card'
 }
 
-export default function OfferDocuments({ deal, countyLabel, onOfferSent }: Props) {
+export default function OfferDocuments({ deal, countyLabel, onOfferSent, variant = 'bar' }: Props) {
   const [buyerEntity, setBuyerEntity] = useState<BuyerEntity>(() => {
     if (typeof window === 'undefined') return { ...DEFAULT_BUYER_ENTITY }
     try {
@@ -421,37 +422,53 @@ export default function OfferDocuments({ deal, countyLabel, onOfferSent }: Props
     }
   }, [deedForm, markOfferSent])
 
+  const actions = (
+    <>
+      <button
+        type="button"
+        onClick={() => { setShowFullPackageModal(false); openPSAModal() }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+      >
+        <FileText size={13} /> Generate PSA
+      </button>
+      <button
+        type="button"
+        onClick={() => { setShowFullPackageModal(false); openDeedModal() }}
+        className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+      >
+        <FileText size={13} /> Generate Mineral Deed
+      </button>
+      <button
+        type="button"
+        onClick={openFullPackageModal}
+        className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+      >
+        <Package size={13} /> Full package
+      </button>
+    </>
+  )
+
   return (
     <>
-      <div className="flex flex-wrap items-center gap-2 border-b border-blue-100 bg-blue-50/60 px-4 py-2.5">
-        <span className="text-xs font-semibold uppercase tracking-wide text-blue-800 mr-1">
-          Offer documents
-        </span>
-        <button
-          type="button"
-          onClick={() => { setShowFullPackageModal(false); openPSAModal() }}
-          className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
-        >
-          <FileText size={13} /> Generate PSA
-        </button>
-        <button
-          type="button"
-          onClick={() => { setShowFullPackageModal(false); openDeedModal() }}
-          className="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-50"
-        >
-          <FileText size={13} /> Generate Mineral Deed
-        </button>
-        <button
-          type="button"
-          onClick={openFullPackageModal}
-          className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-        >
-          <Package size={13} /> Full package
-        </button>
-        <span className="text-[11px] text-blue-700/80 ml-auto hidden sm:inline">
-          Edit blue fields, then download .docx
-        </span>
-      </div>
+      {variant === 'card' ? (
+        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
+            <div className="text-[11px] font-semibold text-gray-500">Offer documents</div>
+            <span className="text-[11px] text-gray-400">Edit blue fields, then download .docx</span>
+          </div>
+          <div className="flex flex-wrap gap-2">{actions}</div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 border-b border-blue-100 bg-blue-50/60 px-4 py-2.5">
+          <span className="text-xs font-semibold uppercase tracking-wide text-blue-800 mr-1">
+            Offer documents
+          </span>
+          {actions}
+          <span className="text-[11px] text-blue-700/80 ml-auto hidden sm:inline">
+            Edit blue fields, then download .docx
+          </span>
+        </div>
+      )}
 
     {showPSAModal && (
       <div className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center overflow-y-auto py-8">
