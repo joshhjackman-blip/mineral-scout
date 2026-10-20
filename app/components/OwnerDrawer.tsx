@@ -1307,7 +1307,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       )}
 
       <div className={`flex-1 overflow-y-auto ${crmMode ? 'crm-lead-scroll px-3 py-3 sm:px-4 sm:py-4 xl:px-5 xl:py-4' : 'px-6 py-5'}`}>
-        <div className={crmMode ? 'crm-lead-layout h-full' : undefined}>
+        <div className={crmMode ? 'crm-lead-layout' : undefined}>
         {crmMode && (
           <>
             <div className="crm-lead-contact min-w-0 space-y-3">

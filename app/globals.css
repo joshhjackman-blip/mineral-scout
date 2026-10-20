@@ -222,7 +222,6 @@ body {
 .crm-lead-layout {
   display: grid;
   width: 100%;
-  min-height: 100%;
   gap: 0.75rem;
   align-items: stretch;
   grid-template-columns: minmax(0, 1fr);
@@ -238,7 +237,6 @@ body {
 .crm-lead-wells,
 .crm-lead-notes {
   min-width: 0;
-  min-height: 0;
 }
 .crm-lead-contact { grid-area: contact; }
 .crm-lead-lease { grid-area: lease; }
@@ -270,12 +268,20 @@ body {
 /* Tablet landscape / small laptop: two columns once the drawer is ~700px. */
 @container crm-lead (min-width: 700px) {
   .crm-lead-layout {
+    min-height: 100%;
     grid-template-columns: minmax(0, 1.05fr) minmax(280px, 1fr);
-    grid-template-rows: auto auto minmax(10rem, 1fr);
+    grid-template-rows: auto auto minmax(10rem, auto);
     grid-template-areas:
       'contact lease'
       'wells lease'
       'notes notes';
+  }
+
+  .crm-lead-contact,
+  .crm-lead-lease,
+  .crm-lead-wells,
+  .crm-lead-notes {
+    min-height: 0;
   }
 
   .crm-lease-list {
@@ -285,12 +291,11 @@ body {
   }
 }
 
-/* Desktop: wells + notes share the second row so the left column
-   is not an empty well under the call log. */
 /* Laptop / ultrawide: three columns so lease list and notes fill the pane. */
 @container crm-lead (min-width: 900px) {
   .crm-lead-layout {
     grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.2fr) minmax(0, 0.88fr);
+    min-height: 100%;
     grid-template-rows: auto minmax(12rem, 1fr);
     grid-template-areas:
       'contact lease wells'
