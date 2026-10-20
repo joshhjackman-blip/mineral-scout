@@ -24,6 +24,7 @@ import { isPlatformInternalEmail, isPlatformOwner } from '@/lib/team'
 import { SKIP_TRACE_PRICE_USD, estimateMonthlySkipTraceCost } from '@/lib/billing'
 import SkipTraceReviewQueue from './SkipTraceReviewQueue'
 import SkipTraceResearchHits from './SkipTraceResearchHits'
+import SkipTraceQuotaBurn from './SkipTraceQuotaBurn'
 import SignupRequestsPanel from './SignupRequestsPanel'
 import type { SkipTraceReview } from '@/lib/skip-trace-review'
 import {
@@ -362,6 +363,8 @@ export default function OwnerPortfolioPage() {
         )}
 
         <SignupRequestsPanel />
+
+        <SkipTraceQuotaBurn />
 
         <SkipTraceResearchHits stats={research} loading={reviewsLoading} />
 

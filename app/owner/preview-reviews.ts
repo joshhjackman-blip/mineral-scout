@@ -1,4 +1,5 @@
 import type { SkipTraceReview } from '@/lib/skip-trace-review'
+import type { QuotaProviderStatus } from '@/lib/skip-trace-quota'
 
 export const PREVIEW_REVIEWS: SkipTraceReview[] = [
   {
@@ -147,6 +148,40 @@ export const PREVIEW_RESEARCH = {
     },
   ],
 }
+
+export const PREVIEW_QUOTA: QuotaProviderStatus[] = [
+  {
+    provider: 'idicore',
+    label: 'idiCORE',
+    quota: 12500,
+    used: 1840,
+    remaining: 10660,
+    job: null,
+  },
+  {
+    provider: 'accurateappend',
+    label: 'Accurate Append',
+    quota: 3333,
+    used: 112,
+    remaining: 3221,
+    job: {
+      id: 'preview-quota-aa',
+      provider: 'accurateappend',
+      status: 'running',
+      month: '2026-10',
+      target_count: 3221,
+      processed: 80,
+      hits: 19,
+      misses: 61,
+      skipped: 2,
+      cad_table_index: 0,
+      cad_offset: 200,
+      last_error: null,
+      created_at: new Date(Date.now() - 3_600_000).toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  },
+]
 
 export const shouldLoadPreviewReviews = (): boolean => {
   if (process.env.NODE_ENV === 'production') return false

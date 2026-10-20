@@ -579,7 +579,31 @@ export function skipTraceProvidersConfigured(): boolean {
   )
 }
 
-export async function runSkipTraceChain(args: TraceArgs): Promise<SkipTraceChainResult> {
+export function resolveSkipTraceProviders(
+  requested?: SkipTraceProviderName[] | null,
+): SkipTraceProviderName[] {
+  if (!requested || requested.length === 0) return [...SKIP_TRACE_PROVIDER_ORDER]
+  const allowed = new Set<SkipTraceProviderName>(SKIP_TRACE_PROVIDER_ORDER)
+  return requested.filter((name): name is SkipTraceProviderName => allowed.has(name))
+}
+
+async function recordPrepaidProviderUsage(
+  provider: SkipTraceProviderName,
+  hit: boolean,
+): Promise<void> {
+  if (provider !== 'idicore' && provider !== 'accurateappend') return
+  try {
+    const { recordPrepaidProviderCall } = await import('@/lib/skip-trace-quota')
+    await recordPrepaidProviderCall(provider, hit)
+  } catch (err) {
+    console.error('prepaid provider usage record failed:', err)
+  }
+}
+
+export async function runSkipTraceChain(
+  args: TraceArgs,
+  options?: { providers?: SkipTraceProviderName[] | null },
+): Promise<SkipTraceChainResult> {
   const accurateAppendKey = accurateAppendLicenseKey()
   const tracerfyKey = process.env.TRACERFY_API_KEY?.trim()
   const batchKey = process.env.BATCHSKIPTRACING_API_KEY?.trim()
@@ -601,22 +625,26 @@ export async function runSkipTraceChain(args: TraceArgs): Promise<SkipTraceChain
   let source = 'none'
   const tried: string[] = []
 
-  for (const name of SKIP_TRACE_PROVIDER_ORDER) {
+  for (const name of resolveSkipTraceProviders(options?.providers)) {
     const run = runners[name]
     if (!run) continue
+    let phoneHit = false
     try {
       console.log(`Skip trace trying provider: ${name}`)
       tried.push(name)
       const result = await run()
+      phoneHit = result.phones.length > 0
       if (result.phones.length > 0 || result.emails.length > 0) {
         phones = result.phones
         emails = result.emails
         source = name
+        await recordPrepaidProviderUsage(name, phoneHit)
         break
       }
     } catch (providerErr) {
       console.error(`Skip trace provider '${name}' error:`, providerErr)
     }
+    await recordPrepaidProviderUsage(name, phoneHit)
   }
 
   return { phones, emails, source, tried }

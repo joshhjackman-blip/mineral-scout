@@ -61,6 +61,10 @@
       "schedule": "7 * * * *"
     },
     {
+      "path": "/api/cron/skiptrace-quota",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/charge-skiptrace",
       "schedule": "0 6 1 * *"
     }
