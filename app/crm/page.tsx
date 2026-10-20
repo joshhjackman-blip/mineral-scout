@@ -848,16 +848,16 @@ export default function CRM() {
           setCallNow(false)
         }}
       />
-      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center gap-3 px-4 shrink-0 shadow-sm">
-        <div className="flex items-center gap-3 shrink-0">
+      <header className="h-12 bg-gray-900 border-b border-gray-800 flex items-center gap-2 sm:gap-3 px-2 sm:px-4 shrink-0 shadow-sm min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <AppLogo width={130} variant="light" />
-          <span className="text-gray-300 text-sm">·</span>
-          <span className="text-sm font-medium text-gray-400">CRM</span>
+          <span className="text-gray-300 text-sm hidden sm:inline">·</span>
+          <span className="text-sm font-medium text-gray-400 hidden sm:inline">CRM</span>
         </div>
-        <div className="flex-1 flex justify-center min-w-0 px-2" data-tour="crm-search">
+        <div className="flex-1 flex justify-center min-w-0 px-1 sm:px-2" data-tour="crm-search">
           <CrmGlobalSearch deals={deals} onSelect={openLead} />
         </div>
-        <nav className="flex items-center gap-2 shrink-0" data-tour="crm-nav">
+        <nav className="flex items-center gap-1 sm:gap-2 shrink-0" data-tour="crm-nav">
           <button
             type="button"
             onClick={() => setView('dashboard')}
@@ -934,7 +934,7 @@ export default function CRM() {
         {/* Left sidebar — leads list, search, filter chips, county filter.
             Preserved from the previous CRM layout because it was already
             the good part; the middle+right panels are what got nuked. */}
-        <aside className="w-[min(42vw,260px)] min-w-[176px] lg:w-[220px] xl:w-[260px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
+        <aside className="w-[188px] sm:w-[200px] lg:w-[220px] xl:w-[260px] shrink-0 bg-gray-50 border-r border-gray-200 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-200 bg-white">
             <div className="grid grid-cols-3 gap-1">
               {[
