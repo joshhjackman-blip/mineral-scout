@@ -1095,54 +1095,55 @@ export default function CRM() {
             flex parent is all we need. */}
         <main className="flex-1 overflow-hidden flex flex-col bg-white">
           {selected && drawerOwner ? (
-            <>
-              <OfferDocuments
-                deal={selected}
-                countyLabel={COUNTIES[selectedCountyId]?.name ?? selectedCountyId}
-                onOfferSent={handleOfferSent}
+            <div className="flex-1 overflow-hidden min-h-0">
+              <OwnerDrawer
+                open={true}
+                owner={drawerOwner}
+                countyId={selectedCountyId}
+                tractLabel={selected?.tract_abstract ?? null}
+                tractLegalDescription={
+                  [
+                    selected?.surv_name ?? selected?.tract_survey,
+                    selected?.block ? `BLK ${selected.block}` : null,
+                    selected?.surv_sect ? `SEC ${selected.surv_sect}` : null,
+                    selected?.tract_abstract ?? null,
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || null
+                }
+                inPipeline={true}
+                crmMode={true}
+                callNow={callNow}
+                onDismissCallNow={() => setCallNow(false)}
+                phoneActivity={parsePhoneActivity(selected?.phone_activity)}
+                connectedPhone={selected?.connected_phone ?? null}
+                onLogCallOutcome={handleLogCallOutcome}
+                callLogs={callLogs}
+                callLogSaving={callLogSaving}
+                callLogError={callLogError}
+                onAddCallLog={handleAddCallLog}
+                dealStatus={selected?.tag ?? null}
+                onSetStatus={handleSetStatus}
+                ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
+                onClose={() => {
+                  setCallNow(false)
+                  setSelected(null)
+                }}
+                onSkipTrace={handleSkipTrace}
+                onAddToPipeline={handleAddToPipeline}
+                onSaveOwnerDetails={handleSaveOwnerDetails}
+                onRemoveOwner={handleRemoveOwner}
+                onRestoreOwner={handleRestoreOwner}
+                crmAfterContact={
+                  <OfferDocuments
+                    variant="card"
+                    deal={selected}
+                    countyLabel={COUNTIES[selectedCountyId]?.name ?? selectedCountyId}
+                    onOfferSent={handleOfferSent}
+                  />
+                }
               />
-              <div className="flex-1 overflow-hidden min-h-0">
-                <OwnerDrawer
-                  open={true}
-                  owner={drawerOwner}
-                  countyId={selectedCountyId}
-                  tractLabel={selected?.tract_abstract ?? null}
-                  tractLegalDescription={
-                    [
-                      selected?.surv_name ?? selected?.tract_survey,
-                      selected?.block ? `BLK ${selected.block}` : null,
-                      selected?.surv_sect ? `SEC ${selected.surv_sect}` : null,
-                      selected?.tract_abstract ?? null,
-                    ]
-                      .filter(Boolean)
-                      .join(' ') || null
-                  }
-                  inPipeline={true}
-                  crmMode={true}
-                  callNow={callNow}
-                  onDismissCallNow={() => setCallNow(false)}
-                  phoneActivity={parsePhoneActivity(selected?.phone_activity)}
-                  connectedPhone={selected?.connected_phone ?? null}
-                  onLogCallOutcome={handleLogCallOutcome}
-                  callLogs={callLogs}
-                  callLogSaving={callLogSaving}
-                  callLogError={callLogError}
-                  onAddCallLog={handleAddCallLog}
-                  dealStatus={selected?.tag ?? null}
-                  onSetStatus={handleSetStatus}
-                  ownerIsHidden={(selected?.tag ?? '') === 'bad_lead'}
-                  onClose={() => {
-                    setCallNow(false)
-                    setSelected(null)
-                  }}
-                  onSkipTrace={handleSkipTrace}
-                  onAddToPipeline={handleAddToPipeline}
-                  onSaveOwnerDetails={handleSaveOwnerDetails}
-                  onRemoveOwner={handleRemoveOwner}
-                  onRestoreOwner={handleRestoreOwner}
-                />
-              </div>
-            </>
+            </div>
           ) : (
             <div className="h-full flex items-center justify-center flex-1">
               <div className="text-center">
