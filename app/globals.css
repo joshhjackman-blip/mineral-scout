@@ -211,6 +211,98 @@ body {
   font-style: normal;
 }
 
+/* Lead sheet: container queries track the drawer width (sidebar already
+   stole ~200–260px), so tablet/laptop/ultrawide all pack cards instead
+   of leaving a 1400px island in the middle of a wide monitor. */
+.crm-lead-scroll {
+  container-type: inline-size;
+  container-name: crm-lead;
+}
+
+.crm-lead-layout {
+  display: grid;
+  width: 100%;
+  gap: 0.75rem;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'lease'
+    'contact'
+    'wells'
+    'notes';
+}
+
+.crm-lead-contact,
+.crm-lead-lease,
+.crm-lead-wells,
+.crm-lead-notes {
+  min-width: 0;
+}
+.crm-lead-contact { grid-area: contact; }
+.crm-lead-lease { grid-area: lease; }
+.crm-lead-wells { grid-area: wells; }
+.crm-lead-notes { grid-area: notes; }
+
+.crm-lead-lease > section {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.crm-lease-stats {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
+}
+
+.crm-lease-list {
+  min-height: 0;
+}
+
+.crm-lead-notes-fill {
+  height: 100%;
+  min-height: 12rem;
+}
+
+/* Tablet landscape / small laptop: two columns once the drawer is ~700px. */
+@container crm-lead (min-width: 700px) {
+  .crm-lead-layout {
+    min-height: 100%;
+    grid-template-columns: minmax(0, 1.05fr) minmax(280px, 1fr);
+    grid-template-rows: auto auto minmax(10rem, auto);
+    grid-template-areas:
+      'contact lease'
+      'wells lease'
+      'notes notes';
+  }
+
+  .crm-lead-contact,
+  .crm-lead-lease,
+  .crm-lead-wells,
+  .crm-lead-notes {
+    min-height: 0;
+  }
+
+  .crm-lease-list {
+    flex: 1 1 auto;
+    min-height: 10rem;
+    overflow-y: auto;
+  }
+}
+
+/* Laptop / ultrawide: three columns so lease list and notes fill the pane. */
+@container crm-lead (min-width: 900px) {
+  .crm-lead-layout {
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.2fr) minmax(0, 0.88fr);
+    min-height: 100%;
+    grid-template-rows: auto minmax(12rem, 1fr);
+    grid-template-areas:
+      'contact lease wells'
+      'contact lease notes';
+  }
+}
+
 /* Soft dark pass for Tailwind gray shells (account / CRM / admin / owner). */
 .dark .bg-gray-50 {
   background-color: #0b1220 !important;
@@ -394,5 +486,51 @@ button, a { transition: all 0.15s ease; }
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* Cross-page enter: short fade + rise. Root layout stays put; app/template
+   remounts on navigation so this plays once per route. */
+@keyframes mm-page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: mm-page-enter 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
+}
+
+@supports (view-transition-name: none) {
+  @view-transition {
+    navigation: auto;
+  }
+
+  ::view-transition-old(root) {
+    animation: mm-page-fade-out 180ms ease both;
+  }
+
+  ::view-transition-new(root) {
+    animation: mm-page-enter 240ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+}
+
+@keyframes mm-page-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }

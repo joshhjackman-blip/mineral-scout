@@ -24,6 +24,7 @@ export type Deal = {
   mailing_state?: string | null
   mailing_zip?: string | null
   acreage?: number | null
+  ownership_pct?: number | null
   monthly_royalty?: number | null
   propensity_score?: number | null
   tag?: string | null

@@ -299,6 +299,70 @@ function abstractKey(raw: unknown): string {
   return text.replace(/^A-\s*/i, '').trim()
 }
 
+function isCrmPreview(): boolean {
+  if (process.env.NODE_ENV === 'production') return false
+  if (typeof window === 'undefined') return false
+  return (
+    window.location.pathname.startsWith('/crm') &&
+    new URLSearchParams(window.location.search).get('preview') === '1'
+  )
+}
+
+const PREVIEW_HOLDINGS: OwnerDrawerHolding[] = [
+  {
+    id: 'preview-h-0',
+    county_id: 'howard',
+    field_name: 'CATES 8-36 UNIT',
+    abstract: '486',
+    block: '36 T2S',
+    section: '8',
+    survey: 'T&P RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 640,
+    rrc_lease_id: 29014,
+  },
+  {
+    id: 'preview-h-1',
+    county_id: 'howard',
+    field_name: 'CARPENTER 11-31 A UNIT',
+    abstract: '113',
+    block: '25',
+    section: '11',
+    survey: 'H&TC RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 640,
+    rrc_lease_id: 55683,
+  },
+  {
+    id: 'preview-h-2',
+    county_id: 'howard',
+    field_name: 'MITCHELL 47-31 A UNIT',
+    abstract: '75',
+    block: '30 T1N',
+    section: '3',
+    survey: 'T&P RR CO',
+    operator_name: 'HIGHPEAK ENERGY HOLDIN',
+    ownership_pct: 0.001242,
+    acreage: 320,
+    rrc_lease_id: 58440,
+  },
+  {
+    id: 'preview-h-3',
+    county_id: 'martin',
+    field_name: 'WHAM UNIT B 22-23',
+    abstract: '447',
+    block: '36 T1S',
+    section: '10',
+    survey: 'T&P RR CO',
+    operator_name: 'SURGE OPERATING, LLC',
+    ownership_pct: 0.0008,
+    acreage: 160,
+    rrc_lease_id: 57823,
+  },
+]
+
 function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean) {
   // Cross-county holdings. Every county the platform knows about
   // (COUNTIES in lib/counties.ts) is queried in parallel; results are
@@ -314,6 +378,12 @@ function useOwnerHoldings(county: County, owner: OwnerLike | null, open: boolean
     if (!open || !owner) {
       setHoldings([])
       setErrorMessages([])
+      return
+    }
+    if (isCrmPreview()) {
+      setHoldings(PREVIEW_HOLDINGS)
+      setErrorMessages([])
+      setLoading(false)
       return
     }
     let cancelled = false
@@ -973,10 +1043,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       aria-label={`Details for ${owner.owner_name}`}
       style={{ minHeight: 0 }}
     >
-      <header className="shrink-0 flex items-start gap-4 px-6 py-4 border-b border-gray-100 bg-white">
+      <header className={`shrink-0 flex items-start gap-4 border-b border-gray-100 bg-white ${crmMode ? 'px-5 py-3' : 'px-6 py-4'}`}>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-3">
-            <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-2xl' : 'text-xl'}`}>
+            <div className={`font-semibold text-gray-900 truncate ${crmMode ? 'text-xl' : 'text-xl'}`}>
               {displayName}
             </div>
             {ownerIsHidden && (
@@ -1236,12 +1306,13 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
       </nav>
       )}
 
-      <div className={`flex-1 overflow-y-auto ${crmMode ? 'px-6 py-6' : 'px-6 py-5'}`}>
-        <div className={crmMode ? 'mx-auto w-full max-w-7xl' : undefined}>
+      <div className={`flex-1 overflow-y-auto ${crmMode ? 'crm-lead-scroll px-3 py-3 sm:px-4 sm:py-4 xl:px-5 xl:py-4' : 'px-6 py-5'}`}>
+        <div className={crmMode ? 'crm-lead-layout' : undefined}>
         {crmMode && (
-          <div className="mb-6">
+          <>
+            <div className="crm-lead-contact min-w-0 space-y-3">
             {address && (
-              <div className="mb-3 text-sm text-gray-500">{address}</div>
+              <div className="text-sm text-gray-500">{address}</div>
             )}
             <LeadPhones
               phones={phoneList.map((p) => ({ ...p, raw: p.href }))}
@@ -1261,7 +1332,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 void onLogCallOutcome?.(owner, phone.raw, outcome)
               }}
             />
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {emailList.length > 0 ? (
                 emailList.map((e) => (
                   <ContactPill
@@ -1283,10 +1354,10 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 <ContactPill icon="✉︎" label="No email on file" disabled wide />
               )}
             </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => onSkipTrace(owner)}
-                className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-4 py-2 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
+                className="inline-flex items-center gap-2 rounded-md bg-gradient-to-b from-amber-500 to-amber-600 px-3 py-1.5 text-sm font-semibold text-white shadow hover:from-amber-500 hover:to-amber-700"
               >
                 ⚡ Skip trace
               </button>
@@ -1299,7 +1370,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                     setRemoving(false)
                     setActionError(null)
                   }}
-                  className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
                   Update owner
                 </button>
@@ -1317,7 +1388,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                       setActionError(result.error || 'Failed to restore owner')
                     }
                   }}
-                  className="rounded-md border border-lime-300 bg-lime-50 px-4 py-2 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
+                  className="rounded-md border border-lime-300 bg-lime-50 px-3 py-1.5 text-sm font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-60"
                 >
                   Restore to list
                 </button>
@@ -1329,14 +1400,14 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                     setEditingContact(false)
                     setActionError(null)
                   }}
-                  className="rounded-md border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+                  className="rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-semibold text-rose-700 hover:bg-rose-100"
                 >
                   Remove from list
                 </button>
               ) : null}
               <button
                 onClick={() => onAddToPipeline(owner)}
-                className={`rounded-md border px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
                   inPipeline
                     ? 'border-lime-300 bg-lime-50 text-lime-700 hover:bg-lime-100'
                     : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
@@ -1346,7 +1417,7 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
               </button>
             </div>
             {removing && onRemoveOwner && (
-              <div className="mt-4 rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3">
+              <div className="rounded-xl border border-rose-100 bg-rose-50/60 px-4 py-3">
                 <div className="text-sm font-semibold text-rose-800">
                   Remove from your working list?
                 </div>
@@ -1399,34 +1470,102 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
                 )}
               </div>
             )}
-          </div>
-        )}
-        {crmMode && onSetStatus && (
-          <StatusPicker
-            current={dealStatus}
-            busy={statusBusy}
-            onSelect={async (status) => {
-              setStatusBusy(true)
-              setActionError(null)
-              const result = await onSetStatus(owner, status)
-              setStatusBusy(false)
-              if (!result.success) setActionError(result.error || 'Failed to set status')
-            }}
-          />
-        )}
-        {crmMode && onAddCallLog && (
-          <div className="mb-5">
-            <CallLog
-              key={owner.id}
-              rows={callLogs}
-              currentDesignation={dealStatus}
-              saving={callLogSaving}
-              error={callLogError}
-              onAdd={(draft) => onAddCallLog(owner, draft)}
+            {onSetStatus && (
+              <StatusPicker
+                current={dealStatus}
+                busy={statusBusy}
+                onSelect={async (status) => {
+                  setStatusBusy(true)
+                  setActionError(null)
+                  const result = await onSetStatus(owner, status)
+                  setStatusBusy(false)
+                  if (!result.success) setActionError(result.error || 'Failed to set status')
+                }}
+              />
+            )}
+            {onAddCallLog && (
+              <CallLog
+                key={owner.id}
+                rows={callLogs}
+                currentDesignation={dealStatus}
+                saving={callLogSaving}
+                error={callLogError}
+                onAdd={(draft) => onAddCallLog(owner, draft)}
+              />
+            )}
+            <OverviewPanel
+              owner={owner}
+              ownershipPct={ownershipPct}
+              acreage={acreage}
+              acreageEstimated={acreageEstimate.estimated}
+              nra={nra}
+              nriPct={nriPct}
+              royaltyEstimate={royaltyEstimate}
+              cumOil={cumOil}
+              tractLabel={tractLabel ?? null}
+              tractLegalDescription={tractLegalDescription || holdingLegal || null}
+              rrcLease={rrcLease}
+              county={county}
+              tractDevStatus={tractDevStatus ?? null}
+              editingContact={editingContact}
+              onCancelEdit={() => {
+                setEditingContact(false)
+                setActionError(null)
+              }}
+              onSaveDetails={
+                onSaveOwnerDetails
+                  ? async (patch) => {
+                      setActionBusy(true)
+                      setActionError(null)
+                      const result = await onSaveOwnerDetails(owner, patch)
+                      setActionBusy(false)
+                      if (!result.success) {
+                        setActionError(result.error || 'Failed to save owner details')
+                        return false
+                      }
+                      setEditingContact(false)
+                      return true
+                    }
+                  : undefined
+              }
+              saveBusy={actionBusy}
+              saveError={actionError}
+              crmMode
             />
-          </div>
+            </div>
+            <aside className="crm-lead-lease min-w-0">
+              <section className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="mb-2 border-b border-gray-100 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+                  Lease ownership
+                </div>
+                <LeaseOwnershipStats
+                  compact
+                  owner={owner}
+                  ownershipPct={ownershipPct}
+                  acreage={acreage}
+                  acreageEstimated={acreageEstimate.estimated}
+                  nra={nra}
+                  nriPct={nriPct}
+                  royaltyEstimate={royaltyEstimate}
+                  cumOil={cumOil}
+                />
+                <div className="crm-lease-list mt-3 border-t border-gray-100 pt-2">
+                  <HoldingsPanel
+                    holdings={holdings}
+                    loading={holdingsLoading}
+                    county={county}
+                    legalDescByAbstract={legalDescByAbstract}
+                    errorMessages={holdingsErrors}
+                    highlightOperators={highlightOperators}
+                    crmMode
+                    layout="stack"
+                  />
+                </div>
+              </section>
+            </aside>
+          </>
         )}
-        {(crmMode || tab === 'overview') && (
+        {!crmMode && tab === 'overview' && (
           <OverviewPanel
             owner={owner}
             ownershipPct={ownershipPct}
@@ -1464,46 +1603,64 @@ export default function OwnerDrawer(props: OwnerDrawerProps) {
             }
             saveBusy={actionBusy}
             saveError={actionError}
-            crmMode={crmMode}
           />
         )}
-        {(crmMode || tab === 'holdings') && (
-          <div className={crmMode ? 'mt-8' : ''}>
-            <HoldingsPanel
-              holdings={holdings}
-              loading={holdingsLoading}
-              county={county}
-              legalDescByAbstract={legalDescByAbstract}
-              errorMessages={holdingsErrors}
-              highlightOperators={highlightOperators}
-              crmMode={crmMode}
-            />
-          </div>
-        )}
-        {(crmMode || tab === 'wells') && (
-          <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Wells</SectionHeading>}
-          <WellsPanel
-            wells={wells}
-            loading={wellsLoading}
+        {!crmMode && tab === 'holdings' && (
+          <HoldingsPanel
+            holdings={holdings}
+            loading={holdingsLoading}
             county={county}
+            legalDescByAbstract={legalDescByAbstract}
+            errorMessages={holdingsErrors}
             highlightOperators={highlightOperators}
           />
-          </div>
         )}
-        {(crmMode || tab === 'notes') && (
-          <div className={crmMode ? 'mt-8' : ''}>
-            {crmMode && <SectionHeading>Notes</SectionHeading>}
-          <NotesPanel
-            value={note}
-            loading={noteLoading}
-            saving={noteSaving}
-            savedAt={noteSavedAt}
-            error={noteError}
-            onChange={setNote}
-            onBlur={() => { void saveNote(note) }}
-          />
-          </div>
+        {crmMode ? (
+          <>
+            <div className="crm-lead-wells min-w-0">
+              <SectionHeading>Wells</SectionHeading>
+              <WellsPanel
+                wells={wells}
+                loading={wellsLoading}
+                county={county}
+                highlightOperators={highlightOperators}
+              />
+            </div>
+            <div className="crm-lead-notes min-w-0">
+              <NotesPanel
+                fill
+                value={note}
+                loading={noteLoading}
+                saving={noteSaving}
+                savedAt={noteSavedAt}
+                error={noteError}
+                onChange={setNote}
+                onBlur={() => { void saveNote(note) }}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {tab === 'wells' && (
+              <WellsPanel
+                wells={wells}
+                loading={wellsLoading}
+                county={county}
+                highlightOperators={highlightOperators}
+              />
+            )}
+            {tab === 'notes' && (
+              <NotesPanel
+                value={note}
+                loading={noteLoading}
+                saving={noteSaving}
+                savedAt={noteSavedAt}
+                error={noteError}
+                onChange={setNote}
+                onBlur={() => { void saveNote(note) }}
+              />
+            )}
+          </>
         )}
         </div>
       </div>
@@ -1530,7 +1687,7 @@ function StatusPicker({
   onSelect: (status: string) => void
 }) {
   return (
-    <div className="mb-5 rounded-lg border border-gray-200 bg-gray-50 p-3">
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
       <div className="mb-2 text-xs font-semibold text-gray-500">
         Lead status
       </div>
@@ -1589,12 +1746,92 @@ function ContactPill({
   )
 }
 
-function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {
+function StatCard({
+  label,
+  value,
+  hint,
+  compact = false,
+}: {
+  label: string
+  value: ReactNode
+  hint?: ReactNode
+  compact?: boolean
+}) {
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+    <div className={`rounded-lg border border-gray-200 bg-gray-50 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
       <div className="text-[11px] font-semibold text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums text-gray-900">{value}</div>
-      {hint && <div className="mt-1 text-[11px] text-gray-500">{hint}</div>}
+      <div className={`mt-0.5 font-semibold tabular-nums text-gray-900 ${compact ? 'text-lg leading-tight' : 'text-2xl'}`}>
+        {value}
+      </div>
+      {hint && <div className="mt-0.5 text-[11px] leading-snug text-gray-500">{hint}</div>}
+    </div>
+  )
+}
+
+function LeaseOwnershipStats({
+  owner,
+  ownershipPct,
+  acreage,
+  acreageEstimated = false,
+  nra,
+  nriPct,
+  royaltyEstimate,
+  cumOil,
+  compact = false,
+}: {
+  owner: OwnerLike
+  ownershipPct: number | null
+  acreage: string | null
+  acreageEstimated?: boolean
+  nra: number | null
+  nriPct?: number | null
+  royaltyEstimate: number | null
+  cumOil: number
+  compact?: boolean
+}) {
+  return (
+    <div
+      className={compact ? 'crm-lease-stats' : 'grid gap-3'}
+      style={compact ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}
+    >
+      <StatCard
+        compact={compact}
+        label="Ownership %"
+        value={ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
+        hint={ownershipPct != null ? `Decimal: ${(ownershipPct / 100).toFixed(6)}` : undefined}
+      />
+      <StatCard
+        compact={compact}
+        label="Gross acres"
+        value={acreage ?? '—'}
+        hint={
+          acreage != null
+            ? (acreageEstimated
+                ? 'Estimated from section / legal (640 ac square section)'
+                : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
+            : (clean(owner.sptb_code)
+                ? `${owner.sptb_code} interest — no acreage on roll`
+                : 'No acreage on roll for this interest')
+        }
+      />
+      <StatCard
+        compact={compact}
+        label="Net mineral acres"
+        value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
+        hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
+      />
+      <StatCard
+        compact={compact}
+        label="NRI"
+        value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
+        hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
+      />
+      <StatCard
+        compact={compact}
+        label="Est. royalty"
+        value={royaltyEstimate != null ? `$${royaltyEstimate.toLocaleString()}/mo` : '—'}
+        hint={cumOil > 0 ? `Cum. oil: ${cumOil.toLocaleString()} bbl` : 'No production on file'}
+      />
     </div>
   )
 }
@@ -1619,7 +1856,7 @@ function KVRow({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
   // second line and defeat the whole one-line-per-field layout the
   // Contact snapshot / Lease context cards were redesigned for.
   return (
-    <div className="grid grid-cols-[160px_1fr] items-baseline gap-3">
+    <div className="grid grid-cols-[120px_1fr] items-baseline gap-2">
       <div className="text-xs text-gray-500 whitespace-nowrap">{k}</div>
       <div
         className={`text-sm text-gray-900 min-w-0 truncate ${mono ? 'tabular-nums' : ''}`}
@@ -1695,48 +1932,20 @@ function OverviewPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        <StatCard
-          label="Ownership %"
-          value={ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-          hint={ownershipPct != null ? `Decimal: ${(ownershipPct / 100).toFixed(6)}` : undefined}
+      {!crmMode && (
+        <LeaseOwnershipStats
+          owner={owner}
+          ownershipPct={ownershipPct}
+          acreage={acreage}
+          acreageEstimated={acreageEstimated}
+          nra={nra}
+          nriPct={nriPct}
+          royaltyEstimate={royaltyEstimate}
+          cumOil={cumOil}
         />
-        <StatCard
-          label="Gross acres"
-          value={acreage ?? '—'}
-          hint={
-            acreage != null
-              ? (acreageEstimated
-                  ? 'Estimated from section / legal (640 ac square section)'
-                  : owner.interest_type ? `Interest: ${owner.interest_type}` : undefined)
-              : (clean(owner.sptb_code)
-                  ? `${owner.sptb_code} interest — no acreage on roll`
-                  : 'No acreage on roll for this interest')
-          }
-        />
-        <StatCard
-          label="Net mineral acres"
-          value={nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
-          hint={acreage != null ? 'gross acres × mineral interest' : 'needs gross acreage (not on roll)'}
-        />
-        <StatCard
-          label="NRI"
-          value={nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
-          hint={`Mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}% assumed 1/8 royalty`}
-        />
-        <StatCard
-          label="Est. royalty"
-          value={royaltyEstimate != null ? `$${royaltyEstimate.toLocaleString()}/mo` : '—'}
-          hint={cumOil > 0 ? `Cum. oil: ${cumOil.toLocaleString()} bbl` : 'No production on file'}
-        />
-      </div>
+      )}
 
-      {/* Contact snapshot and Lease context stacked full-width instead
-          of side-by-side. Two half-width columns squeezed each field's
-          value column so tightly that long mailing addresses / legal
-          descriptions wrapped onto a second line under the label —
-          full-width lets each field sit on one line. */}
-      <div className="flex flex-col gap-4">
+      <div className={crmMode ? '' : 'flex flex-col gap-4'}>
         <SectionCard title="Contact snapshot">
           {editingContact && onSaveDetails ? (
             <div className="flex flex-col gap-3">
@@ -1848,6 +2057,7 @@ function OverviewPanel({
           )}
         </SectionCard>
 
+        {!crmMode && (
         <SectionCard title="Lease context">
           <KVRow
             k="Legal description"
@@ -1861,6 +2071,7 @@ function OverviewPanel({
             <KVRow k="Interest code" v={owner.sptb_code ?? ''} mono />
           )}
         </SectionCard>
+        )}
       </div>
 
       {tractDevStatus && <DevStatusCard status={tractDevStatus} />}
@@ -2167,8 +2378,102 @@ function HoldingsErrorBanner({
   )
 }
 
+function holdingRowView(
+  h: OwnerDrawerHolding,
+  i: number,
+  activeCountyId: CountyKey,
+  legalDescByAbstract: Record<string, string> | undefined,
+  highlightOperators?: string[] | null,
+) {
+  const rowCountyId = (h.county_id ?? activeCountyId) as CountyKey
+  const cfg = COUNTIES[rowCountyId]
+  const isActive = rowCountyId === activeCountyId
+  const bare = abstractKey(h.abstract)
+  const abstractLabel = bare ? `A-${bare}` : ''
+  const opHit = Boolean(
+    highlightOperators &&
+      highlightOperators.length > 0 &&
+      operatorMatchesAny(h.operator_name, highlightOperators),
+  )
+  const legalDesc = isActive && bare
+    ? (legalDescByAbstract?.[bare] || '')
+    : ''
+  const parsed = parseLegalDescription(legalDesc)
+  const rawBlock   = clean(h.block)
+  const rawSection = clean(h.section)
+  const rawSurvey  = clean(h.survey)
+  const blockTownshipMatch = rawBlock.match(/T\d+[NS]/i)
+  const townshipFromBlock = blockTownshipMatch
+    ? blockTownshipMatch[0].toUpperCase()
+    : ''
+  const blockOnly = townshipFromBlock
+    ? rawBlock.replace(blockTownshipMatch![0], '').trim()
+    : rawBlock
+  const parts = {
+    section:  rawSection || parsed.section,
+    township: townshipFromBlock || parsed.township,
+    block:    blockOnly || parsed.block,
+    range:    parsed.range,
+    survey:   rawSurvey || parsed.survey,
+  }
+  const ownershipPct = ownershipPctValue(
+    h.ownership_pct ?? h.decimal_interest,
+    cfg.ownershipPctIsDecimal,
+  )
+  const unitLabel = clean(h.county_lease_name)
+    || clean(h.field_name)
+    || (h.rrc_lease_id != null ? `Lease #${h.rrc_lease_id}` : '—')
+  const composedLegal = (() => {
+    if (legalDesc) return legalDesc
+    const bits: string[] = []
+    if (parts.township) bits.push(parts.township)
+    if (parts.block) bits.push(`BLK ${parts.block}`)
+    if (parts.section) bits.push(`SEC ${parts.section}`)
+    if (abstractLabel) bits.push(abstractLabel)
+    if (bits.length > 0) return bits.join(' ')
+    if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
+    return abstractLabel
+  })()
+  const acreageEstimate = estimateGrossAcres({
+    cadAcres: h.acreage,
+    legal: composedLegal,
+    survey: clean(h.survey),
+    section: parts.section,
+    block: parts.block,
+    township: parts.township,
+  })
+  const acres = acreageEstimate.acres
+  const nra = (ownershipPct != null && acres != null)
+    ? netMineralAcres(acres, ownershipPct)
+    : null
+  const nriPct = ownershipPct != null
+    ? mineralOwnerNriPct(ownershipPct)
+    : null
+  return {
+    key: `${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`,
+    unitLabel,
+    fieldName: clean(h.field_name),
+    composedLegal,
+    abstractLabel,
+    parts,
+    operator: clean(h.operator_name),
+    opHit,
+    isActive,
+    countyLabelShort: cfg.displayName.replace(/\s+County,\s+TX$/i, ''),
+    countyDisplayName: cfg.displayName,
+    ownershipPct,
+    interestType: clean(h.interest_type),
+    acres,
+    acresEstimated: acreageEstimate.estimated,
+    nra,
+    nriPct,
+    i,
+  }
+}
+
 function HoldingsPanel({
   holdings, loading, county, legalDescByAbstract, errorMessages, highlightOperators, crmMode = false,
+  layout = 'table',
 }: {
   holdings: OwnerDrawerHolding[]
   loading: boolean
@@ -2177,6 +2482,7 @@ function HoldingsPanel({
   errorMessages?: Array<{ county: CountyKey; message: string }>
   highlightOperators?: string[] | null
   crmMode?: boolean
+  layout?: 'table' | 'stack'
 }) {
   if (loading) {
     return <div className="text-sm text-gray-500">Loading leases across all counties…</div>
@@ -2202,35 +2508,126 @@ function HoldingsPanel({
     holdings.map((h) => h.county_id ?? activeCountyId),
   )
   const totalCounties = countiesRepresented.size
+  const rows = holdings.map((h, i) =>
+    holdingRowView(h, i, activeCountyId, legalDescByAbstract, highlightOperators),
+  )
+
+  const header = (
+    <div
+      className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 py-1.5 ${
+        layout === 'stack' ? 'px-0' : 'px-1'
+      } ${crmMode ? '' : 'sticky backdrop-blur'}`}
+      style={crmMode ? undefined : { top: '-20px' }}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
+        {layout === 'stack' ? 'Leases this lead owns' : 'Leases'}
+      </div>
+      <div className="text-xs tabular-nums text-gray-700">
+        <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
+        {' · '}
+        <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
+      </div>
+    </div>
+  )
+
+  if (layout === 'stack') {
+    return (
+      <div className="flex flex-col gap-1">
+        {header}
+        <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
+        <div>
+          {rows.map((row) => (
+            <div
+              key={row.key}
+              className={`border-b border-gray-100 py-2 last:border-b-0 ${
+                row.opHit
+                  ? 'bg-amber-50/80'
+                  : row.isActive
+                    ? 'bg-amber-50/30'
+                    : ''
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div
+                    className="truncate text-[13px] font-semibold leading-tight text-gray-900"
+                    title={row.fieldName && row.fieldName !== row.unitLabel
+                      ? `${row.unitLabel} · ${row.fieldName}`
+                      : row.unitLabel}
+                  >
+                    {row.unitLabel}
+                  </div>
+                  <div
+                    className="mt-0.5 truncate text-[11px] leading-snug text-gray-500"
+                    title={row.composedLegal || row.abstractLabel || undefined}
+                  >
+                    {row.composedLegal || row.abstractLabel || '—'}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div
+                    className="text-[12px] font-semibold tabular-nums text-gray-900"
+                    title={row.interestType
+                      ? `${row.ownershipPct?.toFixed(4)}% · ${row.interestType}`
+                      : undefined}
+                  >
+                    {row.ownershipPct != null ? `${row.ownershipPct.toFixed(4)}%` : '—'}
+                  </div>
+                  {row.nra != null && (
+                    <div className="text-[10px] tabular-nums text-gray-500">
+                      {row.nra.toFixed(row.nra < 1 ? 3 : 2)} NMA
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-gray-600">
+                <span
+                  className={`rounded-full border px-1.5 py-0.5 font-semibold ${
+                    row.isActive
+                      ? 'border-amber-300 bg-amber-100 text-amber-900'
+                      : 'border-slate-200 bg-slate-50 text-slate-700'
+                  }`}
+                  title={row.countyDisplayName}
+                >
+                  {row.countyLabelShort}
+                </span>
+                <span
+                  className={`min-w-0 truncate ${row.opHit ? 'font-semibold text-amber-900' : ''}`}
+                  title={row.operator || undefined}
+                >
+                  {row.operator || 'Unknown operator'}
+                </span>
+                {row.opHit && (
+                  <span className="rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                    Match
+                  </span>
+                )}
+                {row.acres != null && (
+                  <span
+                    className="tabular-nums text-gray-400"
+                    title={row.acresEstimated
+                      ? `${formatAcres(row.acres)} ac estimated from section / legal`
+                      : `${formatAcres(row.acres)} ac from CAD`}
+                  >
+                    {formatAcres(row.acres)} ac{row.acresEstimated ? ' est.' : ''}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
 
   // Compact table view. Columns follow the on-call spec:
   //   Unit | Legal | Sec | Township | Block | Range | Operator | County
-  // Sec / Township / Block / Range are parsed from the legal
-  // description we already computed for the active county's tracts
-  // via legalDescByAbstract. For cross-county rows we don't have a
-  // pre-computed legal description, so those columns show "—" and
-  // the Legal column falls back to the bare abstract label.
-  //
   // Sticky top strip + sticky table header stay pinned in the map
   // drawer. CRM uses page scroll under a fixed name bar, so the
   // negative sticky offset would clip this heading and the first row.
   return (
     <div className="flex flex-col gap-2">
-      <div
-        className={`z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-1 py-1.5 ${
-          crmMode ? '' : 'sticky backdrop-blur'
-        }`}
-        style={crmMode ? undefined : { top: '-20px' }}
-      >
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-gray-500">
-          Leases
-        </div>
-        <div className="text-xs tabular-nums text-gray-700">
-          <span className="font-semibold text-gray-900">{totalLeases}</span> lease{totalLeases === 1 ? '' : 's'}
-          {' · '}
-          <span className="font-semibold text-gray-900">{totalCounties}</span> {totalCounties === 1 ? 'county' : 'counties'}
-        </div>
-      </div>
+      {header}
 
       <HoldingsErrorBanner errorMessages={errorMessages ?? []} />
 
@@ -2261,188 +2658,102 @@ function HoldingsPanel({
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h, i) => {
-              const rowCountyId = (h.county_id ?? activeCountyId) as CountyKey
-              const cfg = COUNTIES[rowCountyId]
-              const isActive = rowCountyId === activeCountyId
-              const bare = abstractKey(h.abstract)
-              const abstractLabel = bare ? `A-${bare}` : ''
-              const opHit = Boolean(
-                highlightOperators &&
-                  highlightOperators.length > 0 &&
-                  operatorMatchesAny(h.operator_name, highlightOperators),
-              )
-              // Only the active county has a pre-computed legal
-              // description available — legalDescByAbstract is built
-              // from the tracts currently loaded on the map.
-              const legalDesc = isActive && bare
-                ? (legalDescByAbstract?.[bare] || '')
-                : ''
-
-              // Prefer the real columns from the ownership row over
-              // regex-parsing the composed legal description. Howard /
-              // Martin ship block+section+survey natively (loaded from
-              // the county tax roll); Gonzales rows don't have them,
-              // so parseLegalDescription() fills gaps from whatever
-              // legal string the parent computed.
-              const parsed = parseLegalDescription(legalDesc)
-              const rawBlock   = clean(h.block)
-              const rawSection = clean(h.section)
-              const rawSurvey  = clean(h.survey)
-              // The tax-roll `block` column often has "35 T1N" stuffed
-              // into it — split off the township token so the Block
-              // column shows only "35" and Township shows "T1N".
-              const blockTownshipMatch = rawBlock.match(/T\d+[NS]/i)
-              const townshipFromBlock = blockTownshipMatch
-                ? blockTownshipMatch[0].toUpperCase()
-                : ''
-              const blockOnly = townshipFromBlock
-                ? rawBlock.replace(blockTownshipMatch![0], '').trim()
-                : rawBlock
-              const parts = {
-                section:  rawSection || parsed.section,
-                township: townshipFromBlock || parsed.township,
-                block:    blockOnly || parsed.block,
-                range:    parsed.range,
-                survey:   rawSurvey || parsed.survey,
-              }
-
-              const ownershipPct = ownershipPctValue(
-                h.ownership_pct ?? h.decimal_interest,
-                cfg.ownershipPctIsDecimal,
-              )
-
-              const unitLabel = clean(h.county_lease_name)
-                || clean(h.field_name)
-                || (h.rrc_lease_id != null ? `Lease #${h.rrc_lease_id}` : '—')
-
-              // Compose a legal string when the parent didn't hand us
-              // one (i.e. for cross-county rows). Uses whichever raw
-              // columns the ownership row carried: block/section for
-              // Howard/Martin, survey name for named-grantee tracts.
-              const composedLegal = (() => {
-                if (legalDesc) return legalDesc
-                const bits: string[] = []
-                if (parts.township) bits.push(parts.township)
-                if (parts.block) bits.push(`BLK ${parts.block}`)
-                if (parts.section) bits.push(`SEC ${parts.section}`)
-                if (abstractLabel) bits.push(abstractLabel)
-                if (bits.length > 0) return bits.join(' ')
-                if (parts.survey && abstractLabel) return `${parts.survey} Survey ${abstractLabel}`
-                return abstractLabel
-              })()
-
-              const acreageEstimate = estimateGrossAcres({
-                cadAcres: h.acreage,
-                legal: composedLegal,
-                survey: clean(h.survey),
-                section: parts.section,
-                block: parts.block,
-                township: parts.township,
-              })
-              const acres = acreageEstimate.acres
-              const nra = (ownershipPct != null && acres != null)
-                ? netMineralAcres(acres, ownershipPct)
-                : null
-              const nriPct = ownershipPct != null
-                ? mineralOwnerNriPct(ownershipPct)
-                : null
-
-              const fieldName = clean(h.field_name)
-              const countyLabelShort = cfg.displayName.replace(/\s+County,\s+TX$/i, '')
-              return (
-                <tr
-                  key={`${rowCountyId}-${h.id ?? h.rrc_lease_id ?? i}`}
-                  className={`text-gray-800 ${
-                    opHit
-                      ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
-                      : isActive
-                        ? 'bg-amber-50/40'
-                        : ''
-                  } ${!opHit && i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
+            {rows.map((row) => (
+              <tr
+                key={row.key}
+                className={`text-gray-800 ${
+                  row.opHit
+                    ? 'bg-amber-100/80 ring-1 ring-inset ring-amber-400'
+                    : row.isActive
+                      ? 'bg-amber-50/40'
+                      : ''
+                } ${!row.opHit && row.i % 2 !== 0 ? 'bg-gray-50/40' : ''}`}
+              >
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
+                  title={row.fieldName && row.fieldName !== row.unitLabel
+                    ? `${row.unitLabel} · ${row.fieldName}`
+                    : row.unitLabel}
                 >
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pl-3.5 font-medium text-gray-900"
-                    title={fieldName && clean(h.county_lease_name) ? `${unitLabel} · ${fieldName}` : unitLabel}
-                  >
-                    {unitLabel}
-                  </td>
-                  <td
-                    className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 leading-snug"
-                    title={composedLegal && abstractLabel && composedLegal !== abstractLabel
-                      ? `${composedLegal} · ${abstractLabel}`
-                      : composedLegal || abstractLabel || undefined}
-                  >
-                    {composedLegal || abstractLabel || '—'}
-                  </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.section || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.township || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.block || '—'}</td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{parts.range || '—'}</td>
-                  <td
-                    className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
-                      opHit ? 'font-semibold text-amber-900' : ''
-                    }`}
-                    title={clean(h.operator_name) || undefined}
-                  >
-                    {clean(h.operator_name) || '—'}
-                    {opHit && (
-                      <span className="ml-1 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
-                        Match
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={cfg.displayName}>
-                    <span
-                      className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
-                        isActive
-                          ? 'border-amber-300 bg-amber-100 text-amber-900'
-                          : 'border-slate-200 bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      {countyLabelShort}
+                  {row.unitLabel}
+                </td>
+                <td
+                  className="min-w-[10rem] max-w-[22rem] border-b border-gray-100 px-2.5 py-2 leading-snug"
+                  title={row.composedLegal && row.abstractLabel && row.composedLegal !== row.abstractLabel
+                    ? `${row.composedLegal} · ${row.abstractLabel}`
+                    : row.composedLegal || row.abstractLabel || undefined}
+                >
+                  {row.composedLegal || row.abstractLabel || '—'}
+                </td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.section || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.township || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.block || '—'}</td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 tabular-nums">{row.parts.range || '—'}</td>
+                <td
+                  className={`min-w-[9rem] border-b border-gray-100 px-2.5 py-2 leading-snug ${
+                    row.opHit ? 'font-semibold text-amber-900' : ''
+                  }`}
+                  title={row.operator || undefined}
+                >
+                  {row.operator || '—'}
+                  {row.opHit && (
+                    <span className="ml-1 rounded border border-amber-400 bg-amber-200 px-1 text-[9px] font-bold uppercase tracking-wide text-amber-950">
+                      Match
                     </span>
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
-                    title={h.interest_type ? `${ownershipPct?.toFixed(4)}% · ${h.interest_type}` : undefined}
+                  )}
+                </td>
+                <td className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2" title={row.countyDisplayName}>
+                  <span
+                    className={`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${
+                      row.isActive
+                        ? 'border-amber-300 bg-amber-100 text-amber-900'
+                        : 'border-slate-200 bg-slate-50 text-slate-700'
+                    }`}
                   >
-                    {ownershipPct != null ? `${ownershipPct.toFixed(4)}%` : '—'}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
-                    title={
-                      acres != null
-                        ? acreageEstimate.estimated
-                          ? `${formatAcres(acres)} ac estimated from section / legal`
-                          : `${formatAcres(acres)} ac from CAD`
-                        : undefined
-                    }
-                  >
-                    {acres != null ? formatAcres(acres) : '—'}
-                    {acres != null && acreageEstimate.estimated && (
-                      <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
-                    )}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums text-gray-600"
-                    title={nra != null ? `${nra.toFixed(3)} NMA` : undefined}
-                  >
-                    {nra != null ? nra.toFixed(nra < 1 ? 3 : 2) : '—'}
-                  </td>
-                  <td
-                    className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right tabular-nums text-gray-600"
-                    title={
-                      nriPct != null
-                        ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
-                        : undefined
-                    }
-                  >
-                    {nriPct != null ? `${nriPct.toFixed(4)}%` : '—'}
-                  </td>
-                </tr>
-              )
-            })}
+                    {row.countyLabelShort}
+                  </span>
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
+                  title={row.interestType
+                    ? `${row.ownershipPct?.toFixed(4)}% · ${row.interestType}`
+                    : undefined}
+                >
+                  {row.ownershipPct != null ? `${row.ownershipPct.toFixed(4)}%` : '—'}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums"
+                  title={
+                    row.acres != null
+                      ? row.acresEstimated
+                        ? `${formatAcres(row.acres)} ac estimated from section / legal`
+                        : `${formatAcres(row.acres)} ac from CAD`
+                      : undefined
+                  }
+                >
+                  {row.acres != null ? formatAcres(row.acres) : '—'}
+                  {row.acres != null && row.acresEstimated && (
+                    <span className="ml-1 text-[9px] font-sans text-gray-400">est.</span>
+                  )}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 text-right tabular-nums text-gray-600"
+                  title={row.nra != null ? `${row.nra.toFixed(3)} NMA` : undefined}
+                >
+                  {row.nra != null ? row.nra.toFixed(row.nra < 1 ? 3 : 2) : '—'}
+                </td>
+                <td
+                  className="whitespace-nowrap border-b border-gray-100 px-2.5 py-2 pr-3.5 text-right tabular-nums text-gray-600"
+                  title={
+                    row.nriPct != null
+                      ? `Assumed 1/8 royalty. NRI = mineral interest × ${(DEFAULT_LEASE_ROYALTY * 100).toFixed(1)}%`
+                      : undefined
+                  }
+                >
+                  {row.nriPct != null ? `${row.nriPct.toFixed(4)}%` : '—'}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -2936,7 +3247,7 @@ function DevTimeline({ status }: { status: TractDevStatus }) {
 //  broker-outreach workflow the platform doesn't offer anyway.)
 
 function NotesPanel({
-  value, loading, saving, savedAt, error, onChange, onBlur,
+  value, loading, saving, savedAt, error, onChange, onBlur, fill = false,
 }: {
   value: string
   loading: boolean
@@ -2945,13 +3256,14 @@ function NotesPanel({
   error: string | null
   onChange: (v: string) => void
   onBlur: () => void
+  fill?: boolean
 }) {
   const savedLabel = savedAt
     ? `Saved ${savedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
     : ''
   return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className={`flex flex-col gap-3 ${fill ? 'crm-lead-notes-fill' : ''}`}>
+      <div className={`rounded-xl border border-gray-200 bg-white p-4 shadow-sm ${fill ? 'flex h-full min-h-0 flex-col' : ''}`}>
         <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-2">
           <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
             Notes
@@ -2965,8 +3277,8 @@ function NotesPanel({
           onChange={(e) => onChange(e.target.value)}
           onBlur={onBlur}
           placeholder="Add call prep notes, offer history, contact preferences, or anything else your team should know about this lead. Autosaves when you click out of the box."
-          rows={10}
-          className="w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-900 focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400 focus:outline-none"
+          rows={fill ? 8 : 10}
+          className={`w-full resize-none rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm leading-relaxed text-gray-900 focus:border-amber-400 focus:bg-white focus:ring-1 focus:ring-amber-400 focus:outline-none ${fill ? 'min-h-[9rem] flex-1' : ''}`}
         />
         {error && (
           <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
