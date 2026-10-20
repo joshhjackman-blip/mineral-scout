@@ -26,9 +26,8 @@ export default function LegalDocShell({
         <div className="lp-nav-links">
           <Link href="/legal/privacy">Privacy</Link>
           <Link href="/legal/terms">Terms</Link>
-          <Link href="/legal/agreement">Agreement</Link>
           <Link href="/legal/agreement/sign" className="lp-nav-cta">
-            Sign →
+            Accept Terms →
           </Link>
         </div>
       </nav>
@@ -62,7 +61,6 @@ export default function LegalDocShell({
         <div className="lp-footer-links">
           <Link href="/legal/privacy">Privacy</Link>
           <Link href="/legal/terms">Terms</Link>
-          <Link href="/legal/agreement">Agreement</Link>
           <a href="https://getmineralmap.com/auth">Sign in</a>
         </div>
       </footer>

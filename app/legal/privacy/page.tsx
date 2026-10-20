@@ -29,11 +29,7 @@ export default function PrivacyPage() {
         <>
           How we handle account, usage, and platform data. Related:{' '}
           <Link href="/legal/terms">
-            <span className="lp-legal-inline-link">Terms of Use</span>
-          </Link>{' '}
-          and{' '}
-          <Link href="/legal/agreement">
-            <span className="lp-legal-inline-link">Platform Services Agreement</span>
+            <span className="lp-legal-inline-link">Terms of Service</span>
           </Link>
           .
         </>

@@ -38,7 +38,7 @@ need the remaining keys documented in `.env.local.example` — `SUPABASE_SERVICE
 `STRIPE_*`, `RESEND_API_KEY`, etc. For local development you will usually also want:
 
 ```bash
-AGREEMENT_GATE_ENABLED=false   # skip the Platform Services Agreement gate
+AGREEMENT_GATE_ENABLED=false   # skip the Terms of Service gate
 ```
 
 ### 3. Run the development server

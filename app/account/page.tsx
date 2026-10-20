@@ -478,7 +478,7 @@ export default function Account() {
               className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 hover:text-amber-700"
             >
               <FileText size={13} />
-              Agreement
+              Terms of Service
             </Link>
           </div>
           {cardSetupMessage && (
@@ -672,13 +672,7 @@ export default function Account() {
               Privacy Policy
             </Link>
             <Link href="/legal/terms" className="text-amber-700 hover:text-amber-800 font-medium">
-              Terms of Use
-            </Link>
-            <Link
-              href="/legal/agreement"
-              className="text-amber-700 hover:text-amber-800 font-medium"
-            >
-              Platform Services Agreement
+              Terms of Service
             </Link>
           </div>
         </div>

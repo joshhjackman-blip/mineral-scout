@@ -6,9 +6,9 @@ import AgreementSignClient from './AgreementSignClient'
 import './classic.css'
 
 export const metadata: Metadata = {
-  title: 'Sign Platform Services Agreement · Mineral Map',
+  title: 'Accept Terms of Service · Mineral Map',
   description:
-    'Review and accept the Mineral Map Platform Services Agreement to access the map and CRM.',
+    'Review and accept the Mineral Map Terms of Service to access the map and CRM.',
 }
 
 export default function SignAgreementPage() {

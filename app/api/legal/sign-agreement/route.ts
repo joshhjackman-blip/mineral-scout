@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
   }
   if (!accepted) {
     return NextResponse.json(
-      { ok: false, error: 'You must check the box to accept the agreement.' },
+      { ok: false, error: 'You must check the box to accept the Terms of Service.' },
       { status: 400 },
     )
   }
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: `Please sign the current agreement (version ${CURRENT_AGREEMENT_VERSION}).`,
+        error: `Please accept the current Terms of Service (version ${CURRENT_AGREEMENT_VERSION}).`,
       },
       { status: 400 },
     )

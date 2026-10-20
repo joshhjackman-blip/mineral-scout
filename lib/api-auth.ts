@@ -72,7 +72,7 @@ export async function requireApiUser(
       error: NextResponse.json(
         {
           error: 'agreement_required',
-          message: 'Please sign the Platform Services Agreement to continue.',
+          message: 'Please accept the Terms of Service to continue.',
           redirect: '/legal/agreement/sign',
         },
         { status: 403 },
