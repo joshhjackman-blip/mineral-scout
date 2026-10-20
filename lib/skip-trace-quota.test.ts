@@ -7,6 +7,11 @@ import {
   quotaMonth,
   remainingQuota,
 } from './skip-trace-quota'
+import {
+  clampQuotaTarget,
+  quotaTargetPresets,
+  quotaTargetStep,
+} from './skip-trace-quota-target'
 
 assert.equal(quotaMonth(new Date('2026-10-20T00:00:00.000Z')), '2026-10')
 assert.equal(quotaMonth(new Date('2026-01-01T00:00:00.000Z')), '2026-01')
@@ -14,6 +19,14 @@ assert.equal(quotaMonth(new Date('2026-01-01T00:00:00.000Z')), '2026-01')
 assert.equal(remainingQuota(12500, 100), 12400)
 assert.equal(remainingQuota(3333, 4000), 0)
 assert.equal(remainingQuota(3333, -5), 3333)
+
+assert.equal(clampQuotaTarget(10660, null), 10660)
+assert.equal(clampQuotaTarget(10660, 500), 500)
+assert.equal(clampQuotaTarget(10660, 50000), 10660)
+assert.equal(clampQuotaTarget(10660, 0), 1)
+assert.equal(clampQuotaTarget(0, 100), 0)
+assert.equal(quotaTargetStep(10660), 50)
+assert.deepEqual(quotaTargetPresets(3333), [250, 500, 1000, 2500, 3333])
 
 assert.equal(parseQuotaProvider('idicore'), 'idicore')
 assert.equal(parseQuotaProvider('AccurateAppend'), 'accurateappend')

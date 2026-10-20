@@ -18,6 +18,9 @@ import {
   type SkipTraceProviderName,
 } from '@/lib/skip-trace-providers'
 import { applySkipTracePhones } from '@/lib/skip-trace-review'
+import { clampQuotaTarget } from '@/lib/skip-trace-quota-target'
+
+export { clampQuotaTarget, quotaTargetPresets, quotaTargetStep } from '@/lib/skip-trace-quota-target'
 
 export const QUOTA_PROVIDERS: SkipTraceProviderName[] = ['idicore', 'accurateappend']
 
@@ -391,7 +394,7 @@ export async function startQuotaJob(
   if (remaining <= 0) {
     throw new Error('No prepaid lookups left on this provider this month')
   }
-  const target = Math.min(remaining, Math.max(1, Math.floor(input.targetCount ?? remaining)))
+  const target = clampQuotaTarget(remaining, input.targetCount)
   const now = new Date().toISOString()
   const { data, error } = await admin
     .from('skip_trace_quota_jobs')

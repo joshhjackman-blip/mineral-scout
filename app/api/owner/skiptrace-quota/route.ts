@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     if (action === 'start') {
       const job = await startQuotaJob(db, {
         provider,
-        targetCount: body.targetCount,
+        targetCount: Number(body.targetCount),
         createdBy: user.id,
       })
       const providers = await quotaStatus(db)
